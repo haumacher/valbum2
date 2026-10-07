@@ -3803,4 +3803,87 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get groupByPreview => 'Zu erstellende Überschriften';
+
+  @override
+  String get searchAction => 'Suche';
+
+  @override
+  String get searchBack => 'Zurück zur Suche';
+
+  @override
+  String get editSearch => 'Suche bearbeiten';
+
+  @override
+  String get searchPersons => 'Personen';
+
+  @override
+  String get searchFrom => 'Von';
+
+  @override
+  String get searchTo => 'Bis';
+
+  @override
+  String get searchPlaces => 'Orte';
+
+  @override
+  String get searchLabels => 'Labels';
+
+  @override
+  String get searchRating => 'Bewertung';
+
+  @override
+  String get searchCamera => 'Kamera';
+
+  @override
+  String get searchText => 'Text in Beschreibungen und Albumtiteln';
+
+  @override
+  String get searchMediaAll => 'Fotos und Videos';
+
+  @override
+  String get searchMediaPhotos => 'Nur Fotos';
+
+  @override
+  String get searchMediaVideos => 'Nur Videos';
+
+  @override
+  String get searchAnyRating => 'Beliebige Bewertung';
+
+  @override
+  String get searchAnyCamera => 'Beliebige Kamera';
+
+  @override
+  String get searchChooseHint =>
+      'Wählen Sie aus, wonach Sie suchen möchten: Personen, einen Zeitraum, Orte, Labels, eine Bewertung, Fotos oder Videos, einen Text oder eine Kamera.';
+
+  @override
+  String get searchNothingFound => 'Kein Foto entspricht dieser Suche.';
+
+  @override
+  String get searchNothingToChoose => 'Hier gibt es nichts zur Auswahl.';
+
+  @override
+  String get searchCannotEdit =>
+      'Diese Suche verwendet Bedingungen, die auf diesem Bildschirm nicht angezeigt werden können, daher kann sie hier nicht bearbeitet werden.';
+
+  @override
+  String get saveAsView => 'Als Ansicht speichern…';
+
+  @override
+  String get saveAsViewHere => 'Hier speichern';
+
+  @override
+  String get saveAsViewHint =>
+      'Eine gespeicherte Ansicht zeigt die Fotos unterhalb ihres Ordners, die der Suche entsprechen – auch neue.';
+
+  @override
+  String get createCollectionFromThese => 'Sammlung aus diesen erstellen…';
+
+  @override
+  String get showInAlbum => 'Im Album anzeigen';
+
+  @override
+  String searchRatingAtLeast(String rating) {
+    return 'Mindestens: $rating';
+  }
 }

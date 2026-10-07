@@ -347,6 +347,20 @@ enum AlbumKind {
 	///  copied on disk.
 	///  </p>
 	collection,
+	///  A saved search, see issue #227: an album that holds nothing but a {@link AlbumInfo#query}
+	///  and shows, whenever it is opened, the photographs of the space that match it.
+	/// 
+	///  <p>
+	///  Like {@link #COLLECTION} this kind is <b>stored</b> in <code>index.json</code>, written once
+	///  when the saved search is created and never changed afterwards. Its sidecar holds the query,
+	///  the title, the date, the star and the chosen album picture &mdash; never a part and never a
+	///  reference: the parts are answered live, each photograph as its own album shows it to the
+	///  caller, named by its path below the folder the search looks in (the folder the saved search
+	///  lies in, the root of the space for one at the root). Everything a photograph says &mdash; its
+	///  turn, crop, description, rating, privacy, labels &mdash; is the photograph's own, answered
+	///  from and written to the album it lies in.
+	///  </p>
+	search,
 }
 
 /// Writes a value of AlbumKind to a JSON stream.
@@ -355,6 +369,7 @@ void writeAlbumKind(JsonSink json, AlbumKind value) {
 		case AlbumKind.album: json.addString("ALBUM"); break;
 		case AlbumKind.inbox: json.addString("INBOX"); break;
 		case AlbumKind.collection: json.addString("COLLECTION"); break;
+		case AlbumKind.search: json.addString("SEARCH"); break;
 		default: throw ("No such literal: " + value.name);
 	}
 }
@@ -365,6 +380,7 @@ AlbumKind readAlbumKind(JsonReader json) {
 		case "ALBUM": return AlbumKind.album;
 		case "INBOX": return AlbumKind.inbox;
 		case "COLLECTION": return AlbumKind.collection;
+		case "SEARCH": return AlbumKind.search;
 		default: return AlbumKind.album;
 	}
 }
@@ -446,6 +462,16 @@ class AlbumInfo extends FolderResource {
 	///  </p>
 	bool starred;
 
+	///  What a saved search ({@link AlbumKind#SEARCH}, issue #227) looks for; <code>null</code> for
+	///  every other kind of album.
+	/// 
+	///  <p>
+	///  <b>Stored</b> in the saved search's <code>index.json</code>, and the one thing it stores
+	///  besides its title, date, star and picture. Answered to whoever may see the saved search, so
+	///  that an editor can change it ("Edit search") with an ordinary sidecar <code>PUT</code>.
+	///  </p>
+	SearchQuery? query;
+
 	///  The list of images in this album.
 	List<AlbumPart> parts;
 
@@ -469,6 +495,7 @@ class AlbumInfo extends FolderResource {
 			this.facesPending = false, 
 			this.indexPicture, 
 			this.starred = false, 
+			this.query, 
 			this.parts = const [], 
 			this.imageByName = const {}, 
 			this.minRating = 0, 
@@ -524,6 +551,10 @@ class AlbumInfo extends FolderResource {
 				starred = json.expectBool();
 				break;
 			}
+			case "query": {
+				query = json.tryNull() ? null : SearchQuery.read(json);
+				break;
+			}
 			case "parts": {
 				json.expectArray();
 				parts = [];
@@ -571,6 +602,12 @@ class AlbumInfo extends FolderResource {
 
 		json.addKey("starred");
 		json.addBool(starred);
+
+		var _query = query;
+		if (_query != null) {
+			json.addKey("query");
+			_query.writeContent(json);
+		}
 
 		json.addKey("parts");
 		json.startArray();
@@ -2440,6 +2477,9 @@ enum FolderKind {
 	///  The entry is a collection (see {@link AlbumKind#COLLECTION}, issue #221): an album of
 	///  references to photographs of other albums. It has a date only where its author gave it one.
 	collection,
+	///  The entry is a saved search (see {@link AlbumKind#SEARCH}, issue #227): an album showing the
+	///  photographs that match its query, evaluated whenever it is opened.
+	search,
 }
 
 /// Writes a value of FolderKind to a JSON stream.
@@ -2449,6 +2489,7 @@ void writeFolderKind(JsonSink json, FolderKind value) {
 		case FolderKind.folder: json.addString("FOLDER"); break;
 		case FolderKind.inbox: json.addString("INBOX"); break;
 		case FolderKind.collection: json.addString("COLLECTION"); break;
+		case FolderKind.search: json.addString("SEARCH"); break;
 		default: throw ("No such literal: " + value.name);
 	}
 }
@@ -2460,6 +2501,7 @@ FolderKind readFolderKind(JsonReader json) {
 		case "FOLDER": return FolderKind.folder;
 		case "INBOX": return FolderKind.inbox;
 		case "COLLECTION": return FolderKind.collection;
+		case "SEARCH": return FolderKind.search;
 		default: return FolderKind.album;
 	}
 }
@@ -11362,6 +11404,982 @@ class FaceAssignment extends _JsonObject {
 
 		json.addKey("state");
 		writeFaceState(json, state);
+	}
+
+}
+
+///  A search over the photographs of a space, see issue #227: what a saved search
+///  ({@link AlbumKind#SEARCH}) stores in its sidecar and what the search view sends.
+/// 
+///  <p>
+///  <b>A persisted format.</b> The meaning of every criterion is frozen once a build writing it has
+///  shipped. A change of meaning, and a new field of an existing criterion, raises {@link #version};
+///  a new kind of criterion is a new message. A build reading a query of a {@link #version} it does
+///  not know, or a criterion it does not know, refuses to evaluate it and says so (&quot;This search
+///  was saved by a newer version&hellip;&quot;) &mdash; it never answers a silently narrower or wider
+///  result.
+///  </p>
+class SearchQuery extends _JsonObject {
+	///  The version of the format the query was written in; <code>1</code> in this build. A query
+	///  without a version (<code>0</code>) is read as version <code>1</code>.
+	int version;
+
+	///  The condition a photograph must meet; an empty {@link SearchAnd} for every photograph.
+	/// 
+	///  <p>
+	///  Never absent: a criterion of a newer build is read as nothing, so an absent root (like an
+		///  absent member of a {@link SearchAnd}, {@link SearchOr} or {@link SearchNot}) is refused as
+	///  unknown rather than read as "everything".
+	///  </p>
+	SearchCriterion? root;
+
+	/// Creates a SearchQuery.
+	SearchQuery({
+			this.version = 0, 
+			this.root, 
+	});
+
+	/// Parses a SearchQuery from a string source.
+	static SearchQuery? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a SearchQuery instance from the given reader.
+	static SearchQuery read(JsonReader json) {
+		SearchQuery result = SearchQuery();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "SearchQuery";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "version": {
+				version = json.expectInt();
+				break;
+			}
+			case "root": {
+				root = json.tryNull() ? null : SearchCriterion.read(json);
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("version");
+		json.addNumber(version);
+
+		var _root = root;
+		if (_root != null) {
+			json.addKey("root");
+			_root.writeTo(json);
+		}
+	}
+
+}
+
+/// Visitor interface for SearchCriterion.
+abstract class SearchCriterionVisitor<R, A> {
+	R visitSearchAnd(SearchAnd self, A arg);
+	R visitSearchOr(SearchOr self, A arg);
+	R visitSearchNot(SearchNot self, A arg);
+	R visitSearchPerson(SearchPerson self, A arg);
+	R visitSearchDate(SearchDate self, A arg);
+	R visitSearchPlace(SearchPlace self, A arg);
+	R visitSearchLabel(SearchLabel self, A arg);
+	R visitSearchRating(SearchRating self, A arg);
+	R visitSearchMedia(SearchMedia self, A arg);
+	R visitSearchText(SearchText self, A arg);
+	R visitSearchCamera(SearchCamera self, A arg);
+	R visitSearchFolder(SearchFolder self, A arg);
+}
+
+///  One condition of a {@link SearchQuery}, see issue #227.
+/// 
+///  <p>
+///  A tree: {@link SearchAnd}, {@link SearchOr} and {@link SearchNot} combine the conditions below
+///  them, every other kind is a leaf asking one thing of a photograph.
+///  </p>
+abstract class SearchCriterion extends _JsonObject {
+	/// Creates a SearchCriterion.
+	SearchCriterion();
+
+	/// Parses a SearchCriterion from a string source.
+	static SearchCriterion? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a SearchCriterion instance from the given reader.
+	static SearchCriterion? read(JsonReader json) {
+		SearchCriterion? result;
+
+		json.expectArray();
+		if (!json.hasNext()) {
+			return null;
+		}
+
+		switch (json.expectString()) {
+			case "SearchAnd": result = SearchAnd(); break;
+			case "SearchOr": result = SearchOr(); break;
+			case "SearchNot": result = SearchNot(); break;
+			case "SearchPerson": result = SearchPerson(); break;
+			case "SearchDate": result = SearchDate(); break;
+			case "SearchPlace": result = SearchPlace(); break;
+			case "SearchLabel": result = SearchLabel(); break;
+			case "SearchRating": result = SearchRating(); break;
+			case "SearchMedia": result = SearchMedia(); break;
+			case "SearchText": result = SearchText(); break;
+			case "SearchCamera": result = SearchCamera(); break;
+			case "SearchFolder": result = SearchFolder(); break;
+			default: result = null;
+		}
+
+		if (!json.hasNext() || json.tryNull()) {
+			return null;
+		}
+
+		if (result == null) {
+			json.skipAnyValue();
+		} else {
+			result._readContent(json);
+		}
+		json.endArray();
+
+		return result;
+	}
+
+	R visitSearchCriterion<R, A>(SearchCriterionVisitor<R, A> v, A arg);
+
+}
+
+///  Every one of the given conditions holds; an empty list holds for every photograph.
+class SearchAnd extends SearchCriterion {
+	///  The conditions that must all hold.
+	List<SearchCriterion> criteria;
+
+	/// Creates a SearchAnd.
+	SearchAnd({
+			this.criteria = const [], 
+	});
+
+	/// Parses a SearchAnd from a string source.
+	static SearchAnd? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a SearchAnd instance from the given reader.
+	static SearchAnd read(JsonReader json) {
+		SearchAnd result = SearchAnd();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "SearchAnd";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "criteria": {
+				json.expectArray();
+				criteria = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = SearchCriterion.read(json);
+						if (value != null) {
+							criteria.add(value);
+						}
+					}
+				}
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("criteria");
+		json.startArray();
+		for (var _element in criteria) {
+			_element.writeTo(json);
+		}
+		json.endArray();
+	}
+
+	@override
+	R visitSearchCriterion<R, A>(SearchCriterionVisitor<R, A> v, A arg) => v.visitSearchAnd(this, arg);
+
+}
+
+///  At least one of the given conditions holds; an empty list holds for no photograph.
+class SearchOr extends SearchCriterion {
+	///  The conditions of which one must hold.
+	List<SearchCriterion> criteria;
+
+	/// Creates a SearchOr.
+	SearchOr({
+			this.criteria = const [], 
+	});
+
+	/// Parses a SearchOr from a string source.
+	static SearchOr? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a SearchOr instance from the given reader.
+	static SearchOr read(JsonReader json) {
+		SearchOr result = SearchOr();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "SearchOr";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "criteria": {
+				json.expectArray();
+				criteria = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = SearchCriterion.read(json);
+						if (value != null) {
+							criteria.add(value);
+						}
+					}
+				}
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("criteria");
+		json.startArray();
+		for (var _element in criteria) {
+			_element.writeTo(json);
+		}
+		json.endArray();
+	}
+
+	@override
+	R visitSearchCriterion<R, A>(SearchCriterionVisitor<R, A> v, A arg) => v.visitSearchOr(this, arg);
+
+}
+
+///  The given condition does not hold.
+class SearchNot extends SearchCriterion {
+	///  The condition that must not hold; never absent, see {@link SearchQuery#root}.
+	SearchCriterion? criterion;
+
+	/// Creates a SearchNot.
+	SearchNot({
+			this.criterion, 
+	});
+
+	/// Parses a SearchNot from a string source.
+	static SearchNot? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a SearchNot instance from the given reader.
+	static SearchNot read(JsonReader json) {
+		SearchNot result = SearchNot();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "SearchNot";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "criterion": {
+				criterion = json.tryNull() ? null : SearchCriterion.read(json);
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		var _criterion = criterion;
+		if (_criterion != null) {
+			json.addKey("criterion");
+			_criterion.writeTo(json);
+		}
+	}
+
+	@override
+	R visitSearchCriterion<R, A>(SearchCriterionVisitor<R, A> v, A arg) => v.visitSearchNot(this, arg);
+
+}
+
+///  The given person is in the photograph: somebody confirmed a face of the photograph as that
+///  person (a {@link FaceTag} of {@link FaceState#CONFIRMED}), see issue #125.
+/// 
+///  <p>
+///  Compared through the merges of the register: a person merged into another one afterwards is
+///  the one it was merged into, see {@link Person#aliases}.
+///  </p>
+class SearchPerson extends SearchCriterion {
+	///  The {@link Person#id}.
+	String person;
+
+	/// Creates a SearchPerson.
+	SearchPerson({
+			this.person = "", 
+	});
+
+	/// Parses a SearchPerson from a string source.
+	static SearchPerson? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a SearchPerson instance from the given reader.
+	static SearchPerson read(JsonReader json) {
+		SearchPerson result = SearchPerson();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "SearchPerson";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "person": {
+				person = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("person");
+		json.addString(person);
+	}
+
+	@override
+	R visitSearchCriterion<R, A>(SearchCriterionVisitor<R, A> v, A arg) => v.visitSearchPerson(this, arg);
+
+}
+
+///  The photograph was taken in the given span of time: {@link ImagePart#date} at or after
+///  {@link #from} and before {@link #to}. A photograph without a date never matches.
+class SearchDate extends SearchCriterion {
+	///  The first instant, in milliseconds since the epoch; <code>0</code> for no lower bound.
+	int from;
+
+	///  The first instant no longer in the span (exclusive); <code>0</code> for no upper bound.
+	int to;
+
+	/// Creates a SearchDate.
+	SearchDate({
+			this.from = 0, 
+			this.to = 0, 
+	});
+
+	/// Parses a SearchDate from a string source.
+	static SearchDate? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a SearchDate instance from the given reader.
+	static SearchDate read(JsonReader json) {
+		SearchDate result = SearchDate();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "SearchDate";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "from": {
+				from = json.expectInt();
+				break;
+			}
+			case "to": {
+				to = json.expectInt();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("from");
+		json.addNumber(from);
+
+		json.addKey("to");
+		json.addNumber(to);
+	}
+
+	@override
+	R visitSearchCriterion<R, A>(SearchCriterionVisitor<R, A> v, A arg) => v.visitSearchDate(this, arg);
+
+}
+
+///  The photograph was taken in the given place: one of its {@link ImagePart#places place tags},
+///  at any level, is the given GeoNames entry (issue #234). A state matches every photograph of its
+///  towns.
+class SearchPlace extends SearchCriterion {
+	///  The {@link PlaceTag#geonameId}.
+	int geonameId;
+
+	/// Creates a SearchPlace.
+	SearchPlace({
+			this.geonameId = 0, 
+	});
+
+	/// Parses a SearchPlace from a string source.
+	static SearchPlace? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a SearchPlace instance from the given reader.
+	static SearchPlace read(JsonReader json) {
+		SearchPlace result = SearchPlace();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "SearchPlace";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "geonameId": {
+				geonameId = json.expectInt();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("geonameId");
+		json.addNumber(geonameId);
+	}
+
+	@override
+	R visitSearchCriterion<R, A>(SearchCriterionVisitor<R, A> v, A arg) => v.visitSearchPlace(this, arg);
+
+}
+
+///  The photograph carries the given label, compared exactly, see {@link ImagePart#labels}.
+class SearchLabel extends SearchCriterion {
+	///  The label.
+	String label;
+
+	/// Creates a SearchLabel.
+	SearchLabel({
+			this.label = "", 
+	});
+
+	/// Parses a SearchLabel from a string source.
+	static SearchLabel? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a SearchLabel instance from the given reader.
+	static SearchLabel read(JsonReader json) {
+		SearchLabel result = SearchLabel();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "SearchLabel";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "label": {
+				label = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("label");
+		json.addString(label);
+	}
+
+	@override
+	R visitSearchCriterion<R, A>(SearchCriterionVisitor<R, A> v, A arg) => v.visitSearchLabel(this, arg);
+
+}
+
+///  The photograph is rated at least the given {@link ImagePart#rating}.
+class SearchRating extends SearchCriterion {
+	///  The lowest rating that matches, from <code>-2</code> to <code>2</code>.
+	int min;
+
+	/// Creates a SearchRating.
+	SearchRating({
+			this.min = 0, 
+	});
+
+	/// Parses a SearchRating from a string source.
+	static SearchRating? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a SearchRating instance from the given reader.
+	static SearchRating read(JsonReader json) {
+		SearchRating result = SearchRating();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "SearchRating";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "min": {
+				min = json.expectInt();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("min");
+		json.addNumber(min);
+	}
+
+	@override
+	R visitSearchCriterion<R, A>(SearchCriterionVisitor<R, A> v, A arg) => v.visitSearchRating(this, arg);
+
+}
+
+///  The photograph is a video, or a still picture, see {@link ImagePart#kind}.
+class SearchMedia extends SearchCriterion {
+	///  <code>true</code> for videos, <code>false</code> for still pictures.
+	bool video;
+
+	/// Creates a SearchMedia.
+	SearchMedia({
+			this.video = false, 
+	});
+
+	/// Parses a SearchMedia from a string source.
+	static SearchMedia? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a SearchMedia instance from the given reader.
+	static SearchMedia read(JsonReader json) {
+		SearchMedia result = SearchMedia();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "SearchMedia";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "video": {
+				video = json.expectBool();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("video");
+		json.addBool(video);
+	}
+
+	@override
+	R visitSearchCriterion<R, A>(SearchCriterionVisitor<R, A> v, A arg) => v.visitSearchMedia(this, arg);
+
+}
+
+///  The given text occurs, ignoring case, in the photograph's {@link ImagePart#comment} or in the
+///  {@link AlbumInfo#title} or {@link AlbumInfo#subTitle} of the album it lies in.
+class SearchText extends SearchCriterion {
+	///  The text looked for; blanks around it are ignored, and an empty text matches everything.
+	String text;
+
+	/// Creates a SearchText.
+	SearchText({
+			this.text = "", 
+	});
+
+	/// Parses a SearchText from a string source.
+	static SearchText? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a SearchText instance from the given reader.
+	static SearchText read(JsonReader json) {
+		SearchText result = SearchText();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "SearchText";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "text": {
+				text = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("text");
+		json.addString(text);
+	}
+
+	@override
+	R visitSearchCriterion<R, A>(SearchCriterionVisitor<R, A> v, A arg) => v.visitSearchText(this, arg);
+
+}
+
+///  The photograph was taken with the given camera, compared exactly, see {@link ImagePart#camera}.
+class SearchCamera extends SearchCriterion {
+	///  The camera label; the empty label matches nothing.
+	String camera;
+
+	/// Creates a SearchCamera.
+	SearchCamera({
+			this.camera = "", 
+	});
+
+	/// Parses a SearchCamera from a string source.
+	static SearchCamera? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a SearchCamera instance from the given reader.
+	static SearchCamera read(JsonReader json) {
+		SearchCamera result = SearchCamera();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "SearchCamera";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "camera": {
+				camera = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("camera");
+		json.addString(camera);
+	}
+
+	@override
+	R visitSearchCriterion<R, A>(SearchCriterionVisitor<R, A> v, A arg) => v.visitSearchCamera(this, arg);
+
+}
+
+///  The photograph lies in the given folder or below it.
+/// 
+///  <p>
+///  Not offered by the app in this build: where a saved search lies already says where it looks.
+///  Kept in the format for a later search over several folders.
+///  </p>
+class SearchFolder extends SearchCriterion {
+	///  The folder relative to the root of the space, <code>/</code>-separated; empty for the root.
+	String path;
+
+	/// Creates a SearchFolder.
+	SearchFolder({
+			this.path = "", 
+	});
+
+	/// Parses a SearchFolder from a string source.
+	static SearchFolder? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a SearchFolder instance from the given reader.
+	static SearchFolder read(JsonReader json) {
+		SearchFolder result = SearchFolder();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "SearchFolder";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "path": {
+				path = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("path");
+		json.addString(path);
+	}
+
+	@override
+	R visitSearchCriterion<R, A>(SearchCriterionVisitor<R, A> v, A arg) => v.visitSearchFolder(this, arg);
+
+}
+
+///  What the search view offers to choose from in a folder, see issue #227 and
+///  <code>&lt;folder&gt;/?type=search-options</code>.
+/// 
+///  <p>
+///  Derived from the photographs below the folder that the caller may see, never stored.
+///  </p>
+class SearchOptions extends _JsonObject {
+	///  The persons confirmed in at least one of the photographs, by name.
+	List<Person> persons;
+
+	///  The places the photographs were taken in, every level, each once, in the caller's language.
+	List<PlaceTag> places;
+
+	///  The labels the photographs carry, each once, sorted.
+	List<LabelName> labels;
+
+	///  The cameras the photographs were taken with, each once, sorted.
+	List<CameraName> cameras;
+
+	/// Creates a SearchOptions.
+	SearchOptions({
+			this.persons = const [], 
+			this.places = const [], 
+			this.labels = const [], 
+			this.cameras = const [], 
+	});
+
+	/// Parses a SearchOptions from a string source.
+	static SearchOptions? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a SearchOptions instance from the given reader.
+	static SearchOptions read(JsonReader json) {
+		SearchOptions result = SearchOptions();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "SearchOptions";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "persons": {
+				json.expectArray();
+				persons = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = Person.read(json);
+						if (value != null) {
+							persons.add(value);
+						}
+					}
+				}
+				break;
+			}
+			case "places": {
+				json.expectArray();
+				places = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = PlaceTag.read(json);
+						if (value != null) {
+							places.add(value);
+						}
+					}
+				}
+				break;
+			}
+			case "labels": {
+				json.expectArray();
+				labels = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = LabelName.read(json);
+						if (value != null) {
+							labels.add(value);
+						}
+					}
+				}
+				break;
+			}
+			case "cameras": {
+				json.expectArray();
+				cameras = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = CameraName.read(json);
+						if (value != null) {
+							cameras.add(value);
+						}
+					}
+				}
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("persons");
+		json.startArray();
+		for (var _element in persons) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+
+		json.addKey("places");
+		json.startArray();
+		for (var _element in places) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+
+		json.addKey("labels");
+		json.startArray();
+		for (var _element in labels) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+
+		json.addKey("cameras");
+		json.startArray();
+		for (var _element in cameras) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+	}
+
+}
+
+///  A camera label, see {@link ImagePart#camera} and {@link SearchOptions#cameras}.
+class CameraName extends _JsonObject {
+	///  The label.
+	String name;
+
+	/// Creates a CameraName.
+	CameraName({
+			this.name = "", 
+	});
+
+	/// Parses a CameraName from a string source.
+	static CameraName? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a CameraName instance from the given reader.
+	static CameraName read(JsonReader json) {
+		CameraName result = CameraName();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "CameraName";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "name": {
+				name = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("name");
+		json.addString(name);
 	}
 
 }

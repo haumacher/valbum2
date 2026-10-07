@@ -3751,4 +3751,87 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get groupByPreview => 'Headings to create';
+
+  @override
+  String get searchAction => 'Search';
+
+  @override
+  String get searchBack => 'Back to the search';
+
+  @override
+  String get editSearch => 'Edit search';
+
+  @override
+  String get searchPersons => 'Persons';
+
+  @override
+  String get searchFrom => 'From';
+
+  @override
+  String get searchTo => 'To';
+
+  @override
+  String get searchPlaces => 'Places';
+
+  @override
+  String get searchLabels => 'Labels';
+
+  @override
+  String get searchRating => 'Rating';
+
+  @override
+  String get searchCamera => 'Camera';
+
+  @override
+  String get searchText => 'Text in descriptions and album titles';
+
+  @override
+  String get searchMediaAll => 'Photos and videos';
+
+  @override
+  String get searchMediaPhotos => 'Photos only';
+
+  @override
+  String get searchMediaVideos => 'Videos only';
+
+  @override
+  String get searchAnyRating => 'Any rating';
+
+  @override
+  String get searchAnyCamera => 'Any camera';
+
+  @override
+  String get searchChooseHint =>
+      'Choose what to look for: persons, a time span, places, labels, a rating, photos or videos, a text or a camera.';
+
+  @override
+  String get searchNothingFound => 'No photo matches this search.';
+
+  @override
+  String get searchNothingToChoose => 'There is nothing to choose from here.';
+
+  @override
+  String get searchCannotEdit =>
+      'This search uses conditions this screen cannot show, so it cannot be edited here.';
+
+  @override
+  String get saveAsView => 'Save as view…';
+
+  @override
+  String get saveAsViewHere => 'Save here';
+
+  @override
+  String get saveAsViewHint =>
+      'A saved view shows the photos below the folder it is saved in that match the search, new ones included.';
+
+  @override
+  String get createCollectionFromThese => 'Create collection from these…';
+
+  @override
+  String get showInAlbum => 'Show in album';
+
+  @override
+  String searchRatingAtLeast(String rating) {
+    return 'At least: $rating';
+  }
 }

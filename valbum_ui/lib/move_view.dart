@@ -662,6 +662,10 @@ class FolderPickerState extends State<FolderPicker> {
   /// Whether the folder shown is a collection (a leaf too), see issue #221.
   bool _collection = false;
 
+  /// Whether the folder shown is a saved search (a leaf too), see issue #227:
+  /// it holds no photographs of its own and is no target of a move.
+  bool _search = false;
+
   /// The album shown, `null` for a folder of folders and while nothing is
   /// shown: its title and its rights, see [FolderPicker.requireContribute].
   AlbumInfo? _album;
@@ -681,6 +685,7 @@ class FolderPickerState extends State<FolderPicker> {
       _listing = null;
       _leaf = false;
       _collection = false;
+      _search = false;
       _album = null;
     });
     Resource? resource;
@@ -707,6 +712,7 @@ class FolderPickerState extends State<FolderPicker> {
         _leaf = true;
         _album = resource;
         _collection = resource.kind == AlbumKind.collection;
+        _search = resource.kind == AlbumKind.search;
       } else {
         _error = AppLocalizations.of(context)!.folderCannotBeShown;
       }
@@ -736,7 +742,7 @@ class FolderPickerState extends State<FolderPicker> {
   bool get _mayConfirm => _known &&
       (widget.targetIsCollection
           ? _collection
-          : _leaf == widget.targetIsAlbum && !_collection) &&
+          : _leaf == widget.targetIsAlbum && !_collection && !_search) &&
       !_contributeMissing;
 
   /// Whether the album shown refuses what [FolderPicker.requireContribute]
@@ -899,7 +905,9 @@ class FolderPickerState extends State<FolderPicker> {
             key: Key("picker-folder-${folder.name}"),
             leading: Icon(folder.kind == FolderKind.collection
                 ? Icons.collections_bookmark_outlined
-                : Icons.folder),
+                : folder.kind == FolderKind.search
+                    ? Icons.saved_search
+                    : Icons.folder),
             title: Text(folderLine(folder)),
             onTap: () => _enter(folder.name),
           ),

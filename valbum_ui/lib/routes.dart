@@ -75,6 +75,11 @@ const String trashSegment = "trash";
 /// is a deep link like any other (its last segment is the trailing slash's).
 const String duplicatesSegment = ".duplicates";
 
+/// The segment of the search view below a folder (`/<folder>/.search/`), see
+/// issue #227 and [SearchRoute]. No folder of a library carries a leading dot,
+/// so it shadows nothing.
+const String searchSegment = ".search";
+
 /// One addressable view of the app.
 ///
 /// Every route names the enclosing listing or album by its [albumPath] (the
@@ -118,6 +123,10 @@ sealed class VAlbumRoute {
   /// alternatives of its group ([AlternativesRoute]) and one of their members
   /// ([MemberRoute]) — and a step from one of them to another passes it on.
   bool get fromDuplicates => false;
+
+  /// Whether this view of an image was opened from the search view below
+  /// [albumPath] and returns there, see [SearchRoute] (issue #227).
+  bool get fromSearch => false;
 
   /// The location of this route below the app base, e.g. `/a/b.jpg`.
   String get path => "/${Uri(pathSegments: segments).path}";
@@ -179,38 +188,50 @@ class ImageRoute extends VAlbumRoute {
   @override
   final bool fromDuplicates;
 
-  const ImageRoute(this.albumPath, this.name, {this.fromDuplicates = false});
+  /// Whether the viewer pages through the results of the search view below
+  /// [albumPath] and returns there (issue #227): [name] is then the
+  /// photograph's path below that folder, see [SearchRoute].
+  @override
+  final bool fromSearch;
+
+  const ImageRoute(this.albumPath, this.name,
+      {this.fromDuplicates = false, this.fromSearch = false});
 
   /// Another image of the same album, seen from where this one is: paging in
   /// a viewer opened from the overview keeps its way back to the overview.
-  ImageRoute withName(String other) =>
-      ImageRoute(albumPath, other, fromDuplicates: fromDuplicates);
+  ImageRoute withName(String other) => ImageRoute(albumPath, other,
+      fromDuplicates: fromDuplicates, fromSearch: fromSearch);
 
   @override
-  VAlbumRoute? get up =>
-      fromDuplicates ? const DuplicatesRoute() : ListingOrAlbumRoute(albumPath);
+  VAlbumRoute? get up => fromDuplicates
+      ? const DuplicatesRoute()
+      : fromSearch
+          ? SearchRoute(albumPath)
+          : ListingOrAlbumRoute(albumPath);
 
   @override
   List<String> get segments => [
         if (fromDuplicates) duplicatesSegment,
         ...albumPath,
+        if (fromSearch) searchSegment,
         name,
       ];
 
   @override
-  VAlbumRoute withAlbumPath(List<String> path) =>
-      ImageRoute(path, name, fromDuplicates: fromDuplicates);
+  VAlbumRoute withAlbumPath(List<String> path) => ImageRoute(path, name,
+      fromDuplicates: fromDuplicates, fromSearch: fromSearch);
 
   @override
   bool operator ==(Object other) =>
       other is ImageRoute &&
       name == other.name &&
       fromDuplicates == other.fromDuplicates &&
+      fromSearch == other.fromSearch &&
       listEquals(albumPath, other.albumPath);
 
   @override
-  int get hashCode =>
-      Object.hash(Object.hashAll(albumPath), name, fromDuplicates);
+  int get hashCode => Object.hash(
+      Object.hashAll(albumPath), name, fromDuplicates, fromSearch);
 
   @override
   String toString() => "ImageRoute($path)";
@@ -441,6 +462,44 @@ class DuplicatesRoute extends VAlbumRoute {
   String toString() => "DuplicatesRoute($path)";
 }
 
+/// The search view below a folder, see issue #227: the photographs of the
+/// folder and everything below it that match the criteria chosen there.
+///
+/// A level on the folder's own listing or album, like the trash is on an
+/// album: the folder stays mounted beneath it. The criteria live with the
+/// router, not in the location — a search that is to be kept is saved as a
+/// view ("Save as view…") — so a reload of `/<folder>/.search/` shows the
+/// search view without criteria. A photograph opened from it is an
+/// [ImageRoute] with [ImageRoute.fromSearch], addressed
+/// `/<folder>/.search/<path below the folder>`, which pages through the
+/// results and returns here.
+class SearchRoute extends VAlbumRoute {
+  /// The folder searched below; empty for the whole space.
+  @override
+  final List<String> albumPath;
+
+  const SearchRoute(this.albumPath);
+
+  @override
+  VAlbumRoute? get up => ListingOrAlbumRoute(albumPath);
+
+  @override
+  List<String> get segments => [...albumPath, searchSegment, ""];
+
+  @override
+  VAlbumRoute withAlbumPath(List<String> path) => SearchRoute(path);
+
+  @override
+  bool operator ==(Object other) =>
+      other is SearchRoute && listEquals(albumPath, other.albumPath);
+
+  @override
+  int get hashCode => Object.hash(searchSegment, Object.hashAll(albumPath));
+
+  @override
+  String toString() => "SearchRoute($path)";
+}
+
 /// The route the given location denotes.
 ///
 /// [basePath] is the app base the location is relative to (see the library
@@ -494,7 +553,24 @@ VAlbumRoute parseRoute(Uri uri, {String basePath = "/"}) {
     }
   }
 
+  // `/<folder>/.search/<path below the folder>`: a photograph opened from the
+  // search view of issue #227. The path below the folder is one segment of
+  // the location (its slashes encoded), so it is the last one.
+  if (!folder &&
+      segments.length >= 2 &&
+      segments[segments.length - 2] == searchSegment) {
+    return ImageRoute(
+      segments.sublist(0, segments.length - 2),
+      segments.last,
+      fromSearch: true,
+    );
+  }
+
   if (folder) {
+    // `/<folder>/.search/`, the search view of issue #227.
+    if (segments.isNotEmpty && segments.last == searchSegment) {
+      return SearchRoute(segments.sublist(0, segments.length - 1));
+    }
     // `/.duplicates/`, at the root only.
     if (segments.length == 1 && segments.single == duplicatesSegment) {
       return const DuplicatesRoute();

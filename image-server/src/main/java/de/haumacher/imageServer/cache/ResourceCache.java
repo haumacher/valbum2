@@ -745,10 +745,11 @@ public class ResourceCache {
 				|| (resource == null && Inboxes.isInbox(dir))) {
 				AlbumInfo album = resource == null ? createGenericAlbumInfo(path) : (AlbumInfo) resource;
 
-				if (album.getKind() == AlbumKind.COLLECTION) {
+				if (album.getKind() == AlbumKind.COLLECTION || album.getKind() == AlbumKind.SEARCH) {
 					// A collection holds references and no files, see issue #221: its parts are
 					// what its sidecar says, never reconciled with the folder, and a file somebody
-					// put there by hand is no part of it.
+					// put there by hand is no part of it. A saved search (issue #227) holds no
+					// parts at all: they are found whenever it is asked.
 					UpdateTransient.updateTransient(album);
 					album.setEffectiveDate(AlbumDate.ofAlbum(album, path.getName()).millis());
 					return album;
@@ -799,8 +800,10 @@ public class ResourceCache {
 						// A collection is the one kind a sidecar states, see issue #221.
 						AlbumInfo album = (AlbumInfo) resource;
 						AlbumKind kind = Inboxes.kindOf(dir);
-						album.setKind(kind == AlbumKind.ALBUM && album.getKind() == AlbumKind.COLLECTION
-							? AlbumKind.COLLECTION : kind);
+						// So is a saved search, see issue #227.
+						album.setKind(kind == AlbumKind.ALBUM
+							&& (album.getKind() == AlbumKind.COLLECTION || album.getKind() == AlbumKind.SEARCH)
+								? album.getKind() : kind);
 					}
 					dropZeroLocations(resource);
 					dropIgnoredParts(resource);
@@ -942,7 +945,8 @@ public class ResourceCache {
 					// date, see issue #131.
 					boolean inbox = Inboxes.isInbox(albumInfo);
 					folderInfo.setKind(inbox ? FolderKind.INBOX
-						: albumInfo.getKind() == AlbumKind.COLLECTION ? FolderKind.COLLECTION : FolderKind.ALBUM);
+						: albumInfo.getKind() == AlbumKind.COLLECTION ? FolderKind.COLLECTION
+							: albumInfo.getKind() == AlbumKind.SEARCH ? FolderKind.SEARCH : FolderKind.ALBUM);
 					if (inbox) {
 						// The pile of work an inbox tile says how much of is left, see issue #137.
 						// Counted out of the sidecar that was read a line ago, so a listing pays

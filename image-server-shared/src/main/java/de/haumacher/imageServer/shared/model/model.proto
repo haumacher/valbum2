@@ -108,6 +108,23 @@ enum AlbumKind {
 	 * </p>
 	 */
 	COLLECTION;
+
+	/**
+	 * A saved search, see issue #227: an album that holds nothing but a {@link AlbumInfo#query}
+	 * and shows, whenever it is opened, the photographs of the space that match it.
+	 *
+	 * <p>
+	 * Like {@link #COLLECTION} this kind is <b>stored</b> in <code>index.json</code>, written once
+	 * when the saved search is created and never changed afterwards. Its sidecar holds the query,
+	 * the title, the date, the star and the chosen album picture &mdash; never a part and never a
+	 * reference: the parts are answered live, each photograph as its own album shows it to the
+	 * caller, named by its path below the folder the search looks in (the folder the saved search
+	 * lies in, the root of the space for one at the root). Everything a photograph says &mdash; its
+	 * turn, crop, description, rating, privacy, labels &mdash; is the photograph's own, answered
+	 * from and written to the album it lies in.
+	 * </p>
+	 */
+	SEARCH;
 }
 
 /** {@link Resource} describing a collection of {@link AlbumPart}s. */
@@ -196,6 +213,18 @@ message AlbumInfo extends FolderResource {
 	 * </p>
 	 */
 	bool starred;
+
+	/**
+	 * What a saved search ({@link AlbumKind#SEARCH}, issue #227) looks for; <code>null</code> for
+	 * every other kind of album.
+	 *
+	 * <p>
+	 * <b>Stored</b> in the saved search's <code>index.json</code>, and the one thing it stores
+	 * besides its title, date, star and picture. Answered to whoever may see the saved search, so
+	 * that an editor can change it ("Edit search") with an ordinary sidecar <code>PUT</code>.
+	 * </p>
+	 */
+	SearchQuery query;
 
 	/** The list of images in this album. */
 	repeated AlbumPart parts;
@@ -1085,6 +1114,12 @@ enum FolderKind {
 	 * references to photographs of other albums. It has a date only where its author gave it one.
 	 */
 	COLLECTION;
+
+	/**
+	 * The entry is a saved search (see {@link AlbumKind#SEARCH}, issue #227): an album showing the
+	 * photographs that match its query, evaluated whenever it is opened.
+	 */
+	SEARCH;
 }
 
 /** {@link Resource} describing collection {@link FolderInfo}s found in a directory. */
@@ -4022,4 +4057,175 @@ message FaceAssignment {
 	 * </p>
 	 */
 	FaceState state;
+}
+
+/**
+ * A search over the photographs of a space, see issue #227: what a saved search
+ * ({@link AlbumKind#SEARCH}) stores in its sidecar and what the search view sends.
+ *
+ * <p>
+ * <b>A persisted format.</b> The meaning of every criterion is frozen once a build writing it has
+ * shipped. A change of meaning, and a new field of an existing criterion, raises {@link #version};
+ * a new kind of criterion is a new message. A build reading a query of a {@link #version} it does
+ * not know, or a criterion it does not know, refuses to evaluate it and says so (&quot;This search
+ * was saved by a newer version&hellip;&quot;) &mdash; it never answers a silently narrower or wider
+ * result.
+ * </p>
+ */
+message SearchQuery {
+	/**
+	 * The version of the format the query was written in; <code>1</code> in this build. A query
+	 * without a version (<code>0</code>) is read as version <code>1</code>.
+	 */
+	int version;
+
+	/**
+	 * The condition a photograph must meet; an empty {@link SearchAnd} for every photograph.
+	 *
+	 * <p>
+	 * Never absent: a criterion of a newer build is read as nothing, so an absent root (like an
+	 * absent member of a {@link SearchAnd}, {@link SearchOr} or {@link SearchNot}) is refused as
+	 * unknown rather than read as "everything".
+	 * </p>
+	 */
+	SearchCriterion root;
+}
+
+/**
+ * One condition of a {@link SearchQuery}, see issue #227.
+ *
+ * <p>
+ * A tree: {@link SearchAnd}, {@link SearchOr} and {@link SearchNot} combine the conditions below
+ * them, every other kind is a leaf asking one thing of a photograph.
+ * </p>
+ */
+abstract message SearchCriterion {
+}
+
+/** Every one of the given conditions holds; an empty list holds for every photograph. */
+message SearchAnd extends SearchCriterion {
+	/** The conditions that must all hold. */
+	repeated SearchCriterion criteria;
+}
+
+/** At least one of the given conditions holds; an empty list holds for no photograph. */
+message SearchOr extends SearchCriterion {
+	/** The conditions of which one must hold. */
+	repeated SearchCriterion criteria;
+}
+
+/** The given condition does not hold. */
+message SearchNot extends SearchCriterion {
+	/** The condition that must not hold; never absent, see {@link SearchQuery#root}. */
+	SearchCriterion criterion;
+}
+
+/**
+ * The given person is in the photograph: somebody confirmed a face of the photograph as that
+ * person (a {@link FaceTag} of {@link FaceState#CONFIRMED}), see issue #125.
+ *
+ * <p>
+ * Compared through the merges of the register: a person merged into another one afterwards is
+ * the one it was merged into, see {@link Person#aliases}.
+ * </p>
+ */
+message SearchPerson extends SearchCriterion {
+	/** The {@link Person#id}. */
+	string person;
+}
+
+/**
+ * The photograph was taken in the given span of time: {@link ImagePart#date} at or after
+ * {@link #from} and before {@link #to}. A photograph without a date never matches.
+ */
+message SearchDate extends SearchCriterion {
+	/** The first instant, in milliseconds since the epoch; <code>0</code> for no lower bound. */
+	long from;
+
+	/** The first instant no longer in the span (exclusive); <code>0</code> for no upper bound. */
+	long to;
+}
+
+/**
+ * The photograph was taken in the given place: one of its {@link ImagePart#places place tags},
+ * at any level, is the given GeoNames entry (issue #234). A state matches every photograph of its
+ * towns.
+ */
+message SearchPlace extends SearchCriterion {
+	/** The {@link PlaceTag#geonameId}. */
+	int geonameId;
+}
+
+/** The photograph carries the given label, compared exactly, see {@link ImagePart#labels}. */
+message SearchLabel extends SearchCriterion {
+	/** The label. */
+	string label;
+}
+
+/** The photograph is rated at least the given {@link ImagePart#rating}. */
+message SearchRating extends SearchCriterion {
+	/** The lowest rating that matches, from <code>-2</code> to <code>2</code>. */
+	int min;
+}
+
+/** The photograph is a video, or a still picture, see {@link ImagePart#kind}. */
+message SearchMedia extends SearchCriterion {
+	/** <code>true</code> for videos, <code>false</code> for still pictures. */
+	bool video;
+}
+
+/**
+ * The given text occurs, ignoring case, in the photograph's {@link ImagePart#comment} or in the
+ * {@link AlbumInfo#title} or {@link AlbumInfo#subTitle} of the album it lies in.
+ */
+message SearchText extends SearchCriterion {
+	/** The text looked for; blanks around it are ignored, and an empty text matches everything. */
+	string text;
+}
+
+/** The photograph was taken with the given camera, compared exactly, see {@link ImagePart#camera}. */
+message SearchCamera extends SearchCriterion {
+	/** The camera label; the empty label matches nothing. */
+	string camera;
+}
+
+/**
+ * The photograph lies in the given folder or below it.
+ *
+ * <p>
+ * Not offered by the app in this build: where a saved search lies already says where it looks.
+ * Kept in the format for a later search over several folders.
+ * </p>
+ */
+message SearchFolder extends SearchCriterion {
+	/** The folder relative to the root of the space, <code>/</code>-separated; empty for the root. */
+	string path;
+}
+
+/**
+ * What the search view offers to choose from in a folder, see issue #227 and
+ * <code>&lt;folder&gt;/?type=search-options</code>.
+ *
+ * <p>
+ * Derived from the photographs below the folder that the caller may see, never stored.
+ * </p>
+ */
+message SearchOptions {
+	/** The persons confirmed in at least one of the photographs, by name. */
+	repeated Person persons;
+
+	/** The places the photographs were taken in, every level, each once, in the caller's language. */
+	repeated PlaceTag places;
+
+	/** The labels the photographs carry, each once, sorted. */
+	repeated LabelName labels;
+
+	/** The cameras the photographs were taken with, each once, sorted. */
+	repeated CameraName cameras;
+}
+
+/** A camera label, see {@link ImagePart#camera} and {@link SearchOptions#cameras}. */
+message CameraName {
+	/** The label. */
+	string name;
 }

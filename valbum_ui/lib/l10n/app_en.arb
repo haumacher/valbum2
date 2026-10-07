@@ -6226,5 +6226,141 @@
   "@groupByPreview": {
     "description": "Label above the list of headings the grouping dialog would create, each with its number of photos",
     "x-translated": "e503da1d"
+  },
+  "searchAction": "Search",
+  "@searchAction": {
+    "description": "Tooltip of the search icon and title of the search view, which finds the photographs below a folder that match chosen criteria (issue #227)",
+    "x-translated": "b35cde91"
+  },
+  "searchBack": "Back to the search",
+  "@searchBack": {
+    "description": "Tooltip of the way back from a photo opened from the search view",
+    "x-translated": "81ac6bf6"
+  },
+  "editSearch": "Edit search",
+  "@editSearch": {
+    "description": "Menu entry of a saved search (an album showing the photos that match a stored search) that changes what it looks for; also the title of the search view while doing so",
+    "x-translated": "6c14b46"
+  },
+  "searchPersons": "Persons",
+  "@searchPersons": {
+    "description": "Chip of the search view choosing persons who must all be in the photo",
+    "x-translated": "6de1fe4f"
+  },
+  "searchFrom": "From",
+  "@searchFrom": {
+    "description": "Chip of the search view choosing the first day of the time span",
+    "x-translated": "19280e4e"
+  },
+  "searchTo": "To",
+  "@searchTo": {
+    "description": "Chip of the search view choosing the last day of the time span",
+    "x-translated": "4203f666"
+  },
+  "searchPlaces": "Places",
+  "@searchPlaces": {
+    "description": "Chip of the search view choosing places (towns, regions, countries) of which the photo must lie in one",
+    "x-translated": "f9036963"
+  },
+  "searchLabels": "Labels",
+  "@searchLabels": {
+    "description": "Chip of the search view choosing labels of which the photo must carry one",
+    "x-translated": "b27d0727"
+  },
+  "searchRating": "Rating",
+  "@searchRating": {
+    "description": "Chip of the search view choosing the lowest rating",
+    "x-translated": "df252314"
+  },
+  "searchCamera": "Camera",
+  "@searchCamera": {
+    "description": "Chip of the search view choosing the camera the photo was taken with",
+    "x-translated": "3cb0eb33"
+  },
+  "searchText": "Text in descriptions and album titles",
+  "@searchText": {
+    "description": "Hint of the text field of the search view",
+    "x-translated": "e96c9da5"
+  },
+  "searchMediaAll": "Photos and videos",
+  "@searchMediaAll": {
+    "description": "Choice of the search view: find photos and videos alike",
+    "x-translated": "79e41150"
+  },
+  "searchMediaPhotos": "Photos only",
+  "@searchMediaPhotos": {
+    "description": "Choice of the search view: find still pictures only",
+    "x-translated": "8add7978"
+  },
+  "searchMediaVideos": "Videos only",
+  "@searchMediaVideos": {
+    "description": "Choice of the search view: find videos only",
+    "x-translated": "bfee776d"
+  },
+  "searchAnyRating": "Any rating",
+  "@searchAnyRating": {
+    "description": "Choice of the rating chooser of the search view that sets no lowest rating",
+    "x-translated": "13ba6a78"
+  },
+  "searchAnyCamera": "Any camera",
+  "@searchAnyCamera": {
+    "description": "Choice of the camera chooser of the search view that sets no camera",
+    "x-translated": "f02fa25f"
+  },
+  "searchChooseHint": "Choose what to look for: persons, a time span, places, labels, a rating, photos or videos, a text or a camera.",
+  "@searchChooseHint": {
+    "description": "Shown in the search view while nothing is chosen",
+    "x-translated": "2cc5fcae"
+  },
+  "searchNothingFound": "No photo matches this search.",
+  "@searchNothingFound": {
+    "description": "Shown in the search view when the search finds nothing",
+    "x-translated": "8c4f2fd3"
+  },
+  "searchNothingToChoose": "There is nothing to choose from here.",
+  "@searchNothingToChoose": {
+    "description": "Shown in a chooser of the search view when the photos below the folder offer nothing of this kind",
+    "x-translated": "7bcc1d60"
+  },
+  "searchCannotEdit": "This search uses conditions this screen cannot show, so it cannot be edited here.",
+  "@searchCannotEdit": {
+    "description": "Said when a saved search was written with conditions the search view cannot display (for example by a newer version)",
+    "x-translated": "db9dda9a"
+  },
+  "saveAsView": "Save as view…",
+  "@saveAsView": {
+    "description": "Action of the search view that saves the search as an album that always shows its current matches",
+    "x-translated": "d2cd67ae"
+  },
+  "saveAsViewHere": "Save here",
+  "@saveAsViewHere": {
+    "description": "Confirm button of the folder picker when saving a search as a view",
+    "x-translated": "3788c540"
+  },
+  "saveAsViewHint": "A saved view shows the photos below the folder it is saved in that match the search, new ones included.",
+  "@saveAsViewHint": {
+    "description": "Explanation in the dialog naming a search that is saved as a view",
+    "x-translated": "2289615f"
+  },
+  "createCollectionFromThese": "Create collection from these…",
+  "@createCollectionFromThese": {
+    "description": "Action of the search view and of a saved search that adds the photos found (or the selection) to a collection, chosen or created",
+    "x-translated": "41fbddbe"
+  },
+  "showInAlbum": "Show in album",
+  "@showInAlbum": {
+    "description": "Menu entry of the photo viewer that opens the photo in the album it lies in, from a collection or a search",
+    "x-translated": "2c196937"
+  },
+  "searchRatingAtLeast": "At least: {rating}",
+  "@searchRatingAtLeast": {
+    "description": "Chip of the search view showing the lowest rating chosen, e.g. At least: Good",
+    "placeholders": {
+      "rating": {
+        "type": "String",
+        "example": "Good"
+      }
+    },
+    "x-translated": "4bc00fc4"
   }
 }

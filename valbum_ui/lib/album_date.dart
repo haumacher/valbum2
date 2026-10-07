@@ -153,9 +153,12 @@ String? albumDateLabel(int effectiveDate) => effectiveDate == 0
 /// the field yet carries, so such a listing shows its dates exactly as before.
 ///
 /// A collection (issue #221) is shown with a date only where its author gave
-/// it one: it has no photographs of its own whose day it could be.
+/// it one: it has no photographs of its own whose day it could be. So is a
+/// saved search (issue #227).
 bool folderHasDate(FolderInfo folder) =>
-    (folder.kind == FolderKind.album || folder.kind == FolderKind.collection) &&
+    (folder.kind == FolderKind.album ||
+        folder.kind == FolderKind.collection ||
+        folder.kind == FolderKind.search) &&
     folder.effectiveDate != 0;
 
 /// The earliest day an album may be dated on, in every calendar that asks.

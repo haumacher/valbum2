@@ -102,6 +102,8 @@ import de.haumacher.imageServer.shared.model.PresentFile;
 import de.haumacher.imageServer.shared.model.ProofMethod;
 import de.haumacher.imageServer.shared.model.RefusedFile;
 import de.haumacher.imageServer.shared.model.Resource;
+import de.haumacher.imageServer.shared.model.SearchOptions;
+import de.haumacher.imageServer.shared.model.SearchQuery;
 import de.haumacher.imageServer.shared.model.ShareLink;
 import de.haumacher.imageServer.shared.model.ShareLinkCreated;
 import de.haumacher.imageServer.shared.model.ShareLinkList;
@@ -670,6 +672,9 @@ public class ImageServlet extends HttpServlet {
 	 */
 	private final HashIndex _index;
 
+	/** What the search of issue #227 asks of every photograph of the space, see {@link SearchIndex}. */
+	private final SearchIndex _searchIndex;
+
 	/** Who the photographs of this space are of, see issue #125. */
 	private final PeopleStore _people;
 
@@ -855,6 +860,11 @@ public class ImageServlet extends HttpServlet {
 		_collections = new PhotoCollections(_basePath, _index);
 		_faces = new FaceIndex(_basePath, facesEnabled);
 		_reanalysis = new Reanalysis(_cache, _space.isEmpty() ? basePath.getName() : _space);
+		_searchIndex = new SearchIndex(_basePath, _cache::lookup, () -> {
+			Places places = _cache.places();
+			return places == null ? -1 : places.epoch();
+		});
+		_index.pipeline().addStep(_searchIndex);
 		String noFaces = _faces.unavailability();
 		if (noFaces != null) {
 			LOG.warning("The space '" + (_space.isEmpty() ? basePath.getName() : _space)
@@ -894,7 +904,15 @@ public class ImageServlet extends HttpServlet {
 		if (places != null) {
 			_placesStep = new PlacesStep(places, _index.pipeline());
 			_index.pipeline().addStep(_placesStep);
+			// The search reads the places, so it runs behind them, see issue #227.
+			_index.pipeline().removeStep(_searchIndex);
+			_index.pipeline().addStep(_searchIndex);
 		}
+	}
+
+	/** What the search of issue #227 asks of every photograph of this space. */
+	public SearchIndex searchIndex() {
+		return _searchIndex;
 	}
 
 	/** The gazetteer of this space, <code>null</code> for none. */
@@ -962,6 +980,7 @@ public class ImageServlet extends HttpServlet {
 		_index.shutdown();
 		_faces.shutdown();
 		_reanalysis.shutdown();
+		_searchIndex.close();
 		if (_placesStep != null) {
 			_placesStep.close();
 		}
@@ -1106,6 +1125,10 @@ public class ImageServlet extends HttpServlet {
 			serveReanalysis(context, caller, resourcePath);
 			return;
 		}
+		if (SEARCH_OPTIONS_TYPE.equals(type)) {
+			serveSearchOptions(context, caller, resourcePath);
+			return;
+		}
 
 		// A caller the mode shuts out and no grant lets in is told so before the disk is touched:
 		// what lies at the path is not their business, not even whether anything does.
@@ -1143,6 +1166,19 @@ public class ImageServlet extends HttpServlet {
 				resourcePath = source;
 				file = source.toFile();
 				collected = true;
+			}
+		}
+		if (!file.exists() && !unmadeInbox && !collected) {
+			// A photograph of a saved search is addressed by its path below the saved search and
+			// served from the album it lies in while it matches, see issue #227. Its labels are its
+			// own, so a link's label is asked of it below, as of any photograph.
+			PathInfo searched = searchedPhoto(context, resourcePath);
+			if (searched == ANSWERED) {
+				return;
+			}
+			if (searched != null) {
+				resourcePath = searched;
+				file = searched.toFile();
 			}
 		}
 		if (!file.exists() && !unmadeInbox) {
@@ -1356,6 +1392,10 @@ public class ImageServlet extends HttpServlet {
 					errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PhotoCollections.FOLDER_REFUSED);
 					return;
 				}
+				if (PhotoSearch.isSearch(folder.toFile())) {
+					errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PhotoSearch.FOLDER_REFUSED);
+					return;
+				}
 				createAlbum(context, location, resourcePath);
 				return;
 			}
@@ -1366,6 +1406,10 @@ public class ImageServlet extends HttpServlet {
 			}
 			if (PhotoCollections.isCollection(folder.toFile())) {
 				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PhotoCollections.UPLOAD_REFUSED);
+				return;
+			}
+			if (PhotoSearch.isSearch(folder.toFile())) {
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PhotoSearch.UPLOAD_REFUSED);
 				return;
 			}
 			storeSingleImage(context, caller, folder, file);
@@ -1380,6 +1424,11 @@ public class ImageServlet extends HttpServlet {
 			if (PhotoCollections.isCollection(file)) {
 				// A collection holds references, never files, see issue #221.
 				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PhotoCollections.UPLOAD_REFUSED);
+				return;
+			}
+			if (PhotoSearch.isSearch(file)) {
+				// A saved search holds a query, never files, see issue #227.
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PhotoSearch.UPLOAD_REFUSED);
 				return;
 			}
 			storeUploads(context, caller, resourcePath);
@@ -1537,6 +1586,22 @@ public class ImageServlet extends HttpServlet {
 			collection.setParts(new ArrayList<>());
 			collection.setIndexPicture(null);
 			contents = sidecarOf(collection);
+		} else if (PhotoSearch.isSearch(resource)) {
+			// A saved search stores its query and nothing else of the photographs, see issue #227.
+			AlbumInfo search = (AlbumInfo) resource;
+			String refusal = PhotoSearch.refusal(search.getQuery());
+			if (refusal != null) {
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, refusal);
+				return;
+			}
+			search.setQuery(PhotoSearch.normalized(search.getQuery()));
+			search.setParts(new ArrayList<>());
+			search.setIndexPicture(null);
+			contents = sidecarOf(search);
+		} else if (resource instanceof AlbumInfo && ((AlbumInfo) resource).getQuery() != null) {
+			// Only a saved search has a query.
+			((AlbumInfo) resource).setQuery(null);
+			contents = sidecarOf(resource);
 		}
 
 		// The album is filed by what is written on it: the date the request carries, else the date
@@ -1871,6 +1936,12 @@ public class ImageServlet extends HttpServlet {
 			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PhotoCollections.MOVE_REFUSED);
 			return;
 		}
+		if (PhotoSearch.isSearch(source.toFile()) || PhotoSearch.isSearch(target.toFile())) {
+			// A saved search shows photographs that lie elsewhere, see issue #227.
+			LOG.warning("Refusing a move into or out of a saved search at '" + context.request().getPathInfo() + "'.");
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PhotoSearch.MOVE_REFUSED);
+			return;
+		}
 
 		// The source rule of issue #53: the edit right, or one's own contribution and nothing
 		// else. A share link never gets that far — it has no album to take anything back into.
@@ -1968,16 +2039,31 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 		Resource origin = source.toFile().isDirectory() ? _cache.lookup(source) : null;
-		if (!(origin instanceof AlbumInfo) || !_auth.mayView(caller, source)) {
+		// A name of a saved search, and of the search view below a folder, is a path below the folder
+		// searched, see issue #227.
+		boolean fromSearch = PhotoSearch.isSearch(origin);
+		boolean byPath = fromSearch;
+		for (MoveName entry : request.getNames()) {
+			byPath |= entry.getName() != null && entry.getName().indexOf('/') >= 0;
+		}
+		if (!(origin instanceof AlbumInfo || (byPath && origin instanceof ListingInfo))
+			|| !_auth.mayView(caller, source)) {
 			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PhotoCollections.NOT_AN_ALBUM);
+			return;
+		}
+		if (fromSearch && PhotoSearch.refusal(((AlbumInfo) origin).getQuery()) != null) {
+			errorInfo(context, HttpServletResponse.SC_NOT_IMPLEMENTED, PhotoSearch.refusal(((AlbumInfo) origin).getQuery()));
 			return;
 		}
 
 		// What the caller is shown where the photographs come from.
 		boolean fromCollection = PhotoCollections.isCollection(origin);
-		AlbumInfo shown = fromCollection ? resolveCollection((AlbumInfo) origin, source, caller, Privacy.PRIVATE)
-			: sourceAlbum(source, caller, Privacy.PRIVATE);
+		AlbumInfo shown = byPath ? null
+			: fromCollection ? resolveCollection((AlbumInfo) origin, source, caller, Privacy.PRIVATE)
+				: sourceAlbum(source, caller, Privacy.PRIVATE);
 		Map<String, String> hashes = null;
+		Map<PathInfo, AlbumInfo> shownByFolder = new HashMap<>();
+		Map<PathInfo, Map<String, String>> hashesByFolder = new HashMap<>();
 
 		AlbumInfo stored = (AlbumInfo) collection;
 		Map<String, String> nameByHash = new HashMap<>();
@@ -1993,14 +2079,47 @@ public class ImageServlet extends HttpServlet {
 			String name = entry.getName();
 			MoveOutcome outcome = MoveOutcome.create().setName(name);
 			result.addOutcome(outcome);
-			ImagePart part = shown == null || name == null ? null : Crops.findImage(shown, name);
+			ImagePart part;
+			PathInfo photo = null;
+			if (byPath) {
+				photo = name == null ? null : photoNamed(source, origin, name);
+				AlbumInfo album = null;
+				if (photo != null) {
+					PathInfo folder = photo.parent();
+					if (shownByFolder.containsKey(folder)) {
+						album = shownByFolder.get(folder);
+					} else {
+						album = folder.toFile().isDirectory() ? sourceAlbum(folder, caller, Privacy.PRIVATE) : null;
+						shownByFolder.put(folder, album);
+					}
+				}
+				part = album == null ? null : Crops.findImage(album, photo.getName());
+			} else {
+				part = shown == null || name == null ? null : Crops.findImage(shown, name);
+			}
 			if (part == null || part.isMissing()) {
 				outcome.setMessage(notInAlbum(name));
 				continue;
 			}
 			String hash;
 			String path;
-			if (fromCollection) {
+			if (photo != null) {
+				PathInfo folder = photo.parent();
+				Map<String, String> folderHashes = hashesByFolder.get(folder);
+				if (folderHashes == null) {
+					HashCache cache = new HashCache(folder.toFile());
+					folderHashes = cache.hashByName();
+					// The index hears of what was hashed only now, see issue #118.
+					cache.flush();
+					hashesByFolder.put(folder, folderHashes);
+				}
+				hash = folderHashes.get(photo.getName());
+				if (hash == null) {
+					outcome.setMessage(notInAlbum(name));
+					continue;
+				}
+				path = _collections.relative(photo);
+			} else if (fromCollection) {
 				ImagePart reference = PhotoCollections.referenceNamed((AlbumInfo) origin, name);
 				PathInfo located = reference == null ? null : _collections.locate(reference.getRef());
 				if (located == null) {
@@ -2189,6 +2308,13 @@ public class ImageServlet extends HttpServlet {
 		if (PhotoCollections.isCollection(collection)) {
 			// Taking a reference out of a collection never touches the photograph, see issue #221.
 			serveJsonObject(context.response(), removeReferences(folder, (AlbumInfo) collection, names));
+			return;
+		}
+		if (PhotoSearch.isSearch(collection)) {
+			// A saved search holds nothing to delete, see issue #227; the saved search itself is
+			// deleted from the folder it lies in.
+			LOG.warning("Refusing a delete in the saved search '" + context.request().getPathInfo() + "'.");
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PhotoSearch.DELETE_REFUSED);
 			return;
 		}
 
@@ -2453,6 +2579,9 @@ public class ImageServlet extends HttpServlet {
 		if (PhotoCollections.isCollection(container)) {
 			return collectionZipFiles(context, caller, folder, (AlbumInfo) container, viewAs, names);
 		}
+		if (PhotoSearch.isSearch(container)) {
+			return searchZipFiles(context, caller, folder, (AlbumInfo) container, viewAs, names);
+		}
 		Inboxes.Visibility inbox =
 			Inboxes.isInbox(_cache.lookup(folder)) ? Inboxes.visibility(_auth, caller, folder, viewAs) : null;
 		int clearance = Math.min(_auth.clearance(caller, folder), viewAs);
@@ -2502,6 +2631,57 @@ public class ImageServlet extends HttpServlet {
 		Map<String, File> result = new LinkedHashMap<>();
 		for (File file : files) {
 			result.put(file.getName(), file);
+		}
+		return result;
+	}
+
+	/**
+	 * The originals the given names of a saved search stand for, see issue #227: each a match of its
+	 * query, asked what it is asked in its own album, the label of a link asked of the photograph's
+	 * own; an entry is named by the photograph's path below the folder searched.
+	 */
+	private Map<String, File> searchZipFiles(Context context, Caller caller, PathInfo folder, AlbumInfo search,
+			int viewAs, Collection<String> names) throws IOException {
+		String refusal = PhotoSearch.refusal(search.getQuery());
+		if (refusal != null) {
+			errorInfo(context, HttpServletResponse.SC_NOT_IMPLEMENTED, refusal);
+			return null;
+		}
+		int clearance = Math.min(_auth.clearance(caller, folder), viewAs);
+		int minRating = _auth.minRating(caller, folder, viewAs);
+		Map<String, File> result = new LinkedHashMap<>();
+		for (String name : names) {
+			PathInfo image = photoNamed(folder, search, name);
+			if (image == null || !image.toFile().isFile() || !labelShows(caller, image)) {
+				LOG.warning("Refusing the download in '" + context.request().getPathInfo() + "': no photograph '"
+					+ name + "'.");
+				errorInfo(context, HttpServletResponse.SC_NOT_FOUND, notInAlbum(name));
+				return null;
+			}
+			PathInfo source = image.parent();
+			Resource part = _cache.lookup(image);
+			if (Inboxes.isInbox(source.toFile())) {
+				Inboxes.Visibility inbox = Inboxes.visibility(_auth, caller, source, viewAs);
+				if (!(part instanceof ImagePart) || !Inboxes.shows(inbox, (ImagePart) part, caller.subject())) {
+					errorInfo(context, HttpServletResponse.SC_NOT_FOUND, notInAlbum(name));
+					return null;
+				}
+			}
+			String hiddenBy = hidden(image, clearance, minRating);
+			if (hiddenBy != null) {
+				imageRefused(context, caller, hiddenBy);
+				return null;
+			}
+			result.put(name, image.toFile());
+			if (part instanceof ImagePart) {
+				File raw = RawPairs.companion(source.toFile(), (ImagePart) part);
+				if (raw != null) {
+					int dot = name.lastIndexOf('.');
+					String rawName = raw.getName();
+					int rawDot = rawName.lastIndexOf('.');
+					result.put((dot > 0 ? name.substring(0, dot) : name) + (rawDot > 0 ? rawName.substring(rawDot) : ""), raw);
+				}
+			}
 		}
 		return result;
 	}
@@ -4909,6 +5089,10 @@ public class ImageServlet extends HttpServlet {
 			moveEntries(context);
 			return;
 		}
+		if (SEARCH_ACTION.equals(action)) {
+			search(context);
+			return;
+		}
 		if (COLLECT_ACTION.equals(action)) {
 			collect(context);
 			return;
@@ -5400,12 +5584,37 @@ public class ImageServlet extends HttpServlet {
 			sourceEdits = new ArrayList<>();
 			resource = collectionWrite(resourcePath, (AlbumInfo) existing, (AlbumInfo) resource, caller, sourceEdits);
 			rearranged = true;
+		} else if (PhotoSearch.isSearch(existing)) {
+			if (!(resource instanceof AlbumInfo)) {
+				LOG.warning("Refusing a folder sidecar for the saved search '" + resourcePath.toFile() + "'.");
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, SEARCH_SIDECAR_REFUSED);
+				return;
+			}
+			// A query this build cannot read is neither evaluated nor overwritten, see issue #227.
+			String refusal = PhotoSearch.refusal(((AlbumInfo) existing).getQuery());
+			if (refusal == null) {
+				refusal = PhotoSearch.refusal(((AlbumInfo) resource).getQuery());
+			}
+			if (refusal != null) {
+				LOG.warning("Refusing to write the saved search '" + resourcePath.toFile() + "': " + refusal);
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, refusal);
+				return;
+			}
+			// The saved search stores its query and its own statements; what a part says about a
+			// photograph is written to the album it lies in, its labels included, see issue #227.
+			sourceEdits = new ArrayList<>();
+			resource = searchWrite(resourcePath, (AlbumInfo) existing, (AlbumInfo) resource, caller, sourceEdits);
+			rearranged = true;
 		} else {
-			// An album never becomes a collection: the kind is stated once, when it is created.
+			// An album never becomes a collection or a saved search: the kind is stated once, when
+			// it is created.
 			rearranged = resource instanceof AlbumInfo
-				&& ((AlbumInfo) resource).getKind() == de.haumacher.imageServer.shared.model.AlbumKind.COLLECTION;
+				&& (((AlbumInfo) resource).getKind() == de.haumacher.imageServer.shared.model.AlbumKind.COLLECTION
+					|| ((AlbumInfo) resource).getKind() == de.haumacher.imageServer.shared.model.AlbumKind.SEARCH
+					|| ((AlbumInfo) resource).getQuery() != null);
 			if (rearranged) {
 				((AlbumInfo) resource).setKind(de.haumacher.imageServer.shared.model.AlbumKind.ALBUM);
+				((AlbumInfo) resource).setQuery(null);
 			}
 			// An inbox is answered flat and by date; what the client writes back must not freeze
 			// that derived order into the sidecar, see issue #131.
@@ -5457,16 +5666,84 @@ public class ImageServlet extends HttpServlet {
 	/** The message a folder sidecar written on a collection is refused with. */
 	public static final String COLLECTION_SIDECAR_REFUSED = "A collection is written as an album, not as a folder.";
 
+	/** The message a folder sidecar written on a saved search is refused with. */
+	public static final String SEARCH_SIDECAR_REFUSED = "A saved search is written as an album, not as a folder.";
+
 	/** A change a collection's sidecar makes to a photograph of another album, see issue #221. */
 	private static final class SourceEdit {
 		final PathInfo _image;
 
 		final ImagePart _received;
 
+		/** Whether the labels are the photograph's own too, as in a saved search (issue #227). */
+		final boolean _labels;
+
 		SourceEdit(PathInfo image, ImagePart received) {
+			this(image, received, false);
+		}
+
+		SourceEdit(PathInfo image, ImagePart received, boolean labels) {
 			_image = image;
 			_received = received;
+			_labels = labels;
 		}
+	}
+
+	/**
+	 * The stored form of a saved search written by the given caller, see issue #227.
+	 *
+	 * <p>
+	 * The saved search's own statements are taken: its query, title, date, star and picture. It
+	 * never stores a part: what a part says about the photograph &mdash; its turn, crop,
+	 * description, rating, privacy, time and labels &mdash; is collected into the given list for
+	 * {@link #writeSources(List, Caller)}, for every photograph this caller was answered. A picture
+	 * is kept where it names a match this caller was answered, and the stored one is kept where it
+	 * names one this caller was not shown.
+	 * </p>
+	 */
+	private AlbumInfo searchWrite(PathInfo path, AlbumInfo existing, AlbumInfo received, Caller caller,
+			List<SourceEdit> edits) {
+		AlbumInfo answered = searchAnswer(existing, path, caller, Privacy.PRIVATE);
+		Set<String> shown = new HashSet<>();
+		for (ImagePart image : PhotoSearch.images(answered)) {
+			shown.add(image.getName());
+		}
+		for (AlbumPart part : received.getParts()) {
+			List<ImagePart> images = part instanceof ImagePart ? Collections.singletonList((ImagePart) part)
+				: part instanceof ImageGroup ? ((ImageGroup) part).getImages() : Collections.<ImagePart> emptyList();
+			for (ImagePart image : images) {
+				if (!shown.contains(image.getName())) {
+					continue;
+				}
+				PathInfo source = photoNamed(path, existing, image.getName());
+				if (source != null) {
+					edits.add(new SourceEdit(source, image, true));
+				}
+			}
+		}
+
+		ThumbnailInfo cover = received.getIndexPicture();
+		ThumbnailInfo storedCover = existing.getIndexPicture();
+		if (cover != null && !shown.contains(cover.getImage())) {
+			cover = null;
+		}
+		if (cover == null && storedCover != null && !shown.contains(storedCover.getImage())) {
+			// The caller was answered a substitute for a picture they may not see.
+			cover = storedCover;
+		}
+
+		SearchQuery query = received.getQuery() == null ? existing.getQuery() : received.getQuery();
+		AlbumInfo result = AlbumInfo.create()
+			.setKind(de.haumacher.imageServer.shared.model.AlbumKind.SEARCH)
+			.setQuery(PhotoSearch.normalized(query))
+			.setTitle(received.getTitle())
+			.setSubTitle(received.getSubTitle())
+			.setStarred(received.isStarred())
+			.setDate(received.getDate());
+		if (cover != null) {
+			result.setIndexPicture(Crops.copy(cover));
+		}
+		return result;
 	}
 
 	/**
@@ -5614,14 +5891,36 @@ public class ImageServlet extends HttpServlet {
 				ImagePart image = Crops.findImage(album, edit._image.getName());
 				if (image != null) {
 					changed |= applyEdit(album, image, edit._received);
+					if (edit._labels) {
+						changed |= applyLabels(image, edit._received);
+					}
 				}
 			}
 			if (changed) {
 				storeSidecar(folder.toFile(), sidecarOf(album));
 				_cache.invalidate(folder);
-				LOG.info("Wrote the edits made through a collection into '" + folder.toFile() + "'.");
+				LOG.info("Wrote the edits made through a collection or a saved search into '" + folder.toFile() + "'.");
 			}
 		}
+	}
+
+	/** Takes over the labels of the given received part into the given stored one, see issue #227. */
+	private static boolean applyLabels(ImagePart image, ImagePart received) {
+		List<de.haumacher.imageServer.shared.model.LabelName> labels =
+			PhotoCollections.stored("", PhotoRef.create(), received.getLabels()).getLabels();
+		List<String> before = new ArrayList<>();
+		for (de.haumacher.imageServer.shared.model.LabelName label : image.getLabels()) {
+			before.add(label.getName());
+		}
+		List<String> after = new ArrayList<>();
+		for (de.haumacher.imageServer.shared.model.LabelName label : labels) {
+			after.add(label.getName());
+		}
+		if (before.equals(after)) {
+			return false;
+		}
+		image.setLabels(labels);
+		return true;
 	}
 
 	/** Takes over into the given stored part what the given received one says about it. */
@@ -5745,6 +6044,9 @@ public class ImageServlet extends HttpServlet {
 
 		tmpFile.renameTo(indexFile);
 
+		// The one writer of a sidecar tells the search of issue #227, see SearchIndex.
+		SearchIndex.sidecarWritten(directory);
+
 		LOG.info("Stored folder resource: " + indexFile.getAbsolutePath());
 	}
 
@@ -5854,6 +6156,15 @@ public class ImageServlet extends HttpServlet {
 		resource = shown;
 
 		if (jsonRequested(context)) {
+			if (PhotoSearch.isSearch(resource)) {
+				String refusal = PhotoSearch.refusal(((AlbumInfo) resource).getQuery());
+				if (refusal != null) {
+					// Never a silently narrower (or wider) answer than its author meant, see #227.
+					LOG.warning("Refusing the saved search '" + context.request().getPathInfo() + "': " + refusal);
+					errorInfo(context, HttpServletResponse.SC_NOT_IMPLEMENTED, refusal);
+					return;
+				}
+			}
 			Resource answer = folderAnswer(resource, pathInfo, caller, clearance, viewAs);
 			serveJson(context.response(), localized(withRights(answer, _auth.rights(caller, pathInfo)), context));
 		} else {
@@ -5900,6 +6211,8 @@ public class ImageServlet extends HttpServlet {
 			AlbumInfo result = AlbumInfo.create()
 				// Whether this is an album or an inbox is not a question of who is asking.
 				.setKind(album.getKind())
+				// What a saved search looks for is not a question of who is asking (#227).
+				.setQuery(album.getQuery())
 				.setTitle(album.getTitle())
 				.setSubTitle(album.getSubTitle())
 				.setStarred(album.isStarred())
@@ -6634,6 +6947,11 @@ public class ImageServlet extends HttpServlet {
 			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, Labels.RELABEL_NOT_AN_ALBUM);
 			return;
 		}
+		if (PhotoSearch.isSearch(resource)) {
+			// The labels a saved search shows are the photographs' own, see issue #227.
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PhotoSearch.RELABEL_REFUSED);
+			return;
+		}
 		AlbumInfo album = (AlbumInfo) resource;
 		if (!Labels.of(album).contains(from)) {
 			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, Labels.nothingLabeled(from));
@@ -6708,6 +7026,19 @@ public class ImageServlet extends HttpServlet {
 			PathInfo source = shown.isMissing() ? null : _collections.locate(reference.getRef());
 			if (source == null) {
 				errorInfo(context, HttpServletResponse.SC_NOT_FOUND, PhotoCollections.MISSING);
+				return;
+			}
+			folderPath = source.parent();
+			folder = folderPath.toFile();
+			name = source.getName();
+			resource = _cache.lookup(folderPath);
+		} else if (PhotoSearch.isSearch(resource)) {
+			// The crop is the photograph's own as well, written to its album, see issue #227.
+			ImagePart shown = Crops.findImage(searchAnswer((AlbumInfo) resource, folderPath, caller, Privacy.PRIVATE),
+				name);
+			PathInfo source = shown == null ? null : photoNamed(folderPath, resource, name);
+			if (source == null) {
+				errorInfo(context, HttpServletResponse.SC_NOT_FOUND, unknownImage(name));
 				return;
 			}
 			folderPath = source.parent();
@@ -6799,6 +7130,11 @@ public class ImageServlet extends HttpServlet {
 		if (PhotoCollections.isCollection(resource)) {
 			LOG.warning("Refusing the tagging in the collection '" + context.request().getPathInfo() + "'.");
 			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PhotoCollections.FACES_REFUSED);
+			return;
+		}
+		if (PhotoSearch.isSearch(resource)) {
+			LOG.warning("Refusing the tagging in the saved search '" + context.request().getPathInfo() + "'.");
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PhotoSearch.FACES_REFUSED);
 			return;
 		}
 		if (!(resource instanceof AlbumInfo)) {
@@ -7240,6 +7576,392 @@ public class ImageServlet extends HttpServlet {
 		return buffer.toByteArray();
 	}
 
+	// --- The search of issue #227. ---
+
+	/** The value of <code>?type=</code> answering what a search below a folder offers. */
+	public static final String SEARCH_OPTIONS_TYPE = "search-options";
+
+	/** The value of <code>?action=</code> searching below a folder. */
+	public static final String SEARCH_ACTION = "search";
+
+	/**
+	 * Whether the given caller may search, see issue #227: the members of the space, never a share
+	 * link and never an anonymous visitor. A share link sees a saved search, and only that.
+	 */
+	private boolean maySearch(Caller caller) {
+		if (caller.isShareLink() || caller.isShareGone() || caller.hasInvalidToken()) {
+			return false;
+		}
+		return caller.isPaired() || _auth.getMode() == AuthMode.OFF;
+	}
+
+	/** Refuses a search to somebody who is no member, see {@link #maySearch(Caller)}. */
+	private void refuseSearch(Context context, Caller caller) throws IOException {
+		LOG.warning("Refusing the search at '" + context.request().getPathInfo() + "': " + PhotoSearch.MEMBERS_ONLY);
+		if (identified(caller)) {
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, PhotoSearch.MEMBERS_ONLY);
+		} else {
+			context.response().setHeader("WWW-Authenticate", "Bearer");
+			errorInfo(context, HttpServletResponse.SC_UNAUTHORIZED, PhotoSearch.MEMBERS_ONLY);
+		}
+	}
+
+	/**
+	 * The photographs below the given folder that match the given query, each as the given caller
+	 * is answered it in its own album, see issue #227.
+	 *
+	 * <p>
+	 * The query picks from what the albums hold; the photograph's own album then decides what this
+	 * caller is shown of it &mdash; the inbox rule, privacy, the rating floor (a share link's too),
+	 * the trash, faces &mdash; exactly as for a part of a collection, see
+	 * {@link #sourceAlbum(PathInfo, Caller, int)}. Every answer is a copy named by its path below
+	 * the folder, carrying where it lies ({@link ImagePart#getRef()}) for a member.
+	 * </p>
+	 *
+	 * @param query
+	 *        What to look for; must have passed {@link PhotoSearch#refusal(SearchQuery)}.
+	 * @param stored
+	 *        Collects the photograph each answer stands for, as the cache holds it, by the answer's
+	 *        name; <code>null</code> where nobody asks.
+	 */
+	private List<ImagePart> searchMatches(PathInfo scope, SearchQuery query, Caller caller, int viewAs,
+			Map<String, PhotoSearch.Photo> stored) {
+		return searchMatches(scope, query, (folder, names) -> sourceAlbum(folder, caller, viewAs, names),
+			Faces.maySee(_auth, caller, viewAs), stored);
+	}
+
+	/**
+	 * {@link #searchMatches(PathInfo, SearchQuery, Caller, int, Map)} with the albums as somebody is
+	 * answered them.
+	 *
+	 * @param sources
+	 *        The album of a folder as the caller is answered it there, <code>null</code> where they
+	 *        are shown nothing of it. Asked once per folder.
+	 * @param member
+	 *        Whether the answers say where they lie.
+	 */
+	private List<ImagePart> searchMatches(PathInfo scope, SearchQuery query,
+			java.util.function.BiFunction<PathInfo, Set<String>, AlbumInfo> sources, boolean member,
+			Map<String, PhotoSearch.Photo> stored) {
+		List<PhotoSearch.Match> found = PhotoSearch.find(scope, query, _cache::lookup, _people, _searchIndex);
+		// Each album is asked once, for its matches alone: what its filters and its faces cost is
+		// paid for what is answered, not for the whole album.
+		Map<PathInfo, Set<String>> matched = new LinkedHashMap<>();
+		for (PhotoSearch.Match match : found) {
+			matched.computeIfAbsent(match.getFolder(), x -> new HashSet<>()).add(match.getName());
+		}
+		Map<PathInfo, Map<String, ImagePart>> albums = new HashMap<>();
+		for (Map.Entry<PathInfo, Set<String>> entry : matched.entrySet()) {
+			AlbumInfo album = sources.apply(entry.getKey(), entry.getValue());
+			Map<String, ImagePart> byName = new HashMap<>();
+			if (album != null) {
+				for (ImagePart image : PhotoSearch.images(album)) {
+					byName.put(image.getName(), image);
+				}
+			}
+			albums.put(entry.getKey(), byName);
+		}
+		List<ImagePart> result = new ArrayList<>(found.size());
+		for (PhotoSearch.Match match : found) {
+			PathInfo folder = match.getFolder();
+			ImagePart shown = albums.get(folder).get(match.getName());
+			if (shown == null) {
+				// Hidden from this caller in its own album: not there for them here either.
+				continue;
+			}
+			ImagePart answer = PhotoSearch.answerCopy(shown);
+			answer.setName(match.getRelative());
+			answer.setRef(member
+				? PhotoRef.create().setHash("").setPath(folder.child(match.getName()).relativePath())
+				: null);
+			result.add(answer);
+			if (stored != null) {
+				stored.put(match.getRelative(), match.getPhoto());
+			}
+		}
+		return result;
+	}
+
+	/**
+	 * The given saved search as the given caller is answered it, before the filters of a link on
+	 * it: its own title, date, star and query, and every photograph below the folder it lies in
+	 * that matches the query, see {@link #searchMatches}.
+	 *
+	 * <p>
+	 * Its picture is the one its author chose while this caller is shown that photograph, the
+	 * newest match otherwise. The cached album is never changed, and nothing is written.
+	 * </p>
+	 */
+	AlbumInfo searchAnswer(AlbumInfo search, PathInfo path, Caller caller, int viewAs) {
+		List<ImagePart> parts = searchMatches(searchScope(path), search.getQuery(), caller, viewAs, null);
+		AlbumInfo result = AlbumInfo.create()
+			.setKind(de.haumacher.imageServer.shared.model.AlbumKind.SEARCH)
+			.setQuery(search.getQuery())
+			.setTitle(search.getTitle())
+			.setSubTitle(search.getSubTitle())
+			.setStarred(search.isStarred())
+			.setDate(search.getDate())
+			.setEffectiveDate(search.getEffectiveDate())
+			.setParts(new ArrayList<>(parts));
+		ThumbnailInfo cover = searchCover(search.getIndexPicture(), parts);
+		if (cover != null) {
+			result.setIndexPicture(cover);
+		}
+		return result;
+	}
+
+	/**
+	 * The picture of a saved search among the given matches: the chosen one where it is among
+	 * them, the newest otherwise, <code>null</code> for no match.
+	 */
+	private static ThumbnailInfo searchCover(ThumbnailInfo chosen, List<ImagePart> parts) {
+		if (chosen != null) {
+			for (ImagePart part : parts) {
+				if (part.getName().equals(chosen.getImage())) {
+					return PrivacyFilter.thumbnail(part);
+				}
+			}
+		}
+		ImagePart newest = null;
+		for (ImagePart part : parts) {
+			if (newest == null || part.getDate() >= newest.getDate()) {
+				newest = part;
+			}
+		}
+		return newest == null ? null : PrivacyFilter.thumbnail(newest);
+	}
+
+	/**
+	 * Answers <code>POST &lt;folder&gt;/?action=search</code> with a {@link SearchQuery}: the search
+	 * view of issue #227, never stored.
+	 *
+	 * <p>
+	 * The answer is an album of {@link de.haumacher.imageServer.shared.model.AlbumKind#SEARCH} that
+	 * holds every photograph below the folder that matches, each as the caller is answered it in its
+	 * own album and named by its path below the folder &mdash; so that
+	 * <code>&lt;folder&gt;/&lt;name&gt;</code> is the photograph's own address. It carries the
+	 * rights to look (and to download, where the caller may): nothing is edited through a search
+	 * that is not saved. Members only, see {@link #maySearch(Caller)}.
+	 * </p>
+	 */
+	private void search(Context context) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		Location location = resolve(context, caller);
+		if (location == null) {
+			return;
+		}
+		if (!maySearch(caller)) {
+			refuseSearch(context, caller);
+			return;
+		}
+		PathInfo scope = location.getPath();
+		if (!scope.toFile().isDirectory()) {
+			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, PhotoSearch.NOT_A_FOLDER);
+			return;
+		}
+		if (!_auth.mayView(caller, scope)) {
+			refuse(context, caller, scope, Rights.VIEW, false);
+			return;
+		}
+		SearchQuery query;
+		try {
+			query = SearchQuery.readSearchQuery(json(readBody(context.request())));
+		} catch (IOException | RuntimeException ex) {
+			LOG.warning("Rejecting unparsable search: " + ex.getMessage());
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PhotoSearch.UNREADABLE);
+			return;
+		}
+		String refusal = PhotoSearch.refusal(query);
+		if (refusal != null) {
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, refusal);
+			return;
+		}
+		if (PhotoSearch.isSearch(_cache.lookup(scope))) {
+			// The search of a saved search's own page looks where the saved search looks.
+			scope = searchScope(scope);
+		}
+		int viewAs = Privacy.PRIVATE;
+		List<ImagePart> parts = searchMatches(scope, query, caller, viewAs, null);
+		AlbumInfo answer = AlbumInfo.create()
+			.setKind(de.haumacher.imageServer.shared.model.AlbumKind.SEARCH)
+			.setQuery(PhotoSearch.normalized(query))
+			.setParts(new ArrayList<>(parts));
+		Set<String> rights = new HashSet<>();
+		rights.add(Rights.VIEW);
+		if (_auth.mayDownload(caller, scope)) {
+			rights.add(Rights.DOWNLOAD);
+		}
+		Resource shown = withLabels(answer, caller, viewAs);
+		serveJson(context.response(), localized(withRights(shown, rights), context));
+	}
+
+	/**
+	 * Answers <code>&lt;folder&gt;/?type=search-options</code>: what the search view offers to
+	 * choose from below the folder, see {@link SearchOptions} and issue #227.
+	 *
+	 * <p>
+	 * Read off the photographs below the folder that the caller is shown, so that nothing is offered
+	 * that would only find what they may not see. At a saved search, the folder it looks below.
+	 * Members only, see {@link #maySearch(Caller)}.
+	 * </p>
+	 */
+	private void serveSearchOptions(Context context, Caller caller, PathInfo folder) throws IOException {
+		if (!maySearch(caller)) {
+			refuseSearch(context, caller);
+			return;
+		}
+		if (!folder.toFile().isDirectory()) {
+			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, PhotoSearch.NOT_A_FOLDER);
+			return;
+		}
+		if (!_auth.mayView(caller, folder)) {
+			refuse(context, caller, folder, Rights.VIEW, false);
+			return;
+		}
+		PathInfo scope = PhotoSearch.isSearch(_cache.lookup(folder)) ? searchScope(folder) : folder;
+		Map<String, PhotoSearch.Photo> stored = new LinkedHashMap<>();
+		List<ImagePart> shown = searchMatches(scope, null, caller, Privacy.PRIVATE, stored);
+
+		SearchOptions options = SearchOptions.create();
+		java.util.TreeMap<String, de.haumacher.imageServer.shared.model.Person> persons = new java.util.TreeMap<>();
+		java.util.TreeSet<String> cameras = new java.util.TreeSet<>();
+		List<PhotoSearch.Photo> labelled = new ArrayList<>();
+		for (ImagePart image : shown) {
+			PhotoSearch.Photo original = stored.get(image.getName());
+			if (original == null) {
+				continue;
+			}
+			for (String id : original.persons(_people)) {
+				PeopleStore.Entry person = _people.resolve(id);
+				if (person != null) {
+					persons.putIfAbsent(person.getName().toLowerCase(Locale.ROOT) + "\u0000" + person.getId(),
+						de.haumacher.imageServer.shared.model.Person.create().setId(person.getId())
+							.setName(person.getName()));
+				}
+			}
+			if (!original.getCamera().isEmpty()) {
+				cameras.add(original.getCamera());
+			}
+			labelled.add(original);
+		}
+		options.setPersons(new ArrayList<>(persons.values()));
+		for (String camera : cameras) {
+			options.addCamera(de.haumacher.imageServer.shared.model.CameraName.create().setName(camera));
+		}
+		options.setLabels(PhotoSearch.labelsOf(labelled));
+
+		// The place names in the caller's language, as the photographs are answered them.
+		AlbumInfo named = AlbumInfo.create().setParts(new ArrayList<>(shown));
+		Resource localized = localized(named, context);
+		Map<Integer, de.haumacher.imageServer.shared.model.PlaceTag> places = new LinkedHashMap<>();
+		if (localized instanceof AlbumInfo) {
+			for (AlbumPart part : ((AlbumInfo) localized).getParts()) {
+				if (part instanceof ImagePart && ((ImagePart) part).getPlaces() != null) {
+					for (de.haumacher.imageServer.shared.model.PlaceTag tag : ((ImagePart) part).getPlaces().getTags()) {
+						places.putIfAbsent(Integer.valueOf(tag.getGeonameId()), tag);
+					}
+				}
+			}
+		}
+		List<de.haumacher.imageServer.shared.model.PlaceTag> sorted = new ArrayList<>(places.values());
+		sorted.sort(java.util.Comparator
+			.comparing((de.haumacher.imageServer.shared.model.PlaceTag tag) -> tag.getKind().ordinal())
+			.thenComparing(tag -> tag.getName().toLowerCase(Locale.ROOT)));
+		options.setPlaces(sorted);
+		serveJsonObject(context.response(), options);
+	}
+
+	/**
+	 * The photograph a path below a saved search stands for, see issue #227: the photograph at that
+	 * path below the folder the saved search looks in, while it matches the query.
+	 *
+	 * @return <code>null</code> where the path lies below no saved search; the path of the
+	 *         photograph otherwise. Where the path lies below a saved search and stands for no
+	 *         photograph of it, the request is answered and {@link #ANSWERED} returned.
+	 */
+	private PathInfo searchedPhoto(Context context, PathInfo requested) throws IOException {
+		PathInfo path = inSpace(requested);
+		if (path.isRoot()) {
+			return null;
+		}
+		PathInfo search = path.parent();
+		while (!search.isRoot() && !search.toFile().isDirectory()) {
+			search = search.parent();
+		}
+		if (search.isRoot() || !search.toFile().isDirectory()) {
+			return null;
+		}
+		Resource resource = _cache.lookup(search);
+		if (!PhotoSearch.isSearch(resource)) {
+			return null;
+		}
+		SearchQuery query = ((AlbumInfo) resource).getQuery();
+		String refusal = PhotoSearch.refusal(query);
+		if (refusal != null) {
+			errorInfo(context, HttpServletResponse.SC_NOT_IMPLEMENTED, refusal);
+			return ANSWERED;
+		}
+		String relative = path.toFile().toPath().toAbsolutePath().normalize().toString();
+		String base = search.toFile().toPath().toAbsolutePath().normalize().toString();
+		relative = relative.substring(base.length() + 1).replace(File.separatorChar, '/');
+		PathInfo folder = PhotoSearch.matching(searchScope(search), relative, query, _cache::lookup, _people);
+		if (folder == null) {
+			LOG.warning("No photograph of the saved search at '" + context.request().getPathInfo() + "'.");
+			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, PhotoSearch.NO_MATCH);
+			return ANSWERED;
+		}
+		return folder.child(path.getName());
+	}
+
+	/**
+	 * The folder a saved search at the given path looks below, see {@link PhotoSearch#scopeOf}: in
+	 * the coordinates of the space, also where the path was reached through a share link, whose
+	 * paths start at the link's target.
+	 */
+	private PathInfo searchScope(PathInfo search) {
+		return PhotoSearch.scopeOf(inSpace(search));
+	}
+
+	/** The given path in the coordinates of the space this servlet serves, see {@link #searchScope}. */
+	private PathInfo inSpace(PathInfo path) {
+		java.nio.file.Path root = _basePath.toAbsolutePath().normalize();
+		java.nio.file.Path file = path.toFile().toPath().toAbsolutePath().normalize();
+		if (!file.startsWith(root)) {
+			return path;
+		}
+		return file.equals(root) ? new PathInfo(_basePath) : new PathInfo(_basePath, root.relativize(file));
+	}
+
+	/** What {@link #searchedPhoto(Context, PathInfo)} answers for a request it answered itself. */
+	private static final PathInfo ANSWERED = new PathInfo(java.nio.file.Paths.get("/"));
+
+	/**
+	 * The photographs a name of a request stands for in the given folder: an entry of it, or (#227)
+	 * a path below it, which in a saved search is a path below the folder it looks in, where the
+	 * photograph matches its query.
+	 *
+	 * @return <code>null</code> where the name stands for no photograph the folder can show.
+	 */
+	private PathInfo photoNamed(PathInfo folder, Resource container, String name) {
+		List<String> segments = PhotoSearch.segments(name);
+		if (segments == null) {
+			return null;
+		}
+		if (PhotoSearch.isSearch(container)) {
+			SearchQuery query = ((AlbumInfo) container).getQuery();
+			if (PhotoSearch.refusal(query) != null) {
+				return null;
+			}
+			PathInfo source = PhotoSearch.matching(searchScope(folder), name, query, _cache::lookup, _people);
+			return source == null ? null : source.child(segments.get(segments.size() - 1));
+		}
+		PathInfo result = folder;
+		for (String segment : segments) {
+			result = result.child(segment);
+		}
+		return result;
+	}
+
 	/**
 	 * Answers the album at the given path as the given caller is answered it by a plain listing.
 	 *
@@ -7276,6 +7998,13 @@ public class ImageServlet extends HttpServlet {
 			Resource answer = _privacy.filter(resolved, pathInfo, clearance, minRating, label);
 			return withLabels(answer, caller, viewAs);
 		}
+		if (PhotoSearch.isSearch(resource)) {
+			// Every match as the caller would be answered it in its own album, then a link's own
+			// filters on top -- its label asked of the photograph's own labels, see issue #227.
+			AlbumInfo found = searchAnswer((AlbumInfo) resource, pathInfo, caller, viewAs);
+			Resource answer = _privacy.filter(found, pathInfo, clearance, minRating, label);
+			return withLabels(answer, caller, viewAs);
+		}
 		Resource answer = _privacy.filter(resource, pathInfo, clearance, minRating, label);
 		answer = withLabels(withFaces(answer, pathInfo, caller, viewAs), caller, viewAs);
 		if (answer instanceof ListingInfo) {
@@ -7299,6 +8028,15 @@ public class ImageServlet extends HttpServlet {
 	 * where they are shown nothing of it: the source of a part of a collection, see issue #221.
 	 */
 	private AlbumInfo sourceAlbum(PathInfo folder, Caller caller, int viewAs) {
+		return sourceAlbum(folder, caller, viewAs, null);
+	}
+
+	/**
+	 * {@link #sourceAlbum(PathInfo, Caller, int)} for the given photographs alone, <code>null</code>
+	 * for all of them: what the search of issue #227 asks, so that the filters and the faces are
+	 * derived for its matches and not for every photograph of every album it touches.
+	 */
+	private AlbumInfo sourceAlbum(PathInfo folder, Caller caller, int viewAs, Set<String> only) {
 		if (!folder.toFile().isDirectory() || !_auth.mayView(caller, folder)) {
 			return null;
 		}
@@ -7306,13 +8044,16 @@ public class ImageServlet extends HttpServlet {
 		if (!(stored instanceof AlbumInfo) || PhotoCollections.isCollection(stored)) {
 			return null;
 		}
+		if (only != null) {
+			stored = PhotoSearch.only((AlbumInfo) stored, only);
+		}
 		Resource shown = Inboxes.filter(stored, Inboxes.visibility(_auth, caller, folder, viewAs), caller.subject());
 		if (shown == null) {
 			return null;
 		}
 		int clearance = Math.min(_auth.clearance(caller, folder), viewAs);
 		Resource answer = _privacy.filter(shown, folder, clearance, _auth.minRating(caller, folder, viewAs), "");
-		answer = withFaces(answer, folder, caller, viewAs);
+		answer = withFaces(answer, folder, caller, viewAs, only == null);
 		return answer instanceof AlbumInfo ? (AlbumInfo) answer : null;
 	}
 
@@ -7337,6 +8078,43 @@ public class ImageServlet extends HttpServlet {
 			return answer instanceof AlbumInfo ? (AlbumInfo) answer : null;
 		}, false, true);
 		Resource filtered = _privacy.filter(resolved, path, clearance, minRating, label);
+		return filtered instanceof AlbumInfo ? (AlbumInfo) filtered : null;
+	}
+
+	/**
+	 * The saved search of the given folder as a share link sees it, for the card of issue #104: what
+	 * {@link SharePreview} draws, with the references kept so that it finds the file, see issue
+	 * #227.
+	 */
+	AlbumInfo searchForLink(PathInfo path, AlbumInfo search, int clearance, int minRating, String label) {
+		if (PhotoSearch.refusal(search.getQuery()) != null) {
+			return null;
+		}
+		List<ImagePart> parts = searchMatches(searchScope(path), search.getQuery(), (folder, only) -> {
+			if (!folder.toFile().isDirectory()) {
+				return null;
+			}
+			Resource stored = _cache.lookup(folder);
+			if (!(stored instanceof AlbumInfo) || PhotoSearch.holdsNoFiles(stored)) {
+				return null;
+			}
+			stored = PhotoSearch.only((AlbumInfo) stored, only);
+			Resource shown = Inboxes.filter(stored, Inboxes.Visibility.NONE, "");
+			if (shown == null) {
+				return null;
+			}
+			Resource answer = _privacy.filter(shown, folder, clearance, minRating, "");
+			return answer instanceof AlbumInfo ? (AlbumInfo) answer : null;
+		}, true, null);
+		AlbumInfo found = AlbumInfo.create()
+			.setKind(de.haumacher.imageServer.shared.model.AlbumKind.SEARCH)
+			.setTitle(search.getTitle())
+			.setParts(new ArrayList<>(parts));
+		ThumbnailInfo cover = searchCover(search.getIndexPicture(), parts);
+		if (cover != null) {
+			found.setIndexPicture(cover);
+		}
+		Resource filtered = _privacy.filter(found, path, clearance, minRating, label);
 		return filtered instanceof AlbumInfo ? (AlbumInfo) filtered : null;
 	}
 
@@ -7374,6 +8152,9 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	private FolderInfo collectionCover(FolderInfo folder, PathInfo childPath, Caller caller, int viewAs, String label) {
+		if (folder.getKind() == de.haumacher.imageServer.shared.model.FolderKind.SEARCH) {
+			return searchTile(folder, childPath, caller, viewAs, label);
+		}
 		ThumbnailInfo cover = folder.getIndexPicture();
 		if (cover == null || cover.getImage().isEmpty() || !childPath.toFile().isDirectory()) {
 			return folder;
@@ -7414,6 +8195,38 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	/**
+	 * The tile of a saved search in a listing, see issue #227: the picture its author chose where
+	 * this caller is shown that photograph, the newest match they are shown otherwise, and no
+	 * picture for a search that finds nothing for them &mdash; asked exactly as opening the saved
+	 * search would ask, a link's limits included.
+	 */
+	private FolderInfo searchTile(FolderInfo folder, PathInfo childPath, Caller caller, int viewAs, String label) {
+		Resource stored = childPath.toFile().isDirectory() ? _cache.lookup(childPath) : null;
+		ThumbnailInfo cover = null;
+		if (PhotoSearch.isSearch(stored) && PhotoSearch.refusal(((AlbumInfo) stored).getQuery()) == null) {
+			int clearance = Math.min(_auth.clearance(caller, childPath), viewAs);
+			Resource answer = _privacy.filter(searchAnswer((AlbumInfo) stored, childPath, caller, viewAs), childPath,
+				clearance, _auth.minRating(caller, childPath, viewAs), label);
+			if (answer instanceof AlbumInfo) {
+				cover = ((AlbumInfo) answer).getIndexPicture();
+			}
+		}
+		FolderInfo result = FolderInfo.create()
+			.setName(folder.getName())
+			.setKind(folder.getKind())
+			.setImageCount(folder.getImageCount())
+			.setTitle(folder.getTitle())
+			.setSubTitle(folder.getSubTitle())
+			.setStarred(folder.isStarred())
+			.setLink(folder.getLink())
+			.setEffectiveDate(folder.getEffectiveDate());
+		if (cover != null) {
+			result.setIndexPicture(cover);
+		}
+		return result;
+	}
+
+	/**
 	 * The given answer with the faces of its photographs, for a caller that is answered any.
 	 *
 	 * <p>
@@ -7437,6 +8250,14 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	private Resource withFaces(Resource answer, PathInfo pathInfo, Caller caller, int viewAs) {
+		return withFaces(answer, pathInfo, caller, viewAs, true);
+	}
+
+	/**
+	 * {@link #withFaces(Resource, PathInfo, Caller, int)} of an answer holding all of its album
+	 * (<code>whole</code>), or some of its photographs, see {@link FaceIndex#derive(AlbumInfo, File, PeopleStore, boolean)}.
+	 */
+	private Resource withFaces(Resource answer, PathInfo pathInfo, Caller caller, int viewAs, boolean whole) {
 		if (!(answer instanceof AlbumInfo)) {
 			return answer;
 		}
@@ -7450,7 +8271,7 @@ public class ImageServlet extends HttpServlet {
 			return album;
 		}
 		File folder = pathInfo.toFile();
-		AlbumInfo result = _faces.derive(album, folder, _people);
+		AlbumInfo result = _faces.derive(album, folder, _people, whole);
 		if (result.isFacesPending()) {
 			// Whatever is not looked at yet is queued -- after the answer was built, so that what
 			// the answer says about itself is what it was built from. It never waits for the work,

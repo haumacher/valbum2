@@ -50,6 +50,12 @@ public enum FolderKind implements de.haumacher.msgbuf.data.ProtocolEnum {
 	 */
 	COLLECTION("COLLECTION"),
 
+	/**
+	 * The entry is a saved search (see {@link AlbumKind#SEARCH}, issue #227): an album showing the
+	 * photographs that match its query, evaluated whenever it is opened.
+	 */
+	SEARCH("SEARCH"),
+
 	;
 
 	private final String _protocolName;
@@ -76,6 +82,7 @@ public enum FolderKind implements de.haumacher.msgbuf.data.ProtocolEnum {
 			case "FOLDER": return FOLDER;
 			case "INBOX": return INBOX;
 			case "COLLECTION": return COLLECTION;
+			case "SEARCH": return SEARCH;
 		}
 		return ALBUM;
 	}
@@ -97,6 +104,7 @@ public enum FolderKind implements de.haumacher.msgbuf.data.ProtocolEnum {
 			case FOLDER: out.value(2); break;
 			case INBOX: out.value(3); break;
 			case COLLECTION: out.value(4); break;
+			case SEARCH: out.value(5); break;
 			default: out.value(0);
 		}
 	}
@@ -108,6 +116,7 @@ public enum FolderKind implements de.haumacher.msgbuf.data.ProtocolEnum {
 			case 2: return FOLDER;
 			case 3: return INBOX;
 			case 4: return COLLECTION;
+			case 5: return SEARCH;
 			default: return ALBUM;
 		}
 	}

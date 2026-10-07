@@ -23,7 +23,7 @@ import 'resource.dart';
 import 'offline.dart';
 import 'oriented_thumbnail.dart';
 import 'rights.dart';
-import 'routes.dart' show DuplicatesRoute;
+import 'routes.dart' show DuplicatesRoute, SearchRoute;
 import 'settings.dart';
 import 'share_session.dart';
 import 'share_view.dart';
@@ -191,6 +191,11 @@ class ListingView extends StatelessWidget {
     var mayAskDuplicates = link == null &&
         albumState.path.isEmpty &&
         (CallerInfo.permissionOf(context).named || rightsIn(context).mayEdit);
+    // The photographs below this folder that match a search, for its members
+    // and never inside a link -- the start page's searches the space, see
+    // issue #227.
+    var maySearch = link == null &&
+        (CallerInfo.permissionOf(context).named || rightsIn(context).mayEdit);
     return Scaffold(
       // Black like the album pages, so that the way down does not flash from
       // a light page to a dark one, see issue #40.
@@ -211,6 +216,14 @@ class ListingView extends StatelessWidget {
         actions: <Widget>[
           // Unobtrusive while a camera-roll sync runs, nothing otherwise.
           const CameraRollIndicator(),
+          if (maySearch)
+            IconButton(
+              key: const Key("open-search"),
+              icon: const Icon(Icons.search),
+              tooltip: l10n.searchAction,
+              onPressed: () =>
+                  albumState.navigator.go(SearchRoute(albumState.path)),
+            ),
           if (inbox != null)
             InboxButton(
               count: inbox.inboxCount,
@@ -573,13 +586,18 @@ class ListingView extends StatelessWidget {
         ),
         child: Center(
           child: Icon(
-            // A collection of references says what it is, see issue #221.
+            // A collection of references says what it is, see issue #221, and
+            // so does a saved search that finds nothing for this caller, #227.
             folder.kind == FolderKind.collection
                 ? Icons.collections_bookmark_outlined
-                : Icons.folder,
+                : folder.kind == FolderKind.search
+                    ? Icons.saved_search
+                    : Icons.folder,
             key: folder.kind == FolderKind.collection
                 ? const Key("collection-icon")
-                : null,
+                : folder.kind == FolderKind.search
+                    ? const Key("search-icon")
+                    : null,
             size: width / 2,
             color: Colors.blue,
           ),

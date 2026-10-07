@@ -42,6 +42,7 @@ import 'photo_picker_view.dart';
 import 'platform.dart';
 import 'resource.dart';
 import 'routes.dart';
+import 'search_view.dart';
 import 'settings.dart';
 import 'share_session.dart';
 import 'sign_in_options.dart';
@@ -1695,6 +1696,9 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
   /// The edit session of every album being edited, see [editSession].
   final Map<String, AlbumEditSession> _editSessions = {};
 
+  /// The search view of every folder searched below, see [searchSession].
+  final Map<String, SearchSession> _searchSessions = {};
+
   VAlbumRoute _route;
 
   /// Incremented by [reload], so that the view re-runs its load.
@@ -1728,6 +1732,7 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
     _resources.clear();
     _scrollOffsets.clear();
     _editSessions.clear();
+    _searchSessions.clear();
     _version++;
     notifyListeners();
   }
@@ -1979,6 +1984,12 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
   AlbumEditSession editSession(List<String> path) =>
       _editSessions.putIfAbsent(_pathKey(path), AlbumEditSession.new);
 
+  /// The search view below the folder at [path], see issue #227: what was
+  /// chosen and what the server found, kept with the router so that a trip
+  /// into a photograph and back finds the search as it was left.
+  SearchSession searchSession(List<String> path) =>
+      _searchSessions.putIfAbsent(_pathKey(path), SearchSession.new);
+
   static String _pathKey(List<String> path) => path.join("/");
 
   /// The system back button (and the browser's, on the web) goes up.
@@ -2017,6 +2028,13 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
             const DuplicatesRoute(),
             route,
           ],
+        // A viewer opened from the search view sits on it, and the search
+        // view on its folder, see issue #227.
+        ImageRoute(fromSearch: true, albumPath: var folder) => [
+            ListingOrAlbumRoute(folder),
+            SearchRoute(folder),
+            route,
+          ],
         ImageRoute(albumPath: var album) => [
             ListingOrAlbumRoute(album),
             route,
@@ -2052,6 +2070,11 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
         // The trash of an album sits on it the same way, see issue #152.
         TrashRoute(albumPath: var album) => [
             ListingOrAlbumRoute(album),
+            route,
+          ],
+        // The search view sits on the folder it searches, see issue #227.
+        SearchRoute(albumPath: var folder) => [
+            ListingOrAlbumRoute(folder),
             route,
           ],
         // The overview of the photographs in several albums sits on the start
@@ -2094,6 +2117,7 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
     return switch (level) {
       ListingOrAlbumRoute() => "valbum:album:$album",
       ImageRoute(fromDuplicates: true) => "valbum:duplicates-image:$album",
+      ImageRoute(fromSearch: true) => "valbum:search-image:$album",
       ImageRoute() => "valbum:image:$album",
       AlternativesRoute(fromDuplicates: true) =>
         "valbum:duplicates-alternatives:$album",
@@ -2103,6 +2127,7 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
       PersonsRoute() => "valbum:persons:$album",
       TrashRoute() => "valbum:trash:$album",
       DuplicatesRoute() => "valbum:duplicates",
+      SearchRoute() => "valbum:search:$album",
     };
   }
 
@@ -2271,9 +2296,18 @@ class VAlbumState extends State<VAlbumView>
   }
 
   void doLoad() {
-    if (route is DuplicatesRoute) {
-      // A page of the space that asks the server itself, see issue #220: the
-      // listing it stands on is loaded by the level beneath it.
+    if (route is DuplicatesRoute || route is SearchRoute) {
+      // A page of the space that asks the server itself, see issues #220 and
+      // #227: the listing it stands on is loaded by the level beneath it.
+      return;
+    }
+    if (route.fromSearch) {
+      // A photograph of the search view pages through what the search found,
+      // see issue #227; after a reload nothing was searched yet.
+      _resourceFuture = navigator.delegate.searchSession(path).result?.then(
+                (album) => album as Resource?,
+              ) ??
+          Future<Resource?>.value(null);
       return;
     }
     _resourceFuture = navigator.delegate.resourceAt(path);
@@ -2289,6 +2323,9 @@ class VAlbumState extends State<VAlbumView>
   Widget build(BuildContext context) {
     if (route is DuplicatesRoute) {
       return DuplicatesView(this);
+    }
+    if (route is SearchRoute) {
+      return SearchView(this);
     }
     return FutureBuilder<Resource?>(
       future: _resourceFuture,
@@ -2597,6 +2634,7 @@ class VAlbumState extends State<VAlbumView>
         PersonsRoute() => "",
         TrashRoute() => "",
         DuplicatesRoute() => "",
+        SearchRoute() => "",
       };
 
   /// Every image of the album by its file name, group members included.
@@ -2652,12 +2690,18 @@ class VAlbumState extends State<VAlbumView>
         // Where a photo of one's own can be taken back out of somebody else's
         // album, see issue #53: the album this route names is the folder the
         // move is posted to.
-        albumPath: path,
+        // Never from a search, saved or not (issue #227): the photograph lies
+        // in another album, where it is taken back.
+        albumPath: route.fromSearch || self.owner?.kind == AlbumKind.search
+            ? null
+            : path,
         onTakenBack: takenBack,
         // Where a description edited in the viewer is written (issue #80),
-        // and whether it goes into the album's editing buffer instead.
-        editPath: path,
-        editing: navigator.delegate.editSession(path).editMode,
+        // and whether it goes into the album's editing buffer instead. The
+        // search view is looked at, never edited (issue #227).
+        editPath: route.fromSearch ? null : path,
+        editing:
+            !route.fromSearch && navigator.delegate.editSession(path).editMode,
         onEdited: () => navigator.delegate.editSession(path).dirty = true,
         // Where a photo taken back out of this album lands is forgotten, so
         // that the target is fetched anew when it is next shown, see #134.
@@ -2685,7 +2729,9 @@ class VAlbumState extends State<VAlbumView>
   /// `null` where it leads to the album.
   String? get duplicatesUpTooltip => route.fromDuplicates
       ? AppLocalizations.of(context)!.duplicatesBack
-      : null;
+      : route.fromSearch
+          ? AppLocalizations.of(context)!.searchBack
+          : null;
 
   /// Opens the "alternatives" view listing all images of the given group.
   ///
@@ -3002,7 +3048,14 @@ class VAlbumState extends State<VAlbumView>
   }
 
   /// Re-fetches the displayed resource from the server.
-  void reload() => navigator.reload();
+  void reload() {
+    if (route is SearchRoute) {
+      // The search view asks the server again, see issue #227.
+      navigator.delegate.searchSession(path).run(client, path);
+      return;
+    }
+    navigator.reload();
+  }
 
   /// Displays the given image (of the album currently loaded).
   ///
@@ -3010,12 +3063,14 @@ class VAlbumState extends State<VAlbumView>
   /// of the photographs in several albums still leads back there (#228).
   void showImage(AbstractImage image) => navigator.go(switch (route) {
         ImageRoute current => current.withName(image.thumbnailName),
-        _ => ImageRoute(path, image.thumbnailName),
+        _ => ImageRoute(path, image.thumbnailName,
+            fromSearch: route is SearchRoute),
       });
 
-  /// Opens the viewer on the given part of the album.
+  /// Opens the viewer on the given part of the album — of the results of the
+  /// search view, where it is the search view's, see issue #227.
   Future<void> pushPart(AbstractImage image, String name) async =>
-      navigator.go(ImageRoute(path, name));
+      navigator.go(ImageRoute(path, name, fromSearch: route is SearchRoute));
 
   /// Descends into the child folder of the displayed listing.
   void showElement(String name) =>

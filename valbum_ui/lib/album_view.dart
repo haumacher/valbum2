@@ -41,6 +41,7 @@ import 'offline.dart';
 import 'persons_view.dart';
 import 'oriented_thumbnail.dart';
 import 'routes.dart';
+import 'search_query.dart';
 import 'rights.dart';
 import 'select_mode.dart';
 import 'settings.dart';
@@ -251,6 +252,7 @@ class AlbumContentState extends State<AlbumContent>
   /// share at all, and the album's rights say the rest, see [mayShareFolder].
   bool get _mayShare =>
       share == null &&
+      !isSearchView &&
       mayShareFolder(
         client,
         widget.albumState.path,
@@ -1231,7 +1233,7 @@ class AlbumContentState extends State<AlbumContent>
   bool get mayShowTrash =>
       mayEditAlbum &&
       !editMode &&
-      !isCollection(widget.album) &&
+      !showsOtherAlbums &&
       hasTrashedImages(widget.album);
 
   /// Opens the trash of this album, see issue #152.
@@ -1247,6 +1249,61 @@ class AlbumContentState extends State<AlbumContent>
   /// the album, which is read-only, see [setViewAs].
   bool get mayEditAlbum => rights.mayEdit && share == null && !previewing;
 
+  // --- Searches, see issue #227 and `search_view.dart`. ---
+
+  /// Whether this album is the result of the search view: looked at, never
+  /// edited, its photographs named by their path below the folder searched.
+  bool get isSearchView => widget.albumState.route is SearchRoute;
+
+  /// Whether the photographs shown lie in other albums, which keep their
+  /// order, groups and headings: a collection or a search, saved or not.
+  bool get showsOtherAlbums =>
+      isCollection(widget.album) || isSearch(widget.album);
+
+  /// Whether "Edit search" is offered: a saved search, to whoever may edit
+  /// it.
+  bool get mayEditSearch =>
+      isSearch(widget.album) && !isSearchView && mayEditAlbum && !editMode;
+
+  /// Changes what this saved search looks for, in the search view below the
+  /// folder it lies in; "Save" there writes the query back, see issue #227.
+  void editSearch() {
+    var criteria = SearchCriteria.fromQuery(widget.album.query);
+    if (criteria == null) {
+      showMessage(_l10n.searchCannotEdit);
+      return;
+    }
+    var path = widget.albumState.path;
+    var scope = searchScopeOf(path);
+    var delegate = widget.albumState.navigator.delegate;
+    delegate.searchSession(scope).edit(path, widget.album, criteria);
+    delegate.go(SearchRoute(scope));
+  }
+
+  /// Whether "Create collection from these…" is offered: in a saved search
+  /// showing photographs, to a member outside the edit mode, which offers
+  /// "Add to collection…" for its selection.
+  bool get mayCollectAll =>
+      isSearch(widget.album) &&
+      !isSearchView &&
+      !editMode &&
+      share == null &&
+      (_permission.named || rights.mayEdit) &&
+      holdsImages;
+
+  /// Turns every photograph shown into a collection, chosen or created, see
+  /// issues #221 and #227.
+  Future<void> collectAll() => collectWithPicker(
+        context: context,
+        client: client,
+        source: widget.albumState.path,
+        names: [
+          for (var image in shownImages(shownParts(shownAlbum).toSet()))
+            image.name,
+        ],
+        delegate: widget.albumState.navigator.delegate,
+      );
+
   /// Whether the menu's move acts on the selection, see issue #121.
   ///
   /// Exactly the condition the toolbar button carried: the edit mode holding
@@ -1256,7 +1313,7 @@ class AlbumContentState extends State<AlbumContent>
   /// Never in a collection (issue #221): a collection holds references, and a
   /// photograph is taken out of it by "Remove from collection".
   bool get mayMoveSelection =>
-      editMode && selection.isNotEmpty && !isCollection(widget.album);
+      editMode && selection.isNotEmpty && !showsOtherAlbums;
 
   /// The photographs of the selection a collection can be given, see issue
   /// #221: every selected image (a group by its representative), never a
@@ -1563,7 +1620,7 @@ class AlbumContentState extends State<AlbumContent>
   /// alone, the photograph its tile shows (#230) — and a photograph rated as
   /// trash (#152), which no filter shows. Always the originals.
   List<ImagePart> get downloadImages {
-    if (!rights.mayDownload || previewing) {
+    if (!rights.mayDownload || previewing || isSearchView) {
       return const [];
     }
     // A photograph of a collection that is gone has no original (#221).
@@ -1631,6 +1688,7 @@ class AlbumContentState extends State<AlbumContent>
   /// in the edit mode.
   bool get maySelect =>
       rights.mayDownload &&
+      !isSearchView &&
       !previewing &&
       !mayEnterEditMode &&
       !session.editMode &&
@@ -2062,6 +2120,7 @@ class AlbumContentState extends State<AlbumContent>
       // it by "Add to collection…" from their albums (issue #221).
       floatingActionButton: previewing ||
               isCollection(self) ||
+              isSearch(self) ||
               !rights.mayContribute ||
               (link != null && !link.writeAllowed)
           ? null
@@ -2088,7 +2147,7 @@ class AlbumContentState extends State<AlbumContent>
 
   /// The way out of the album, nothing at the root.
   List<Widget> wayUp() => [
-        if (widget.albumState.path.isNotEmpty)
+        if (widget.albumState.path.isNotEmpty && !isSearchView)
           IconButton(
             icon: const Icon(Icons.arrow_back),
             tooltip: _l10n.up,
@@ -2204,18 +2263,21 @@ class AlbumContentState extends State<AlbumContent>
           // Sections laid out before the images arrive, see issue #158 — in
           // the view mode too where the album holds no image, since the edit
           // mode is otherwise entered by a long press on a tile.
-          if (editMode || (mayEnterEditMode && !holdsImages))
+          // A search shows its photographs in date order and stores no
+          // heading (issue #227).
+          if ((editMode || (mayEnterEditMode && !holdsImages)) &&
+              !isSearch(widget.album))
             keyedMenuItem(
               const Key("add-heading"),
               Icons.title,
               _l10n.addHeading,
               (_) => addHeading(),
             ),
-          if (editMode)
+          if (editMode && !isSearch(widget.album))
             menuItem(Icons.sort, _l10n.sortByDate, (_) => sortByDate()),
           // The headings made from the photos (issue #238), into the buffer
           // like the other heading actions beside it.
-          if (editMode && holdsImages)
+          if (editMode && holdsImages && !isSearch(widget.album))
             keyedMenuItem(
               const Key("group-by"),
               Icons.segment,
@@ -2256,6 +2318,23 @@ class AlbumContentState extends State<AlbumContent>
               _l10n.removeFromCollection,
               (_) => removeSelectionFromCollection(),
             ),
+          // What a saved search looks for, and what it found turned into a
+          // collection (issue #227).
+          if (mayEditSearch)
+            keyedMenuItem(
+              const Key("edit-search"),
+              Icons.manage_search,
+              _l10n.editSearch,
+              (_) => editSearch(),
+            ),
+          if (mayCollectAll)
+            keyedMenuItem(
+              const Key("collect-all"),
+              Icons.collections_bookmark_outlined,
+              _l10n.createCollectionFromThese,
+              (_) => collectAll(),
+            ),
+
           const PopupMenuDivider(),
           menuItem(Icons.update, _l10n.reload, (_) => reloadShown()),
           // Who is in this album, see issue #126. Offered to everybody who
@@ -2263,7 +2342,7 @@ class AlbumContentState extends State<AlbumContent>
           // screen says so itself — but never in a share link, which the
           // server answers no face at all (issue #124), and never where the
           // space does not look for faces or this album has none.
-          if (mayOpenPersons(context) && !isCollection(widget.album))
+          if (mayOpenPersons(context) && !showsOtherAlbums)
             keyedMenuItem(
               const Key("persons"),
               Icons.people_outline,
@@ -2282,7 +2361,7 @@ class AlbumContentState extends State<AlbumContent>
           // Whoever may change this album may have the camera and the position
           // read out of the files again, which an album described before they existed
           // lacks, see issue #161.
-          if (mayEditAlbum && !isCollection(widget.album))
+          if (mayEditAlbum && !showsOtherAlbums)
             keyedMenuItem(
               const Key("reanalyze"),
               Icons.manage_search,
@@ -2291,7 +2370,7 @@ class AlbumContentState extends State<AlbumContent>
             ),
           // Only the administrator, who owns the server's own files: the
           // entry a non-admin may not use is not offered at all, see #98.
-          if (mayRefreshCache(context))
+          if (mayRefreshCache(context) && !isSearchView)
             keyedMenuItem(
               const Key("refresh-previews"),
               Icons.cleaning_services,
@@ -3637,12 +3716,15 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
     // A collection has no groups (issue #221): it shows photographs of other
     // albums one by one, each where its author put it.
     var collection = isCollection(album.widget.album);
+    // A search has neither: its photographs lie in other albums and are shown
+    // in date order (issue #227).
+    var search = isSearch(album.widget.album);
     return toolbar([
-      if (multiSelected && !collection)
+      if (!search && multiSelected && !collection)
         toolButton(Icons.join_left, _l10n.group, createGroup)
-      else if (multiSelected)
+      else if (!search && multiSelected)
         toolButton(Icons.title, _l10n.insertHeading, createHeading)
-      else ...[
+      else if (!search) ...[
         toolButton(Icons.title, _l10n.insertHeading, createHeading),
         if (self is ImageGroup) ...[
           toolButton(
@@ -4041,6 +4123,10 @@ class ReorderablePartState extends State<ReorderablePart> {
 
   @override
   Widget build(BuildContext context) {
+    if (isSearch(widget.album.widget.album)) {
+      // A search keeps the date order: nothing is dragged (issue #227).
+      return widget.child;
+    }
     var dragged = widget.album.dragOf(widget.part);
     return DragTarget<DraggedParts>(
       // A carried part is not dropped onto itself.

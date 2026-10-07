@@ -5864,6 +5864,162 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Headings to create'**
   String get groupByPreview;
+
+  /// Tooltip of the search icon and title of the search view, which finds the photographs below a folder that match chosen criteria (issue #227)
+  ///
+  /// In en, this message translates to:
+  /// **'Search'**
+  String get searchAction;
+
+  /// Tooltip of the way back from a photo opened from the search view
+  ///
+  /// In en, this message translates to:
+  /// **'Back to the search'**
+  String get searchBack;
+
+  /// Menu entry of a saved search (an album showing the photos that match a stored search) that changes what it looks for; also the title of the search view while doing so
+  ///
+  /// In en, this message translates to:
+  /// **'Edit search'**
+  String get editSearch;
+
+  /// Chip of the search view choosing persons who must all be in the photo
+  ///
+  /// In en, this message translates to:
+  /// **'Persons'**
+  String get searchPersons;
+
+  /// Chip of the search view choosing the first day of the time span
+  ///
+  /// In en, this message translates to:
+  /// **'From'**
+  String get searchFrom;
+
+  /// Chip of the search view choosing the last day of the time span
+  ///
+  /// In en, this message translates to:
+  /// **'To'**
+  String get searchTo;
+
+  /// Chip of the search view choosing places (towns, regions, countries) of which the photo must lie in one
+  ///
+  /// In en, this message translates to:
+  /// **'Places'**
+  String get searchPlaces;
+
+  /// Chip of the search view choosing labels of which the photo must carry one
+  ///
+  /// In en, this message translates to:
+  /// **'Labels'**
+  String get searchLabels;
+
+  /// Chip of the search view choosing the lowest rating
+  ///
+  /// In en, this message translates to:
+  /// **'Rating'**
+  String get searchRating;
+
+  /// Chip of the search view choosing the camera the photo was taken with
+  ///
+  /// In en, this message translates to:
+  /// **'Camera'**
+  String get searchCamera;
+
+  /// Hint of the text field of the search view
+  ///
+  /// In en, this message translates to:
+  /// **'Text in descriptions and album titles'**
+  String get searchText;
+
+  /// Choice of the search view: find photos and videos alike
+  ///
+  /// In en, this message translates to:
+  /// **'Photos and videos'**
+  String get searchMediaAll;
+
+  /// Choice of the search view: find still pictures only
+  ///
+  /// In en, this message translates to:
+  /// **'Photos only'**
+  String get searchMediaPhotos;
+
+  /// Choice of the search view: find videos only
+  ///
+  /// In en, this message translates to:
+  /// **'Videos only'**
+  String get searchMediaVideos;
+
+  /// Choice of the rating chooser of the search view that sets no lowest rating
+  ///
+  /// In en, this message translates to:
+  /// **'Any rating'**
+  String get searchAnyRating;
+
+  /// Choice of the camera chooser of the search view that sets no camera
+  ///
+  /// In en, this message translates to:
+  /// **'Any camera'**
+  String get searchAnyCamera;
+
+  /// Shown in the search view while nothing is chosen
+  ///
+  /// In en, this message translates to:
+  /// **'Choose what to look for: persons, a time span, places, labels, a rating, photos or videos, a text or a camera.'**
+  String get searchChooseHint;
+
+  /// Shown in the search view when the search finds nothing
+  ///
+  /// In en, this message translates to:
+  /// **'No photo matches this search.'**
+  String get searchNothingFound;
+
+  /// Shown in a chooser of the search view when the photos below the folder offer nothing of this kind
+  ///
+  /// In en, this message translates to:
+  /// **'There is nothing to choose from here.'**
+  String get searchNothingToChoose;
+
+  /// Said when a saved search was written with conditions the search view cannot display (for example by a newer version)
+  ///
+  /// In en, this message translates to:
+  /// **'This search uses conditions this screen cannot show, so it cannot be edited here.'**
+  String get searchCannotEdit;
+
+  /// Action of the search view that saves the search as an album that always shows its current matches
+  ///
+  /// In en, this message translates to:
+  /// **'Save as view…'**
+  String get saveAsView;
+
+  /// Confirm button of the folder picker when saving a search as a view
+  ///
+  /// In en, this message translates to:
+  /// **'Save here'**
+  String get saveAsViewHere;
+
+  /// Explanation in the dialog naming a search that is saved as a view
+  ///
+  /// In en, this message translates to:
+  /// **'A saved view shows the photos below the folder it is saved in that match the search, new ones included.'**
+  String get saveAsViewHint;
+
+  /// Action of the search view and of a saved search that adds the photos found (or the selection) to a collection, chosen or created
+  ///
+  /// In en, this message translates to:
+  /// **'Create collection from these…'**
+  String get createCollectionFromThese;
+
+  /// Menu entry of the photo viewer that opens the photo in the album it lies in, from a collection or a search
+  ///
+  /// In en, this message translates to:
+  /// **'Show in album'**
+  String get showInAlbum;
+
+  /// Chip of the search view showing the lowest rating chosen, e.g. At least: Good
+  ///
+  /// In en, this message translates to:
+  /// **'At least: {rating}'**
+  String searchRatingAtLeast(String rating);
 }
 
 class _AppLocalizationsDelegate

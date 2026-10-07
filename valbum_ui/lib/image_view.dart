@@ -34,6 +34,7 @@ import 'persons_view.dart' show PersonChooser;
 import 'l10n/app_localizations.dart';
 import 'resource.dart';
 import 'rights.dart';
+import 'routes.dart' show ImageRoute;
 import 'share_session.dart';
 import 'thumbnails.dart';
 import 'video_view.dart';
@@ -652,6 +653,17 @@ class ImageViewState extends State<ImageView>
       !part.missing &&
       ShareSession.of(context) == null;
 
+  /// Opens the photograph shown in the album it lies in, where it is shown
+  /// from a collection or a search (issues #221, #227).
+  void showInAlbum() {
+    var folder = sourceFolderOf(part);
+    var ref = part.ref;
+    if (folder == null || ref == null) {
+      return;
+    }
+    widget.delegate?.go(ImageRoute(folder, ref.path.split("/").last));
+  }
+
   /// Adds the picture shown to a collection, chosen or created in the picker.
   Future<void> collectShown() async {
     var path = widget.editPath;
@@ -683,6 +695,7 @@ class ImageViewState extends State<ImageView>
       !isVideo &&
       album != null &&
       album!.kind != AlbumKind.collection &&
+      album!.kind != AlbumKind.search &&
       widget.editPath != null &&
       rights.mayEdit &&
       CallerInfo.facesOf(context) &&
@@ -2433,6 +2446,23 @@ class ImageViewState extends State<ImageView>
                       child: Icon(Icons.crop, color: Colors.blueAccent),
                     ),
                     Flexible(child: Text(l10n.cropMenu)),
+                  ],
+                ),
+              ),
+            // The album the photograph lies in, from a collection or a search
+            // (issues #221, #227).
+            if (sourceFolderOf(part) != null && widget.delegate != null)
+              PopupMenuItem<void Function(BuildContext)>(
+                key: const Key("viewer-show-in-album"),
+                value: (_) => showInAlbum(),
+                child: Row(
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.only(right: 16),
+                      child: Icon(Icons.photo_album_outlined,
+                          color: Colors.blueAccent),
+                    ),
+                    Flexible(child: Text(l10n.showInAlbum)),
                   ],
                 ),
               ),

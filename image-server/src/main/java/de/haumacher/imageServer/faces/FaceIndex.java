@@ -1262,6 +1262,16 @@ public class FaceIndex {
 	 *        The register a tag's person is resolved through, <code>null</code> when there is none.
 	 */
 	public AlbumInfo derive(AlbumInfo album, File folder, PeopleStore people) {
+		return derive(album, folder, people, true);
+	}
+
+	/**
+	 * {@link #derive(AlbumInfo, File, PeopleStore)}, for some photographs of the album alone where
+	 * <code>whole</code> is <code>false</code> (the matches of a search, issue #227): the
+	 * prototypes of the recognition are then left as they are, which only the whole album
+	 * describes.
+	 */
+	public AlbumInfo derive(AlbumInfo album, File folder, PeopleStore people, boolean whole) {
 		boolean enabled = isEnabled();
 		boolean tagged = tagged(album);
 		if (!enabled && !tagged) {
@@ -1282,7 +1292,9 @@ public class FaceIndex {
 			// The two sidecars are open anyway, so keeping the prototypes of issue #127 current
 			// costs no file access at all: an album that was moved, renamed or written behind the
 			// server's back is described afresh the moment somebody looks at it.
-			_recognition.put(folder, Recognition.collect(album, cache, hashByName));
+			if (whole) {
+				_recognition.put(folder, Recognition.collect(album, cache, hashByName));
+			}
 			suggest(byName, cached, people);
 		}
 		// Last of all, and only on the way out: the wire speaks the frame of the picture the app
@@ -1320,6 +1332,8 @@ public class FaceIndex {
 	private static AlbumInfo copyOf(AlbumInfo album) {
 		AlbumInfo result = AlbumInfo.create()
 			.setKind(album.getKind())
+			// What a saved search looks for is not a question of who is asking (#227).
+			.setQuery(album.getQuery())
 			.setTitle(album.getTitle())
 			.setSubTitle(album.getSubTitle())
 			.setStarred(album.isStarred())

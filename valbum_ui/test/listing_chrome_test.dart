@@ -51,8 +51,9 @@ void main() {
       expect(bar.leading, isA<IconButton>());
       expect((bar.leading! as IconButton).tooltip, "Up");
 
-      // Home stays an action, and the menu is the last control at the right.
-      expect(actionTooltips(bar), ["Home"]);
+      // Home stays an action beside the search of the folder (issue #227),
+      // and the menu is the last control at the right.
+      expect(actionTooltips(bar), ["Search", "Home"]);
       expect(bar.actions!.last, isA<PopupMenuButton>());
       expect(
         find.descendant(
