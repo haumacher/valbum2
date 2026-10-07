@@ -151,6 +151,8 @@ The `.deb` reads `/etc/default/valbum`; Docker takes the same variables from `en
 | `VALBUM_PUBLIC_URL` | The album's address from outside, e.g. `https://home.example.org/valbum` | from each request | from each request |
 | `VALBUM_SMTP_*` | The mail account for e-mail codes, see [Mail](#mail) | none | none |
 | `VALBUM_OIDC_*` | "Continue with Google", see [Sign-in with Google](#sign-in-with-google) | none | none |
+| `VALBUM_GEONAMES_DIR` | Where the place names ([GeoNames](https://www.geonames.org/), downloaded per country) are kept | `<VALBUM_BASEPATH>/.geonames` | `/photos/.geonames` |
+| `VALBUM_GEONAMES_MEMORY` | Megabytes of place names kept in memory | an eighth of the heap | an eighth of the heap |
 
 On the `.deb`, point it at your photos and restart:
 

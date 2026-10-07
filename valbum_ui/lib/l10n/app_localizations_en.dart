@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -1793,6 +1794,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String get showOnMap => 'Show on a map';
 
   @override
+  String propertyPlace(String place) {
+    return 'Place: $place';
+  }
+
+  @override
+  String get showCoordinates => 'Show the coordinates';
+
+  @override
+  String get hideCoordinates => 'Hide the coordinates';
+
+  @override
   String addedBy(String user) {
     return 'Added by $user';
   }
@@ -1878,7 +1890,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String downloadProgressOf(
-      int current, String total, int count, String received) {
+    int current,
+    String total,
+    int count,
+    String received,
+  ) {
     return 'File $current of $count: $received of $total downloaded';
   }
 
@@ -2536,6 +2552,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aboutSourceCode => 'Source code, documentation and bug reports:';
+
+  @override
+  String get aboutGeoNames =>
+      'Place names come from GeoNames, licensed under Creative Commons Attribution 4.0:';
 
   @override
   String get aboutLicense =>

@@ -63,7 +63,7 @@ import 'app_localizations_en.dart';
 /// property.
 abstract class AppLocalizations {
   AppLocalizations(String locale)
-      : localeName = intl.Intl.canonicalizedLocale(locale.toString());
+    : localeName = intl.Intl.canonicalizedLocale(locale.toString());
 
   final String localeName;
 
@@ -86,16 +86,16 @@ abstract class AppLocalizations {
   /// of delegates is preferred or required.
   static const List<LocalizationsDelegate<dynamic>> localizationsDelegates =
       <LocalizationsDelegate<dynamic>>[
-    delegate,
-    GlobalMaterialLocalizations.delegate,
-    GlobalCupertinoLocalizations.delegate,
-    GlobalWidgetsLocalizations.delegate,
-  ];
+        delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+      ];
 
   /// A list of this localizations delegate's supported locales.
   static const List<Locale> supportedLocales = <Locale>[
     Locale('de'),
-    Locale('en')
+    Locale('en'),
   ];
 
   /// The name of the application, shown as the window or browser tab title
@@ -2996,6 +2996,24 @@ abstract class AppLocalizations {
   /// **'Show on a map'**
   String get showOnMap;
 
+  /// The line naming the place an image was taken at (issue #234): place names from the most specific to the country, e.g. 'Karlsruhe Schloss · Innenstadt, Karlsruhe · Baden-Württemberg, Germany'.
+  ///
+  /// In en, this message translates to:
+  /// **'Place: {place}'**
+  String propertyPlace(String place);
+
+  /// Tooltip of the button under the place of a photo that unfolds its coordinates and the map link (issue #234).
+  ///
+  /// In en, this message translates to:
+  /// **'Show the coordinates'**
+  String get showCoordinates;
+
+  /// Tooltip of the button that folds the coordinates of a photo away again (issue #234).
+  ///
+  /// In en, this message translates to:
+  /// **'Hide the coordinates'**
+  String get hideCoordinates;
+
   /// The line naming who brought a photo into an album
   ///
   /// In en, this message translates to:
@@ -3121,7 +3139,11 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'File {current} of {count}: {received} of {total} downloaded'**
   String downloadProgressOf(
-      int current, String total, int count, String received);
+    int current,
+    String total,
+    int count,
+    String received,
+  );
 
   /// Entry of the album menu, for a visitor who may download but not edit, starting a mode in which photographs are selected to download some of them
   ///
@@ -4070,6 +4092,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Source code, documentation and bug reports:'**
   String get aboutSourceCode;
+
+  /// Line in the About dialog above the link to GeoNames (issue #234), the attribution its licence asks for. 'GeoNames' and 'Creative Commons Attribution 4.0' are proper names; keep them untranslated.
+  ///
+  /// In en, this message translates to:
+  /// **'Place names come from GeoNames, licensed under Creative Commons Attribution 4.0:'**
+  String get aboutGeoNames;
 
   /// The licence line of the About dialog (the legalese under the version). The licence name is a proper name; keep 'GNU Affero General Public License' untranslated.
   ///
@@ -5479,8 +5507,9 @@ AppLocalizations lookupAppLocalizations(Locale locale) {
   }
 
   throw FlutterError(
-      'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
-      'an issue with the localizations generation tool. Please file an issue '
-      'on GitHub with a reproducible sample app and the gen-l10n configuration '
-      'that was used.');
+    'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
+    'an issue with the localizations generation tool. Please file an issue '
+    'on GitHub with a reproducible sample app and the gen-l10n configuration '
+    'that was used.',
+  );
 }

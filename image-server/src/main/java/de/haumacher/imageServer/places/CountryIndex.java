@@ -198,6 +198,46 @@ public final class CountryIndex {
 		return _size;
 	}
 
+	/**
+	 * About how many bytes of heap this index holds, for the bound on the countries kept in memory
+	 * (see {@link Places#setBudget(long)}).
+	 *
+	 * <p>
+	 * The arrays as they are, and the maps and tuples of admin codes by a cost per entry: a map entry
+	 * with its boxed key and value about 100 bytes, a tuple of four short strings about 200. Checked
+	 * against the heap measured for France (14.7&nbsp;MB), Switzerland (1.4), the United States (45)
+	 * and China (36), see the report of issue #234: within a tenth.
+	 * </p>
+	 */
+	public long memory() {
+		long arrays = (long) _ids.length * 4 + (long) _lats.length * 4 + (long) _lons.length * 4 + _codes.length
+			+ (long) _populations.length * 4 + (long) _admins.length * 4 + (long) _nameStarts.length * 4
+			+ _names.length + (long) _populous.length * 4;
+		long maps = 100L * (_adminEntries.size() + _fallbacks.size()) + 200L * _adminPaths.length;
+		return arrays + maps + 1024;
+	}
+
+	/**
+	 * The GeoNames ids a tag of this country can carry: of every entry kept and of every division
+	 * named by the admin tables only; sorted, each once. What the alternate names of a country are
+	 * cut down to, see {@link PlaceNames}.
+	 */
+	public int[] keptIds() {
+		int[] result = Arrays.copyOf(_ids, _size + _fallbacks.size());
+		int n = _size;
+		for (Fallback fallback : _fallbacks.values()) {
+			result[n++] = fallback.id();
+		}
+		Arrays.sort(result);
+		int distinct = 0;
+		for (int i = 0; i < result.length; i++) {
+			if (distinct == 0 || result[distinct - 1] != result[i]) {
+				result[distinct++] = result[i];
+			}
+		}
+		return Arrays.copyOf(result, distinct);
+	}
+
 	/** The GeoNames id of an entry. */
 	public int id(int entry) {
 		return _ids[entry];

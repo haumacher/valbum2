@@ -256,6 +256,8 @@ public final class AlbumDate {
 		boolean changed = Contributors.clear(resource);
 		// Who is in a photo is answered from the album's cache on every read, see issue #124.
 		changed |= de.haumacher.imageServer.faces.FaceIndex.clear(resource);
+		// Where a photo was taken is answered from the gazetteer on every read, see issue #234.
+		changed |= de.haumacher.imageServer.places.PhotoPlaces.clear(resource);
 		if (!resource.getRights().isEmpty()) {
 			// What the caller may do here is answered on every read and is nobody's statement
 			// about the album; a stored copy would outlive the grant it came from, see issue #49.

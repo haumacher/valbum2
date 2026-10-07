@@ -216,6 +216,20 @@ public class ResourceCache {
 	}
 
 	/**
+	 * Gives the photographs of every album read from now on their places, see issue #234 and
+	 * {@link de.haumacher.imageServer.places.PhotoPlaces}; <code>null</code> (the default) for none.
+	 */
+	public void setPlaces(de.haumacher.imageServer.places.Places places) {
+		_loader.setPlaces(places);
+		_cache.invalidateAll();
+	}
+
+	/** The gazetteer the places come from, <code>null</code> for none. */
+	public de.haumacher.imageServer.places.Places places() {
+		return _loader.places();
+	}
+
+	/**
 	 * The zone a photograph of this space is dated in where it says neither its offset nor a GPS
 	 * time, see issue #183.
 	 */
@@ -358,6 +372,11 @@ public class ResourceCache {
 			// A folder nobody watches (the watch could not be registered, or was lost) and whose
 			// modification stamp moved: read again, see issue #235.
 			invalidate(_cache, folder);
+		} else if (_loader.placesOutdated(folder)) {
+			// A photograph of this album waits for its places, and the gazetteer may have more to
+			// say now (a country arrived, a download failed): read again, see issue #234. Only the
+			// album, not the listing above it: a listing shows no places.
+			_cache.invalidate(folder);
 		}
 		if (!pathInfo.toFile().exists() && Inboxes.isInbox(pathInfo.toFile())) {
 			// The inbox of the space before its first upload, see issue #226: an empty inbox,
@@ -439,6 +458,34 @@ public class ResourceCache {
 
 		/** The zone of the space, <code>null</code> for the server's; see issue #183. */
 		private final ZoneId _zone;
+
+		/** Where the places of a photograph come from, see issue #234; <code>null</code> for none. */
+		private volatile de.haumacher.imageServer.places.Places _places;
+
+		/**
+		 * The albums held whose photographs wait for their places, with the
+		 * {@link de.haumacher.imageServer.places.Places#epoch()} they were read at.
+		 */
+		private final Map<PathInfo, Long> _placesPending = new java.util.concurrent.ConcurrentHashMap<>();
+
+		void setPlaces(de.haumacher.imageServer.places.Places places) {
+			_places = places;
+			_placesPending.clear();
+		}
+
+		de.haumacher.imageServer.places.Places places() {
+			return _places;
+		}
+
+		/**
+		 * Whether the given album was read while some of its photographs waited for their places,
+		 * and the gazetteer changed since.
+		 */
+		boolean placesOutdated(PathInfo path) {
+			Long epoch = _placesPending.get(path);
+			de.haumacher.imageServer.places.Places places = _places;
+			return epoch != null && places != null && places.epoch() != epoch.longValue();
+		}
 
 		/**
 		 * Creates a {@link ResourceCache.Loader}.
@@ -529,6 +576,7 @@ public class ResourceCache {
 		 * and stays a while when it was dropped for a change, see {@link #_orphans} and issue #235.
 		 */
 		synchronized void removed(PathInfo path, boolean evicted) {
+			_placesPending.remove(path);
 			WatchKey key = _byPath.get(path);
 			if (!evicted && key != null && key.isValid()) {
 				_orphans.add(path);
@@ -703,6 +751,18 @@ public class ResourceCache {
 
 				// Who uploaded which photo, from the hash sidecar beside them, see issue #53.
 				Contributors.derive(album, dir);
+
+				// Where each photo was taken, from the gazetteer, see issue #234. The epoch is taken
+				// before the lookups, so that a file arriving during them reads the album again.
+				de.haumacher.imageServer.places.Places places = _places;
+				if (places != null) {
+					long epoch = places.epoch();
+					if (de.haumacher.imageServer.places.PhotoPlaces.derive(album, places)) {
+						_placesPending.put(path, Long.valueOf(epoch));
+					} else {
+						_placesPending.remove(path);
+					}
+				}
 
 				if (images.length > 0) {
 					// A folder that was copied in by hand is hashed when it is first looked at, see

@@ -38,7 +38,8 @@ import java.util.logging.Logger;
  * Only public files of <code>https://download.geonames.org/export/dump/</code>, by their names:
  * <code>countryInfo.txt</code>, <code>admin1CodesASCII.txt</code>, <code>admin2Codes.txt</code>,
  * <code>shapes_simplified_low.json.zip</code>, and <code>&lt;CC&gt;.zip</code> for each country a
- * position was looked up in. A request carries the name of the file and nothing else: no position
+ * position was looked up in, and <code>alternatenames/&lt;CC&gt;.zip</code> for each country a place
+ * name was asked for in another language. A request carries the name of the file and nothing else: no position
  * ever leaves the server. The files go into this directory, never into a photo folder.
  * </p>
  *
@@ -99,6 +100,14 @@ public final class GeoNamesStore implements Closeable {
 	/** The file of a country. */
 	public static String countryFile(String iso) {
 		return iso + ".zip";
+	}
+
+	/** The folder of the alternate names, below the directory as below {@link #GEONAMES}. */
+	public static final String ALTERNATE_NAMES = "alternatenames";
+
+	/** The file of the alternate names of a country, see {@link PlaceNames}. */
+	public static String alternateNamesFile(String iso) {
+		return ALTERNATE_NAMES + "/" + iso + ".zip";
 	}
 
 	/**
@@ -229,6 +238,12 @@ public final class GeoNamesStore implements Closeable {
 
 	private Instant _lastStart = Instant.MIN;
 
+	/** Who is told when a download attempt ended, see {@link #addAttemptListener(Runnable)}. */
+	private final List<Runnable> _attemptListeners = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+	/** How many download attempts ended, see {@link #generation()}. */
+	private final java.util.concurrent.atomic.AtomicLong _generation = new java.util.concurrent.atomic.AtomicLong();
+
 	/**
 	 * A store that only reads the given directory and downloads nothing.
 	 */
@@ -278,6 +293,43 @@ public final class GeoNamesStore implements Closeable {
 	/** Sets who is told about a replaced file. */
 	public void setListener(Listener listener) {
 		_listener = listener;
+	}
+
+	/**
+	 * Tells the given listener whenever a download attempt ended, successfully or not, see issue
+	 * #234: what was waiting for a file asks again then. Called on the download thread, after the
+	 * new file is in place and the {@link Listener} has taken it in; a listener only takes note.
+	 */
+	public void addAttemptListener(Runnable listener) {
+		_attemptListeners.add(listener);
+	}
+
+	/** Stops telling the given listener, see {@link #addAttemptListener(Runnable)}. */
+	public void removeAttemptListener(Runnable listener) {
+		_attemptListeners.remove(listener);
+	}
+
+	/**
+	 * How many download attempts have ended: an answer given before one ended may be a different
+	 * one now.
+	 */
+	public long generation() {
+		return _generation.get();
+	}
+
+	/**
+	 * Whether the file of the given name is missing and on its way: queued or being downloaded.
+	 * <code>false</code> for a file that is there, one whose download failed and waits for its
+	 * back-off, and for every file of a store that downloads nothing.
+	 */
+	public boolean isLoading(String name) {
+		if (_settings == null || existing(name) != null) {
+			return false;
+		}
+		synchronized (_states) {
+			State state = _states.get(name);
+			return state == null ? false : state._queued || state._running;
+		}
 	}
 
 	/**
@@ -356,7 +408,7 @@ public final class GeoNamesStore implements Closeable {
 			names.addAll(_states.keySet());
 		}
 		try (var files = Files.list(_directory)) {
-			files.map(p -> p.getFileName().toString())
+			files.filter(p -> !Files.isDirectory(p)).map(p -> p.getFileName().toString())
 				.filter(n -> !n.endsWith(RECORD_SUFFIX) && !n.endsWith(PART_SUFFIX) && !n.endsWith(".tmp")
 					&& !n.endsWith(Places.CACHE_SUFFIX))
 				.forEach(names::add);
@@ -434,7 +486,16 @@ public final class GeoNamesStore implements Closeable {
 					LOG.warning("GeoNames: " + name + ": " + state._error + "; next attempt after "
 						+ state._nextAttempt);
 				}
+				// Before anyone waiting is woken: whoever wakes sees the attempt counted.
+				_generation.incrementAndGet();
 				_states.notifyAll();
+			}
+			for (Runnable listener : _attemptListeners) {
+				try {
+					listener.run();
+				} catch (RuntimeException ex) {
+					LOG.log(Level.WARNING, "GeoNames: a listener failed after the download of " + name + ".", ex);
+				}
 			}
 		}
 	}
@@ -450,8 +511,8 @@ public final class GeoNamesStore implements Closeable {
 
 	/** Downloads one file; answers the error, <code>null</code> for success. */
 	private String download(String name) throws IOException, InterruptedException {
-		Files.createDirectories(_directory);
 		Path target = _directory.resolve(name);
+		Files.createDirectories(target.getParent());
 		Path part = _directory.resolve(name + PART_SUFFIX);
 		URI uri = _settings.base.resolve(name);
 		Properties record = readRecord(name);

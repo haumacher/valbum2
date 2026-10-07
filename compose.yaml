@@ -44,3 +44,7 @@ services:
       # Connect provider: VALBUM_OIDC_<ID>_CLIENT_ID, _CLIENT_SECRET, _DISCOVERY_URL, _LABEL.
       # VALBUM_OIDC_GOOGLE_CLIENT_ID: 123456789-abc.apps.googleusercontent.com
       # VALBUM_OIDC_GOOGLE_CLIENT_SECRET: GOCSPX-...
+      # Place names (GeoNames, downloaded per country on demand) are kept in /photos/.geonames;
+      # another folder, and the megabytes of countries held in memory (an eighth of the heap):
+      # VALBUM_GEONAMES_DIR: /photos/.geonames
+      # VALBUM_GEONAMES_MEMORY: "64"

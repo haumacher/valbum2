@@ -60,6 +60,25 @@ Locale resolveAppLocale(
   return supported.first;
 }
 
+/// The locale the app speaks right now, for the layers that have no widget
+/// tree to ask: the very rule [WidgetsApp] resolves with, asked of
+/// [appPlatformDispatcher].
+Locale get appLocale => resolveAppLocale(
+      appPlatformDispatcher.locales,
+      AppLocalizations.supportedLocales,
+    );
+
+/// The `Accept-Language` every request of the app carries (issue #234): the
+/// language the app speaks, so that the server names places in it — "München"
+/// beside German menus, "Munich" beside English ones.
+///
+/// The app's language and not the device's list: what the screen shows and
+/// what the server answers must be one language. On the web this replaces the
+/// browser's own header, which the app's language was resolved from anyway;
+/// `Accept-Language` is a header a page may set, and a safelisted one, so no
+/// request needs a preflight for it.
+String get appAcceptLanguage => appLocale.toLanguageTag();
+
 /// The words of the app, for the layers that have no widget tree to ask.
 ///
 /// Everything a screen shows is read through `AppLocalizations.of(context)`;

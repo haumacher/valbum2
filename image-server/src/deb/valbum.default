@@ -100,6 +100,21 @@ VALBUM_SPACES=auto
 #   VALBUM_OIDC_CLUB_DISCOVERY_URL=https://login.example.org/.well-known/openid-configuration
 #   VALBUM_OIDC_CLUB_LABEL="Our club"
 
+# Place names: the position of a photo is shown as its place (town, region,
+# country), looked up in the GeoNames gazetteer (geonames.org, CC BY 4.0) on
+# this server - no position ever leaves it. The files of the countries your
+# photos lie in are downloaded on demand from download.geonames.org (some
+# megabytes each) into VALBUM_GEONAMES_DIR, by default the hidden folder
+# .geonames inside VALBUM_BASEPATH. A server without internet access takes the
+# files placed there by hand (countryInfo.txt, admin1CodesASCII.txt,
+# admin2Codes.txt, shapes_simplified_low.json.zip, <CC>.zip, and for the names
+# in the viewer's language alternatenames/<CC>.zip). The countries in
+# use are kept in memory, at most VALBUM_GEONAMES_MEMORY megabytes of them (an
+# eighth of the heap by default).
+#
+#   VALBUM_GEONAMES_DIR=/var/cache/valbum/geonames
+#   VALBUM_GEONAMES_MEMORY=64
+
 # Further server arguments, appended to the ones above. The most useful one is
 # a fixed sign-in code for the administrator of a space that nobody has signed
 # into yet; without it the server makes a fresh one at every start and prints it

@@ -160,6 +160,16 @@ public class SpaceServlet extends HttpServlet {
 		}
 	}
 
+	/**
+	 * Installs the one gazetteer of this server in every space, see issue #234: one instance, so
+	 * that a country is downloaded and held in memory once, whichever space's photos lie in it.
+	 */
+	public void setPlaces(de.haumacher.imageServer.places.Places places) {
+		for (ImageServlet servlet : _data.values()) {
+			servlet.setPlaces(places);
+		}
+	}
+
 	@Override
 	public void init(ServletConfig config) throws ServletException {
 		super.init(config);

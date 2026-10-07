@@ -595,6 +595,94 @@ message ImagePart extends AbstractImage {
 	 * </p>
 	 */
 	bool missing;
+
+	/**
+	 * The places this photograph was taken in, from the offline GeoNames gazetteer, see issue #234;
+	 * <code>null</code> where there is nothing to say.
+	 *
+	 * <p>
+	 * Derived on every read from the photograph's {@link #location} (the stored one where the
+	 * sidecar has it, else the one read from the file) and <b>never stored</b>: the server clears
+	 * this field before an <code>index.json</code> is written, exactly like {@link #faces}. Nothing
+	 * is ever retagged: a refreshed gazetteer simply answers differently on the next read.
+	 * </p>
+	 *
+	 * <p>
+	 * <code>null</code> for a photograph without a position, for one taken where no country is (the
+	 * open sea), and on a server without a gazetteer. One message rather than a list beside a
+	 * string, so that the cleared field is absent from the sidecar rather than written empty.
+	 * </p>
+	 */
+	PlaceInfo places;
+}
+
+/**
+ * The places of an {@link ImagePart}, or why there are none yet, see issue #234.
+ */
+message PlaceInfo {
+	/**
+	 * The GeoNames entries the position lies in or close to, from the largest ({@link PlaceKind#COUNTRY})
+	 * to the smallest; empty while {@link #pending} says why.
+	 */
+	repeated PlaceTag tags;
+
+	/**
+	 * Why there are no tags yet, a sentence the app shows as it stands ("Place names for China are
+	 * being loaded."); the empty string where {@link #tags} is the answer.
+	 */
+	string pending;
+}
+
+/**
+ * One GeoNames entry a photograph's position lies in or close to, see issue #234.
+ *
+ * <p>
+ * An entry and not a string: two places of one name are two ids, so that a filter can later ask
+ * for everything in one of them.
+ * </p>
+ */
+message PlaceTag {
+	/** The GeoNames id; for {@link PlaceKind#COUNTRY} the one <code>countryInfo.txt</code> names. */
+	int geonameId;
+
+	/** The GeoNames name (its main <code>name</code> column, mostly in Latin script). */
+	string name;
+
+	/** The level in the hierarchy. */
+	PlaceKind kind;
+
+	/** The GeoNames feature code, e.g. <code>PPLA2</code>, <code>PRK</code>, <code>PCL</code>. */
+	string featureCode;
+
+	/** The ISO code of the country the entry belongs to, e.g. <code>DE</code>. */
+	string country;
+}
+
+/** The level of a {@link PlaceTag}, from the largest to the smallest. */
+enum PlaceKind {
+	/** The country. */
+	COUNTRY;
+
+	/** The first administrative division: a German state, a US state. */
+	ADM1;
+
+	/** The second: a German Regierungsbezirk, a US county. */
+	ADM2;
+
+	/** The third: a German Kreis. */
+	ADM3;
+
+	/** The fourth: a German Gemeinde. */
+	ADM4;
+
+	/** The populated place: a city, town or village. */
+	PLACE;
+
+	/** The part of town. */
+	DISTRICT;
+
+	/** A named feature close by: a park, lake, mountain, castle, church. */
+	FEATURE;
 }
 
 /**

@@ -1308,6 +1308,23 @@ class ImagePart extends AbstractImage {
 	///  </p>
 	bool missing;
 
+	///  The places this photograph was taken in, from the offline GeoNames gazetteer, see issue #234;
+	///  <code>null</code> where there is nothing to say.
+	/// 
+	///  <p>
+	///  Derived on every read from the photograph's {@link #location} (the stored one where the
+	///  sidecar has it, else the one read from the file) and <b>never stored</b>: the server clears
+	///  this field before an <code>index.json</code> is written, exactly like {@link #faces}. Nothing
+	///  is ever retagged: a refreshed gazetteer simply answers differently on the next read.
+	///  </p>
+	/// 
+	///  <p>
+	///  <code>null</code> for a photograph without a position, for one taken where no country is (the
+	///  open sea), and on a server without a gazetteer. One message rather than a list beside a
+	///  string, so that the cleared field is absent from the sidecar rather than written empty.
+	///  </p>
+	PlaceInfo? places;
+
 	/// Creates a ImagePart.
 	ImagePart({
 			super.previous, 
@@ -1336,6 +1353,7 @@ class ImagePart extends AbstractImage {
 			this.labels = const [], 
 			this.ref, 
 			this.missing = false, 
+			this.places, 
 	});
 
 	/// Parses a ImagePart from a string source.
@@ -1463,6 +1481,10 @@ class ImagePart extends AbstractImage {
 				missing = json.expectBool();
 				break;
 			}
+			case "places": {
+				places = json.tryNull() ? null : PlaceInfo.read(json);
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -1551,11 +1573,234 @@ class ImagePart extends AbstractImage {
 
 		json.addKey("missing");
 		json.addBool(missing);
+
+		var _places = places;
+		if (_places != null) {
+			json.addKey("places");
+			_places.writeContent(json);
+		}
 	}
 
 	@override
 	R visitAbstractImage<R, A>(AbstractImageVisitor<R, A> v, A arg) => v.visitImagePart(this, arg);
 
+}
+
+///  The places of an {@link ImagePart}, or why there are none yet, see issue #234.
+class PlaceInfo extends _JsonObject {
+	///  The GeoNames entries the position lies in or close to, from the largest ({@link PlaceKind#COUNTRY})
+	///  to the smallest; empty while {@link #pending} says why.
+	List<PlaceTag> tags;
+
+	///  Why there are no tags yet, a sentence the app shows as it stands ("Place names for China are
+	///  being loaded."); the empty string where {@link #tags} is the answer.
+	String pending;
+
+	/// Creates a PlaceInfo.
+	PlaceInfo({
+			this.tags = const [], 
+			this.pending = "", 
+	});
+
+	/// Parses a PlaceInfo from a string source.
+	static PlaceInfo? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a PlaceInfo instance from the given reader.
+	static PlaceInfo read(JsonReader json) {
+		PlaceInfo result = PlaceInfo();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "PlaceInfo";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "tags": {
+				json.expectArray();
+				tags = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = PlaceTag.read(json);
+						if (value != null) {
+							tags.add(value);
+						}
+					}
+				}
+				break;
+			}
+			case "pending": {
+				pending = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("tags");
+		json.startArray();
+		for (var _element in tags) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+
+		json.addKey("pending");
+		json.addString(pending);
+	}
+
+}
+
+///  One GeoNames entry a photograph's position lies in or close to, see issue #234.
+/// 
+///  <p>
+///  An entry and not a string: two places of one name are two ids, so that a filter can later ask
+///  for everything in one of them.
+///  </p>
+class PlaceTag extends _JsonObject {
+	///  The GeoNames id; for {@link PlaceKind#COUNTRY} the one <code>countryInfo.txt</code> names.
+	int geonameId;
+
+	///  The GeoNames name (its main <code>name</code> column, mostly in Latin script).
+	String name;
+
+	///  The level in the hierarchy.
+	PlaceKind kind;
+
+	///  The GeoNames feature code, e.g. <code>PPLA2</code>, <code>PRK</code>, <code>PCL</code>.
+	String featureCode;
+
+	///  The ISO code of the country the entry belongs to, e.g. <code>DE</code>.
+	String country;
+
+	/// Creates a PlaceTag.
+	PlaceTag({
+			this.geonameId = 0, 
+			this.name = "", 
+			this.kind = PlaceKind.country, 
+			this.featureCode = "", 
+			this.country = "", 
+	});
+
+	/// Parses a PlaceTag from a string source.
+	static PlaceTag? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a PlaceTag instance from the given reader.
+	static PlaceTag read(JsonReader json) {
+		PlaceTag result = PlaceTag();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "PlaceTag";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "geonameId": {
+				geonameId = json.expectInt();
+				break;
+			}
+			case "name": {
+				name = json.expectString();
+				break;
+			}
+			case "kind": {
+				kind = readPlaceKind(json);
+				break;
+			}
+			case "featureCode": {
+				featureCode = json.expectString();
+				break;
+			}
+			case "country": {
+				country = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("geonameId");
+		json.addNumber(geonameId);
+
+		json.addKey("name");
+		json.addString(name);
+
+		json.addKey("kind");
+		writePlaceKind(json, kind);
+
+		json.addKey("featureCode");
+		json.addString(featureCode);
+
+		json.addKey("country");
+		json.addString(country);
+	}
+
+}
+
+///  The level of a {@link PlaceTag}, from the largest to the smallest.
+enum PlaceKind {
+	///  The country.
+	country,
+	///  The first administrative division: a German state, a US state.
+	adm1,
+	///  The second: a German Regierungsbezirk, a US county.
+	adm2,
+	///  The third: a German Kreis.
+	adm3,
+	///  The fourth: a German Gemeinde.
+	adm4,
+	///  The populated place: a city, town or village.
+	place,
+	///  The part of town.
+	district,
+	///  A named feature close by: a park, lake, mountain, castle, church.
+	feature,
+}
+
+/// Writes a value of PlaceKind to a JSON stream.
+void writePlaceKind(JsonSink json, PlaceKind value) {
+	switch (value) {
+		case PlaceKind.country: json.addString("COUNTRY"); break;
+		case PlaceKind.adm1: json.addString("ADM1"); break;
+		case PlaceKind.adm2: json.addString("ADM2"); break;
+		case PlaceKind.adm3: json.addString("ADM3"); break;
+		case PlaceKind.adm4: json.addString("ADM4"); break;
+		case PlaceKind.place: json.addString("PLACE"); break;
+		case PlaceKind.district: json.addString("DISTRICT"); break;
+		case PlaceKind.feature: json.addString("FEATURE"); break;
+		default: throw ("No such literal: " + value.name);
+	}
+}
+
+/// Reads a value of PlaceKind from a JSON stream.
+PlaceKind readPlaceKind(JsonReader json) {
+	switch (json.expectString()) {
+		case "COUNTRY": return PlaceKind.country;
+		case "ADM1": return PlaceKind.adm1;
+		case "ADM2": return PlaceKind.adm2;
+		case "ADM3": return PlaceKind.adm3;
+		case "ADM4": return PlaceKind.adm4;
+		case "PLACE": return PlaceKind.place;
+		case "DISTRICT": return PlaceKind.district;
+		case "FEATURE": return PlaceKind.feature;
+		default: return PlaceKind.country;
+	}
 }
 
 ///  Where a part of a collection points to, see {@link ImagePart#ref} and issue #221.

@@ -387,6 +387,7 @@ public class Main {
 		for (String line : environmentReport(_environment)) {
 			System.out.println(line);
 		}
+		System.out.println(placesReport(_environment, _basePath.toPath()));
 		System.out.println("Spaces: " + spaces.getMode().protocolName());
 		if (spaces.getMode() == SpaceMode.MULTI && spaces.getSpaces().isEmpty()) {
 			System.out.println("  (no folder below the base folder carries .valbum/space.json; "
@@ -419,6 +420,20 @@ public class Main {
 			}
 		}
 		server.join();
+	}
+
+	/** What a start-up says about the gazetteer of issue #234. */
+	static String placesReport(ServerEnvironment environment, Path basePath) {
+		Path dir = environment.geonamesDirectory(basePath);
+		if (dir == null) {
+			return "Place names: off";
+		}
+		long budget = environment.getGeonamesMemory() > 0 ? environment.getGeonamesMemory()
+			: de.haumacher.imageServer.places.Places.defaultBudget();
+		return "Place names: GeoNames (CC BY 4.0) in " + dir.toAbsolutePath() + " ("
+			+ ServerEnvironment.GEONAMES_DIR + "), countries downloaded on demand from "
+			+ de.haumacher.imageServer.places.GeoNamesStore.GEONAMES + ", at most " + budget / (1024 * 1024)
+			+ " MB of them in memory (" + ServerEnvironment.GEONAMES_MEMORY + ")";
 	}
 
 	/**
@@ -576,6 +591,9 @@ public class Main {
 		de.haumacher.imageServer.oidc.OidcLogins oidc = environment.oidcLogins();
 		// One relying party for the whole server: the host of the public address, see issue #204.
 		de.haumacher.imageServer.passkeys.Passkeys passkeys = environment.passkeys();
+		// One gazetteer for the whole server: a country is downloaded and held once, whichever
+		// space's photos lie in it, see issue #234.
+		de.haumacher.imageServer.places.Places places = environment.places(basePath.toPath());
 		final Server server = new Server();
 
 		HttpConfiguration config = new HttpConfiguration();
@@ -604,6 +622,7 @@ public class Main {
 			data.setEmailProofs(proofs);
 			data.setOidcLogins(oidc);
 			data.setPasskeys(passkeys);
+			data.setPlaces(places);
 			// Every photo of the space knows its hash from here on, see issue #118: one low
 			// priority thread that reads the library once and then keeps out of the way.
 			data.startIndexing();
@@ -616,6 +635,7 @@ public class Main {
 			// and the application is rebased onto "/<space>/" like a share session, see SpaceServlet.
 			app.setBaseSegments(spaces.segments());
 			SpaceServlet front = new SpaceServlet(spaces, app);
+			front.setPlaces(places);
 			// Each space indexes its own photos, and nobody else's, see issue #118.
 			front.startIndexing();
 			front.setEmailProofs(proofs);

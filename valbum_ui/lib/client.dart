@@ -3192,6 +3192,9 @@ class _UploadCancelled implements Exception {
   String toString() => uploadCancelledMessage(platformMessages);
 }
 
+/// The header a request names the app's language in, see [appAcceptLanguage].
+const String acceptLanguageHeader = "Accept-Language";
+
 /// The one place every request of a [VAlbumClient] passes through.
 ///
 /// `http.Client.get`, `post`, `put` and the streamed upload all end in
@@ -3225,6 +3228,9 @@ class _ObservedTransport extends http.BaseClient {
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    // Every request says which language the app speaks, so that the server
+    // names places in it (issue #234); a caller's own header wins.
+    request.headers.putIfAbsent(acceptLanguageHeader, () => appAcceptLanguage);
     var bearer = request.headers.containsKey("Authorization");
     var method = request.method;
     var url = request.url.toString();

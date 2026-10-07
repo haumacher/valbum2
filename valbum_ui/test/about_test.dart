@@ -62,6 +62,10 @@ void expectAboutDialog() {
   expect(find.text(githubUrl), findsOneWidget);
   // The licence, which the repository's LICENSE states.
   expect(find.text(testL10n.aboutLicense), findsOneWidget);
+  // The credit the place names' licence asks for (CC BY 4.0, issue #234).
+  expect(find.text(testL10n.aboutGeoNames), findsOneWidget);
+  expect(find.byKey(const Key("about-geonames")), findsOneWidget);
+  expect(find.text(geoNamesUrl), findsOneWidget);
 }
 
 void main() {
@@ -178,6 +182,17 @@ void main() {
       expect(launched, [Uri.parse("https://github.com/haumacher/valbum2")]);
     });
 
+    testWidgets('opens GeoNames, where the place names come from',
+        (tester) async {
+      var launched = recordLaunches();
+      await pumpDialog(tester);
+      expect(find.text(testL10n.aboutGeoNames), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const Key("about-geonames")));
+      await tester.tap(find.byKey(const Key("about-geonames")));
+      await tester.pumpAndSettle();
+      expect(launched, [Uri.parse("https://www.geonames.org/")]);
+    });
+
     testWidgets('shows no version where the build was given none',
         (tester) async {
       withVersion("");
@@ -195,6 +210,8 @@ void main() {
       expect(find.text(de.aboutSourceCode), findsOneWidget);
       expect(find.text(de.aboutVersion("2.10.0")), findsOneWidget);
       expect(find.text(de.aboutLicense), findsOneWidget);
+      expect(find.text(de.aboutGeoNames), findsOneWidget);
+      expect(de.aboutGeoNames, isNot(testL10n.aboutGeoNames));
       expect(de.aboutMenuEntry, isNot(testL10n.aboutMenuEntry));
     });
   });
