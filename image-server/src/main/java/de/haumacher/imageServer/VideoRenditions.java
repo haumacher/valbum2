@@ -122,7 +122,14 @@ public class VideoRenditions {
 		/**
 		 * This server cannot make renditions at all, see {@link VideoRenditions#unavailability()}.
 		 */
-		UNAVAILABLE
+		UNAVAILABLE,
+
+		/**
+		 * A transcode of the background was put aside for a request, see
+		 * {@link VideoRenditions#make(File, Kind)}: nothing of it is kept, and it is made again
+		 * later.
+		 */
+		DEFERRED
 	}
 
 	/** The answer of {@link VideoRenditions#lookup(File, Kind)}. */
@@ -225,27 +232,190 @@ public class VideoRenditions {
 	 * Whether the rendition is there and still describes the original.
 	 *
 	 * <p>
-	 * The same rule the poster frame follows, see {@link PreviewCache#LAST_UPDATE}.
+	 * The very rule of the poster frame, see {@link PreviewCache#upToDate(File, File)} and issue
+	 * #235: fresh exactly while the original has the size and the modification stamp recorded
+	 * beside the rendition when it was made, so that a rendition made of a half-copied file is made
+	 * again after <code>cp -p</code> restored the original's older stamp (issue #236). A rendition
+	 * made before records were kept is judged by the old rule (the original not newer than it), and
+	 * nothing is transcoded again for an upgrade.
 	 * </p>
 	 */
-	private static boolean upToDate(File video, File rendition) {
-		if (!rendition.exists()) {
-			return false;
-		}
-		long renditionTime = rendition.lastModified();
-		return video.lastModified() <= renditionTime && renditionTime >= PreviewCache.LAST_UPDATE;
+	static boolean upToDate(File video, File rendition) {
+		return PreviewCache.upToDate(video, rendition);
 	}
 
-	private void queue(File file, File rendition, Kind kind, String key) {
+	/**
+	 * Makes the rendition of the given kind for the given video now, in the calling thread: the
+	 * background work of issue #236.
+	 *
+	 * <h3>Requests first</h3>
+	 *
+	 * <p>
+	 * There is one transcode at a time, and a request for a rendition always goes first. A
+	 * background transcode starts only while no request's transcode is queued or running, and a
+	 * request whose rendition is not there yet <em>preempts</em> the background transcode that is
+	 * running: its FFmpeg is killed, its temporary output deleted (nothing half-made is ever taken for
+	 * a rendition), and this method answers {@link State#DEFERRED} at once, so that the caller puts the
+	 * unit back and makes it again, from the start, later. Where the request asks for the very
+	 * rendition the background is making, nothing is killed: the request waits for it, and it is
+	 * never preempted any more. A request's transcode is preempted by nothing: a further request
+	 * queues behind it, as it always did.
+	 * </p>
+	 *
+	 * <p>
+	 * As long as requests for renditions keep coming, a background transcode is put aside again and
+	 * again: it waits until they stop, exactly as the photographs of the background wait for requests.
+	 * </p>
+	 *
+	 * @return {@link State#READY}, or why there is none: {@link State#FAILED} (remembered, as a
+	 *         request's failure is), {@link State#UNAVAILABLE}, {@link State#DEFERRED} (a request
+	 *         came first), or {@link State#PENDING} when the server stops.
+	 */
+	public Rendition make(File file, Kind kind) throws InterruptedException {
+		File rendition = file(file, kind);
+		if (upToDate(file, rendition)) {
+			return new Rendition(State.READY, rendition);
+		}
+		String unavailable = unavailability();
+		if (unavailable != null) {
+			return new Rendition(State.UNAVAILABLE, rendition, unavailable);
+		}
+		String key = rendition.getAbsolutePath();
+		String failure = _failed.get(key);
+		if (failure != null) {
+			return new Rendition(State.FAILED, rendition, failure);
+		}
+		BackgroundJob mine;
+		synchronized (_slot) {
+			if (_stopped) {
+				return new Rendition(State.PENDING, rendition);
+			}
+			if (_busy || _requests > 0) {
+				// A request's transcode is queued or running: it goes first, and this comes back.
+				return new Rendition(State.DEFERRED, rendition);
+			}
+			_busy = true;
+			mine = new BackgroundJob(key);
+			_background = mine;
+		}
+		try {
+			transcode(file, rendition, kind, mine);
+			return upToDate(file, rendition) ? new Rendition(State.READY, rendition)
+				: new Rendition(State.PENDING, rendition);
+		} catch (Throwable ex) {
+			if (mine._preempted) {
+				LOG.info("Put the background " + kind.parameter() + " rendition of '" + file.getName()
+					+ "' aside for a request; it is made again later.");
+				return new Rendition(State.DEFERRED, rendition);
+			}
+			if (_stopped || Thread.currentThread().isInterrupted()) {
+				return new Rendition(State.PENDING, rendition);
+			}
+			LOG.log(Level.WARNING, "Cannot create the " + kind.parameter() + " rendition of '"
+				+ file.getName() + "': " + reason(ex), ex);
+			_failed.put(key, reason(ex));
+			return new Rendition(State.FAILED, rendition, reason(ex));
+		} finally {
+			synchronized (_slot) {
+				_background = null;
+				_busy = false;
+				_slot.notifyAll();
+			}
+		}
+	}
+
+	/** The background transcode holding the transcoder, see {@link #make(File, Kind)}. */
+	private static final class BackgroundJob {
+
+		final String _key;
+
+		/** Whether a request may not preempt it: it asked for this very rendition. */
+		boolean _promoted;
+
+		volatile boolean _preempted;
+
+		/** Its FFmpeg, <code>null</code> before it started; guarded by {@link VideoRenditions#_slot}. */
+		Process _process;
+
+		BackgroundJob(String key) {
+			_key = key;
+		}
+	}
+
+	/** Guards the one transcode at a time: {@link #_busy}, {@link #_requests}, {@link #_background}. */
+	private final Object _slot = new Object();
+
+	/** Whether a transcode holds the slot. */
+	private boolean _busy;
+
+	/** How many request transcodes are queued or running. */
+	private int _requests;
+
+	/** The background transcode holding the slot, <code>null</code> for none. */
+	private BackgroundJob _background;
+
+	/**
+	 * Takes the slot for a request's transcode of the given rendition, preempting a background
+	 * transcode of another one, waiting for one of the same, see {@link #make(File, Kind)}.
+	 */
+	private void acquireForRequest(String key) throws InterruptedException {
+		synchronized (_slot) {
+			while (_busy) {
+				BackgroundJob background = _background;
+				if (background != null) {
+					if (background._key.equals(key)) {
+						background._promoted = true;
+					} else if (!background._promoted && !background._preempted) {
+						background._preempted = true;
+						if (background._process != null) {
+							kill(background._process);
+						}
+					}
+				}
+				_slot.wait();
+			}
+			_busy = true;
+		}
+	}
+
+	/**
+	 * Kills the given transcode with whatever it started, so that nothing holds its output open and
+	 * the thread reading it is free at once.
+	 */
+	private static void kill(Process process) {
+		process.descendants().forEach(ProcessHandle::destroyForcibly);
+		process.destroyForcibly();
+	}
+
+	private void releaseForRequest() {
+		synchronized (_slot) {
+			_busy = false;
+			_requests--;
+			_slot.notifyAll();
+		}
+	}
+
+	/** Queues the transcode unless it is queued; the task in flight, <code>null</code> when stopping. */
+	private Future<?> queue(File file, File rendition, Kind kind, String key) {
 		if (_stopped) {
-			return;
+			return null;
 		}
 		// One queued transcode per rendition, however many requests ask for it.
-		_inFlight.computeIfAbsent(key, ignored -> {
+		return _inFlight.computeIfAbsent(key, ignored -> {
+			synchronized (_slot) {
+				// Counted from the moment it is queued: no background transcode starts meanwhile.
+				_requests++;
+			}
 			try {
 				return _transcoder.submit(() -> {
+					boolean acquired = false;
 					try {
-						transcode(file, rendition, kind);
+						acquireForRequest(key);
+						acquired = true;
+						transcode(file, rendition, kind, null);
+					} catch (InterruptedException ex) {
+						// The server is stopping; the next start makes the rendition.
+						Thread.currentThread().interrupt();
 					} catch (Throwable ex) {
 						// Every Throwable, an Error included: a native library that does not load
 						// throws an UnsatisfiedLinkError, and an uncaught one would leave the
@@ -255,11 +425,22 @@ public class VideoRenditions {
 							+ file.getName() + "': " + reason(ex), ex);
 						_failed.put(key, reason(ex));
 					} finally {
+						if (acquired) {
+							releaseForRequest();
+						} else {
+							synchronized (_slot) {
+								_requests--;
+								_slot.notifyAll();
+							}
+						}
 						_inFlight.remove(key);
 					}
 				});
 			} catch (java.util.concurrent.RejectedExecutionException ex) {
 				// The server is stopping; the next start will make the rendition.
+				synchronized (_slot) {
+					_requests--;
+				}
 				return null;
 			}
 		});
@@ -343,17 +524,20 @@ public class VideoRenditions {
 	 */
 	public void shutdown() {
 		_stopped = true;
+		synchronized (_slot) {
+			_slot.notifyAll();
+		}
 		_transcoder.shutdownNow();
 		Process running = _running;
 		if (running != null) {
-			running.destroyForcibly();
+			kill(running);
 		}
 	}
 
 	/**
 	 * Runs FFmpeg to produce the rendition, writing it to a temporary name first.
 	 */
-	private void transcode(File file, File rendition, Kind kind) throws IOException {
+	private void transcode(File file, File rendition, Kind kind, BackgroundJob background) throws IOException {
 		if (upToDate(file, rendition)) {
 			// Queued twice before the first one finished.
 			return;
@@ -363,14 +547,30 @@ public class VideoRenditions {
 			cacheDir.mkdirs();
 		}
 		File tmp = new File(cacheDir, rendition.getName() + PreviewCache.TMP_SUFFIX);
+		// The original as it is before it is read: if it changes while it is read (a copy still
+		// going on), the record no longer matches and the rendition is made again, see upToDate.
+		String source = PreviewCache.record(file);
+		File record = PreviewCache.recordOf(rendition);
 		try {
 			List<String> command = command(file, tmp, kind);
-			LOG.info("Transcoding the " + kind.parameter() + " rendition of '" + file.getName() + "'.");
-			run(command);
+			LOG.info("Transcoding the " + kind.parameter() + " rendition of '" + file.getName() + "'"
+				+ (background == null ? "." : " in the background."));
+			run(command, background);
+			if (background != null && background._preempted) {
+				// Killed for a request: whatever FFmpeg left is no rendition (deleted below).
+				throw new IOException("Put aside for a request.");
+			}
 			if (!tmp.exists() || tmp.length() == 0) {
 				throw new IOException("FFmpeg produced no output.");
 			}
+			// No moment with the new rendition and the old record: the old one goes first.
+			Files.deleteIfExists(record.toPath());
 			moveIntoPlace(tmp, rendition);
+			try {
+				Files.write(record.toPath(), source.getBytes(StandardCharsets.UTF_8));
+			} catch (IOException ex) {
+				LOG.log(Level.WARNING, "Cannot record the original of '" + rendition + "': " + ex.getMessage());
+			}
 			LOG.info("The " + kind.parameter() + " rendition of '" + file.getName() + "' is ready: "
 				+ rendition.length() + " bytes.");
 		} finally {
@@ -379,11 +579,20 @@ public class VideoRenditions {
 	}
 
 	/** Runs the given command, keeping the tail of its error output for the message. */
-	private void run(List<String> command) throws IOException {
+	private void run(List<String> command, BackgroundJob background) throws IOException {
 		ProcessBuilder builder = program(command);
 		builder.redirectErrorStream(true);
 		Process process = builder.start();
 		_running = process;
+		if (background != null) {
+			synchronized (_slot) {
+				background._process = process;
+				if (background._preempted) {
+					// Preempted while it was being started.
+					kill(process);
+				}
+			}
+		}
 		Deque<String> tail = new ArrayDeque<>();
 		try (BufferedReader reader =
 			new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
@@ -553,6 +762,10 @@ public class VideoRenditions {
 	 * </p>
 	 */
 	List<String> command(File file, File target, Kind kind) throws IOException {
+		Commands commands = _commands;
+		if (commands != null) {
+			return commands.command(file, target, kind);
+		}
 		List<String> command = new ArrayList<>();
 		command.add(executable());
 		command.add("-hide_banner");
@@ -606,6 +819,20 @@ public class VideoRenditions {
 		command.add(MP4);
 		command.add(target.getAbsolutePath());
 		return command;
+	}
+
+	/** Another program in place of FFmpeg, for the tests of the preemption; see {@link #setCommands}. */
+	interface Commands {
+
+		/** The command line writing the given rendition of the given video to the given file. */
+		List<String> command(File file, File target, Kind kind) throws IOException;
+	}
+
+	private volatile Commands _commands;
+
+	/** Runs the given program in place of FFmpeg, <code>null</code> for FFmpeg; tests only. */
+	void setCommands(Commands commands) {
+		_commands = commands;
 	}
 
 	/** The short side of the playback rendition, at most. */

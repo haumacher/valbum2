@@ -5478,6 +5478,120 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Setup code for an authenticator app, as a QR code'**
   String get totpQrSemantics;
+
+  /// Title of the admin's line in the server settings showing how far the server has got preparing previews, covers, faces, places and videos in the background (issue #236)
+  ///
+  /// In en, this message translates to:
+  /// **'Preparing the albums'**
+  String get catchUpHeading;
+
+  /// Line of the preparation progress while the server's first answer is outstanding (issue #236)
+  ///
+  /// In en, this message translates to:
+  /// **'Asking the server…'**
+  String get catchUpAsking;
+
+  /// Line of the preparation progress when the server could not be asked; the reason is the server's or the transport's own sentence (issue #236)
+  ///
+  /// In en, this message translates to:
+  /// **'The progress cannot be read: {reason}'**
+  String catchUpUnavailable(String reason);
+
+  /// The progress of the background preparation of the albums (issue #236)
+  ///
+  /// In en, this message translates to:
+  /// **'Albums prepared: {done} of {total}'**
+  String catchUpProgress(int done, int total);
+
+  /// The background preparation of the albums has nothing left to do (issue #236)
+  ///
+  /// In en, this message translates to:
+  /// **'{total, plural, =0{No albums to prepare} =1{The 1 album is prepared} other{All {total} albums are prepared}}'**
+  String catchUpComplete(int total);
+
+  /// Detail of the preparation progress: the server is idle (issue #236)
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing to do right now.'**
+  String get catchUpIdle;
+
+  /// Detail of the preparation progress: what the server is doing and in which folder (issue #236)
+  ///
+  /// In en, this message translates to:
+  /// **'Now: {step} in {folder}'**
+  String catchUpNow(String step, String folder);
+
+  /// Detail of the preparation progress: the background waits because requests are being served, which always go first (issue #236)
+  ///
+  /// In en, this message translates to:
+  /// **'Paused while photos are being shown to somebody.'**
+  String get catchUpYielding;
+
+  /// Detail of the preparation progress: how many videos still wait for their renditions (issue #236)
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{No video waiting} =1{1 video waiting} other{{count} videos waiting}}'**
+  String catchUpVideos(int count);
+
+  /// Detail of the preparation progress: no step failed (issue #236)
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing failed.'**
+  String get catchUpNoFailure;
+
+  /// Detail of the preparation progress: the last failure, verbatim as the server words it, and its folder (issue #236)
+  ///
+  /// In en, this message translates to:
+  /// **'Last failure in {folder}: {failure}'**
+  String catchUpFailure(String folder, String failure);
+
+  /// Name of the root folder of the space in the details of the preparation progress (issue #236)
+  ///
+  /// In en, this message translates to:
+  /// **'the top folder'**
+  String get catchUpRoot;
+
+  /// Name of a background step: computing the content hashes of the photos (issue #236)
+  ///
+  /// In en, this message translates to:
+  /// **'Fingerprints'**
+  String get catchUpStepHash;
+
+  /// Name of a background step: making the thumbnails of the photos (issue #236)
+  ///
+  /// In en, this message translates to:
+  /// **'Previews'**
+  String get catchUpStepPreviews;
+
+  /// Name of a background step: making the pictures of the album tiles (issue #236)
+  ///
+  /// In en, this message translates to:
+  /// **'Album covers'**
+  String get catchUpStepCover;
+
+  /// Name of a background step: looking for faces (issue #236)
+  ///
+  /// In en, this message translates to:
+  /// **'Faces'**
+  String get catchUpStepFaces;
+
+  /// Name of a background step: finding where the photos were taken (issue #236)
+  ///
+  /// In en, this message translates to:
+  /// **'Places'**
+  String get catchUpStepPlaces;
+
+  /// Name of a background step: making the playback renditions and teasers of videos (issue #236)
+  ///
+  /// In en, this message translates to:
+  /// **'Videos'**
+  String get catchUpStepVideos;
+
+  /// Name of a background step the app does not know (issue #236)
+  ///
+  /// In en, this message translates to:
+  /// **'Other work'**
+  String get catchUpStepOther;
 }
 
 class _AppLocalizationsDelegate

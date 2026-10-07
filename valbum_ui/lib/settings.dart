@@ -24,6 +24,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'caller.dart';
 import 'camera_roll_view.dart';
+import 'catch_up.dart';
 import 'client.dart';
 import 'device_code_payload.dart';
 import 'device_code_scanner.dart';
@@ -1398,7 +1399,21 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
       ..._devicesSection(),
       ..._inviteSection(l10n),
       ..._contactsSection(),
+      ..._catchUpSection(),
     ];
+  }
+
+  /// How far the server has got preparing the albums (issue #236): the
+  /// administrator's line, and nobody else's — the server refuses everybody
+  /// else, so the line is not even built for them.
+  List<Widget> _catchUpSection() {
+    var client = _managementClient();
+    if (!widget.settings.signedIn ||
+        client == null ||
+        identity?.role != roleAdmin) {
+      return const [];
+    }
+    return [CatchUpSection(client: client)];
   }
 
   /// A scanned payload names a server too: it goes into the field above

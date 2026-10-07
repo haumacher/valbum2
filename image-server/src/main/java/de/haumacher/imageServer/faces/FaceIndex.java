@@ -47,7 +47,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
@@ -86,12 +85,15 @@ import javax.imageio.ImageIO;
  * <h2>When it happens</h2>
  *
  * <p>
- * Never on the request path. One thread per space at {@link Thread#MIN_PRIORITY}, one photograph
- * at a time, like the transcoder of issue #74 and deliberately independent of it: work is queued
- * when an album is listed that is not fully indexed, and once at start-up over the whole space by
- * {@link #start()} — which only the wiring of a real server calls, never a test's constructor, the
- * rule of issue #118. A photograph the detector could not read is remembered for the lifetime of
- * the process, like a failed transcode, so that a broken file does not keep the machine busy.
+ * Never on the request path. The primary path is the background work of the space (issue #236):
+ * {@link #step()} is a step of its {@link de.haumacher.imageServer.pipeline.FolderPipeline}, behind
+ * hashing and the previews, run newest album first on the pipeline's thread, giving way to requests
+ * (see {@link de.haumacher.imageServer.pipeline.Background}). This index has no walk of its own any
+ * more. The fallback is an album listed before the pipeline reached it: it is queued
+ * ({@link #queue(File)}) on a thread of its own at {@link Thread#MIN_PRIORITY}, one photograph at a
+ * time. Both paths look at a folder under one lock per folder, so an album is never looked at twice
+ * at once. A photograph the detector could not read is remembered for the lifetime of the process,
+ * like a failed transcode, so that a broken file does not keep the machine busy.
  * </p>
  *
  * <h2>What is written</h2>
@@ -253,8 +255,6 @@ public class FaceIndex {
 
 	private ExecutorService _indexer;
 
-	private CountDownLatch _pass;
-
 	private volatile boolean _stopped;
 
 	/**
@@ -298,35 +298,54 @@ public class FaceIndex {
 		return _enabled ? FaceDetection.unavailability() : null;
 	}
 
-	// --- The background pass. ---
+	// --- The background work. ---
+
+	/** The name of {@link #step()} in the record of the pipeline. */
+	public static final String STEP = "faces";
+
+	/** What {@link #indexFolder(File, boolean)} came to. */
+	public enum Indexed {
+		/** Every photograph is looked at, or refused for good. */
+		COMPLETE,
+
+		/** Nothing found could be stored: the album's cache is not writable. */
+		UNWRITABLE,
+
+		/** Stopped half-way, the server is going down. */
+		INTERRUPTED
+	}
 
 	/**
-	 * Starts detecting in the background, see {@link FaceIndex}.
-	 *
-	 * <p>
-	 * Called once, by the wiring that starts a real server — never by a test that builds a servlet
-	 * over a fixture and asks it one question, the rule of issue #118.
-	 * </p>
+	 * The detection as a step of the space's background work, see issue #236: the primary path,
+	 * where {@link #queue(File)} is the fallback for an album opened before the step reached it.
 	 */
-	public synchronized void start() {
-		if (!isEnabled() || _indexer != null) {
-			return;
-		}
-		_indexer = executor();
-		_pass = new CountDownLatch(1);
-		CountDownLatch pass = _pass;
-		try {
-			_indexer.execute(() -> {
-				try {
-					indexNow();
-				} finally {
-					pass.countDown();
+	public de.haumacher.imageServer.pipeline.FolderPipeline.Step step() {
+		return new de.haumacher.imageServer.pipeline.FolderPipeline.Step() {
+			@Override
+			public String name() {
+				return STEP;
+			}
+
+			@Override
+			public de.haumacher.imageServer.pipeline.FolderPipeline.Outcome run(File folder) {
+				if (!isEnabled()) {
+					return de.haumacher.imageServer.pipeline.FolderPipeline.Outcome.DONE;
 				}
-			});
-		} catch (RejectedExecutionException ex) {
-			pass.countDown();
-		}
+				switch (indexFolder(folder, true)) {
+					case UNWRITABLE:
+						return de.haumacher.imageServer.pipeline.FolderPipeline.Outcome.UNWRITABLE;
+					case INTERRUPTED:
+						return de.haumacher.imageServer.pipeline.FolderPipeline.Outcome.WAITING;
+					case COMPLETE:
+					default:
+						return de.haumacher.imageServer.pipeline.FolderPipeline.Outcome.DONE;
+				}
+			}
+		};
 	}
+
+	/** One lock per album for looking at it, so that the step and the queue never look twice at once. */
+	private final ConcurrentHashMap<String, Object> _indexing = new ConcurrentHashMap<>();
 
 	private ExecutorService executor() {
 		return Executors.newSingleThreadExecutor(runnable -> {
@@ -335,15 +354,6 @@ public class FaceIndex {
 			thread.setPriority(Thread.MIN_PRIORITY);
 			return thread;
 		});
-	}
-
-	/** Waits for the pass started by {@link #start()}; for the tests. */
-	public boolean awaitPass(long timeoutMillis) throws InterruptedException {
-		CountDownLatch pass;
-		synchronized (this) {
-			pass = _pass;
-		}
-		return pass == null || pass.await(timeoutMillis, TimeUnit.MILLISECONDS);
 	}
 
 	/** Waits until every album queued so far has been looked at; for the tests. */
@@ -367,7 +377,14 @@ public class FaceIndex {
 		}
 	}
 
-	/** Walks the whole space in the calling thread; what {@link #start()} runs in the background. */
+	/**
+	 * Looks at every album of the space in the calling thread, as the queue would; for the tests.
+	 *
+	 * <p>
+	 * The server itself never walks the space for faces: that is the step of issue #236, see
+	 * {@link #step()}.
+	 * </p>
+	 */
 	public void indexNow() {
 		if (!isEnabled()) {
 			return;
@@ -424,18 +441,37 @@ public class FaceIndex {
 
 	/**
 	 * Detects in every photograph of the given album that nothing is known about yet, then groups
-	 * the album's faces.
+	 * the album's faces; what the queue does for an album that was opened.
 	 */
 	void indexFolder(File folder) {
+		indexFolder(folder, false);
+	}
+
+	/**
+	 * Detects in every photograph of the given album that nothing is known about yet, then groups
+	 * the album's faces.
+	 *
+	 * @param background
+	 *        Whether this is the background work of issue #236, which waits for requests before every
+	 *        photograph; the queue looks at an album somebody opened, and waits only for a background
+	 *        decode to end, see {@link de.haumacher.imageServer.pipeline.Background}.
+	 */
+	public Indexed indexFolder(File folder, boolean background) {
+		synchronized (_indexing.computeIfAbsent(folder.getAbsolutePath(), key -> new Object())) {
+			return indexLocked(folder, background);
+		}
+	}
+
+	private Indexed indexLocked(File folder, boolean background) {
 		File[] images = folder.listFiles(f -> f.isFile() && ResourceCache.isImage(f));
 		if (images == null || images.length == 0) {
-			return;
+			return Indexed.COMPLETE;
 		}
 		java.util.Arrays.sort(images, (left, right) -> left.getName().compareTo(right.getName()));
 
 		if (!writable(folder)) {
 			// Nothing found here could be stored: not looked at, and not queued again, see issue #235.
-			return;
+			return Indexed.UNWRITABLE;
 		}
 
 		// Hashed under the folder's lock: what the hash pass did already is taken over, see
@@ -447,7 +483,7 @@ public class FaceIndex {
 			hashes.flush();
 		} catch (IOException ex) {
 			LOG.log(Level.WARNING, "Cannot hash '" + folder.getAbsolutePath() + "': " + ex.getMessage(), ex);
-			return;
+			return Indexed.COMPLETE;
 		}
 
 		// The raw beside a JPEG of its name is that photograph, and the JPEG is looked at, see issue #191.
@@ -493,9 +529,22 @@ public class FaceIndex {
 			}
 			try {
 				// A face somebody pointed at is kept beside the new description, see issue #155.
-				describe(cache, hash, image, cache.facesOf(hash));
+				// Never two decodes of the background at once, and the background's after requests.
+				java.util.concurrent.Callable<Void> look = () -> {
+					describe(cache, hash, image, cache.facesOf(hash));
+					return null;
+				};
+				if (background) {
+					de.haumacher.imageServer.pipeline.Background.decode(look);
+				} else {
+					de.haumacher.imageServer.pipeline.Background.exclusive(look);
+				}
 				changed = true;
-			} catch (IOException | RuntimeException ex) {
+			} catch (InterruptedException ex) {
+				Thread.currentThread().interrupt();
+				complete = false;
+				break;
+			} catch (Exception ex) {
 				String reason = FaceDetection.reason(ex);
 				LOG.log(Level.WARNING,
 					"Cannot look for faces in '" + image.getAbsolutePath() + "': " + reason, ex);
@@ -539,6 +588,7 @@ public class FaceIndex {
 		// The one walk of issue #127 as well: whoever was confirmed in this album is now described
 		// by numbers this pass has just made sure are there.
 		_recognition.observe(folder);
+		return complete ? Indexed.COMPLETE : Indexed.INTERRUPTED;
 	}
 
 	/**

@@ -48,6 +48,7 @@ const List<String> convertedFiles = [
   "lib/background_workmanager.dart",
   "lib/browser_upload.dart",
   "lib/cache_refresh.dart",
+  "lib/catch_up.dart",
   "lib/caller.dart",
   "lib/camera_roll.dart",
   "lib/camera_roll_view.dart",

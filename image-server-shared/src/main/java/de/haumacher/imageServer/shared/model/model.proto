@@ -1826,6 +1826,73 @@ message IndexProgress {
 }
 
 /**
+ * How far the server has got bringing the albums of a space up to date in the background, see
+ * issue #236: <code>&lt;data&gt;/?type=catch-up</code>, answered to an administrator of the space
+ * only.
+ *
+ * <p>
+ * Read-only and derived from what the server is doing at the moment it is asked; nothing of it is
+ * stored. Counted since the server started: a restart walks the library again, quickly where
+ * everything is done already.
+ * </p>
+ */
+message CatchUpStatus {
+	/** How many albums had their photo steps run (previews, cover, faces, places). */
+	int albumsDone;
+
+	/** How many albums the background knows of: every folder holding photos or videos. */
+	int albumsTotal;
+
+	/** The step running now, {@link CatchUpStep#IDLE} while nothing runs. */
+	CatchUpStep step;
+
+	/** The folder the step runs on, relative to the root of the space; empty while idle. */
+	string folder;
+
+	/** How many videos still wait for their teaser or playback rendition. */
+	int videosRemaining;
+
+	/**
+	 * What failed last, as the server words it ("previews: IMG_1.jpg: &lt;reason&gt;"); empty while
+	 * nothing failed. A failure is retried when its folder changes, never in a loop.
+	 */
+	string failure;
+
+	/** Where {@link #failure} happened, relative to the root of the space. */
+	string failureFolder;
+
+	/** Whether the background waits because requests are being served (they always go first). */
+	bool yielding;
+}
+
+/** A step of the background work, see {@link CatchUpStatus#step}. */
+enum CatchUpStep {
+	/** Nothing runs; the first constant, and what a client that does not know a value reads. */
+	IDLE;
+
+	/** The content hashes of a folder's photos, see issue #235. */
+	HASH;
+
+	/** The previews of an album's photos, and the display renditions of HEIC and raw pictures. */
+	PREVIEWS;
+
+	/** The picture of an album's tile, and of the tiles of the folders above it. */
+	COVER;
+
+	/** Looking for faces, where the space has them on. */
+	FACES;
+
+	/** Where the photos were taken, see issue #234. */
+	PLACES;
+
+	/** The teaser or the playback rendition of a video. */
+	VIDEOS;
+
+	/** A step this description does not name. */
+	OTHER;
+}
+
+/**
  * The photographs of a space that lie in more than one album, see issue #220 and
  * <code>&lt;data&gt;/?type=duplicates</code>.
  *
