@@ -1,6 +1,5 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
-
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -1590,6 +1589,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get useNoFolderPicture => 'Use no folder picture';
 
   @override
+  String get addStarAction => 'Add star';
+
+  @override
+  String get removeStarAction => 'Remove star';
+
+  @override
+  String get starredBadge => 'Starred';
+
+  @override
   String get libraryEmptyNotice => 'There are no albums here yet.';
 
   @override
@@ -1890,11 +1898,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String downloadProgressOf(
-    int current,
-    String total,
-    int count,
-    String received,
-  ) {
+      int current, String total, int count, String received) {
     return 'File $current of $count: $received of $total downloaded';
   }
 

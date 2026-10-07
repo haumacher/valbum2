@@ -2594,6 +2594,21 @@
     "description": "Menu entry taking the picture of the folder away",
     "x-translated": "1d35064d"
   },
+  "addStarAction": "Add star",
+  "@addStarAction": {
+    "description": "Menu entry starring an album, collection or folder, so that its tile is shown four times as large in the folder above (issue #239)",
+    "x-translated": "45d792ac"
+  },
+  "removeStarAction": "Remove star",
+  "@removeStarAction": {
+    "description": "Menu entry taking the star of an album, collection or folder away again (issue #239)",
+    "x-translated": "26a31f2d"
+  },
+  "starredBadge": "Starred",
+  "@starredBadge": {
+    "description": "Tooltip of the small star on the tile of a starred album or folder (issue #239)",
+    "x-translated": "7fa6d3f4"
+  },
   "libraryEmptyNotice": "There are no albums here yet.",
   "@libraryEmptyNotice": {
     "description": "Said where a library holds nothing",

@@ -134,6 +134,8 @@ public class PrivacyFilter {
 			.setKind(album.getKind())
 			.setTitle(album.getTitle())
 			.setSubTitle(album.getSubTitle())
+			// Nor whether it stands out in its folder, see issue #239.
+			.setStarred(album.isStarred())
 			// Hiding an image does not change when the album happened.
 			.setDate(album.getDate())
 			.setEffectiveDate(album.getEffectiveDate());
@@ -399,6 +401,8 @@ public class PrivacyFilter {
 			// Which child this folder is shown by is the author's statement and rides along with
 			// every copy, or the app would read it back as "none", see issue #110.
 			.setIndex(listing.getIndex())
+			// So does its star, see issue #239.
+			.setStarred(listing.isStarred())
 			.setFolders(filtered);
 	}
 
@@ -483,6 +487,8 @@ public class PrivacyFilter {
 			.setImageCount(folder.getImageCount())
 			.setTitle(folder.getTitle())
 			.setSubTitle(folder.getSubTitle())
+			// A starred tile stays large whoever looks at it, see issue #239.
+			.setStarred(folder.isStarred())
 			// A shared tile stays a shared tile when its cover is hidden, see issue #50.
 			.setLink(folder.getLink())
 			// The listing keeps its order whoever is looking at it.

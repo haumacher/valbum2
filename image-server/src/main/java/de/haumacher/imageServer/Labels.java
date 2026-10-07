@@ -162,6 +162,7 @@ public final class Labels {
 			.setKind(album.getKind())
 			.setTitle(album.getTitle())
 			.setSubTitle(album.getSubTitle())
+			.setStarred(album.isStarred())
 			.setDate(album.getDate())
 			.setEffectiveDate(album.getEffectiveDate())
 			.setFacesPending(album.isFacesPending());

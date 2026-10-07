@@ -39,6 +39,9 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getLink() */
 	private static final String LINK__PROP = "link";
 
+	/** @see #isStarred() */
+	private static final String STARRED__PROP = "starred";
+
 	private String _name = "";
 
 	private String _title = "";
@@ -54,6 +57,8 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private de.haumacher.imageServer.shared.model.ThumbnailInfo _indexPicture = null;
 
 	private String _link = "";
+
+	private boolean _starred = false;
 
 	/**
 	 * Creates a {@link FolderInfo} instance.
@@ -310,6 +315,33 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 		_link = value;
 	}
 
+	/**
+	 * Whether this entry is starred, see issue #239: the app draws its tile 2&times;2.
+	 *
+	 * <p>
+	 * Read from the entry's own sidecar at listing time like its {@link #getTitle()}
+	 * ({@link AlbumInfo#isStarred()} for an album or a collection, {@link ListingInfo#isStarred()} for a
+	 * folder of folders), never stored in the listing's sidecar: the entries of a listing are
+	 * cleared before it is written. An entry without a sidecar is not starred.
+	 * </p>
+	 */
+	public final boolean isStarred() {
+		return _starred;
+	}
+
+	/**
+	 * @see #isStarred()
+	 */
+	public de.haumacher.imageServer.shared.model.FolderInfo setStarred(boolean value) {
+		internalSetStarred(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #isStarred()} without chain call utility. */
+	protected final void internalSetStarred(boolean value) {
+		_starred = value;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.FolderInfo readFolderInfo(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.FolderInfo result = new de.haumacher.imageServer.shared.model.FolderInfo();
@@ -343,6 +375,8 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 		}
 		out.name(LINK__PROP);
 		out.value(getLink());
+		out.name(STARRED__PROP);
+		out.value(isStarred());
 	}
 
 	@Override
@@ -356,6 +390,7 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 			case IMAGE_COUNT__PROP: setImageCount(in.nextInt()); break;
 			case INDEX_PICTURE__PROP: setIndexPicture(de.haumacher.imageServer.shared.model.ThumbnailInfo.readThumbnailInfo(in)); break;
 			case LINK__PROP: setLink(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case STARRED__PROP: setStarred(in.nextBoolean()); break;
 			default: super.readField(in, field);
 		}
 	}
