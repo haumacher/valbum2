@@ -12,7 +12,7 @@ and `CLAUDE.md` for the Flutter toolchain.
 
 - **JDK 21** — a [Java 21 JDK](https://adoptium.net/temurin/releases/?version=21).
   The modules compile with `--release 21`; the build enforces a JDK 21 or newer.
-- **Apache Maven 3.6.0 or newer** — see [maven.apache.org](https://maven.apache.org/).
+- **Apache Maven 3** (3.6.0 or newer, not Maven 4), or the included `./mvnw`, which fetches Maven 3.9.16 — see [maven.apache.org](https://maven.apache.org/).
   The build enforces this minimum version.
 - **Git** — to clone the repository.
 

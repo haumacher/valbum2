@@ -116,7 +116,10 @@
 						<configuration>
 							<rules>
 								<requireMavenVersion>
-									<version>3.6.0</version>
+									<!-- Not Maven 4: there -Djavacpp.platform no longer narrows the JavaCPP
+									     natives, and the platform JAR silently carries every platform (faq/maven-4.md). -->
+									<version>[3.6.0,4.0.0-alpha-1)</version>
+									<message>Build with Maven 3 (./mvnw): under Maven 4, -Djavacpp.platform no longer selects one platform's natives, see faq/maven-4.md.</message>
 								</requireMavenVersion>
 								<requireJavaVersion>
 									<version>21</version>

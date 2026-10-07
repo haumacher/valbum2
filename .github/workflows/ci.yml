@@ -62,7 +62,7 @@ jobs:
           java-version: '21'
           cache: maven
       - name: Spotless check
-        run: mvn -B -q spotless:check
+        run: ./mvnw -B -q spotless:check
       # The video renditions of issue #74 are made by the FFmpeg *program* the bundled
       # `org.bytedeco:ffmpeg` artifact ships, and loading it pulls in every native library of that
       # artifact. `libavdevice` links ALSA and X11/xcb, which a bare runner does not carry — the
@@ -80,7 +80,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends libasound2t64 \
             || sudo apt-get install -y --no-install-recommends libasound2
       - name: Build and test
-        run: mvn -B clean install
+        run: ./mvnw -B clean install
 
   # The container image of #174, amd64 only and never pushed: the platform JAR with the web app
   # bundled, as the release builds it (the health check asks the app base), the image's own
@@ -110,7 +110,7 @@ jobs:
           flutter pub get
           flutter build web --release
       - name: Build the platform JAR
-        run: mvn -B -Djavacpp.platform=linux-x86_64 -DskipTests package
+        run: ./mvnw -B -Djavacpp.platform=linux-x86_64 -DskipTests package
       - name: Hand it to the image
         run: |
           mkdir -p "$RUNNER_TEMP/jars"

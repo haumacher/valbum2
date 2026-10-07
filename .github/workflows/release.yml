@@ -145,7 +145,7 @@ jobs:
           name: web
           path: valbum_ui/build/web
       - name: Set the project version from the tag
-        run: mvn -B versions:set -DnewVersion=${{ needs.prepare.outputs.version }} -DgenerateBackupPoms=false
+        run: ./mvnw -B versions:set -DnewVersion=${{ needs.prepare.outputs.version }} -DgenerateBackupPoms=false
       # The tested leg needs what the CI workflow installs for the same reason: the bundled
       # FFmpeg's device library links xcb and ALSA, which a bare runner does not carry, and
       # `TestFfmpegProgram` runs the program so a missing library fails the build by name
@@ -161,7 +161,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends libasound2t64 \
             || sudo apt-get install -y --no-install-recommends libasound2
       - name: Build the Debian package
-        run: mvn -B -Djavacpp.platform=${{ matrix.platform }} ${{ matrix.test_flags }} clean install
+        run: ./mvnw -B -Djavacpp.platform=${{ matrix.platform }} ${{ matrix.test_flags }} clean install
       - name: Check the package
         run: |
           set -euo pipefail
