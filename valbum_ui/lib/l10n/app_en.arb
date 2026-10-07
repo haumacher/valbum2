@@ -5912,5 +5912,192 @@
   "@catchUpStepOther": {
     "description": "Name of a background step the app does not know (issue #236)",
     "x-translated": "ed54a9c"
+  },
+  "uploadTargetHeading": "Upload new photos to",
+  "@uploadTargetHeading": {
+    "description": "Heading of the settings section choosing where new photos of this device go (issue #240)",
+    "x-translated": "5b4e9b3b"
+  },
+  "uploadTargetExplanation": "New photos of this device go to the inbox of the space. For a while, say a holiday, they can go straight to an album instead. Only this device changes; other devices keep filling the inbox.",
+  "@uploadTargetExplanation": {
+    "description": "Explains the setting choosing where new photos go (camera-roll sync and uploads into the inbox), issue #240. Address the reader formally (German: 'Sie', never 'du').",
+    "x-translated": "f109e194"
+  },
+  "uploadTargetToInbox": "New photos go to the inbox.",
+  "@uploadTargetToInbox": {
+    "description": "Says that new photos of this device go to the inbox of the space (issue #240). Address the reader formally (German: 'Sie', never 'du').",
+    "x-translated": "432bebe2"
+  },
+  "uploadTargetLine": "New photos go to '{album}'.",
+  "@uploadTargetLine": {
+    "description": "Says that new photos of this device go to the named album, which has no end date (issue #240). Address the reader formally (German: 'Sie', never 'du').",
+    "placeholders": {
+      "album": {
+        "type": "String",
+        "example": "Mallorca 2026"
+      }
+    },
+    "x-translated": "84b1c969"
+  },
+  "uploadTargetLineUntil": "New photos go to '{album}' (until {date}).",
+  "@uploadTargetLineUntil": {
+    "description": "Says that new photos of this device go to the named album until the given day (issue #240). The date is formatted already, e.g. 'Sun, Oct 12'. Address the reader formally (German: 'Sie', never 'du').",
+    "placeholders": {
+      "album": {
+        "type": "String",
+        "example": "Mallorca 2026"
+      },
+      "date": {
+        "type": "String",
+        "example": "Sun, Oct 12"
+      }
+    },
+    "x-translated": "a7d799d3"
+  },
+  "uploadTargetChoose": "Choose album...",
+  "@uploadTargetChoose": {
+    "description": "Button opening the album picker for where new photos go (issue #240)",
+    "x-translated": "1a7c0106"
+  },
+  "uploadTargetPickerTitle": "Upload new photos to...",
+  "@uploadTargetPickerTitle": {
+    "description": "Title of the album picker choosing where new photos of this device go (issue #240)",
+    "x-translated": "31ac8377"
+  },
+  "uploadTargetPickHere": "Upload here",
+  "@uploadTargetPickHere": {
+    "description": "Confirm button of the album picker choosing where new photos go (issue #240)",
+    "x-translated": "c881f828"
+  },
+  "uploadTargetNoContribute": "You may not add photos to this album.",
+  "@uploadTargetNoContribute": {
+    "description": "Shown in the album picker on an album the user may not add photos to, which therefore cannot be chosen as the upload target (issue #240). Address the reader formally (German: 'Sie', never 'du').",
+    "x-translated": "c4b5f532"
+  },
+  "uploadTargetBackToInbox": "Back to inbox",
+  "@uploadTargetBackToInbox": {
+    "description": "Button sending new photos to the inbox again instead of the chosen album (issue #240)",
+    "x-translated": "e9e96d6c"
+  },
+  "uploadTargetChangeEnd": "Change end date",
+  "@uploadTargetChangeEnd": {
+    "description": "Button changing the day after which new photos go to the inbox again (issue #240)",
+    "x-translated": "f7fbe254"
+  },
+  "uploadTargetDialogTitle": "New photos go to '{album}'",
+  "@uploadTargetDialogTitle": {
+    "description": "Title of the dialog setting the end date of the chosen upload album (issue #240)",
+    "placeholders": {
+      "album": {
+        "type": "String",
+        "example": "Mallorca 2026"
+      }
+    },
+    "x-translated": "e2c71b"
+  },
+  "uploadTargetUntil": "Until {date}",
+  "@uploadTargetUntil": {
+    "description": "The end date of the chosen upload album; the date is formatted already, e.g. 'Sun, Oct 12' (issue #240)",
+    "placeholders": {
+      "date": {
+        "type": "String",
+        "example": "Sun, Oct 12"
+      }
+    },
+    "x-translated": "713f263e"
+  },
+  "uploadTargetNoEnd": "No end date",
+  "@uploadTargetNoEnd": {
+    "description": "Says that the chosen upload album has no end date, and is the button removing it (issue #240)",
+    "x-translated": "d7584d12"
+  },
+  "uploadTargetSetEnd": "Set an end date",
+  "@uploadTargetSetEnd": {
+    "description": "Button giving the chosen upload album an end date (issue #240)",
+    "x-translated": "644c4dd3"
+  },
+  "uploadTargetEndExplanation": "After the end date this device returns to the inbox by itself, so that a forgotten album does not swallow the next month's photos.",
+  "@uploadTargetEndExplanation": {
+    "description": "Explains the end date of the chosen upload album (issue #240). Address the reader formally (German: 'Sie', never 'du').",
+    "x-translated": "2a85f96b"
+  },
+  "uploadTargetSave": "Save",
+  "@uploadTargetSave": {
+    "description": "Button confirming the chosen upload album and its end date (issue #240)",
+    "x-translated": "f55495e0"
+  },
+  "uploadTargetWentTo": "The new photos went to '{album}'.",
+  "@uploadTargetWentTo": {
+    "description": "Said after an upload or a sync that sent the photos to the chosen album rather than to the inbox (issue #240)",
+    "placeholders": {
+      "album": {
+        "type": "String",
+        "example": "Mallorca 2026"
+      }
+    },
+    "x-translated": "c8993641"
+  },
+  "noticeUploadTargetExpired": "Uploading to '{album}' ended on {date}; new photos go to the inbox again.",
+  "@noticeUploadTargetExpired": {
+    "description": "Said once when the end date of the chosen upload album has passed (issue #240). The date is formatted already. Address the reader formally (German: 'Sie', never 'du').",
+    "placeholders": {
+      "album": {
+        "type": "String",
+        "example": "Mallorca 2026"
+      },
+      "date": {
+        "type": "String",
+        "example": "Sun, Oct 12"
+      }
+    },
+    "x-translated": "e29769c7"
+  },
+  "noticeUploadTargetGone": "The album '{album}' is no longer there; new photos go to the inbox.",
+  "@noticeUploadTargetGone": {
+    "description": "Said when the chosen upload album was deleted, or renamed or moved where it cannot be followed; the photos went to the inbox instead (issue #240). Address the reader formally (German: 'Sie', never 'du').",
+    "placeholders": {
+      "album": {
+        "type": "String",
+        "example": "Mallorca 2026"
+      }
+    },
+    "x-translated": "d2cc8661"
+  },
+  "noticeUploadTargetRefused": "You may no longer add photos to '{album}'; new photos go to the inbox.",
+  "@noticeUploadTargetRefused": {
+    "description": "Said when the user lost the right to add photos to the chosen upload album; the photos went to the inbox instead (issue #240). Address the reader formally (German: 'Sie', never 'du').",
+    "placeholders": {
+      "album": {
+        "type": "String",
+        "example": "Mallorca 2026"
+      }
+    },
+    "x-translated": "1f6cd554"
+  },
+  "noticeUploadTargetNotAlbum": "The album '{album}' takes no photos; new photos go to the inbox.",
+  "@noticeUploadTargetNotAlbum": {
+    "description": "Said when the chosen upload album is not an album any more (e.g. a collection); the photos went to the inbox instead (issue #240). Address the reader formally (German: 'Sie', never 'du').",
+    "placeholders": {
+      "album": {
+        "type": "String",
+        "example": "Mallorca 2026"
+      }
+    },
+    "x-translated": "3bf90233"
+  },
+  "noticeUploadTargetFollowed": "The album '{before}' is now '{album}'; new photos go there.",
+  "@noticeUploadTargetFollowed": {
+    "description": "Said when the chosen upload album was renamed or moved and the app followed it (issue #240). Address the reader formally (German: 'Sie', never 'du').",
+    "placeholders": {
+      "before": {
+        "type": "String",
+        "example": "Mallorca 2026"
+      },
+      "album": {
+        "type": "String",
+        "example": "2026-10-05 Mallorca"
+      }
+    },
+    "x-translated": "b4f8b88"
   }
 }

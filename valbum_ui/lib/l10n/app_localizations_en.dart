@@ -3578,4 +3578,96 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get catchUpStepOther => 'Other work';
+
+  @override
+  String get uploadTargetHeading => 'Upload new photos to';
+
+  @override
+  String get uploadTargetExplanation =>
+      'New photos of this device go to the inbox of the space. For a while, say a holiday, they can go straight to an album instead. Only this device changes; other devices keep filling the inbox.';
+
+  @override
+  String get uploadTargetToInbox => 'New photos go to the inbox.';
+
+  @override
+  String uploadTargetLine(String album) {
+    return 'New photos go to \'$album\'.';
+  }
+
+  @override
+  String uploadTargetLineUntil(String album, String date) {
+    return 'New photos go to \'$album\' (until $date).';
+  }
+
+  @override
+  String get uploadTargetChoose => 'Choose album...';
+
+  @override
+  String get uploadTargetPickerTitle => 'Upload new photos to...';
+
+  @override
+  String get uploadTargetPickHere => 'Upload here';
+
+  @override
+  String get uploadTargetNoContribute =>
+      'You may not add photos to this album.';
+
+  @override
+  String get uploadTargetBackToInbox => 'Back to inbox';
+
+  @override
+  String get uploadTargetChangeEnd => 'Change end date';
+
+  @override
+  String uploadTargetDialogTitle(String album) {
+    return 'New photos go to \'$album\'';
+  }
+
+  @override
+  String uploadTargetUntil(String date) {
+    return 'Until $date';
+  }
+
+  @override
+  String get uploadTargetNoEnd => 'No end date';
+
+  @override
+  String get uploadTargetSetEnd => 'Set an end date';
+
+  @override
+  String get uploadTargetEndExplanation =>
+      'After the end date this device returns to the inbox by itself, so that a forgotten album does not swallow the next month\'s photos.';
+
+  @override
+  String get uploadTargetSave => 'Save';
+
+  @override
+  String uploadTargetWentTo(String album) {
+    return 'The new photos went to \'$album\'.';
+  }
+
+  @override
+  String noticeUploadTargetExpired(String album, String date) {
+    return 'Uploading to \'$album\' ended on $date; new photos go to the inbox again.';
+  }
+
+  @override
+  String noticeUploadTargetGone(String album) {
+    return 'The album \'$album\' is no longer there; new photos go to the inbox.';
+  }
+
+  @override
+  String noticeUploadTargetRefused(String album) {
+    return 'You may no longer add photos to \'$album\'; new photos go to the inbox.';
+  }
+
+  @override
+  String noticeUploadTargetNotAlbum(String album) {
+    return 'The album \'$album\' takes no photos; new photos go to the inbox.';
+  }
+
+  @override
+  String noticeUploadTargetFollowed(String before, String album) {
+    return 'The album \'$before\' is now \'$album\'; new photos go there.';
+  }
 }

@@ -20,6 +20,7 @@
 library;
 
 import 'package:flutter/foundation.dart';
+import 'package:intl/intl.dart';
 
 import 'l10n/app_localizations.dart';
 
@@ -197,6 +198,74 @@ class NoWifiOther extends AppNotice {
   const NoWifiOther();
 }
 
+/// The end date of the album new photos went to has passed, and they go to
+/// the inbox again (issue #240).
+class UploadTargetExpired extends AppNotice {
+  /// The title of the album, as it was chosen.
+  final String album;
+
+  /// The last day photos went there.
+  final DateTime until;
+
+  const UploadTargetExpired(this.album, this.until);
+
+  @override
+  List<Object?> get _values => [album, until];
+}
+
+/// The album new photos went to is gone — deleted, or renamed or moved where
+/// it cannot be followed — and they go to the inbox again (issue #240).
+class UploadTargetGone extends AppNotice {
+  final String album;
+
+  const UploadTargetGone(this.album);
+
+  @override
+  List<Object?> get _values => [album];
+}
+
+/// This device may no longer add photos to the album new photos went to, and
+/// they go to the inbox again (issue #240).
+class UploadTargetRefused extends AppNotice {
+  final String album;
+
+  const UploadTargetRefused(this.album);
+
+  @override
+  List<Object?> get _values => [album];
+}
+
+/// The album new photos went to takes no photos any more (it is no album),
+/// and they go to the inbox again (issue #240).
+class UploadTargetNotAlbum extends AppNotice {
+  final String album;
+
+  const UploadTargetNotAlbum(this.album);
+
+  @override
+  List<Object?> get _values => [album];
+}
+
+/// The album new photos go to was renamed or moved, and they follow it there
+/// (issue #240).
+class UploadTargetFollowed extends AppNotice {
+  /// The name it had.
+  final String before;
+
+  /// The name it has now.
+  final String album;
+
+  const UploadTargetFollowed(this.before, this.album);
+
+  @override
+  List<Object?> get _values => [before, album];
+}
+
+/// A day as an upload target's end date is written, in the locale's own form
+/// ("Sun, Oct 12", "So., 12. Okt."), see issue #240.
+String uploadTargetDay(DateTime day, AppLocalizations l10n) =>
+    DateFormat.MMMEd(l10n.localeName).format(day);
+
 /// The sentence [notice] reads in the language of [l10n].
 ///
 /// The one place a notice becomes words: every view that shows one asks here,
@@ -230,4 +299,13 @@ String noticeText(AppNotice notice, AppLocalizations l10n) => switch (notice) {
       NoNetworkForSync() => l10n.noticeNoNetwork,
       NoWifiMobile() => l10n.noticeNoWifiMobile,
       NoWifiOther() => l10n.noticeNoWifiOther,
+      UploadTargetExpired(album: var album, until: var until) =>
+        l10n.noticeUploadTargetExpired(album, uploadTargetDay(until, l10n)),
+      UploadTargetGone(album: var album) => l10n.noticeUploadTargetGone(album),
+      UploadTargetRefused(album: var album) =>
+        l10n.noticeUploadTargetRefused(album),
+      UploadTargetNotAlbum(album: var album) =>
+        l10n.noticeUploadTargetNotAlbum(album),
+      UploadTargetFollowed(before: var before, album: var album) =>
+        l10n.noticeUploadTargetFollowed(before, album),
     };
