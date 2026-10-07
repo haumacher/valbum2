@@ -21,8 +21,10 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -45,28 +47,40 @@ import java.util.TreeMap;
  *
  * <ol>
  * <li>the library file of the same name is looked up below every space; a name the library holds
- * twice or not at all is reported and skipped (the author's assumption is that names are unique,
- * and it is checked, not trusted);</li>
+ * twice is reported and skipped (the author's assumption is that names are unique, and it is
+ * checked, not trusted);</li>
+ * <li>a file whose name the library does not hold is looked for by its content, because the phone
+ * may have uploaded it under another name (<code>1000020572.jpg</code> for
+ * <code>IMG_20260930_122228.jpg</code>): the library files of the same recording time and size (of
+ * a video: the same duration and size) are its candidates, see {@link RecordingIndex}, an index
+ * built for the run in memory and thrown away with it; the one candidate that is the same recording
+ * is replaced <em>under the library's name</em>, so that the album's sidecar, the ratings, labels,
+ * faces and collections keep pointing at it; two library files of the same recording are reported
+ * and skipped, and so is a library file this run already replaced by a file of its own name;</li>
  * <li>the two must be the same recording, see {@link SameRecording}: the same JPEG scan data,
  * dimensions and recording time, or the same media data of a video; anything else is skipped with
  * the reason;</li>
  * <li>the redacted copy is <em>renamed</em> into
- * <code>&lt;space&gt;/.valbum/replaced/&lt;yyyyMMdd-HHmmss&gt;/&lt;album path&gt;/&lt;name&gt;</code>
+ * <code>&lt;space&gt;/.valbum/replaced/&lt;yyyyMMdd-HHmmss&gt;/&lt;album path&gt;/&lt;library name&gt;</code>
  * &mdash; never deleted &mdash; and the original moved into its place: a rename where the incoming
  * folder lies on the same file system, else a copy whose SHA-256 is checked before the incoming
  * file (and only the incoming file) is deleted;</li>
  * <li>the album's {@value HashCache#FILE_NAME} entry is rewritten with the new hash, the
  * attribution of issue #53 kept; the running server's hash index of issue #118 would pick the
  * folder up by the sidecar's stamp, and the next start reads it anyway;</li>
+ * <li>every reference a collection of issue #221 holds to a redacted copy is moved over to the
+ * original's hash and path, see {@link CollectionRewrite}; a dry run counts them;</li>
+ * <li>the faces found in a redacted copy are handed over to the original, see {@link FaceMove};</li>
  * <li>once every file is in place, every touched album is re-read by the {@link Reanalysis} of
  * issue #161, which fills the position and the camera a part lacks from the stored sidecar and
  * never touches a stored date, rating, orientation, comment or tag.</li>
  * </ol>
  *
  * <p>
- * Faces need nothing: <code>faces.json</code> and the crops are keyed by the content hash, so the
- * photograph is simply described again, and the stored tags live in <code>index.json</code> by
- * their box.
+ * The stored face tags live in <code>index.json</code> by their box and need nothing; the
+ * detections of <code>faces.json</code> and the crops are keyed by the content hash and are moved
+ * to the original's, see {@link FaceMove}, so that a face marked by hand (issue #155) keeps feeding
+ * the recognition.
  * </p>
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
@@ -121,11 +135,6 @@ public final class ReplaceOriginals {
 		public int getSkipped() {
 			return _skipped;
 		}
-
-		void skip(String name, String reason) {
-			_skipped++;
-			_lines.add("skipped " + name + ": " + reason);
-		}
 	}
 
 	/** One space, by its root folder. */
@@ -157,6 +166,17 @@ public final class ReplaceOriginals {
 
 	static Report run(Path basePath, Path incoming, SpaceMode forced, boolean dryRun, LocalDateTime now)
 			throws Refused, IOException {
+		return run(basePath, incoming, forced, dryRun, now, new RecordingIndex.Reads());
+	}
+
+	/**
+	 * The run, counting what reading the library for the content match costs.
+	 *
+	 * @param reads
+	 *        Where the reads of the library are counted, see {@link RecordingIndex.Reads}.
+	 */
+	static Report run(Path basePath, Path incoming, SpaceMode forced, boolean dryRun, LocalDateTime now,
+			RecordingIndex.Reads reads) throws Refused, IOException {
 		basePath = basePath.toAbsolutePath().normalize();
 		if (incoming == null || !Files.isDirectory(incoming)) {
 			throw new Refused("'" + incoming + "' is not a folder.");
@@ -183,23 +203,25 @@ public final class ReplaceOriginals {
 
 		String run = RUN_FORMAT.format(now);
 		Report report = new Report();
-		// The albums touched, by the space they lie in, in the order they were touched.
-		Map<Space, Set<Path>> touched = new LinkedHashMap<>();
-		Set<Path> asideFolders = new LinkedHashSet<>();
+		Run state = new Run(basePath, spaces, run, dryRun, report, reads);
+		String[] lines = new String[incomingFiles.size()];
+		List<Integer> byContent = new ArrayList<>();
 
-		for (Path source : incomingFiles) {
+		// Names first: a file the library holds under its own name is matched by that name, see #167.
+		for (int n = 0; n < incomingFiles.size(); n++) {
+			Path source = incomingFiles.get(n);
 			String name = source.getFileName().toString();
 			if (Files.isDirectory(source)) {
-				report.skip(name, "a folder (the incoming folder is not read recursively)");
+				lines[n] = state.skip(name, "a folder (the incoming folder is not read recursively)");
 				continue;
 			}
 			if (!ResourceCache.isImage(source.toFile())) {
-				report.skip(name, "not a photograph or video");
+				lines[n] = state.skip(name, "not a photograph or video");
 				continue;
 			}
 			List<Path> found = library.get(name);
 			if (found == null) {
-				report.skip(name, "not in the library");
+				byContent.add(Integer.valueOf(n));
 				continue;
 			}
 			if (found.size() > 1) {
@@ -207,7 +229,7 @@ public final class ReplaceOriginals {
 				for (Path path : found) {
 					where.add(spell(basePath, path));
 				}
-				report.skip(name, "ambiguous (the library holds it " + found.size() + " times: "
+				lines[n] = state.skip(name, "ambiguous (the library holds it " + found.size() + " times: "
 					+ String.join(", ", where) + ")");
 				continue;
 			}
@@ -215,50 +237,102 @@ public final class ReplaceOriginals {
 			String libraryPath = spell(basePath, target);
 
 			String sha256;
+			String redactedHash;
 			try {
 				sha256 = HashCache.sha256(source.toFile());
-				if (sha256.equals(HashCache.sha256(target.toFile()))) {
-					report.skip(name, "the library already holds exactly this file (" + libraryPath + ")");
+				redactedHash = HashCache.sha256(target.toFile());
+				if (sha256.equals(redactedHash)) {
+					lines[n] = state.skip(name, "the library already holds exactly this file (" + libraryPath + ")");
 					continue;
 				}
 				String difference = SameRecording.difference(target.toFile(), source.toFile());
 				if (difference != null) {
-					report.skip(name, difference + ", not replacing " + libraryPath);
+					lines[n] = state.skip(name, difference + ", not replacing " + libraryPath);
 					continue;
 				}
 			} catch (IOException | RuntimeException ex) {
-				report.skip(name, "unreadable (" + ex.getMessage() + ")");
+				lines[n] = state.skip(name, "unreadable (" + ex.getMessage() + ")");
 				continue;
 			}
-
-			Space space = spaceOf(spaces, target);
-			Path album = target.getParent();
-			Path asideFolder = space._root.resolve(UserStore.DIRECTORY_NAME).resolve(REPLACED_DIRECTORY_NAME)
-				.resolve(run);
-			Path aside = asideFolder.resolve(space._root.relativize(album)).resolve(name);
-			if (dryRun) {
-				report._replaced++;
-				report._lines.add("would replace " + libraryPath);
-				asideFolders.add(asideFolder);
-				continue;
-			}
-
-			String problem = replace(source, target, aside, sha256);
-			if (problem != null) {
-				report.skip(name, problem);
-				continue;
-			}
-			report._replaced++;
-			asideFolders.add(asideFolder);
-			String hashProblem = rehash(target, sha256);
-			report._lines.add("replaced " + libraryPath + (hashProblem == null ? ""
-				: " (but its hash could not be recorded: " + hashProblem
-					+ "; the server hashes it again and keeps the attribution)"));
-			touched.computeIfAbsent(space, s -> new LinkedHashSet<>()).add(album);
+			lines[n] = state.replace(source, target, redactedHash, sha256, "");
 		}
 
+		// Then the content, for the files the phone renamed on upload.
+		RecordingIndex index = null;
+		for (Integer position : byContent) {
+			int n = position.intValue();
+			Path source = incomingFiles.get(n);
+			String name = source.getFileName().toString();
+			if (!RecordingIndex.isKeyed(name)) {
+				lines[n] = state.skip(name, "not in the library (and neither a JPEG nor an mp4 or QuickTime video, "
+					+ "which could be found under another name)");
+				continue;
+			}
+			RecordingIndex.Head head = RecordingIndex.head(source, state.zones(), new RecordingIndex.Reads());
+			if (head.getProblem() != null) {
+				lines[n] = state.skip(name, "not in the library (and " + head.getProblem()
+					+ ", so it cannot be found under another name)");
+				continue;
+			}
+			if (index == null) {
+				index = RecordingIndex.build(state.libraryFiles(library), state::zoneOf, reads);
+			}
+			lines[n] = state.byContent(source, name, head, index);
+		}
+
+		for (String line : lines) {
+			report._lines.add(line);
+		}
+
+		// The collections of #221 reference a photograph by its hash: every replacement, by name or
+		// by content, moves the references to the redacted copy over to the original.
+		int references = 0;
+		int collections = 0;
+		List<String> collectionProblems = new ArrayList<>();
+		for (Map.Entry<Space, Map<String, CollectionRewrite.Replacement>> entry : state._replacements.entrySet()) {
+			try {
+				CollectionRewrite.Result rewritten =
+					CollectionRewrite.rewrite(entry.getKey()._root, entry.getValue(), dryRun, collectionProblems);
+				references += rewritten.getReferences();
+				collections += rewritten.getCollections();
+			} catch (IOException ex) {
+				collectionProblems.add("the collections of '" + entry.getKey()._root + "' cannot be read ("
+					+ ex.getMessage() + ")");
+			}
+		}
+		Map<Space, Set<Path>> touched = state._touched;
+		Set<Path> asideFolders = state._asideFolders;
 		report._summary.add((dryRun ? "Would replace " : "Replaced ") + report._replaced + ", skipped "
 			+ report._skipped + " of " + incomingFiles.size() + " file(s) in '" + incoming + "'.");
+		if (index != null) {
+			report._summary.add("Looked for the files not in the library under their names by their content: read "
+				+ reads.getSidecars() + " album sidecar(s) and the headers of " + reads.getHeaderBytes().size()
+				+ " library file(s) (" + reads.getHeaderBytes().values().stream().mapToLong(Long::longValue).sum()
+				+ " bytes)" + (index.getProblems().isEmpty() ? "."
+					: "; " + index.getProblems().size() + " library file(s) could not be read and cannot be found "
+						+ "that way."));
+		}
+		// The faces found in a redacted copy are the original's: the picture is the same by proof.
+		int faces = 0;
+		List<String> faceProblems = new ArrayList<>();
+		for (Replaced replaced : state._replacedFiles) {
+			try {
+				if (FaceMove.move(replaced.target(), replaced.redactedHash(), replaced.originalHash(), dryRun)) {
+					faces++;
+				}
+			} catch (IOException | RuntimeException ex) {
+				faceProblems.add(spell(basePath, replaced.target()) + " (" + ex.getMessage() + ")");
+			}
+		}
+
+		if (report._replaced > 0) {
+			report._summary.add((dryRun ? "Would move " : "Moved ") + "the faces found in " + faces
+				+ " redacted cop(ies) to the originals." + (faceProblems.isEmpty() ? ""
+					: " Not moved, to be found again by the next pass: " + String.join("; ", faceProblems)));
+			report._summary.add((dryRun ? "Would update " : "Updated ") + references + " collection reference(s) in "
+				+ collections + " collection(s) to the originals."
+				+ (collectionProblems.isEmpty() ? "" : " Problems: " + String.join("; ", collectionProblems)));
+		}
 		for (Path folder : asideFolders) {
 			report._summary.add((dryRun ? "The redacted copies would be set aside in '"
 				: "The redacted copies were set aside in '") + folder + "'.");
@@ -272,6 +346,252 @@ public final class ReplaceOriginals {
 			report._summary.add("The hash index takes the new hashes up when the server starts next.");
 		}
 		return report;
+	}
+
+	/** One library file replaced, with the hash of the redacted copy and of the original. */
+	private record Replaced(Path target, String redactedHash, String originalHash) {
+	}
+
+	/** What one run decided so far. */
+	private static final class Run {
+		final Path _basePath;
+
+		final List<Space> _spaces;
+
+		final String _run;
+
+		final boolean _dryRun;
+
+		final Report _report;
+
+		/** The albums touched, by the space they lie in, in the order they were touched. */
+		final Map<Space, Set<Path>> _touched = new LinkedHashMap<>();
+
+		final Set<Path> _asideFolders = new LinkedHashSet<>();
+
+		/**
+		 * The replacements of this run (or that would be), by space and by the hash of the redacted
+		 * copy, for {@link CollectionRewrite}.
+		 */
+		final Map<Space, Map<String, CollectionRewrite.Replacement>> _replacements = new LinkedHashMap<>();
+
+		/** Every library file replaced in this run (or that would be), in the order of the report. */
+		final List<Replaced> _replacedFiles = new ArrayList<>();
+
+		/** The library files replaced in this run (or that would be), with the incoming name. */
+		final Map<Path, String> _claimed = new LinkedHashMap<>();
+
+		private final Map<Space, ZoneId> _zones = new LinkedHashMap<>();
+
+		private final RecordingIndex.Reads _reads;
+
+		Run(Path basePath, List<Space> spaces, String run, boolean dryRun, Report report, RecordingIndex.Reads reads) {
+			_reads = reads;
+			_basePath = basePath;
+			_spaces = spaces;
+			_run = run;
+			_dryRun = dryRun;
+			_report = report;
+		}
+
+		String skip(String name, String reason) {
+			_report._skipped++;
+			return "skipped " + name + ": " + reason;
+		}
+
+		/**
+		 * Replaces the given library file by the given original, under the library's name.
+		 *
+		 * @param redactedHash
+		 *        The hash of the library file, which the collections referencing it are moved off.
+		 * @param how
+		 *        What the report line says beyond the library path.
+		 * @return The line of the report.
+		 */
+		String replace(Path source, Path target, String redactedHash, String sha256, String how) {
+			String name = source.getFileName().toString();
+			String libraryPath = spell(_basePath, target);
+			Space space = spaceOf(_spaces, target);
+			Path album = target.getParent();
+			Path asideFolder = space._root.resolve(UserStore.DIRECTORY_NAME).resolve(REPLACED_DIRECTORY_NAME)
+				.resolve(_run);
+			// The redacted copy keeps the library's name, which the original takes over.
+			Path aside = asideFolder.resolve(space._root.relativize(album)).resolve(target.getFileName().toString());
+			CollectionRewrite.Replacement replacement =
+				new CollectionRewrite.Replacement(sha256, space._root.relativize(target).toString().replace(File.separatorChar, '/'));
+			if (_dryRun) {
+				_report._replaced++;
+				_asideFolders.add(asideFolder);
+				_claimed.put(target, name);
+				_replacements.computeIfAbsent(space, x -> new LinkedHashMap<>()).put(redactedHash, replacement);
+				_replacedFiles.add(new Replaced(target, redactedHash, sha256));
+				return "would replace " + libraryPath + how;
+			}
+
+			String problem = ReplaceOriginals.replace(source, target, aside, sha256);
+			if (problem != null) {
+				return skip(name, problem);
+			}
+			_report._replaced++;
+			_asideFolders.add(asideFolder);
+			_claimed.put(target, name);
+			_replacements.computeIfAbsent(space, x -> new LinkedHashMap<>()).put(redactedHash, replacement);
+			_replacedFiles.add(new Replaced(target, redactedHash, sha256));
+			String hashProblem = rehash(target, sha256);
+			_touched.computeIfAbsent(space, s -> new LinkedHashSet<>()).add(album);
+			return "replaced " + libraryPath + how + (hashProblem == null ? ""
+				: " (but its hash could not be recorded: " + hashProblem
+					+ "; the server hashes it again and keeps the attribution)");
+		}
+
+		/**
+		 * Finds the library file the given original is the same recording as, under another name,
+		 * and replaces it.
+		 *
+		 * <p>
+		 * The candidates are the library files that share a key with the original, see
+		 * {@link RecordingIndex}, less those this run already replaced. Where there are several and
+		 * the original embeds a thumbnail, the candidates that embed the same are compared first, and
+		 * the others only if none of them is the same recording: two frames of a burst differ in
+		 * their thumbnails, and an editor that regenerated a thumbnail must not hide a true match. A
+		 * candidate is the same recording only if {@link SameRecording} says so.
+		 * </p>
+		 *
+		 * @return The line of the report.
+		 */
+		String byContent(Path source, String name, RecordingIndex.Head head, RecordingIndex index) {
+			List<Path> candidates = new ArrayList<>();
+			List<String> taken = new ArrayList<>();
+			for (Path candidate : index.candidates(head.getKeys())) {
+				String by = _claimed.get(candidate);
+				if (by != null) {
+					taken.add(spell(_basePath, candidate) + " by " + by);
+				} else {
+					candidates.add(candidate);
+				}
+			}
+			if (candidates.isEmpty()) {
+				if (taken.isEmpty()) {
+					return skip(name, "not in the library");
+				}
+				return skip(name, "not in the library (the file(s) of the same recording time and size are "
+					+ "already replaced in this run: " + String.join(", ", taken) + ")");
+			}
+
+			String sha256;
+			try {
+				sha256 = HashCache.sha256(source.toFile());
+			} catch (IOException ex) {
+				return skip(name, "unreadable (" + ex.getMessage() + ")");
+			}
+
+			List<Path> preferred = new ArrayList<>();
+			List<Path> others = new ArrayList<>();
+			if (candidates.size() > 1 && head.getThumbnail() != null) {
+				for (Path candidate : candidates) {
+					RecordingIndex.Head candidateHead =
+						RecordingIndex.head(candidate, zones(), new RecordingIndex.Reads());
+					(head.getThumbnail().equals(candidateHead.getThumbnail()) ? preferred : others).add(candidate);
+				}
+			} else {
+				others.addAll(candidates);
+			}
+
+			Comparison comparison = new Comparison();
+			comparison.compare(preferred, source, _reads);
+			if (comparison._same.isEmpty()) {
+				comparison.compare(others, source, _reads);
+			}
+
+			if (comparison._same.isEmpty()) {
+				List<String> other = new ArrayList<>();
+				for (Path path : comparison._other) {
+					other.add(spell(_basePath, path));
+				}
+				return skip(name, "not in the library (" + (other.isEmpty() ? ""
+					: other.size() + " file(s) of the same recording time and size hold another recording: "
+						+ String.join(", ", other))
+					+ (other.isEmpty() || comparison._problems.isEmpty() ? "" : "; ")
+					+ String.join("; ", comparison._problems) + ")");
+			}
+			if (comparison._same.size() > 1) {
+				List<String> where = new ArrayList<>();
+				for (Path path : comparison._same) {
+					where.add(spell(_basePath, path));
+				}
+				return skip(name, "ambiguous (the library holds the same recording " + comparison._same.size()
+					+ " times under other names: " + String.join(", ", where) + ")");
+			}
+			Path target = comparison._same.get(0);
+			String redactedHash;
+			try {
+				redactedHash = HashCache.sha256(target.toFile());
+			} catch (IOException ex) {
+				return skip(name, "unreadable (" + ex.getMessage() + ")");
+			}
+			if (sha256.equals(redactedHash)) {
+				return skip(name, "the library already holds exactly this file (" + spell(_basePath, target) + ")");
+			}
+			return replace(source, target, redactedHash, sha256, " with " + name + " (matched by content)");
+		}
+
+		/** The zones of every space of the run. */
+		Collection<ZoneId> zones() {
+			for (Space space : _spaces) {
+				zone(space);
+			}
+			return new LinkedHashSet<>(_zones.values());
+		}
+
+		/** The zone of the space the given library file lies in. */
+		ZoneId zoneOf(Path file) {
+			return zone(spaceOf(_spaces, file));
+		}
+
+		private ZoneId zone(Space space) {
+			return _zones.computeIfAbsent(space, s -> {
+				Path root = s._root;
+				try {
+					return SpaceStore.load(root, root.getFileName() == null ? "" : root.getFileName().toString())
+						.getZone();
+				} catch (IOException ex) {
+					return ZoneId.systemDefault();
+				}
+			});
+		}
+
+		/** Every photograph and video of the library. */
+		List<Path> libraryFiles(Map<String, List<Path>> library) {
+			List<Path> result = new ArrayList<>();
+			for (List<Path> files : library.values()) {
+				result.addAll(files);
+			}
+			return result;
+		}
+	}
+
+	/** Which candidates hold the same recording as an original. */
+	private static final class Comparison {
+		final List<Path> _same = new ArrayList<>();
+
+		final List<Path> _other = new ArrayList<>();
+
+		final List<String> _problems = new ArrayList<>();
+
+		void compare(List<Path> candidates, Path source, RecordingIndex.Reads reads) {
+			for (Path candidate : candidates) {
+				reads.compared(candidate);
+				try {
+					if (SameRecording.difference(candidate.toFile(), source.toFile()) == null) {
+						_same.add(candidate);
+					} else {
+						_other.add(candidate);
+					}
+				} catch (IOException | RuntimeException ex) {
+					_problems.add(candidate.getFileName() + " is unreadable (" + ex.getMessage() + ")");
+				}
+			}
+		}
 	}
 
 	/**

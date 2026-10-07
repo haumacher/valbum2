@@ -80,6 +80,16 @@ final class Redacted {
 		wrap(file, picture, tiff(TAKEN, false));
 	}
 
+	/** The picture with the position and the given embedded thumbnail (EXIF IFD1). */
+	static void writeOriginal(File file, byte[] picture, byte[] thumbnail) throws IOException {
+		wrap(file, picture, tiff(TAKEN, true, thumbnail));
+	}
+
+	/** The picture with the GPS block zero-filled and the given embedded thumbnail (EXIF IFD1). */
+	static void writeRedacted(File file, byte[] picture, byte[] thumbnail) throws IOException {
+		wrap(file, picture, tiff(TAKEN, false, thumbnail));
+	}
+
 	/** The picture with the position and another recording time. */
 	static void writeOriginalTakenAt(File file, byte[] picture, String taken) throws IOException {
 		wrap(file, picture, tiff(taken, true));
@@ -148,6 +158,8 @@ final class Redacted {
 			return this;
 		}
 
+		Ifd _next;
+
 		int size() {
 			return 2 + 12 * _entries.size() + 4;
 		}
@@ -158,6 +170,14 @@ final class Redacted {
 	 * IFD: a position, or the zeroes and blanks of a redaction.
 	 */
 	static byte[] tiff(String taken, boolean position) {
+		return tiff(taken, position, null);
+	}
+
+	/**
+	 * As {@link #tiff(String, boolean)}, with an IFD1 embedding the given JPEG thumbnail where it is
+	 * not <code>null</code>.
+	 */
+	static byte[] tiff(String taken, boolean position, byte[] thumbnail) {
 		Ifd exif = new Ifd().ascii(0x9003, taken);
 		Ifd gps = new Ifd();
 		if (position) {
@@ -172,13 +192,38 @@ final class Redacted {
 		}
 		Ifd ifd0 = new Ifd().ascii(0x010F, MAKE).ascii(0x0110, MODEL).pointer(0x8769, exif).pointer(0x8825, gps);
 
-		Ifd[] ifds = { ifd0, exif, gps };
+		byte[] thumbnailOffset = new byte[4];
+		Ifd[] ifds;
+		if (thumbnail == null) {
+			ifds = new Ifd[] { ifd0, exif, gps };
+		} else {
+			Ifd ifd1 = new Ifd();
+			ifd1._entries.add(new Entry(0x0103, 3, 1, new byte[] { 0, 6 }, null));
+			ifd1._entries.add(new Entry(0x0201, 4, 1, thumbnailOffset, null));
+			ifd1._entries.add(new Entry(0x0202, 4, 1, new byte[] { (byte) (thumbnail.length >> 24),
+				(byte) (thumbnail.length >> 16), (byte) (thumbnail.length >> 8), (byte) thumbnail.length }, null));
+			ifd0._next = ifd1;
+			ifds = new Ifd[] { ifd0, exif, gps, ifd1 };
+		}
 		int pos = 8;
 		for (Ifd ifd : ifds) {
 			ifd._offset = pos;
 			pos += ifd.size();
 		}
 		int data = pos;
+		int blobSize = 0;
+		for (Ifd ifd : ifds) {
+			for (Entry entry : ifd._entries) {
+				if (entry._child == null && entry._value.length > 4) {
+					blobSize += entry._value.length + (entry._value.length % 2);
+				}
+			}
+		}
+		int at = data + blobSize;
+		thumbnailOffset[0] = (byte) (at >> 24);
+		thumbnailOffset[1] = (byte) (at >> 16);
+		thumbnailOffset[2] = (byte) (at >> 8);
+		thumbnailOffset[3] = (byte) at;
 
 		ByteArrayOutputStream out = new ByteArrayOutputStream();
 		out.writeBytes(new byte[] { 'M', 'M', 0, 42, 0, 0, 0, 8 });
@@ -203,9 +248,12 @@ final class Redacted {
 					}
 				}
 			}
-			writeInt(out, 0);
+			writeInt(out, ifd._next == null ? 0 : ifd._next._offset);
 		}
 		out.writeBytes(blobs.toByteArray());
+		if (thumbnail != null) {
+			out.writeBytes(thumbnail);
+		}
 		return out.toByteArray();
 	}
 

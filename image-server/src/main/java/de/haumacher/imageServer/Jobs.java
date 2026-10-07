@@ -168,10 +168,10 @@ public final class Jobs {
 		new Job("replace-originals", "FOLDER",
 			"Put downloaded originals in the place of the copies a phone uploaded without their position.",
 			"Put the originals in the given folder in the place of the redacted copies a phone "
-				+ "uploaded: every file whose name the library holds exactly once and whose picture (JPEG "
-				+ "scan data) or video (media data) is the same is moved into its album, the redacted copy "
-				+ "set aside in <space>/.valbum/replaced/<timestamp>/, and the missing position and camera "
-				+ "filled in",
+				+ "uploaded: every file whose name the library holds exactly once, or that the library holds "
+				+ "exactly once under another name, and whose picture (JPEG scan data) or video (media data) "
+				+ "is the same is moved into its album under the library's name, the redacted copy set aside "
+				+ "in <space>/.valbum/replaced/<timestamp>/, and the missing position and camera filled in",
 			List.of(new Option("--dry-run", null, null, List.of(),
 				"Print what would be replaced and skipped, and touch nothing")),
 			ns -> Main.replaceOriginals(Main.basePath(ns), Path.of(ns.getString("replace_originals")),
