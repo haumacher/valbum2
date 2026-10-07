@@ -1,0 +1,5 @@
+#ISO	ISO3	ISO-Numeric	fips	Country	Capital	Area(in sq km)	Population	Continent	tld	CurrencyCode	CurrencyName	Phone	Postal Code Format	Postal Code Regex	Languages	geonameid	neighbours	EquivalentFipsCode
+AT	AUT	040	AU	Austria	Vienna	83858	8847037	EU	.at	EUR	Euro	43	####	^(\d{4})$	de-AT,hr,hu,sl	2782113	CH,DE,HU,SK,CZ,IT,SI,LI	
+CH	CHE	756	SZ	Switzerland	Bern	41290	8516543	EU	.ch	CHF	Franc	41	####	^(\d{4})$	de-CH,fr-CH,it-CH,rm	2658434	DE,IT,LI,FR,AT	
+DE	DEU	276	GM	Germany	Berlin	357021	82927922	EU	.de	EUR	Euro	49	#####	^(\d{5})$	de	2921044	CH,PL,NL,DK,BE,CZ,LU,FR,AT	
+FR	FRA	250	FR	France	Paris	547030	66987244	EU	.fr	EUR	Euro	33	#####	^(\d{5})$	fr-FR,frp,br,co,ca,eu,oc	3017382	CH,DE,BE,LU,IT,AD,MC,ES	
