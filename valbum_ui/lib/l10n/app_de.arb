@@ -891,5 +891,9 @@
   "providerReturnUnknown": "Diese Seite kommt von einer Anmeldung zurück, die hier nicht begonnen wurde. Starten Sie die Anmeldung erneut.",
   "totpCodeIncomplete": "Geben Sie die sechs Ziffern ein, die Ihre Authenticator-App anzeigt.",
   "memberNameRequired": "Geben Sie Ihren Benutzernamen oder Ihre E-Mail-Adresse ein.",
-  "totpQrSemantics": "Einrichtungscode für eine Authenticator-App als QR-Code"
+  "totpQrSemantics": "Einrichtungscode für eine Authenticator-App als QR-Code",
+  "propertyPlace": "Ort: {place}",
+  "showCoordinates": "Koordinaten anzeigen",
+  "hideCoordinates": "Koordinaten ausblenden",
+  "aboutGeoNames": "Die Ortsnamen stammen von GeoNames und stehen unter der Creative Commons Attribution 4.0-Lizenz:"
 }

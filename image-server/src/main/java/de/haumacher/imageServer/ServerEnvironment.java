@@ -9,8 +9,12 @@ import de.haumacher.imageServer.mail.SmtpMailer;
 import de.haumacher.imageServer.oidc.OidcLogins;
 import de.haumacher.imageServer.oidc.OidcProvider;
 import de.haumacher.imageServer.passkeys.Passkeys;
+import de.haumacher.imageServer.places.GeoNamesStore;
+import de.haumacher.imageServer.places.Places;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -46,6 +50,11 @@ import java.util.regex.Pattern;
  * personal link proves their address through (issue #200), <code>GOOGLE</code> the one whose
  * discovery address and label are known. A further provider is further variables. Offered only
  * with <code>VALBUM_PUBLIC_URL</code>, which the redirect address is spelled from.</li>
+ * <li><code>VALBUM_GEONAMES_DIR</code>: where the GeoNames gazetteer the place names of issue #234
+ * are looked up in is kept, <code>&lt;basepath&gt;/.geonames</code> by default (inside the library,
+ * so that a container's volume keeps it, and hidden from every listing by its dot).</li>
+ * <li><code>VALBUM_GEONAMES_MEMORY</code>: how many megabytes of heap the countries of the gazetteer
+ * may take, an eighth of the heap by default, see {@link Places#setBudget(long)}.</li>
  * </ul>
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
@@ -88,11 +97,24 @@ public final class ServerEnvironment {
 	/** The suffix of what a button calls the provider; "Google" for Google, else the id. */
 	public static final String OIDC_LABEL = "_LABEL";
 
+	/** Where the GeoNames gazetteer is kept; <code>&lt;basepath&gt;/.geonames</code> by default. */
+	public static final String GEONAMES_DIR = "VALBUM_GEONAMES_DIR";
+
+	/** How many megabytes of heap the gazetteer's countries may take; an eighth of the heap by default. */
+	public static final String GEONAMES_MEMORY = "VALBUM_GEONAMES_MEMORY";
+
+	/** The folder below the base path the gazetteer is kept in by default. */
+	public static final String GEONAMES_DEFAULT_DIR = ".geonames";
+
 	private static final Pattern OIDC_VARIABLE = Pattern.compile(
 		"VALBUM_OIDC_([A-Z0-9]+(?:_[A-Z0-9]+)*?)(_CLIENT_ID|_CLIENT_SECRET|_DISCOVERY_URL|_LABEL)");
 
-	/** Nothing configured: no public address, no mail, no provider. */
-	public static final ServerEnvironment NONE = new ServerEnvironment(null, null, List.of());
+	/**
+	 * Nothing configured: no public address, no mail, no provider, and no gazetteer at all (what a
+	 * test builds a server with; a real start reads the environment, where the gazetteer is on by
+	 * default).
+	 */
+	public static final ServerEnvironment NONE = new ServerEnvironment(null, null, List.of(), false, null, 0);
 
 	/** Thrown for a setting the server cannot run with; the message names the variable. */
 	public static final class Invalid extends Exception {
@@ -109,10 +131,55 @@ public final class ServerEnvironment {
 
 	private final List<OidcProvider> _providers;
 
-	private ServerEnvironment(String publicUrl, MailSettings mail, List<OidcProvider> providers) {
+	private final boolean _places;
+
+	private final String _geonamesDir;
+
+	private final long _geonamesMemory;
+
+	private ServerEnvironment(String publicUrl, MailSettings mail, List<OidcProvider> providers, boolean places,
+			String geonamesDir, long geonamesMemory) {
 		_publicUrl = publicUrl;
 		_mail = mail;
 		_providers = Collections.unmodifiableList(providers);
+		_places = places;
+		_geonamesDir = geonamesDir;
+		_geonamesMemory = geonamesMemory;
+	}
+
+	/**
+	 * The directory of the gazetteer for the given base path, see {@link #GEONAMES_DIR};
+	 * <code>null</code> where there is no gazetteer ({@link #NONE}).
+	 */
+	public Path geonamesDirectory(Path basePath) {
+		if (!_places) {
+			return null;
+		}
+		return _geonamesDir == null ? basePath.resolve(GEONAMES_DEFAULT_DIR) : Path.of(_geonamesDir);
+	}
+
+	/**
+	 * How many bytes of heap the gazetteer's countries may take, see {@link #GEONAMES_MEMORY}; 0 for
+	 * the default, {@link Places#defaultBudget()}.
+	 */
+	public long getGeonamesMemory() {
+		return _geonamesMemory;
+	}
+
+	/**
+	 * The gazetteer of a server serving the given base path, downloading from GeoNames on demand;
+	 * <code>null</code> where there is none ({@link #NONE}).
+	 */
+	public Places places(Path basePath) {
+		Path dir = geonamesDirectory(basePath);
+		if (dir == null) {
+			return null;
+		}
+		Places result = new Places(new GeoNamesStore(dir, new GeoNamesStore.Settings()));
+		if (_geonamesMemory > 0) {
+			result.setBudget(_geonamesMemory);
+		}
+		return result;
 	}
 
 	/**
@@ -166,7 +233,36 @@ public final class ServerEnvironment {
 	 *         an administrator who configured mail believes it works.
 	 */
 	public static ServerEnvironment read(Map<String, String> env) throws Invalid {
-		return new ServerEnvironment(publicUrl(value(env, PUBLIC_URL)), mail(env), providers(env));
+		return new ServerEnvironment(publicUrl(value(env, PUBLIC_URL)), mail(env), providers(env), true,
+			geonamesDir(value(env, GEONAMES_DIR)), geonamesMemory(value(env, GEONAMES_MEMORY)));
+	}
+
+	private static String geonamesDir(String value) throws Invalid {
+		if (value.isEmpty()) {
+			return null;
+		}
+		try {
+			Path.of(value);
+		} catch (InvalidPathException ex) {
+			throw new Invalid(GEONAMES_DIR + " is no folder: '" + value + "'.");
+		}
+		return value;
+	}
+
+	private static long geonamesMemory(String value) throws Invalid {
+		if (value.isEmpty()) {
+			return 0;
+		}
+		long megabytes;
+		try {
+			megabytes = Long.parseLong(value);
+		} catch (NumberFormatException ex) {
+			megabytes = -1;
+		}
+		if (megabytes <= 0 || megabytes > 1_000_000) {
+			throw new Invalid(GEONAMES_MEMORY + " must be a number of megabytes, for example '64', not '" + value + "'.");
+		}
+		return megabytes * 1024 * 1024;
 	}
 
 	private static String value(Map<String, String> env, String name) {

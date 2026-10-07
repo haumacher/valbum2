@@ -384,6 +384,37 @@ void sliceThree() {
       expect(find.byTooltip(de.showOnMap), findsOneWidget);
     });
 
+    testWidgets('the place of an image (issue #234)', (tester) async {
+      await tester.pumpWidget(
+        localizedApp(
+          ImagePropertiesDialog(
+            ImagePart(
+              name: "a.jpg",
+              location: GeoLocation(latitude: 48.137, longitude: 11.575),
+              places: PlaceInfo(tags: [
+                PlaceTag(kind: PlaceKind.country, name: "Deutschland"),
+                PlaceTag(kind: PlaceKind.adm1, name: "Bayern"),
+                PlaceTag(kind: PlaceKind.place, name: "München"),
+              ]),
+            ),
+            editable: false,
+          ),
+          locale: const Locale("de"),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text(de.propertyPlace("München · Bayern, Deutschland")),
+          findsOneWidget);
+      expect(find.byTooltip(de.showCoordinates), findsOneWidget);
+      await tester.tap(find.byTooltip(de.showCoordinates));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip(de.hideCoordinates), findsOneWidget);
+      expect(find.text(de.propertyLocation("48.137000", "11.575000")),
+          findsOneWidget);
+      expect(de.propertyPlace("x"), isNot(l10nOf().propertyPlace("x")));
+    });
+
     testWidgets('the inbox screen', (tester) async {
       speakGerman(tester);
       await pumpInbox(tester, inboxTree);

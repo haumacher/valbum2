@@ -25,6 +25,9 @@ const String appName = "VAlbum";
 /// Where the source code, the documentation and the issues live.
 const String githubUrl = "https://github.com/haumacher/valbum2";
 
+/// Where the place names come from, see [showAbout] and issue #234.
+const String geoNamesUrl = "https://www.geonames.org/";
+
 /// The version the release build was made for, empty where none was given.
 ///
 /// The release workflow passes `--dart-define=VALBUM_VERSION=<x.y.z>` to
@@ -79,6 +82,20 @@ void showAbout(BuildContext context) {
           icon: const Icon(Icons.open_in_new, size: 18),
           // The address itself, so that it can be read and typed elsewhere.
           label: const Text(githubUrl),
+        ),
+      ),
+      // The attribution GeoNames' licence (CC BY 4.0) asks for: the place
+      // names of the photos come from its gazetteer, see issue #234.
+      const SizedBox(height: 16),
+      Text(l10n.aboutGeoNames, key: const Key("about-geonames-credit")),
+      Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: TextButton.icon(
+          key: const Key("about-geonames"),
+          style: TextButton.styleFrom(padding: EdgeInsets.zero),
+          onPressed: () => openExternalUrl(Uri.parse(geoNamesUrl)),
+          icon: const Icon(Icons.open_in_new, size: 18),
+          label: const Text(geoNamesUrl),
         ),
       ),
     ],

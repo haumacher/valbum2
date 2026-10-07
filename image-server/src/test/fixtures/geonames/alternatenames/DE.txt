@@ -1,0 +1,23 @@
+1263626	2867714	de	Muenchen						
+1598916	2867714	de	München	1					
+1598917	2867714	en	Munich						
+1598932	2867714	fr	Munich						
+1605329	2892794	de	Karlsruhe						
+1605330	2892794	en	Karlsruhe						
+1605338	2892794	fr	Karlsruhe						
+1267843	2921044	de	Bundesrepublik Deutschland	1					
+1557479	2921044	de	Deutschland	1	1				
+1557482	2921044	en	Germany	1					
+1557490	2921044	fr	Allemagne	1					
+4216015	2921044	en	Federal Republic of Germany						
+8517330	2921044	en	West Germany				1		
+17449256	2921044	de	Bundesrepublik		1				
+1894550	2951839	de	Bayern	1	1				
+1894551	2951839	en	Bavaria	1	1				
+1894553	2951839	fr	Bavière						
+2426266	2951839	en	Free State of Bavaria						
+2080248	2953481	de	Baden-Württemberg	1	1				
+2254544	2953481	fr	Bade-Wurtemberg	1	1				
+2254559	2953481	fr	Pays de Bade						
+2426269	2953481	en	Baden-Wurttemberg Region						
+8435969	2953481	en	Baden-Wurttemberg	1					

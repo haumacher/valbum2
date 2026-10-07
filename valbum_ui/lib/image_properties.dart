@@ -79,12 +79,145 @@ List<Widget> imagePropertyLines(
           const Key("property-raw"),
           l10n.propertyRaw(image.raw),
         ),
-      if (hasPosition(image.location))
+      // Where it was taken: the place the server named (issue #234), with the
+      // coordinates one tap away; the coordinates alone from a server that
+      // names none.
+      if (hasPosition(image.location) && hasPlaceLine(image.places))
+        ImagePlaceLine(
+          image.places!,
+          image.location!,
+          mapUrl: mapUrl.isEmpty ? defaultMapUrl : mapUrl,
+        )
+      else if (hasPosition(image.location))
         ImageLocationLine(
           image.location!,
           mapUrl: mapUrl.isEmpty ? defaultMapUrl : mapUrl,
         ),
     ];
+
+/// Whether [places] has anything to show: tags, or the sentence why there are
+/// none yet.
+bool hasPlaceLine(PlaceInfo? places) =>
+    places != null && (places.tags.isNotEmpty || places.pending.isNotEmpty);
+
+/// The place line of [tags], from the most specific name to the country.
+///
+/// Three groups, separated by a middle dot, each only where it has a name:
+///
+///  1. the named feature close by (a palace, a park, a lake);
+///  2. the part of town and the town — or, where the photo lies in no town,
+///     the most local administrative division GeoNames knows there;
+///  3. the state (the first administrative level) and the country.
+///
+/// Within a group the names are separated by a comma, and a name already said
+/// is not repeated (Berlin the city and Berlin the state are "Berlin ·
+/// Germany"). The divisions between the town and the state (district,
+/// county) are left out: they are what a person would not say.
+///
+/// `Karlsruhe Schloss · Innenstadt, Karlsruhe · Baden-Württemberg, Germany`
+String placeLineText(List<PlaceTag> tags) {
+  String? of(PlaceKind kind) {
+    for (var tag in tags) {
+      if (tag.kind == kind && tag.name.isNotEmpty) {
+        return tag.name;
+      }
+    }
+    return null;
+  }
+
+  var local = of(PlaceKind.place) ??
+      of(PlaceKind.adm4) ??
+      of(PlaceKind.adm3) ??
+      of(PlaceKind.adm2);
+  var groups = [
+    [of(PlaceKind.feature)],
+    [of(PlaceKind.district), local],
+    [of(PlaceKind.adm1), of(PlaceKind.country)],
+  ];
+  var said = <String>{};
+  var parts = <String>[];
+  for (var group in groups) {
+    var names = <String>[];
+    for (var name in group) {
+      if (name != null && said.add(name.toLowerCase())) {
+        names.add(name);
+      }
+    }
+    if (names.isNotEmpty) {
+      parts.add(names.join(", "));
+    }
+  }
+  return parts.join(" · ");
+}
+
+/// Where a photo was taken, as a place: the [placeLineText] of its tags, or
+/// the server's sentence why there are none yet (shown as it stands, like
+/// every server message), with the [ImageLocationLine] — the coordinates and
+/// the map — unfolded by the button beside it (issue #234).
+class ImagePlaceLine extends StatefulWidget {
+  /// What the server said about the place.
+  final PlaceInfo places;
+
+  /// Where the photo was taken.
+  final GeoLocation location;
+
+  /// The template of the space, see [mapUrlFor].
+  final String mapUrl;
+
+  const ImagePlaceLine(
+    this.places,
+    this.location, {
+    super.key,
+    this.mapUrl = "",
+  });
+
+  @override
+  State<ImagePlaceLine> createState() => _ImagePlaceLineState();
+}
+
+class _ImagePlaceLineState extends State<ImagePlaceLine> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
+    var places = widget.places;
+    var pending = places.tags.isEmpty;
+    var text = pending
+        ? places.pending
+        : l10n.propertyPlace(placeLineText(places.tags));
+    return Column(
+      key: const Key("property-place"),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: SelectableText(
+                text,
+                key: Key(
+                  pending ? "property-place-pending" : "property-place-text",
+                ),
+              ),
+            ),
+            IconButton(
+              key: const Key("property-place-expand"),
+              icon: Icon(_expanded ? Icons.expand_less : Icons.expand_more),
+              iconSize: 18,
+              visualDensity: VisualDensity.compact,
+              tooltip: _expanded ? l10n.hideCoordinates : l10n.showCoordinates,
+              onPressed: () => setState(() => _expanded = !_expanded),
+            ),
+          ],
+        ),
+        if (_expanded)
+          ImageLocationLine(widget.location, mapUrl: widget.mapUrl),
+      ],
+    );
+  }
+}
 
 /// Whether [location] names a place at all, see issue #161.
 ///

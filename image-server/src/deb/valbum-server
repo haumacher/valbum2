@@ -20,8 +20,8 @@ CONFIG=${VALBUM_CONFIG:-/etc/default/valbum}
 
 # The settings the server reads from its environment rather than from its command line (issue
 # #199): the public address and the mail account, whose password must never show in the process
-# list. They are exported below, so that they reach the server however this script was started.
-ENV_SETTINGS="VALBUM_PUBLIC_URL VALBUM_SMTP_HOST VALBUM_SMTP_PORT VALBUM_SMTP_USER VALBUM_SMTP_PASSWORD VALBUM_SMTP_FROM VALBUM_SMTP_TLS"
+# list, and where the place names of #234 are kept. They are exported below, so that they reach the server however this script was started.
+ENV_SETTINGS="VALBUM_PUBLIC_URL VALBUM_SMTP_HOST VALBUM_SMTP_PORT VALBUM_SMTP_USER VALBUM_SMTP_PASSWORD VALBUM_SMTP_FROM VALBUM_SMTP_TLS VALBUM_GEONAMES_DIR VALBUM_GEONAMES_MEMORY"
 
 # The providers of "Continue with Google" (issue #200) are named after the provider - every
 # VALBUM_OIDC_<ID>_CLIENT_ID, _CLIENT_SECRET, _DISCOVERY_URL and _LABEL - so they are found by

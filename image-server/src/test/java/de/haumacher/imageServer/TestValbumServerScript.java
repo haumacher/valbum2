@@ -154,6 +154,18 @@ public class TestValbumServerScript extends TestCase {
 		}
 	}
 
+	/** The gazetteer's folder and memory reach the server through its environment, see issue #234. */
+	public void testTheGazetteerSettingsReachTheServerThroughItsEnvironment() throws Exception {
+		if (noShell()) {
+			return;
+		}
+		configure("VALBUM_GEONAMES_DIR=/var/cache/valbum/geonames\nVALBUM_GEONAMES_MEMORY=48");
+		run(Map.of());
+		Map<String, String> env = environment();
+		assertEquals("/var/cache/valbum/geonames", env.get("VALBUM_GEONAMES_DIR"));
+		assertEquals("48", env.get("VALBUM_GEONAMES_MEMORY"));
+	}
+
 	public void testTheEnvironmentWinsForTheMailSettingsToo() throws Exception {
 		if (noShell()) {
 			return;
@@ -197,7 +209,8 @@ public class TestValbumServerScript extends TestCase {
 	/** The names of the settings the server reads from its environment, see {@link ServerEnvironment}. */
 	static final List<String> ENV_SETTINGS = List.of(ServerEnvironment.PUBLIC_URL, ServerEnvironment.SMTP_HOST,
 		ServerEnvironment.SMTP_PORT, ServerEnvironment.SMTP_USER, ServerEnvironment.SMTP_PASSWORD,
-		ServerEnvironment.SMTP_FROM, ServerEnvironment.SMTP_TLS);
+		ServerEnvironment.SMTP_FROM, ServerEnvironment.SMTP_TLS, ServerEnvironment.GEONAMES_DIR,
+		ServerEnvironment.GEONAMES_MEMORY);
 
 	/** The environment the fake <code>java</code> was started with. */
 	private Map<String, String> environment() throws Exception {

@@ -26,6 +26,42 @@ public class TestServerEnvironment extends TestCase {
 		assertFalse(environment.emailProofs().isAvailable());
 	}
 
+	/** The gazetteer of issue #234: inside the library by default, elsewhere where configured. */
+	public void testTheGazetteerDirectory() throws Exception {
+		java.nio.file.Path base = java.nio.file.Path.of("/srv/photos");
+		ServerEnvironment defaults = ServerEnvironment.read(Map.of());
+		assertEquals(base.resolve(".geonames"), defaults.geonamesDirectory(base));
+		assertEquals(0, defaults.getGeonamesMemory());
+
+		ServerEnvironment configured = ServerEnvironment.read(Map.of(ServerEnvironment.GEONAMES_DIR, "/var/cache/geonames",
+			ServerEnvironment.GEONAMES_MEMORY, "64"));
+		assertEquals(java.nio.file.Path.of("/var/cache/geonames"), configured.geonamesDirectory(base));
+		assertEquals(64L * 1024 * 1024, configured.getGeonamesMemory());
+		de.haumacher.imageServer.places.Places places = configured.places(base);
+		try {
+			assertEquals(java.nio.file.Path.of("/var/cache/geonames"), places.getStore().getDirectory());
+			assertTrue(places.getStore().isDownloading());
+			assertEquals(64L * 1024 * 1024, places.getBudget());
+		} finally {
+			places.getStore().close();
+		}
+
+		assertNull("A test server has none.", ServerEnvironment.NONE.geonamesDirectory(base));
+		assertNull(ServerEnvironment.NONE.places(base));
+		assertTrue(Main.placesReport(defaults, base), Main.placesReport(defaults, base).contains("/srv/photos/.geonames"));
+	}
+
+	public void testAnUnusableGazetteerMemoryIsRefused() {
+		for (String value : List.of("lots", "0", "-5")) {
+			try {
+				ServerEnvironment.read(Map.of(ServerEnvironment.GEONAMES_MEMORY, value));
+				fail("Accepted: " + value);
+			} catch (ServerEnvironment.Invalid ex) {
+				assertTrue(ex.getMessage(), ex.getMessage().contains(ServerEnvironment.GEONAMES_MEMORY));
+			}
+		}
+	}
+
 	public void testAMailAccountWithItsDefaults() throws Exception {
 		ServerEnvironment environment = ServerEnvironment.read(Map.of(
 			"VALBUM_SMTP_HOST", " smtp.example.org ",

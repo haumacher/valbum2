@@ -37,6 +37,10 @@ import de.haumacher.imageServer.mail.EmailProofs;
 import de.haumacher.imageServer.oidc.OidcLogins;
 import de.haumacher.imageServer.oidc.OidcProvider;
 import de.haumacher.imageServer.passkeys.Passkeys;
+import de.haumacher.imageServer.places.PhotoPlaces;
+import de.haumacher.imageServer.places.PlaceNames;
+import de.haumacher.imageServer.places.Places;
+import de.haumacher.imageServer.places.PlacesStep;
 import de.haumacher.imageServer.raw.NoEmbeddedPreviewException;
 import de.haumacher.imageServer.raw.RawFile;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
@@ -731,6 +735,12 @@ public class ImageServlet extends HttpServlet {
 		_faces.start();
 	}
 
+	/** Where the places of the photographs come from, see issue #234; <code>null</code> for none. */
+	private volatile Places _places;
+
+	/** The warm-up of {@link #_places} in the background work of this space. */
+	private PlacesStep _placesStep;
+
 	/** The video renditions of this server, for the tests that wait for a transcode. */
 	VideoRenditions videos() {
 		return _videos;
@@ -850,6 +860,30 @@ public class ImageServlet extends HttpServlet {
 		_oidc = oidc == null ? OidcLogins.NONE : oidc;
 	}
 
+	/**
+	 * Installs the gazetteer the places of the photographs come from, see issue #234; before, no
+	 * photograph is answered any place. Adds the warm-up of the gazetteer to the background work of
+	 * the space, behind hashing ({@link PlacesStep}).
+	 */
+	public void setPlaces(Places places) {
+		if (_placesStep != null) {
+			_placesStep.close();
+			_index.pipeline().removeStep(_placesStep);
+			_placesStep = null;
+		}
+		_places = places;
+		_cache.setPlaces(places);
+		if (places != null) {
+			_placesStep = new PlacesStep(places, _index.pipeline());
+			_index.pipeline().addStep(_placesStep);
+		}
+	}
+
+	/** The gazetteer of this space, <code>null</code> for none. */
+	public Places places() {
+		return _places;
+	}
+
 	/** The authentication of this servlet's space. */
 	AuthService getAuth() {
 		return _auth;
@@ -910,6 +944,9 @@ public class ImageServlet extends HttpServlet {
 		_index.shutdown();
 		_faces.shutdown();
 		_reanalysis.shutdown();
+		if (_placesStep != null) {
+			_placesStep.close();
+		}
 		try {
 			_cache.close();
 		} catch (IOException ex) {
@@ -5791,13 +5828,30 @@ public class ImageServlet extends HttpServlet {
 
 		if (jsonRequested(context)) {
 			Resource answer = folderAnswer(resource, pathInfo, caller, clearance, viewAs);
-			serveJson(context.response(), withRights(answer, _auth.rights(caller, pathInfo)));
+			serveJson(context.response(), localized(withRights(answer, _auth.rights(caller, pathInfo)), context));
 		} else {
 			error404(context);
 		}
 	}
 
 
+
+	/**
+	 * The given answer with its place names in the language the caller asked for
+	 * (<code>Accept-Language</code>), see issue #234 and {@link PhotoPlaces#localize}.
+	 *
+	 * @param answer
+	 *        The caller's own copy of an album (what {@link #withRights(Resource, Set)} answers) or a
+	 *        photograph; never the cached album, which is never changed here.
+	 */
+	private Resource localized(Resource answer, Context context) {
+		Places places = _places;
+		if (places == null) {
+			return answer;
+		}
+		return PhotoPlaces.localize(answer, PlaceNames.language(context.request().getHeader("Accept-Language")),
+			places);
+	}
 
 	/**
 	 * The given folder answer carrying the caller's rights on it, see {@link FolderResource#getRights()}.
@@ -5874,7 +5928,7 @@ public class ImageServlet extends HttpServlet {
 				// The labels are the members' bookkeeping too, see issue #213.
 				resource = Labels.withoutLabels((ImagePart) resource);
 			}
-			serveJson(context.response(), resource);
+			serveJson(context.response(), localized(resource, context));
 			return;
 		}
 
@@ -7122,7 +7176,7 @@ public class ImageServlet extends HttpServlet {
 		int viewAs = Privacy.PRIVATE;
 		int clearance = Math.min(_auth.clearance(caller, folderPath), viewAs);
 		Resource answer = folderAnswer(stored, folderPath, caller, clearance, viewAs);
-		serveJson(context.response(), withRights(answer, _auth.rights(caller, folderPath)));
+		serveJson(context.response(), localized(withRights(answer, _auth.rights(caller, folderPath)), context));
 	}
 
 	/**

@@ -11,11 +11,14 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Enumeration;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.zip.CRC32;
@@ -130,7 +133,26 @@ public final class Places {
 
 	private volatile Base _base;
 
-	private final Map<String, Loaded> _countries = new ConcurrentHashMap<>();
+	/**
+	 * The countries read, the least recently used first; guarded by itself, together with
+	 * {@link #_loadedBytes}. See {@link #setBudget(long)}.
+	 */
+	private final LinkedHashMap<String, Loaded> _countries = new LinkedHashMap<>(16, 0.75f, true);
+
+	/**
+	 * The names of a country in a language ("DE/de"), the least recently used first; guarded by
+	 * {@link #_countries}, and counted in {@link #_loadedBytes}.
+	 */
+	private final LinkedHashMap<String, LoadedNames> _names = new LinkedHashMap<>(16, 0.75f, true);
+
+	/** The memory of the countries in {@link #_countries} and of the names in {@link #_names}. */
+	private long _loadedBytes;
+
+	/** How many bytes of heap the countries held may take, see {@link #setBudget(long)}. */
+	private volatile long _budget = defaultBudget();
+
+	/** How many times a country was read from its files, for the tests and the report. */
+	private final AtomicInteger _reads = new AtomicInteger();
 
 	private final Map<String, Object> _locks = new ConcurrentHashMap<>();
 
@@ -141,7 +163,43 @@ public final class Places {
 
 	/** A country's index, or why it could not be read, and what it was read from. */
 	private record Loaded(CountryIndex index, long stamp, String error) {
-		// A triple.
+		long memory() {
+			return index == null ? 0 : index.memory();
+		}
+	}
+
+	/** The names of a country in a language, or why they could not be read, and what from. */
+	private record LoadedNames(PlaceNames names, long stamp, String error) {
+		long memory() {
+			return names == null ? 0 : names.memory();
+		}
+	}
+
+	/**
+	 * Why a lookup has no answer: the file and the country it is missing for, and whether it is on
+	 * its way.
+	 *
+	 * @param country
+	 *        The name of the country ("China"), <code>null</code> for a file every lookup needs.
+	 * @param reason
+	 *        What is wrong, for the log: "place names for China (CN) are unavailable: ...".
+	 * @param detail
+	 *        What is wrong with the file, for a person: "the download of CN.zip failed (...)".
+	 * @param loading
+	 *        Whether the file is being downloaded.
+	 */
+	private record Problem(String country, String reason, String detail, boolean loading) {
+		// A tuple.
+	}
+
+	/**
+	 * The default of {@link #setBudget(long)}: an eighth of the largest heap the JVM may use, so that
+	 * a NAS started with <code>-Xmx512m</code> holds 64&nbsp;MB of countries (Germany is some
+	 * 8&nbsp;MB, France 15, China 36, the United States 45) and a world-travelling library cannot
+	 * exhaust it.
+	 */
+	public static long defaultBudget() {
+		return Runtime.getRuntime().maxMemory() / 8;
 	}
 
 	/**
@@ -166,6 +224,211 @@ public final class Places {
 	}
 
 	/**
+	 * Sets how many bytes of heap the countries read may take, {@link #defaultBudget()} by default.
+	 *
+	 * <p>
+	 * A country stays loaded while it is used; when a further one would exceed the budget, the least
+	 * recently used are let go, and read again from their cache file (a tenth of a second for
+	 * Germany) when they are asked for next. The country just read always stays, however large.
+	 * </p>
+	 */
+	public void setBudget(long bytes) {
+		_budget = bytes;
+		synchronized (_countries) {
+			trim(null);
+		}
+	}
+
+	/** See {@link #setBudget(long)}. */
+	public long getBudget() {
+		return _budget;
+	}
+
+	/** The countries held in memory now, the least recently used first. */
+	public List<String> loadedCountries() {
+		synchronized (_countries) {
+			List<String> result = new ArrayList<>();
+			for (Map.Entry<String, Loaded> entry : _countries.entrySet()) {
+				if (entry.getValue().index() != null) {
+					result.add(entry.getKey());
+				}
+			}
+			return result;
+		}
+	}
+
+	/** The names held in memory now ("DE/de"), the least recently used first. */
+	public List<String> loadedNames() {
+		synchronized (_countries) {
+			List<String> result = new ArrayList<>();
+			for (Map.Entry<String, LoadedNames> entry : _names.entrySet()) {
+				if (entry.getValue().names() != null) {
+					result.add(entry.getKey());
+				}
+			}
+			return result;
+		}
+	}
+
+	/**
+	 * The names of the places of the given country in the given language, see {@link PlaceNames};
+	 * <code>null</code> while they are not there: the alternate names of the country are being
+	 * downloaded (or failed to), or the country itself is missing. Then a place is called by its
+	 * main name, and its photograph is not waiting for anything.
+	 *
+	 * <p>
+	 * Read on the first request for a language, from a cache file where there is one; held like a
+	 * country, within the same {@link #setBudget(long) budget}.
+	 * </p>
+	 */
+	public PlaceNames names(String iso, String language) {
+		List<Problem> problems = new ArrayList<>();
+		Base base = base(problems);
+		if (base == null) {
+			return null;
+		}
+		CountryIndex index = country(iso, base, problems);
+		if (index == null) {
+			return null;
+		}
+		String fileName = GeoNamesStore.alternateNamesFile(iso);
+		Path file = _store.get(fileName);
+		if (file == null) {
+			return null;
+		}
+		long stamp = stamp(file) * 31 + index.getVersion().hashCode();
+		String key = iso + "/" + language;
+		LoadedNames loaded = heldNames(key);
+		if (loaded == null || loaded.stamp() != stamp) {
+			synchronized (_locks.computeIfAbsent(key, k -> new Object())) {
+				loaded = heldNames(key);
+				if (loaded == null || loaded.stamp() != stamp) {
+					loaded = loadNames(iso, language, file, index, base, stamp);
+					holdNames(key, loaded);
+				}
+			}
+		}
+		return loaded.names();
+	}
+
+	private LoadedNames loadNames(String iso, String language, Path file, CountryIndex index, Base base, long stamp) {
+		_reads.incrementAndGet();
+		Path cache = file.resolveSibling(iso + "." + language + ".names");
+		long start = System.nanoTime();
+		PlaceNames names = PlaceNames.read(cache, stamp);
+		if (names != null) {
+			LOG.info("GeoNames: read the " + language + " names of " + iso + " (" + names.size() + ") in "
+				+ (System.nanoTime() - start) / 1_000_000 + " ms.");
+			return new LoadedNames(names, stamp, null);
+		}
+		int[] kept = index.keptIds();
+		Countries.Country country = base.countries().get(iso);
+		if (country != null && Arrays.binarySearch(kept, country.geonameId()) < 0) {
+			kept = Arrays.copyOf(kept, kept.length + 1);
+			kept[kept.length - 1] = country.geonameId();
+			Arrays.sort(kept);
+		}
+		try (Source source = open(file, iso + ".txt")) {
+			names = PlaceNames.parse(iso, language, source.in(), kept, country == null ? -1 : country.geonameId());
+		} catch (IOException | RuntimeException ex) {
+			LOG.log(Level.WARNING, "GeoNames: cannot read " + file + ".", ex);
+			return new LoadedNames(null, stamp, "cannot read " + file.getFileName() + ": " + ex.getMessage());
+		}
+		LOG.info("GeoNames: built the " + language + " names of " + iso + " (" + names.size() + ") in "
+			+ (System.nanoTime() - start) / 1_000_000 + " ms.");
+		try {
+			names.write(cache, stamp);
+		} catch (IOException ex) {
+			LOG.log(Level.WARNING, "GeoNames: cannot write " + cache + ".", ex);
+		}
+		return new LoadedNames(names, stamp, null);
+	}
+
+	private LoadedNames heldNames(String key) {
+		synchronized (_countries) {
+			return _names.get(key);
+		}
+	}
+
+	private void holdNames(String key, LoadedNames loaded) {
+		synchronized (_countries) {
+			LoadedNames before = _names.put(key, loaded);
+			if (before != null) {
+				_loadedBytes -= before.memory();
+			}
+			_loadedBytes += loaded.memory();
+			trim(key);
+		}
+	}
+
+	/** How many bytes of heap the countries held take, by {@link CountryIndex#memory()}. */
+	public long loadedBytes() {
+		synchronized (_countries) {
+			return _loadedBytes;
+		}
+	}
+
+	/** How many times a country was read from its files (cache file or dump). */
+	public int reads() {
+		return _reads.get();
+	}
+
+	/**
+	 * A number that changes whenever an answer of this gazetteer may have changed from "not yet" to
+	 * something else: a download ended (or failed), or a file appeared in the directory (placed by
+	 * hand). Cheap: a counter and the modification time of the directory.
+	 */
+	public long epoch() {
+		long modified;
+		try {
+			modified = Files.getLastModifiedTime(_store.getDirectory()).toMillis();
+		} catch (IOException ex) {
+			modified = -1;
+		}
+		return _store.generation() * 1_000_003L + modified;
+	}
+
+	/**
+	 * Tells the given listener whenever a download ended, so that what waited for a file asks again,
+	 * see {@link GeoNamesStore#addAttemptListener(Runnable)}.
+	 */
+	public void addListener(Runnable listener) {
+		_store.addAttemptListener(listener);
+	}
+
+	/** Stops telling the given listener. */
+	public void removeListener(Runnable listener) {
+		_store.removeAttemptListener(listener);
+	}
+
+	/**
+	 * Asks for every file a {@link #lookup(double, double)} of the given position needs, without
+	 * reading any country: what warms the gazetteer up in the background, see issue #234.
+	 *
+	 * @return <code>null</code> when every file is there, else the sentence why not, see
+	 *         {@link PlaceResult#getSentence()}; a missing file is being fetched then (or waits for
+	 *         the back-off of a failure).
+	 */
+	public String prepare(double lat, double lon) {
+		if (!(lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180)) {
+			return null;
+		}
+		List<Problem> problems = new ArrayList<>();
+		Base base = base(problems);
+		if (base == null) {
+			return sentence(problems);
+		}
+		List<Candidate> candidates = base.shapes().candidates(lat, lon, BORDER_MARGIN);
+		for (Candidate candidate : candidates) {
+			files(candidate.country(), base, problems);
+			if (candidates.size() == 1 && candidate.inside()) {
+				break;
+			}
+		}
+		return problems.isEmpty() ? null : sentence(problems);
+	}
+
+	/**
 	 * The place tags of a position.
 	 *
 	 * <p>
@@ -179,10 +442,10 @@ public final class Places {
 		if (!(lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180)) {
 			return PlaceResult.unavailable("not a position: " + lat + ", " + lon);
 		}
-		List<String> problems = new ArrayList<>();
+		List<Problem> problems = new ArrayList<>();
 		Base base = base(problems);
 		if (base == null) {
-			return PlaceResult.unavailable(String.join("; ", problems));
+			return unavailable(problems);
 		}
 		List<Candidate> candidates = base.shapes().candidates(lat, lon, BORDER_MARGIN);
 		if (candidates.isEmpty()) {
@@ -199,7 +462,7 @@ public final class Places {
 			}
 		}
 		if (!problems.isEmpty()) {
-			return PlaceResult.unavailable(String.join("; ", problems));
+			return unavailable(problems);
 		}
 		CountryIndex chosen;
 		if (indexes.size() == 1 && candidates.get(0).inside()) {
@@ -240,7 +503,7 @@ public final class Places {
 	 * <code>null</code> while the country's data is unavailable.
 	 */
 	public String currentVersion(String iso) {
-		List<String> problems = new ArrayList<>();
+		List<Problem> problems = new ArrayList<>();
 		Base base = base(problems);
 		if (base == null) {
 			return null;
@@ -278,6 +541,38 @@ public final class Places {
 	 */
 	public List<GeoNamesStore.FileStatus> status() {
 		return _store.status();
+	}
+
+	private static PlaceResult unavailable(List<Problem> problems) {
+		List<String> reasons = new ArrayList<>();
+		for (Problem problem : problems) {
+			reasons.add(problem.reason());
+		}
+		return PlaceResult.unavailable(String.join("; ", reasons), sentence(problems));
+	}
+
+	/**
+	 * What to tell a person about the given problems, as the app shows it: "Place names for China
+	 * are being loaded." A failure is the news where there is one; a download going on beside it
+	 * will be done soon.
+	 */
+	private static String sentence(List<Problem> problems) {
+		Problem first = problems.get(0);
+		for (Problem problem : problems) {
+			if (!problem.loading()) {
+				first = problem;
+				break;
+			}
+		}
+		String subject = first.country() == null ? "Place names" : "Place names for " + first.country();
+		if (first.loading()) {
+			return subject + " are being loaded.";
+		}
+		String detail = first.detail();
+		while (detail.endsWith(".")) {
+			detail = detail.substring(0, detail.length() - 1);
+		}
+		return subject + " cannot be loaded: " + detail + ".";
 	}
 
 	private static String version(CountryIndex index) {
@@ -504,15 +799,15 @@ public final class Places {
 
 	// --- Loading ---------------------------------------------------------------------------------
 
-	private Base base(List<String> problems) {
+	private Base base(List<Problem> problems) {
 		Path info = _store.get(GeoNamesStore.COUNTRY_INFO);
 		Path shapes = _store.get(GeoNamesStore.SHAPES);
 		if (info == null || shapes == null) {
 			if (info == null) {
-				problems.add(_store.problem(GeoNamesStore.COUNTRY_INFO));
+				problems.add(missing(null, "", GeoNamesStore.COUNTRY_INFO));
 			}
 			if (shapes == null) {
-				problems.add(_store.problem(GeoNamesStore.SHAPES));
+				problems.add(missing(null, "", GeoNamesStore.SHAPES));
 			}
 			return null;
 		}
@@ -528,10 +823,52 @@ public final class Places {
 			}
 		}
 		if (base.error() != null) {
-			problems.add(base.error());
+			problems.add(new Problem(null, base.error(), base.error(), false));
 			return null;
 		}
 		return base;
+	}
+
+	/** The problem of a missing file. */
+	private Problem missing(String country, String prefix, String fileName) {
+		String detail = _store.problem(fileName);
+		if (detail == null) {
+			// Arrived meanwhile: the next lookup reads it.
+			detail = fileName + " has just arrived";
+		}
+		return new Problem(country, prefix + detail, detail, _store.isLoading(fileName));
+	}
+
+	/** The name of a country for a person, its code where the country is unknown. */
+	private static String countryName(Base base, String iso) {
+		Countries.Country country = base.countries().get(iso);
+		return country == null ? iso : country.name();
+	}
+
+	/**
+	 * The files of a country, each asked for; <code>null</code> (and the problems added) where one
+	 * is missing.
+	 */
+	private Path[] files(String iso, Base base, List<Problem> problems) {
+		String fileName = GeoNamesStore.countryFile(iso);
+		Path file = _store.get(fileName);
+		Path admin1 = _store.get(GeoNamesStore.ADMIN1);
+		Path admin2 = _store.get(GeoNamesStore.ADMIN2);
+		if (file == null || admin1 == null || admin2 == null) {
+			String what = "place names for " + base.countries().describe(iso) + " are unavailable: ";
+			String name = countryName(base, iso);
+			if (file == null) {
+				problems.add(missing(name, what, fileName));
+			}
+			if (admin1 == null) {
+				problems.add(missing(name, what, GeoNamesStore.ADMIN1));
+			}
+			if (admin2 == null) {
+				problems.add(missing(name, what, GeoNamesStore.ADMIN2));
+			}
+			return null;
+		}
+		return new Path[] { file, admin1, admin2 };
 	}
 
 	private static Base loadBase(Path info, Path shapes, long stamp) {
@@ -550,43 +887,80 @@ public final class Places {
 		}
 	}
 
-	private CountryIndex country(String iso, Base base, List<String> problems) {
-		String fileName = GeoNamesStore.countryFile(iso);
-		Path file = _store.get(fileName);
-		Path admin1 = _store.get(GeoNamesStore.ADMIN1);
-		Path admin2 = _store.get(GeoNamesStore.ADMIN2);
-		if (file == null || admin1 == null || admin2 == null) {
-			String what = "place names for " + base.countries().describe(iso) + " are unavailable: ";
-			if (file == null) {
-				problems.add(what + _store.problem(fileName));
-			}
-			if (admin1 == null) {
-				problems.add(what + _store.problem(GeoNamesStore.ADMIN1));
-			}
-			if (admin2 == null) {
-				problems.add(what + _store.problem(GeoNamesStore.ADMIN2));
-			}
+	private CountryIndex country(String iso, Base base, List<Problem> problems) {
+		Path[] files = files(iso, base, problems);
+		if (files == null) {
 			return null;
 		}
+		Path file = files[0];
+		Path admin1 = files[1];
+		Path admin2 = files[2];
 		long stamp = stamp(file, admin1, admin2);
-		Loaded loaded = _countries.get(iso);
+		Loaded loaded = held(iso);
 		if (loaded == null || loaded.stamp() != stamp) {
 			synchronized (_locks.computeIfAbsent(iso, k -> new Object())) {
-				loaded = _countries.get(iso);
+				loaded = held(iso);
 				if (loaded == null || loaded.stamp() != stamp) {
 					loaded = load(iso, file, admin1, admin2, stamp);
-					_countries.put(iso, loaded);
+					hold(iso, loaded);
 				}
 			}
 		}
 		if (loaded.error() != null) {
-			problems.add("place names for " + base.countries().describe(iso) + " are unavailable: " + loaded.error());
+			String reason = "place names for " + base.countries().describe(iso) + " are unavailable: " + loaded.error();
+			problems.add(new Problem(countryName(base, iso), reason, loaded.error(), false));
 			return null;
 		}
 		return loaded.index();
 	}
 
+	/** The country held, marked as the most recently used; <code>null</code> where none is. */
+	private Loaded held(String iso) {
+		synchronized (_countries) {
+			return _countries.get(iso);
+		}
+	}
+
+	/** Holds a country read, and lets go of the least recently used ones beyond the budget. */
+	private void hold(String iso, Loaded loaded) {
+		synchronized (_countries) {
+			Loaded before = _countries.put(iso, loaded);
+			if (before != null) {
+				_loadedBytes -= before.memory();
+			}
+			_loadedBytes += loaded.memory();
+			trim(iso);
+		}
+	}
+
+	/**
+	 * Lets go of the least recently used names, then countries, but the given one while over the
+	 * budget: names are the cheaper to read again.
+	 */
+	private void trim(String keep) {
+		long budget = _budget;
+		for (var entries = _names.entrySet().iterator(); _loadedBytes > budget && entries.hasNext();) {
+			Map.Entry<String, LoadedNames> entry = entries.next();
+			if (entry.getKey().equals(keep) || entry.getValue().names() == null) {
+				continue;
+			}
+			_loadedBytes -= entry.getValue().memory();
+			entries.remove();
+		}
+		for (var entries = _countries.entrySet().iterator(); _loadedBytes > budget && entries.hasNext();) {
+			Map.Entry<String, Loaded> entry = entries.next();
+			if (entry.getKey().equals(keep) || entry.getValue().index() == null) {
+				continue;
+			}
+			_loadedBytes -= entry.getValue().memory();
+			entries.remove();
+			LOG.fine("GeoNames: let go of " + entry.getKey() + " to stay within " + budget / (1024 * 1024)
+				+ " MB; it is read from its cache file when asked for again.");
+		}
+	}
+
 	private Loaded load(String iso, Path file, Path admin1, Path admin2, long stamp) {
+		_reads.incrementAndGet();
 		Path cache = _store.getDirectory().resolve(iso + CACHE_SUFFIX);
 		long start = System.nanoTime();
 		CountryIndex index = CountryIndex.read(cache, stamp);
@@ -658,6 +1032,31 @@ public final class Places {
 					// A line without an id names nothing to tag.
 				}
 			}
+		}
+	}
+
+	/** Checks alternate names: id, GeoNames id, language and name on every line. */
+	private static void checkAlternateNames(InputStream in) throws IOException {
+		BufferedReader reader = new BufferedReader(new java.io.InputStreamReader(in, StandardCharsets.UTF_8), 1 << 16);
+		String[] fields = new String[4];
+		int lines = 0;
+		String line;
+		while ((line = reader.readLine()) != null) {
+			if (line.isEmpty()) {
+				continue;
+			}
+			lines++;
+			if (CountryIndex.split(line, fields) < 4) {
+				throw new IOException("Not GeoNames alternate names: line " + lines + ".");
+			}
+			try {
+				Integer.parseInt(fields[1].trim());
+			} catch (NumberFormatException ex) {
+				throw new IOException("Not GeoNames alternate names: line " + lines + " has no GeoNames id.");
+			}
+		}
+		if (lines == 0) {
+			throw new IOException("The GeoNames alternate names are empty.");
 		}
 	}
 
@@ -762,6 +1161,13 @@ public final class Places {
 				checkAdminTable(candidate);
 				return null;
 			default:
+				if (name.startsWith(GeoNamesStore.ALTERNATE_NAMES + "/") && name.endsWith(".zip")) {
+					String iso = name.substring(GeoNamesStore.ALTERNATE_NAMES.length() + 1, name.length() - 4);
+					try (Source source = openZip(candidate, iso + ".txt")) {
+						checkAlternateNames(source.in());
+					}
+					return null;
+				}
 				if (name.length() == 6 && name.endsWith(".zip")) {
 					String iso = name.substring(0, 2);
 					Path admin1 = existing(GeoNamesStore.ADMIN1);
@@ -823,7 +1229,7 @@ public final class Places {
 				long stamp = stamp(file, admin1, admin2);
 				writeCache(index, _store.getDirectory().resolve(index.getCountry() + CACHE_SUFFIX), stamp);
 				synchronized (_locks.computeIfAbsent(index.getCountry(), k -> new Object())) {
-					_countries.put(index.getCountry(), new Loaded(index, stamp, null));
+					hold(index.getCountry(), new Loaded(index, stamp, null));
 				}
 			}
 		}

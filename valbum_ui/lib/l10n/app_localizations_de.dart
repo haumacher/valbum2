@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -1447,8 +1448,7 @@ class AppLocalizationsDe extends AppLocalizations {
       locale: localeName,
       other:
           '$count zwischengespeicherte Dateien wurden verworfen; die Vorschauen werden neu erstellt.',
-      one:
-          '1 zwischengespeicherte Datei wurde verworfen; die Vorschauen werden neu erstellt.',
+      one: '1 zwischengespeicherte Datei wurde verworfen; die Vorschauen werden neu erstellt.',
     );
     return '$_temp0';
   }
@@ -1817,6 +1817,17 @@ class AppLocalizationsDe extends AppLocalizations {
   String get showOnMap => 'Auf der Karte anzeigen';
 
   @override
+  String propertyPlace(String place) {
+    return 'Ort: $place';
+  }
+
+  @override
+  String get showCoordinates => 'Koordinaten anzeigen';
+
+  @override
+  String get hideCoordinates => 'Koordinaten ausblenden';
+
+  @override
   String addedBy(String user) {
     return 'Hinzugefügt von $user';
   }
@@ -1903,7 +1914,11 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String downloadProgressOf(
-      int current, String total, int count, String received) {
+    int current,
+    String total,
+    int count,
+    String received,
+  ) {
     return 'Datei $current von $count: $received von $total heruntergeladen';
   }
 
@@ -2555,8 +2570,7 @@ class AppLocalizationsDe extends AppLocalizations {
       locale: localeName,
       other:
           '$count Dateien wurden übersprungen, ihr Format unterstützt der Server nicht:',
-      one:
-          'Eine Datei wurde übersprungen, ihr Format unterstützt der Server nicht:',
+      one: 'Eine Datei wurde übersprungen, ihr Format unterstützt der Server nicht:',
     );
     return '$_temp0 $names.';
   }
@@ -2575,6 +2589,10 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get aboutSourceCode => 'Quellcode, Dokumentation und Fehlerberichte:';
+
+  @override
+  String get aboutGeoNames =>
+      'Die Ortsnamen stammen von GeoNames und stehen unter der Creative Commons Attribution 4.0-Lizenz:';
 
   @override
   String get aboutLicense =>

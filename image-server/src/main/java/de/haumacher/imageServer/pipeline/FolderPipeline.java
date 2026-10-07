@@ -136,7 +136,15 @@ public class FolderPipeline {
 		 * The step could not do its work. Later steps, which build on it, do not run; this one is
 		 * not run again in this process until the folder changes.
 		 */
-		FAILED
+		FAILED,
+
+		/**
+		 * The step waits for something outside the folder that is on its way (the place names of a
+		 * country being downloaded, see issue #234). It is not recorded as done and later steps
+		 * still run; the step itself {@link FolderPipeline#notice(File, boolean) notices} the folder
+		 * again when what it waits for arrives, so nothing polls.
+		 */
+		WAITING
 	}
 
 	/**
@@ -250,6 +258,11 @@ public class FolderPipeline {
 	/** Adds a step behind the ones there are. */
 	public void addStep(Step step) {
 		_steps.add(step);
+	}
+
+	/** Takes a step out again. */
+	public void removeStep(Step step) {
+		_steps.remove(step);
 	}
 
 	/** The steps, in the order they run. */
@@ -509,6 +522,11 @@ public class FolderPipeline {
 			if (outcome == Outcome.DONE) {
 				_skipped.remove(skipKey);
 				done.add(name);
+				continue;
+			}
+			if (outcome == Outcome.WAITING) {
+				_skipped.remove(skipKey);
+				done.remove(name);
 				continue;
 			}
 			_skipped.put(skipKey, fingerprint + " " + outcome.name());

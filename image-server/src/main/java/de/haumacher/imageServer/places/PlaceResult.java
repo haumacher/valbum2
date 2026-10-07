@@ -22,10 +22,13 @@ public final class PlaceResult {
 
 	private final String _reason;
 
-	private PlaceResult(List<PlaceTag> tags, String version, String reason) {
+	private final String _sentence;
+
+	private PlaceResult(List<PlaceTag> tags, String version, String reason, String sentence) {
 		_tags = tags;
 		_version = version;
 		_reason = reason;
+		_sentence = sentence;
 	}
 
 	/**
@@ -38,12 +41,24 @@ public final class PlaceResult {
 	 *        The {@link Places#currentVersion(String) gazetteer version} it was made from.
 	 */
 	public static PlaceResult found(List<PlaceTag> tags, String version) {
-		return new PlaceResult(List.copyOf(tags), version, null);
+		return new PlaceResult(List.copyOf(tags), version, null, null);
 	}
 
 	/** No result, because data is missing or broken: the reason says what. */
 	public static PlaceResult unavailable(String reason) {
-		return new PlaceResult(List.of(), null, reason);
+		return unavailable(reason, "Place names cannot be looked up: " + reason + ".");
+	}
+
+	/**
+	 * No result, because data is missing or broken.
+	 *
+	 * @param reason
+	 *        What is missing, for the log.
+	 * @param sentence
+	 *        What to tell a person, see {@link #getSentence()}.
+	 */
+	public static PlaceResult unavailable(String reason, String sentence) {
+		return new PlaceResult(List.of(), null, reason, sentence);
 	}
 
 	/** Whether this is a result; <code>false</code> means "ask again later", see {@link #getReason()}. */
@@ -77,6 +92,15 @@ public final class PlaceResult {
 	/** Why there is no result, <code>null</code> for a result. */
 	public String getReason() {
 		return _reason;
+	}
+
+	/**
+	 * Why there is no result, as a sentence for the person looking at the photograph: "Place names
+	 * for China are being loaded." or "Place names for China cannot be loaded: ..."; <code>null</code>
+	 * for a result.
+	 */
+	public String getSentence() {
+		return _sentence;
 	}
 
 	@Override

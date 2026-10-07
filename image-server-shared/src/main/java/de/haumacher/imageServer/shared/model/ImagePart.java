@@ -75,6 +75,9 @@ public class ImagePart extends AbstractImage {
 	/** @see #isMissing() */
 	private static final String MISSING__PROP = "missing";
 
+	/** @see #getPlaces() */
+	private static final String PLACES__PROP = "places";
+
 	private de.haumacher.imageServer.shared.model.ImageKind _kind = de.haumacher.imageServer.shared.model.ImageKind.IMAGE;
 
 	private String _name = "";
@@ -116,6 +119,8 @@ public class ImagePart extends AbstractImage {
 	private de.haumacher.imageServer.shared.model.PhotoRef _ref = null;
 
 	private boolean _missing = false;
+
+	private de.haumacher.imageServer.shared.model.PlaceInfo _places = null;
 
 	/**
 	 * Creates a {@link ImagePart} instance.
@@ -829,6 +834,47 @@ public class ImagePart extends AbstractImage {
 		_missing = value;
 	}
 
+	/**
+	 * The places this photograph was taken in, from the offline GeoNames gazetteer, see issue #234;
+	 * <code>null</code> where there is nothing to say.
+	 *
+	 * <p>
+	 * Derived on every read from the photograph's {@link #getLocation()} (the stored one where the
+	 * sidecar has it, else the one read from the file) and <b>never stored</b>: the server clears
+	 * this field before an <code>index.json</code> is written, exactly like {@link #getFaces()}. Nothing
+	 * is ever retagged: a refreshed gazetteer simply answers differently on the next read.
+	 * </p>
+	 *
+	 * <p>
+	 * <code>null</code> for a photograph without a position, for one taken where no country is (the
+	 * open sea), and on a server without a gazetteer. One message rather than a list beside a
+	 * string, so that the cleared field is absent from the sidecar rather than written empty.
+	 * </p>
+	 */
+	public final de.haumacher.imageServer.shared.model.PlaceInfo getPlaces() {
+		return _places;
+	}
+
+	/**
+	 * @see #getPlaces()
+	 */
+	public de.haumacher.imageServer.shared.model.ImagePart setPlaces(de.haumacher.imageServer.shared.model.PlaceInfo value) {
+		internalSetPlaces(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getPlaces()} without chain call utility. */
+	protected final void internalSetPlaces(de.haumacher.imageServer.shared.model.PlaceInfo value) {
+		_places = value;
+	}
+
+	/**
+	 * Checks, whether {@link #getPlaces()} has a value.
+	 */
+	public final boolean hasPlaces() {
+		return _places != null;
+	}
+
 	@Override
 	public de.haumacher.imageServer.shared.model.ImagePart setPrevious(de.haumacher.imageServer.shared.model.AbstractImage value) {
 		internalSetPrevious(value);
@@ -932,6 +978,10 @@ public class ImagePart extends AbstractImage {
 		}
 		out.name(MISSING__PROP);
 		out.value(isMissing());
+		if (hasPlaces()) {
+			out.name(PLACES__PROP);
+			getPlaces().writeTo(out);
+		}
 	}
 
 	@Override
@@ -978,6 +1028,7 @@ public class ImagePart extends AbstractImage {
 			break;
 			case REF__PROP: setRef(de.haumacher.imageServer.shared.model.PhotoRef.readPhotoRef(in)); break;
 			case MISSING__PROP: setMissing(in.nextBoolean()); break;
+			case PLACES__PROP: setPlaces(de.haumacher.imageServer.shared.model.PlaceInfo.readPlaceInfo(in)); break;
 			default: super.readField(in, field);
 		}
 	}

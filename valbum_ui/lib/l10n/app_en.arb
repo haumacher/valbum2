@@ -2928,6 +2928,26 @@
     "description": "Tooltip of the button opening the place a photo was taken on a map",
     "x-translated": "7d407b84"
   },
+  "propertyPlace": "Place: {place}",
+  "@propertyPlace": {
+    "description": "The line naming the place an image was taken at (issue #234): place names from the most specific to the country, e.g. 'Karlsruhe Schloss · Innenstadt, Karlsruhe · Baden-Württemberg, Germany'.",
+    "placeholders": {
+      "place": {
+        "type": "String"
+      }
+    },
+    "x-translated": "2b2582af"
+  },
+  "showCoordinates": "Show the coordinates",
+  "@showCoordinates": {
+    "description": "Tooltip of the button under the place of a photo that unfolds its coordinates and the map link (issue #234).",
+    "x-translated": "9e1a044f"
+  },
+  "hideCoordinates": "Hide the coordinates",
+  "@hideCoordinates": {
+    "description": "Tooltip of the button that folds the coordinates of a photo away again (issue #234).",
+    "x-translated": "a5f6ce9e"
+  },
   "addedBy": "Added by {user}",
   "@addedBy": {
     "description": "The line naming who brought a photo into an album",
@@ -4243,6 +4263,11 @@
   "@aboutSourceCode": {
     "description": "Line in the About dialog above the link to the app's GitHub page (issue #187).",
     "x-translated": "4b91b59c"
+  },
+  "aboutGeoNames": "Place names come from GeoNames, licensed under Creative Commons Attribution 4.0:",
+  "@aboutGeoNames": {
+    "description": "Line in the About dialog above the link to GeoNames (issue #234), the attribution its licence asks for. 'GeoNames' and 'Creative Commons Attribution 4.0' are proper names; keep them untranslated.",
+    "x-translated": "a648a4c4"
   },
   "aboutLicense": "Free software under the GNU Affero General Public License, version 3 or later.",
   "@aboutLicense": {

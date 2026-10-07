@@ -525,7 +525,7 @@ public class TestGeoLocation extends TestCase {
 	 * @param lonRef
 	 *        <code>"E"</code> or <code>"W"</code>.
 	 */
-	private static byte[] gps(String latRef, int latDeg, int latMin, double latSec,
+	static byte[] gps(String latRef, int latDeg, int latMin, double latSec,
 			String lonRef, int lonDeg, int lonMin, double lonSec) throws IOException {
 		int gpsIfd = 8 + 2 + 12 + 4;
 		int data = gpsIfd + 2 + 4 * 12 + 4;
