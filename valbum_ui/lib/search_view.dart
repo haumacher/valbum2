@@ -11,20 +11,31 @@
 /// The server answers the search as an album of [AlbumKind.search] whose
 /// photographs are named by their path below the folder, so the album grid
 /// shows them as an album of the folder would: every thumbnail and every
-/// original is the photograph's own address. The search view only looks:
+/// original is the photograph's own address. The search view edits nothing:
 /// what is to be kept is saved as a view ("Save as view…", an album of kind
 /// [AlbumKind.search] storing nothing but the query) or turned into a
 /// collection ("Create collection from these…"); a photograph is edited in a
 /// saved view or in its album ("Show in album").
+///
+/// Some of what was found is taken by the select mode of issue #209, which
+/// the view offers to whoever may download, editors included — it has no edit
+/// mode (issue #243): a long press on a tile or "Select" of the tile's menu
+/// at the pointer enters it, its bar replaces the view's bar and criteria
+/// while it is on, and its actions download the selection and add it to a
+/// collection.
 library;
 
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'album_date.dart';
 import 'album_model.dart';
 import 'album_view.dart';
 import 'app.dart';
 import 'client.dart';
+import 'downloads.dart';
 import 'form_dialog.dart';
 import 'l10n/app_localizations.dart';
 import 'listing_view.dart' show splitPath;
@@ -122,6 +133,14 @@ class SearchViewState extends State<SearchView> {
 
   final TextEditingController _text = TextEditingController();
 
+  /// Whether the results are in the select mode, whose bar then replaces the
+  /// view's own bar and the criteria (issue #243).
+  bool _selecting = false;
+
+  /// The search the select mode was entered on: a new search shows new
+  /// results, outside the mode.
+  Future<AlbumInfo>? _selectedIn;
+
   @override
   void initState() {
     super.initState();
@@ -145,7 +164,21 @@ class SearchViewState extends State<SearchView> {
 
   void _changed() {
     if (mounted) {
-      setState(() {});
+      setState(() {
+        if (_selecting && !identical(_selectedIn, session.result)) {
+          _selecting = false;
+        }
+      });
+    }
+  }
+
+  /// The results entered or left the select mode, see [_selecting].
+  void _selectModeChanged(bool on) {
+    if (mounted) {
+      setState(() {
+        _selecting = on;
+        _selectedIn = session.result;
+      });
     }
   }
 
@@ -155,48 +188,56 @@ class SearchViewState extends State<SearchView> {
   Widget build(BuildContext context) {
     var l10n = _l10n;
     var editing = session.edited != null;
+    // The select mode's bar is the results' own (issue #243): it replaces
+    // this bar and the criteria while the mode is on, and shows its own line
+    // when the app is offline.
+    var selecting = _selecting;
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(
-        leading: IconButton(
-          key: const Key("search-up"),
-          icon: const Icon(Icons.arrow_back),
-          tooltip: l10n.up,
-          onPressed: leave,
-        ),
-        automaticallyImplyLeading: false,
-        title: Text(editing ? l10n.editSearch : l10n.searchAction),
-        actions: [
-          if (editing)
-            IconButton(
-              key: const Key("search-save-edit"),
-              icon: const Icon(Icons.save),
-              tooltip: l10n.save,
-              onPressed: session.criteria.isEmpty ? null : saveEdit,
-            )
-          else
-            IconButton(
-              key: const Key("search-save-as-view"),
-              icon: const Icon(Icons.bookmark_add_outlined),
-              tooltip: l10n.saveAsView,
-              onPressed: session.criteria.isEmpty ? null : saveAsView,
+      appBar: selecting
+          ? null
+          : AppBar(
+              leading: IconButton(
+                key: const Key("search-up"),
+                icon: const Icon(Icons.arrow_back),
+                tooltip: l10n.up,
+                onPressed: leave,
+              ),
+              automaticallyImplyLeading: false,
+              title: Text(editing ? l10n.editSearch : l10n.searchAction),
+              actions: [
+                if (editing)
+                  IconButton(
+                    key: const Key("search-save-edit"),
+                    icon: const Icon(Icons.save),
+                    tooltip: l10n.save,
+                    onPressed: session.criteria.isEmpty ? null : saveEdit,
+                  )
+                else
+                  IconButton(
+                    key: const Key("search-save-as-view"),
+                    icon: const Icon(Icons.bookmark_add_outlined),
+                    tooltip: l10n.saveAsView,
+                    onPressed: session.criteria.isEmpty ? null : saveAsView,
+                  ),
+                IconButton(
+                  key: const Key("search-create-collection"),
+                  icon: const Icon(Icons.collections_bookmark_outlined),
+                  tooltip: l10n.createCollectionFromThese,
+                  onPressed: session.result == null ? null : createCollection,
+                ),
+              ],
             ),
-          IconButton(
-            key: const Key("search-create-collection"),
-            icon: const Icon(Icons.collections_bookmark_outlined),
-            tooltip: l10n.createCollectionFromThese,
-            onPressed: session.result == null ? null : createCollection,
-          ),
-        ],
-      ),
       body: Column(
         children: [
-          OfflineBanner(onRetry: () => session.run(client, path)),
-          FutureBuilder<SearchOptions>(
-            future: session.options,
-            builder: (context, snapshot) =>
-                criteriaBar(snapshot.data ?? SearchOptions()),
-          ),
+          if (!selecting)
+            OfflineBanner(onRetry: () => session.run(client, path)),
+          if (!selecting)
+            FutureBuilder<SearchOptions>(
+              future: session.options,
+              builder: (context, snapshot) =>
+                  criteriaBar(snapshot.data ?? SearchOptions()),
+            ),
           Expanded(child: results()),
         ],
       ),
@@ -563,6 +604,9 @@ class SearchViewState extends State<SearchView> {
           widget.albumState.baseUrl,
           widget.albumState.pushPart,
           key: ObjectKey(album),
+          onSelectModeChanged: _selectModeChanged,
+          downloadSelected: downloadFound,
+          collectSelected: collectFound,
         );
       },
     );
@@ -593,6 +637,80 @@ class SearchViewState extends State<SearchView> {
   }
 
   // --- What is kept of a search. ---
+  // --- The select mode, see issue #243. ---
+
+  /// Downloads the originals of the photographs found under [names] — paths
+  /// below the folder searched, as [_foundNames] names them.
+  ///
+  /// The server takes an archive from one album, of names of that album: the
+  /// names are asked of the album each photograph lies in, one archive per
+  /// album, named after the search (and the album, where there are several).
+  /// One photograph of an album is its own original.
+  Future<void> downloadFound(List<String> names) async {
+    var byFolder = <String, List<String>>{};
+    for (var name in names) {
+      var slash = name.lastIndexOf("/");
+      var folder = slash < 0 ? "" : name.substring(0, slash);
+      byFolder.putIfAbsent(folder, () => []).add(name.substring(slash + 1));
+    }
+    var title = await _searchTitle();
+    if (!mounted || byFolder.isEmpty) {
+      return;
+    }
+    await runDownload(context, (progress) async {
+      var count = 0;
+      String? last;
+      for (var entry in byFolder.entries) {
+        var folder = entry.key.isEmpty ? <String>[] : entry.key.split("/");
+        var result = await downloadOriginals(
+          client,
+          [...path, ...folder],
+          entry.value,
+          archiveName: archiveNameOf(
+            byFolder.length == 1 || folder.isEmpty
+                ? title
+                : "$title - ${folder.last}",
+          ),
+          progress: progress,
+        );
+        count += result.count;
+        last = result.name;
+        if (result.cancelled) {
+          return DownloadResult(count: count, cancelled: true);
+        }
+      }
+      return DownloadResult(
+        count: count,
+        name: byFolder.length == 1 ? last : null,
+      );
+    });
+  }
+
+  /// The title of the search, as "Save as view…" proposes it.
+  Future<String> _searchTitle() async {
+    var options = await session.options?.catchError((_) => SearchOptions());
+    if (!mounted) {
+      return "";
+    }
+    return session.criteria.title(
+      fallback: _l10n.searchAction,
+      personNames: {for (var p in options?.persons ?? <Person>[]) p.id: p.name},
+      placeNames: {
+        for (var p in options?.places ?? <PlaceTag>[]) p.geonameId: p.name,
+      },
+    );
+  }
+
+  /// Adds the photographs found under [names] to a collection, chosen or
+  /// created, see issue #221: what [createCollection] does for all of them.
+  Future<void> collectFound(List<String> names) => collectWithPicker(
+        context: context,
+        client: client,
+        source: path,
+        names: names,
+        delegate: widget.albumState.navigator.delegate,
+      );
+
 
   /// Saves the search as a view, see issue #227: a folder chosen with the
   /// move picker's folder choice, a title proposed from what was chosen, an
@@ -712,13 +830,7 @@ class SearchViewState extends State<SearchView> {
     if (!mounted) {
       return;
     }
-    await collectWithPicker(
-      context: context,
-      client: client,
-      source: path,
-      names: names,
-      delegate: widget.albumState.navigator.delegate,
-    );
+    await collectFound(names);
   }
 }
 
@@ -742,9 +854,66 @@ class _ChooseManyDialog<T> extends StatefulWidget {
 class _ChooseManyDialogState<T> extends State<_ChooseManyDialog<T>> {
   late final List<T> _chosen = [...widget.chosen];
 
+  /// The filter of a long list (issue #243).
+  final TextEditingController _filter = TextEditingController();
+
+  /// From how many choices on the list is filtered: a short list is read at
+  /// a glance.
+  static const int filterFrom = 9;
+
+  @override
+  void dispose() {
+    _filter.dispose();
+    super.dispose();
+  }
+
+  bool get _filtered => widget.choices.length >= filterFrom;
+
+  /// The choices shown: those whose name holds the filter, ignoring case — and
+  /// every choice ticked, so that nothing chosen disappears from view.
+  Iterable<MapEntry<T, String>> get _shown {
+    var filter = _filter.text.trim().toLowerCase();
+    return widget.choices.entries.where(
+      (entry) =>
+          filter.isEmpty ||
+          _chosen.contains(entry.key) ||
+          entry.value.toLowerCase().contains(filter),
+    );
+  }
+
+  /// Escape in a filled filter clears it; in an empty one it leaves the
+  /// dialog as ever.
+  KeyEventResult _onFilterKey(FocusNode node, KeyEvent event) {
+    if (event is KeyDownEvent &&
+        event.logicalKey == LogicalKeyboardKey.escape &&
+        _filter.text.isNotEmpty) {
+      setState(_filter.clear);
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
   @override
   Widget build(BuildContext context) {
     var l10n = AppLocalizations.of(context)!;
+    var list = ListView(
+      shrinkWrap: true,
+      children: [
+        for (var entry in _shown)
+          CheckboxListTile(
+            key: Key("search-choice-${entry.key}"),
+            value: _chosen.contains(entry.key),
+            title: Text(entry.value),
+            onChanged: (value) => setState(() {
+              if (value == true) {
+                _chosen.add(entry.key);
+              } else {
+                _chosen.remove(entry.key);
+              }
+            }),
+          ),
+      ],
+    );
     return AlertDialog(
       key: const Key("search-choose-dialog"),
       title: Text(widget.title),
@@ -752,24 +921,32 @@ class _ChooseManyDialogState<T> extends State<_ChooseManyDialog<T>> {
         width: 360,
         child: widget.choices.isEmpty
             ? Text(l10n.searchNothingToChoose)
-            : ListView(
-                shrinkWrap: true,
-                children: [
-                  for (var entry in widget.choices.entries)
-                    CheckboxListTile(
-                      key: Key("search-choice-${entry.key}"),
-                      value: _chosen.contains(entry.key),
-                      title: Text(entry.value),
-                      onChanged: (value) => setState(() {
-                        if (value == true) {
-                          _chosen.add(entry.key);
-                        } else {
-                          _chosen.remove(entry.key);
-                        }
-                      }),
-                    ),
-                ],
-              ),
+            : !_filtered
+                ? list
+                : Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Focus(
+                        onKeyEvent: _onFilterKey,
+                        child: TextField(
+                          key: const Key("search-choose-filter"),
+                          controller: _filter,
+                          // Not on a phone, whose keyboard would cover the list.
+                          autofocus:
+                              defaultTargetPlatform != TargetPlatform.android &&
+                                  defaultTargetPlatform != TargetPlatform.iOS,
+                          decoration: InputDecoration(
+                            isDense: true,
+                            prefixIcon: const Icon(Icons.search),
+                            labelText: l10n.personsSearchLabel,
+                          ),
+                          onChanged: (_) => setState(() {}),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Flexible(child: list),
+                    ],
+                  ),
       ),
       actions: [
         TextButton(

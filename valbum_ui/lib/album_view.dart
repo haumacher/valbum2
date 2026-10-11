@@ -173,12 +173,30 @@ class AlbumContent extends StatefulWidget {
   final String baseUrl;
   final Future Function(AbstractImage image, String name) pushPart;
 
+  /// Told when the select mode is entered (`true`) or left (`false`), so that
+  /// the search view hides its own bar while the mode's bar is shown (issue
+  /// #243); `null` in an album.
+  final ValueChanged<bool>? onSelectModeChanged;
+
+  /// The download of the selected photographs where the page above does it
+  /// itself — the search view, whose names are paths below the folder
+  /// searched (issue #243); `null` in an album, which downloads its own.
+  final Future<void> Function(List<String> names)? downloadSelected;
+
+  /// The collection of the named photographs, offered in the select mode's
+  /// bar and in a tile's menu where it is given — the search view (issue
+  /// #243); `null` in an album.
+  final Future<void> Function(List<String> names)? collectSelected;
+
   const AlbumContent(
     this.albumState,
     this.album,
     this.baseUrl,
     this.pushPart, {
     super.key,
+    this.onSelectModeChanged,
+    this.downloadSelected,
+    this.collectSelected,
   });
 
   @override
@@ -536,6 +554,14 @@ class AlbumContentState extends State<AlbumContent>
     widget.albumState.navigator.delegate
         .unregisterLeaveGuard(widget.albumState.path, _leaveGuard);
     _dragScroller.dispose();
+    // The search view hides its bar while the select mode's is shown (issue
+    // #243): results gone in the mode give it back, after the frame — the
+    // tree is locked while this view is taken out of it.
+    var selectModeChanged = widget.onSelectModeChanged;
+    if (_selecting && selectModeChanged != null) {
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => selectModeChanged(false));
+    }
     // A page left in the middle of an edit gives the browser its menu back:
     // the edit session outlives this view, the menu must not (issue #156).
     if (_browserMenuTaken) {
@@ -562,7 +588,8 @@ class AlbumContentState extends State<AlbumContent>
   /// nothing where it is already away, and it takes the menu away again after
   /// a page above (the persons editor) gave it back on leaving.
   void _syncBrowserMenu() {
-    var editing = editMode;
+    // The search view's tiles have a menu of their own as well (issue #243).
+    var editing = editMode || offersSearchTileMenu;
     if (editing) {
       browserMenu.disable();
       _browserMenuTaken = true;
@@ -1661,6 +1688,10 @@ class AlbumContentState extends State<AlbumContent>
   /// other on a phone.
   Future<void> downloadSelection([List<ImagePart>? images]) {
     var names = [for (var image in images ?? downloadImages) image.name];
+    var own = widget.downloadSelected;
+    if (own != null) {
+      return own(names);
+    }
     return runDownload(
       context,
       (progress) => downloadOriginals(
@@ -1686,11 +1717,14 @@ class AlbumContentState extends State<AlbumContent>
   /// album and has no edit mode — a share link made with `download`, a member
   /// without `edit` — where there is something to select. An editor selects
   /// in the edit mode.
+  ///
+  /// The unsaved search view has no edit mode at all (issue #243): there the
+  /// mode is offered to whoever may download, editors included. A saved
+  /// search is an album like any other and keeps the rule of the album.
   bool get maySelect =>
       rights.mayDownload &&
-      !isSearchView &&
       !previewing &&
-      !mayEnterEditMode &&
+      (isSearchView || !mayEnterEditMode) &&
       !session.editMode &&
       holdsImages;
 
@@ -1708,13 +1742,66 @@ class AlbumContentState extends State<AlbumContent>
       }
       lastClicked = first;
     });
+    widget.onSelectModeChanged?.call(true);
   }
 
   /// Leaves the select mode; the selection goes with it.
-  void leaveSelectMode() => setState(() {
-        _selecting = false;
-        clearSelection();
-      });
+  void leaveSelectMode() {
+    setState(() {
+      _selecting = false;
+      clearSelection();
+    });
+    widget.onSelectModeChanged?.call(false);
+  }
+
+  /// The names the select mode's collection takes: the selected photographs
+  /// the view shows (issue #243).
+  List<String> get selectedNames =>
+      [for (var image in selectedDownloads) image.name];
+
+  /// Whether a secondary click on a tile opens the search view's menu (issue
+  /// #243): "Select" and the collection of that one photograph, at the
+  /// pointer, as the edit mode's tile menu (#156).
+  bool get offersSearchTileMenu =>
+      isSearchView &&
+      !selectMode &&
+      (maySelect || widget.collectSelected != null);
+
+  /// The menu of the search view's tile [part] showing [image], at
+  /// [position], see [offersSearchTileMenu].
+  Future<void> showSearchTileMenu(
+    BuildContext context,
+    AbstractImage part,
+    ImagePart image,
+    Offset position,
+  ) async {
+    var collect = widget.collectSelected;
+    var overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    var action = await showMenu<void Function()>(
+      context: context,
+      position: RelativeRect.fromRect(
+        position & Size.zero,
+        Offset.zero & overlay.size,
+      ),
+      items: [
+        if (maySelect)
+          PopupMenuItem<void Function()>(
+            key: const Key("tile-context-select"),
+            value: () => enterSelectMode(part),
+            child: Text(_l10n.select),
+          ),
+        if (collect != null && !image.missing)
+          PopupMenuItem<void Function()>(
+            key: const Key("tile-context-collect"),
+            value: () => collect([image.name]),
+            child: Text(_l10n.addToCollection),
+          ),
+      ],
+    );
+    if (action != null && mounted) {
+      action();
+    }
+  }
 
   /// What the select mode's download takes: the selected images the album
   /// shows.
@@ -2053,6 +2140,7 @@ class AlbumContentState extends State<AlbumContent>
     var up = wayUp();
 
     var selected = selecting ? selectedDownloads : const <ImagePart>[];
+    var collect = widget.collectSelected;
     return Scaffold(
       // The select mode's bar holds the way out, the count and the download,
       // nothing else (issue #209).
@@ -2063,6 +2151,10 @@ class AlbumContentState extends State<AlbumContent>
               onLeave: leaveSelectMode,
               onDownload:
                   selected.isEmpty ? null : () => downloadSelection(selected),
+              offerCollect: collect != null,
+              onCollect: collect == null || selected.isEmpty
+                  ? null
+                  : () => collect(selectedNames),
             )
           : immersive
               ? null
@@ -3408,10 +3500,26 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
             ? null
             : () => state.widget.pushPart(part, image.name),
         // The way into the edit mode, and for whoever has none the way into
-        // the select mode (issue #209).
-        onLongPress: () => state.maySelect
-            ? state.enterSelectMode(part)
-            : state.setEditMode(part),
+        // the select mode (issue #209) — in the search view, which has no
+        // edit mode, the select mode alone (issue #243).
+        onLongPress: () {
+          if (state.maySelect) {
+            state.enterSelectMode(part);
+          } else if (!state.isSearchView) {
+            state.setEditMode(part);
+          }
+        },
+        // A mouse's way to "Select" and the collection of this photograph in
+        // the search view, at the pointer (issue #243, as #156); a finger
+        // keeps the long press.
+        onSecondaryTapUp: state.offersSearchTileMenu
+            ? (details) => state.showSearchTileMenu(
+                  state.context,
+                  part,
+                  image,
+                  details.globalPosition,
+                )
+            : null,
         child: imageThumbnail(image),
       );
     }

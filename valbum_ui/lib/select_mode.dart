@@ -9,8 +9,12 @@
 /// `Escape`, clicked exactly as the edit mode and the inbox are clicked
 /// ([selectionAfterTap], issue #160), the headings' check boxes selecting
 /// their section (#158), and one action in its bar: "Download n originals".
-/// An editor is never offered it — they have the edit mode, whose selection
-/// the album menu's download takes.
+/// An editor is never offered it in an album — they have the edit mode, whose
+/// selection the album menu's download takes.
+///
+/// The unsaved search view (issue #243) has no edit mode, so there it is
+/// offered to whoever may download, editors included, and its bar carries a
+/// second action: "Add to collection…" for the selection.
 ///
 /// The state lives in `AlbumContentState` (its `selection` is the one the edit
 /// mode uses); this file holds what the mode draws.
@@ -24,12 +28,16 @@ import 'l10n/app_localizations.dart';
 /// download of the selection — nothing else (issue #209).
 ///
 /// [onDownload] is `null` while nothing is selected, which disables the
-/// button rather than taking it away, so that the bar does not jump.
+/// button rather than taking it away, so that the bar does not jump; the same
+/// holds for [onCollect], offered where [offerCollect] says so (the search
+/// view, issue #243).
 PreferredSizeWidget selectModeAppBar({
   required AppLocalizations l10n,
   required int count,
   required VoidCallback onLeave,
   required VoidCallback? onDownload,
+  bool offerCollect = false,
+  VoidCallback? onCollect,
 }) =>
     AppBar(
       key: const Key("select-mode-bar"),
@@ -45,6 +53,15 @@ PreferredSizeWidget selectModeAppBar({
         key: const Key("select-mode-count"),
       ),
       actions: [
+        // The search view's collection of the selection (issue #243),
+        // disabled like the download while nothing is selected.
+        if (offerCollect)
+          IconButton(
+            key: const Key("select-mode-collect"),
+            icon: const Icon(Icons.collections_bookmark_outlined),
+            tooltip: l10n.addToCollection,
+            onPressed: onCollect,
+          ),
         Padding(
           padding: const EdgeInsets.only(right: 8),
           child: TextButton.icon(
