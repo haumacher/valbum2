@@ -46,17 +46,19 @@ import java.util.TreeMap;
  * </p>
  *
  * <ol>
- * <li>the library file of the same name is looked up below every space; a name the library holds
- * twice is reported and skipped (the author's assumption is that names are unique, and it is
- * checked, not trusted);</li>
+ * <li>the library files of the same name are looked up below every space; a name the library
+ * holds more than once is replaced in every place, each checked on its own, see issue #246: "If
+ * the lib contains multiple copies, all of them must be replaced by the original ... the original
+ * is unique";</li>
  * <li>a file whose name the library does not hold is looked for by its content, because the phone
  * may have uploaded it under another name (<code>1000020572.jpg</code> for
  * <code>IMG_20260930_122228.jpg</code>): the library files of the same recording time and size (of
  * a video: the same duration and size) are its candidates, see {@link RecordingIndex}, an index
  * built for the run in memory and thrown away with it; the one candidate that is the same recording
  * is replaced <em>under the library's name</em>, so that the album's sidecar, the ratings, labels,
- * faces and collections keep pointing at it; two library files of the same recording are reported
- * and skipped, and so is a library file this run already replaced by a file of its own name;</li>
+ * faces and collections keep pointing at it; several library files of the same recording are all
+ * replaced, as several of the same name are (#246), and a library file this run already replaced by
+ * a file of its own name is left to that one;</li>
  * <li>the two must be the same recording, see {@link SameRecording}: the same JPEG scan data,
  * dimensions and recording time, or the same media data of a video; anything else is skipped with
  * the reason;</li>
@@ -64,7 +66,10 @@ import java.util.TreeMap;
  * <code>&lt;space&gt;/.valbum/replaced/&lt;yyyyMMdd-HHmmss&gt;/&lt;album path&gt;/&lt;library name&gt;</code>
  * &mdash; never deleted &mdash; and the original moved into its place: a rename where the incoming
  * folder lies on the same file system, else a copy whose SHA-256 is checked before the incoming
- * file (and only the incoming file) is deleted;</li>
+ * file (and only the incoming file) is deleted; where one original has several places in the
+ * library, the first takes the incoming file that way and every further one a copy of the original
+ * now standing in the library, its SHA-256 checked as well, and a copied incoming file is deleted
+ * only once every place holds its checked copy;</li>
  * <li>the album's {@value HashCache#FILE_NAME} entry is rewritten with the new hash, the
  * attribution of issue #53 kept; the running server's hash index of issue #118 would pick the
  * folder up by the sidecar's stamp, and the next start reads it anyway;</li>
@@ -116,7 +121,10 @@ public final class ReplaceOriginals {
 
 		private int _skipped;
 
-		/** One line per file of the incoming folder, in the order of their names. */
+		/**
+		 * One line per library file replaced or skipped (or per incoming file skipped as a whole), in
+		 * the order of the incoming names and, for one name, of the library paths.
+		 */
 		public List<String> getLines() {
 			return Collections.unmodifiableList(_lines);
 		}
@@ -126,12 +134,12 @@ public final class ReplaceOriginals {
 			return Collections.unmodifiableList(_summary);
 		}
 
-		/** How many files were (or would be) replaced. */
+		/** How many library files were (or would be) replaced. */
 		public int getReplaced() {
 			return _replaced;
 		}
 
-		/** How many files were skipped. */
+		/** How many library files (or incoming files as a whole) were skipped. */
 		public int getSkipped() {
 			return _skipped;
 		}
@@ -177,6 +185,18 @@ public final class ReplaceOriginals {
 	 */
 	static Report run(Path basePath, Path incoming, SpaceMode forced, boolean dryRun, LocalDateTime now,
 			RecordingIndex.Reads reads) throws Refused, IOException {
+		return run(basePath, incoming, forced, dryRun, now, reads, true);
+	}
+
+	/**
+	 * The run, choosing whether an incoming file may be renamed into the library.
+	 *
+	 * @param rename
+	 *        <code>false</code> copies every incoming file, as across file systems (what a test asks
+	 *        for); see {@link #place(Path, Path, String, boolean)}.
+	 */
+	static Report run(Path basePath, Path incoming, SpaceMode forced, boolean dryRun, LocalDateTime now,
+			RecordingIndex.Reads reads, boolean rename) throws Refused, IOException {
 		basePath = basePath.toAbsolutePath().normalize();
 		if (incoming == null || !Files.isDirectory(incoming)) {
 			throw new Refused("'" + incoming + "' is not a folder.");
@@ -203,20 +223,24 @@ public final class ReplaceOriginals {
 
 		String run = RUN_FORMAT.format(now);
 		Report report = new Report();
-		Run state = new Run(basePath, spaces, run, dryRun, report, reads);
-		String[] lines = new String[incomingFiles.size()];
+		Run state = new Run(basePath, spaces, run, dryRun, rename, report, reads);
+		List<List<String>> lines = new ArrayList<>();
+		for (int n = 0; n < incomingFiles.size(); n++) {
+			lines.add(new ArrayList<>());
+		}
 		List<Integer> byContent = new ArrayList<>();
 
 		// Names first: a file the library holds under its own name is matched by that name, see #167.
 		for (int n = 0; n < incomingFiles.size(); n++) {
 			Path source = incomingFiles.get(n);
 			String name = source.getFileName().toString();
+			List<String> out = lines.get(n);
 			if (Files.isDirectory(source)) {
-				lines[n] = state.skip(name, "a folder (the incoming folder is not read recursively)");
+				out.add(state.skip(name, "a folder (the incoming folder is not read recursively)"));
 				continue;
 			}
 			if (!ResourceCache.isImage(source.toFile())) {
-				lines[n] = state.skip(name, "not a photograph or video");
+				out.add(state.skip(name, "not a photograph or video"));
 				continue;
 			}
 			List<Path> found = library.get(name);
@@ -224,37 +248,15 @@ public final class ReplaceOriginals {
 				byContent.add(Integer.valueOf(n));
 				continue;
 			}
-			if (found.size() > 1) {
-				List<String> where = new ArrayList<>();
-				for (Path path : found) {
-					where.add(spell(basePath, path));
-				}
-				lines[n] = state.skip(name, "ambiguous (the library holds it " + found.size() + " times: "
-					+ String.join(", ", where) + ")");
-				continue;
-			}
-			Path target = found.get(0);
-			String libraryPath = spell(basePath, target);
-
 			String sha256;
-			String redactedHash;
 			try {
 				sha256 = HashCache.sha256(source.toFile());
-				redactedHash = HashCache.sha256(target.toFile());
-				if (sha256.equals(redactedHash)) {
-					lines[n] = state.skip(name, "the library already holds exactly this file (" + libraryPath + ")");
-					continue;
-				}
-				String difference = SameRecording.difference(target.toFile(), source.toFile());
-				if (difference != null) {
-					lines[n] = state.skip(name, difference + ", not replacing " + libraryPath);
-					continue;
-				}
-			} catch (IOException | RuntimeException ex) {
-				lines[n] = state.skip(name, "unreadable (" + ex.getMessage() + ")");
+			} catch (IOException ex) {
+				out.add(state.skip(name, "unreadable (" + ex.getMessage() + ")"));
 				continue;
 			}
-			lines[n] = state.replace(source, target, redactedHash, sha256, "");
+			// Every library file of the name is a place of the original, see #246.
+			state.replaceEach(source, sha256, found, true, "", out);
 		}
 
 		// Then the content, for the files the phone renamed on upload.
@@ -263,25 +265,26 @@ public final class ReplaceOriginals {
 			int n = position.intValue();
 			Path source = incomingFiles.get(n);
 			String name = source.getFileName().toString();
+			List<String> out = lines.get(n);
 			if (!RecordingIndex.isKeyed(name)) {
-				lines[n] = state.skip(name, "not in the library (and neither a JPEG nor an mp4 or QuickTime video, "
-					+ "which could be found under another name)");
+				out.add(state.skip(name, "not in the library (and neither a JPEG nor an mp4 or QuickTime video, "
+					+ "which could be found under another name)"));
 				continue;
 			}
 			RecordingIndex.Head head = RecordingIndex.head(source, state.zones(), new RecordingIndex.Reads());
 			if (head.getProblem() != null) {
-				lines[n] = state.skip(name, "not in the library (and " + head.getProblem()
-					+ ", so it cannot be found under another name)");
+				out.add(state.skip(name, "not in the library (and " + head.getProblem()
+					+ ", so it cannot be found under another name)"));
 				continue;
 			}
 			if (index == null) {
 				index = RecordingIndex.build(state.libraryFiles(library), state::zoneOf, reads);
 			}
-			lines[n] = state.byContent(source, name, head, index);
+			state.byContent(source, name, head, index, out);
 		}
 
-		for (String line : lines) {
-			report._lines.add(line);
+		for (List<String> fileLines : lines) {
+			report._lines.addAll(fileLines);
 		}
 
 		// The collections of #221 reference a photograph by its hash: every replacement, by name or
@@ -289,7 +292,8 @@ public final class ReplaceOriginals {
 		int references = 0;
 		int collections = 0;
 		List<String> collectionProblems = new ArrayList<>();
-		for (Map.Entry<Space, Map<String, CollectionRewrite.Replacement>> entry : state._replacements.entrySet()) {
+		for (Map.Entry<Space, Map<String, List<CollectionRewrite.Replacement>>> entry : state._replacements
+			.entrySet()) {
 			try {
 				CollectionRewrite.Result rewritten =
 					CollectionRewrite.rewrite(entry.getKey()._root, entry.getValue(), dryRun, collectionProblems);
@@ -302,8 +306,8 @@ public final class ReplaceOriginals {
 		}
 		Map<Space, Set<Path>> touched = state._touched;
 		Set<Path> asideFolders = state._asideFolders;
-		report._summary.add((dryRun ? "Would replace " : "Replaced ") + report._replaced + ", skipped "
-			+ report._skipped + " of " + incomingFiles.size() + " file(s) in '" + incoming + "'.");
+		report._summary.add((dryRun ? "Would replace " : "Replaced ") + report._replaced + " library file(s), skipped "
+			+ report._skipped + ", for the " + incomingFiles.size() + " file(s) in '" + incoming + "'.");
 		if (index != null) {
 			report._summary.add("Looked for the files not in the library under their names by their content: read "
 				+ reads.getSidecars() + " album sidecar(s) and the headers of " + reads.getHeaderBytes().size()
@@ -362,6 +366,9 @@ public final class ReplaceOriginals {
 
 		final boolean _dryRun;
 
+		/** Whether an incoming file may be renamed into the library, see {@link #place}. */
+		final boolean _rename;
+
 		final Report _report;
 
 		/** The albums touched, by the space they lie in, in the order they were touched. */
@@ -373,7 +380,7 @@ public final class ReplaceOriginals {
 		 * The replacements of this run (or that would be), by space and by the hash of the redacted
 		 * copy, for {@link CollectionRewrite}.
 		 */
-		final Map<Space, Map<String, CollectionRewrite.Replacement>> _replacements = new LinkedHashMap<>();
+		final Map<Space, Map<String, List<CollectionRewrite.Replacement>>> _replacements = new LinkedHashMap<>();
 
 		/** Every library file replaced in this run (or that would be), in the order of the report. */
 		final List<Replaced> _replacedFiles = new ArrayList<>();
@@ -385,8 +392,10 @@ public final class ReplaceOriginals {
 
 		private final RecordingIndex.Reads _reads;
 
-		Run(Path basePath, List<Space> spaces, String run, boolean dryRun, Report report, RecordingIndex.Reads reads) {
+		Run(Path basePath, List<Space> spaces, String run, boolean dryRun, boolean rename, Report report,
+				RecordingIndex.Reads reads) {
 			_reads = reads;
+			_rename = rename;
 			_basePath = basePath;
 			_spaces = spaces;
 			_run = run;
@@ -400,7 +409,84 @@ public final class ReplaceOriginals {
 		}
 
 		/**
-		 * Replaces the given library file by the given original, under the library's name.
+		 * Replaces every given library file by the given original, each under its library name, see
+		 * issue #246.
+		 *
+		 * <p>
+		 * Each target is checked on its own: one that already holds exactly the original, one that
+		 * is another recording (where <code>compare</code> asks for the check) and one that cannot
+		 * be read is skipped with its reason, and the others are replaced all the same. The first
+		 * replacement takes the incoming file (a rename, or a checked copy across file systems),
+		 * every further one a checked copy of the original then standing in the library. An
+		 * incoming file that was copied is deleted only once every target holds its checked copy.
+		 * </p>
+		 *
+		 * @param targets
+		 *        The library files to replace.
+		 * @param compare
+		 *        Whether each target must still be proven the same recording, see
+		 *        {@link SameRecording}; the content pass has proven it.
+		 * @param how
+		 *        What a report line says beyond the library path.
+		 * @param out
+		 *        Where the lines of the report go, one per target.
+		 */
+		void replaceEach(Path source, String sha256, List<Path> targets, boolean compare, String how,
+				List<String> out) {
+			String name = source.getFileName().toString();
+			List<Path> sorted = new ArrayList<>(targets);
+			sorted.sort((a, b) -> spell(_basePath, a).compareTo(spell(_basePath, b)));
+			// Every target is checked before any is replaced: a check reads the incoming file, which
+			// the first replacement may move away.
+			String[] lines = new String[sorted.size()];
+			String[] redactedHashes = new String[sorted.size()];
+			for (int n = 0; n < sorted.size(); n++) {
+				Path target = sorted.get(n);
+				String libraryPath = spell(_basePath, target);
+				try {
+					String redactedHash = HashCache.sha256(target.toFile());
+					if (sha256.equals(redactedHash)) {
+						lines[n] = skip(name, "the library already holds exactly this file (" + libraryPath + ")");
+						continue;
+					}
+					if (compare) {
+						String difference = SameRecording.difference(target.toFile(), source.toFile());
+						if (difference != null) {
+							lines[n] = skip(name, difference + ", not replacing " + libraryPath);
+							continue;
+						}
+					}
+					redactedHashes[n] = redactedHash;
+				} catch (IOException | RuntimeException ex) {
+					lines[n] = skip(name, "unreadable (" + ex.getMessage() + "), not replacing " + libraryPath);
+				}
+			}
+			Placement placement = new Placement(source, sha256);
+			for (int n = 0; n < sorted.size(); n++) {
+				if (redactedHashes[n] != null) {
+					lines[n] = replace(placement, sorted.get(n), redactedHashes[n], how);
+				}
+				out.add(lines[n]);
+			}
+			if (_dryRun || placement._installed == null || placement._moved) {
+				return;
+			}
+			// The original was copied: the incoming file goes only once every place holds its copy.
+			if (placement._failed) {
+				out.add("kept " + name + " in '" + source.getParent()
+					+ "': not every library file of it could be replaced");
+				return;
+			}
+			try {
+				Files.delete(source);
+			} catch (IOException ex) {
+				out.add("kept " + name + " in '" + source.getParent() + "': it cannot be deleted (" + ex + ")");
+			}
+		}
+
+		/**
+		 * Replaces the given library file by the original of the given placement, under the
+		 * library's name.
 		 *
 		 * @param redactedHash
 		 *        The hash of the library file, which the collections referencing it are moved off.
@@ -408,7 +494,9 @@ public final class ReplaceOriginals {
 		 *        What the report line says beyond the library path.
 		 * @return The line of the report.
 		 */
-		String replace(Path source, Path target, String redactedHash, String sha256, String how) {
+		private String replace(Placement placement, Path target, String redactedHash, String how) {
+			Path source = placement._source;
+			String sha256 = placement._sha256;
 			String name = source.getFileName().toString();
 			String libraryPath = spell(_basePath, target);
 			Space space = spaceOf(_spaces, target);
@@ -423,19 +511,32 @@ public final class ReplaceOriginals {
 				_report._replaced++;
 				_asideFolders.add(asideFolder);
 				_claimed.put(target, name);
-				_replacements.computeIfAbsent(space, x -> new LinkedHashMap<>()).put(redactedHash, replacement);
+				_replacements.computeIfAbsent(space, x -> new LinkedHashMap<>())
+					.computeIfAbsent(redactedHash, x -> new ArrayList<>()).add(replacement);
 				_replacedFiles.add(new Replaced(target, redactedHash, sha256));
 				return "would replace " + libraryPath + how;
 			}
 
-			String problem = ReplaceOriginals.replace(source, target, aside, sha256);
+			Path installed = placement._installed;
+			String problem;
+			if (installed == null) {
+				problem = ReplaceOriginals.replace(target, aside, () -> placement._moved = place(source, target, sha256, _rename));
+			} else {
+				// The incoming file may be gone: the original standing in the library is copied.
+				problem = ReplaceOriginals.replace(target, aside, () -> copyChecked(installed, target, sha256));
+			}
 			if (problem != null) {
-				return skip(name, problem);
+				placement._failed = true;
+				return skip(name, problem + ", not replacing " + libraryPath);
+			}
+			if (installed == null) {
+				placement._installed = target;
 			}
 			_report._replaced++;
 			_asideFolders.add(asideFolder);
 			_claimed.put(target, name);
-			_replacements.computeIfAbsent(space, x -> new LinkedHashMap<>()).put(redactedHash, replacement);
+			_replacements.computeIfAbsent(space, x -> new LinkedHashMap<>())
+				.computeIfAbsent(redactedHash, x -> new ArrayList<>()).add(replacement);
 			_replacedFiles.add(new Replaced(target, redactedHash, sha256));
 			String hashProblem = rehash(target, sha256);
 			_touched.computeIfAbsent(space, s -> new LinkedHashSet<>()).add(album);
@@ -454,12 +555,14 @@ public final class ReplaceOriginals {
 		 * the original embeds a thumbnail, the candidates that embed the same are compared first, and
 		 * the others only if none of them is the same recording: two frames of a burst differ in
 		 * their thumbnails, and an editor that regenerated a thumbnail must not hide a true match. A
-		 * candidate is the same recording only if {@link SameRecording} says so.
+		 * candidate is the same recording only if {@link SameRecording} says so. Every candidate
+		 * that is, is replaced, see issue #246.
 		 * </p>
 		 *
-		 * @return The line of the report.
+		 * @param out
+		 *        Where the lines of the report go.
 		 */
-		String byContent(Path source, String name, RecordingIndex.Head head, RecordingIndex index) {
+		void byContent(Path source, String name, RecordingIndex.Head head, RecordingIndex index, List<String> out) {
 			List<Path> candidates = new ArrayList<>();
 			List<String> taken = new ArrayList<>();
 			for (Path candidate : index.candidates(head.getKeys())) {
@@ -472,17 +575,20 @@ public final class ReplaceOriginals {
 			}
 			if (candidates.isEmpty()) {
 				if (taken.isEmpty()) {
-					return skip(name, "not in the library");
+					out.add(skip(name, "not in the library"));
+					return;
 				}
-				return skip(name, "not in the library (the file(s) of the same recording time and size are "
-					+ "already replaced in this run: " + String.join(", ", taken) + ")");
+				out.add(skip(name, "not in the library (the file(s) of the same recording time and size are "
+					+ "already replaced in this run: " + String.join(", ", taken) + ")"));
+				return;
 			}
 
 			String sha256;
 			try {
 				sha256 = HashCache.sha256(source.toFile());
 			} catch (IOException ex) {
-				return skip(name, "unreadable (" + ex.getMessage() + ")");
+				out.add(skip(name, "unreadable (" + ex.getMessage() + ")"));
+				return;
 			}
 
 			List<Path> preferred = new ArrayList<>();
@@ -508,31 +614,15 @@ public final class ReplaceOriginals {
 				for (Path path : comparison._other) {
 					other.add(spell(_basePath, path));
 				}
-				return skip(name, "not in the library (" + (other.isEmpty() ? ""
+				out.add(skip(name, "not in the library (" + (other.isEmpty() ? ""
 					: other.size() + " file(s) of the same recording time and size hold another recording: "
 						+ String.join(", ", other))
 					+ (other.isEmpty() || comparison._problems.isEmpty() ? "" : "; ")
-					+ String.join("; ", comparison._problems) + ")");
+					+ String.join("; ", comparison._problems) + ")"));
+				return;
 			}
-			if (comparison._same.size() > 1) {
-				List<String> where = new ArrayList<>();
-				for (Path path : comparison._same) {
-					where.add(spell(_basePath, path));
-				}
-				return skip(name, "ambiguous (the library holds the same recording " + comparison._same.size()
-					+ " times under other names: " + String.join(", ", where) + ")");
-			}
-			Path target = comparison._same.get(0);
-			String redactedHash;
-			try {
-				redactedHash = HashCache.sha256(target.toFile());
-			} catch (IOException ex) {
-				return skip(name, "unreadable (" + ex.getMessage() + ")");
-			}
-			if (sha256.equals(redactedHash)) {
-				return skip(name, "the library already holds exactly this file (" + spell(_basePath, target) + ")");
-			}
-			return replace(source, target, redactedHash, sha256, " with " + name + " (matched by content)");
+			// Every library file of the same recording is a place of the original, see #246.
+			replaceEach(source, sha256, comparison._same, false, " with " + name + " (matched by content)", out);
 		}
 
 		/** The zones of every space of the run. */
@@ -594,13 +684,39 @@ public final class ReplaceOriginals {
 		}
 	}
 
+	/** Where one incoming file went so far. */
+	private static final class Placement {
+		final Path _source;
+
+		final String _sha256;
+
+		/** The first library file the original was put in, <code>null</code> before. */
+		Path _installed;
+
+		/** Whether the incoming file was renamed into the library, and so is gone. */
+		boolean _moved;
+
+		/** Whether a library file of this original could not be replaced. */
+		boolean _failed;
+
+		Placement(Path source, String sha256) {
+			_source = source;
+			_sha256 = sha256;
+		}
+	}
+
+	/** Putting the original in the place of the redacted copy, once that is set aside. */
+	private interface Install {
+		void run() throws IOException;
+	}
+
 	/**
-	 * Sets the redacted copy aside and moves the original into its place.
+	 * Sets the redacted copy aside and puts the original into its place.
 	 *
 	 * @return <code>null</code> on success, else why nothing was replaced; the library is then as
 	 *         it was.
 	 */
-	private static String replace(Path source, Path target, Path aside, String sha256) {
+	private static String replace(Path target, Path aside, Install install) {
 		try {
 			Files.createDirectories(aside.getParent());
 			// A rename within the space, never a copy: the redacted copy is kept, and kept whole.
@@ -609,7 +725,7 @@ public final class ReplaceOriginals {
 			return "cannot set the redacted copy aside (" + ex + ")";
 		}
 		try {
-			install(source, target, sha256, true);
+			install.run();
 			return null;
 		} catch (IOException ex) {
 			try {
@@ -623,37 +739,60 @@ public final class ReplaceOriginals {
 	}
 
 	/**
-	 * Moves the original to where the redacted copy was; see {@link #replace}.
+	 * Moves the original to where the redacted copy was, and deletes a copied incoming file right
+	 * away: what a single target needs; see {@link #place} and {@link #copyChecked}.
+	 */
+	static void install(Path source, Path target, String sha256, boolean rename) throws IOException {
+		if (!place(source, target, sha256, rename)) {
+			// Only now, the original standing in the library and checked, the incoming file goes.
+			Files.delete(source);
+		}
+	}
+
+	/**
+	 * Puts the incoming original where the redacted copy was: a rename, else a checked copy.
 	 *
 	 * @param rename
 	 *        Whether to try a rename first; <code>false</code> copies right away, which is what
 	 *        happens when the incoming folder lies on another file system (and what a test asks
 	 *        for).
+	 * @return Whether the incoming file was renamed (and so is gone); <code>false</code> if it was
+	 *         copied, and is still there for the caller to delete once it is no longer needed.
 	 */
-	static void install(Path source, Path target, String sha256, boolean rename) throws IOException {
+	static boolean place(Path source, Path target, String sha256, boolean rename) throws IOException {
 		if (rename) {
 			try {
 				Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
-				return;
+				return true;
 			} catch (AtomicMoveNotSupportedException ex) {
 				// Another file system: copied and checked below.
 			}
 		}
+		copyChecked(source, target, sha256);
+		return false;
+	}
+
+	/**
+	 * Copies the given file to the given place, its SHA-256 checked before it takes the place.
+	 *
+	 * @throws IOException
+	 *         If the copy fails or does not hold the given hash; nothing is left behind then, and
+	 *         the source is untouched either way.
+	 */
+	static void copyChecked(Path from, Path target, String sha256) throws IOException {
 		// A hidden name, which neither the server nor this run takes for a photograph.
 		Path copy = target.resolveSibling("." + target.getFileName() + ".replacing");
 		try {
-			Files.copy(source, copy, StandardCopyOption.COPY_ATTRIBUTES);
+			Files.copy(from, copy, StandardCopyOption.COPY_ATTRIBUTES);
 			String copied = HashCache.sha256(copy.toFile());
 			if (!copied.equals(sha256)) {
-				throw new IOException("the copy of '" + source + "' does not hold what was read");
+				throw new IOException("the copy of '" + from + "' does not hold what was read");
 			}
 			Files.move(copy, target, StandardCopyOption.ATOMIC_MOVE);
 		} catch (IOException ex) {
 			Files.deleteIfExists(copy);
 			throw ex;
 		}
-		// Only now, the original standing in the library and checked, the incoming file goes.
-		Files.delete(source);
 	}
 
 	/**

@@ -137,6 +137,43 @@ public class TestReplaceCollections extends TestCase {
 		}
 	}
 
+	/** Two copies of the name are replaced (#246): each reference keeps the copy it names. */
+	public void testAReferenceToEachCopyFollowsIt() throws Exception {
+		Path photo = redacted(UPLOADED);
+		String redactedHash = HashCache.sha256(photo.toFile());
+		Path inbox = Files.createDirectories(_base.resolve("Inbox"));
+		Files.copy(photo, inbox.resolve(UPLOADED));
+		HashCache hashes = new HashCache(inbox.toFile());
+		hashes.put(inbox.resolve(UPLOADED).toFile(), redactedHash);
+		hashes.flush();
+		Path toInbox = collection("Best of", redactedHash, "Inbox/" + UPLOADED);
+		Path toAlbum = collection("Second", redactedHash, ALBUM + "/" + UPLOADED);
+		Redacted.writeOriginal(_incoming.resolve(UPLOADED).toFile(), _picture);
+		String originalHash = HashCache.sha256(_incoming.resolve(UPLOADED).toFile());
+
+		ReplaceOriginals.Report report = ReplaceOriginals.run(_base, _incoming, null, false, NOW);
+
+		assertEquals(List.of("replaced " + ALBUM + "/" + UPLOADED, "replaced Inbox/" + UPLOADED), report.getLines());
+		String summary = String.join("\n", report.getSummary());
+		assertTrue(summary, summary.contains("Updated 2 collection reference(s) in 2 collection(s) to the originals."));
+		PhotoRef inboxRef = PhotoCollections.referenceNamed(stored(toInbox), "P3031375.JPG").getRef();
+		assertEquals(originalHash, inboxRef.getHash());
+		assertEquals("Inbox/" + UPLOADED, inboxRef.getPath());
+		PhotoRef albumRef = PhotoCollections.referenceNamed(stored(toAlbum), "P3031375.JPG").getRef();
+		assertEquals(originalHash, albumRef.getHash());
+		assertEquals(ALBUM + "/" + UPLOADED, albumRef.getPath());
+
+		HashIndex index = new HashIndex(_base);
+		try {
+			index.indexNow();
+			PhotoCollections collections = new PhotoCollections(_base, index);
+			assertEquals("Inbox/" + UPLOADED, collections.relative(collections.locate(inboxRef)));
+			assertEquals(ALBUM + "/" + UPLOADED, collections.relative(collections.locate(albumRef)));
+		} finally {
+			index.shutdown();
+		}
+	}
+
 	public void testADryRunOnlyCounts() throws Exception {
 		Path photo = redacted(UPLOADED);
 		collection("Best of", HashCache.sha256(photo.toFile()), ALBUM + "/" + UPLOADED);

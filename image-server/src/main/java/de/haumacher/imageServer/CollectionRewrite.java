@@ -34,7 +34,9 @@ import java.util.Map;
  *
  * <p>
  * A reference whose path names another file that still holds the old hash (a copy of the redacted
- * file elsewhere in the space) still finds that copy and is left as it is. A collection is
+ * file elsewhere in the space) still finds that copy and is left as it is. Where one original
+ * replaced several copies of the same contents (issue #246), a reference keeps the copy its path
+ * names, and one whose path names none of them is pointed at the first. A collection is
  * written exactly as the server writes it after an addition or a removal: read through
  * {@link ResourceCache#sidecar(File)}, changed in its references alone, and stored by
  * {@link ImageServlet#storeSidecar(File, byte[])}, its labels, headings, names and cover untouched.
@@ -75,13 +77,14 @@ final class CollectionRewrite {
 	 * @param root
 	 *        The root of the space.
 	 * @param replaced
-	 *        The replacements of this space, by the hash of the redacted copy.
+	 *        The replacements of this space, by the hash of the redacted copy: one per library
+	 *        file replaced, in the order of the report.
 	 * @param dryRun
 	 *        Whether to count only, and write nothing.
 	 * @param problems
 	 *        Where a collection that cannot be written is reported.
 	 */
-	static Result rewrite(Path root, Map<String, Replacement> replaced, boolean dryRun, List<String> problems)
+	static Result rewrite(Path root, Map<String, List<Replacement>> replaced, boolean dryRun, List<String> problems)
 			throws IOException {
 		Result result = new Result();
 		if (replaced.isEmpty()) {
@@ -105,9 +108,16 @@ final class CollectionRewrite {
 				int changed = 0;
 				for (ImagePart reference : PhotoCollections.references(collection)) {
 					PhotoRef ref = reference.getRef();
-					Replacement replacement = replaced.get(ref.getHash());
-					if (replacement == null || findsAnotherCopy(root, ref, replacement)) {
+					List<Replacement> replacements = replaced.get(ref.getHash());
+					if (replacements == null) {
 						continue;
+					}
+					Replacement replacement = named(replacements, ref.getPath());
+					if (replacement == null) {
+						if (findsAnotherCopy(root, ref)) {
+							continue;
+						}
+						replacement = replacements.get(0);
 					}
 					ref.setHash(replacement.hash()).setPath(replacement.path());
 					changed++;
@@ -136,13 +146,23 @@ final class CollectionRewrite {
 		return result;
 	}
 
+	/** The replacement of the library file at the given path, <code>null</code> if none. */
+	private static Replacement named(List<Replacement> replacements, String path) {
+		for (Replacement replacement : replacements) {
+			if (replacement.path().equals(path)) {
+				return replacement;
+			}
+		}
+		return null;
+	}
+
 	/**
-	 * Whether the given reference names, by its path, a file other than the replaced one that
-	 * still holds the old contents, and so still finds them.
+	 * Whether the given reference names, by its path, a file other than the replaced ones that still
+	 * holds the old contents, and so still finds them.
 	 */
-	private static boolean findsAnotherCopy(Path root, PhotoRef ref, Replacement replacement) {
+	private static boolean findsAnotherCopy(Path root, PhotoRef ref) {
 		String hint = ref.getPath();
-		if (hint.isEmpty() || hint.equals(replacement.path()) || !LibraryFiles.isLibraryPath(hint)) {
+		if (hint.isEmpty() || !LibraryFiles.isLibraryPath(hint)) {
 			return false;
 		}
 		Path hinted = root.resolve(hint).normalize();

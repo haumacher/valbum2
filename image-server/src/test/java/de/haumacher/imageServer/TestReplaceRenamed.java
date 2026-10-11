@@ -272,24 +272,34 @@ public class TestReplaceRenamed extends TestCase {
 			report.getLines());
 	}
 
-	public void testTwoCopiesOfTheSameRecordingAreAmbiguous() throws Exception {
+	/** A renamed upload the library holds under two other names is replaced under both, see #246. */
+	public void testEveryCopyOfTheSameRecordingIsReplaced() throws Exception {
 		Path album = album(ALBUM);
 		Path other = album("2026/Best of");
 		Redacted.writeRedacted(album.resolve(UPLOADED).toFile(), _picture);
 		Redacted.writeRedacted(other.resolve("best-1.jpg").toFile(), _picture);
 		describe(album, album.resolve(UPLOADED));
+		describe(other, other.resolve("best-1.jpg"));
+		String redactedHash = HashCache.sha256(album.resolve(UPLOADED).toFile());
 		Redacted.writeOriginal(_incoming.resolve(ORIGINAL).toFile(), _picture);
-		Map<String, String> before = fingerprint();
+		String originalHash = HashCache.sha256(_incoming.resolve(ORIGINAL).toFile());
 
 		ReplaceOriginals.Report report = run(false, new RecordingIndex.Reads());
 
-		assertEquals(1, report.getSkipped());
-		String line = report.getLines().get(0);
-		assertTrue(line, line.startsWith("skipped " + ORIGINAL + ": ambiguous (the library holds the same recording 2 "
-			+ "times under other names: "));
-		assertTrue(line, line.contains(ALBUM + "/" + UPLOADED));
-		assertTrue(line, line.contains("2026/Best of/best-1.jpg"));
-		assertEquals("Nothing was moved.", before, fingerprint());
+		assertEquals(List.of("replaced " + ALBUM + "/" + UPLOADED + " with " + ORIGINAL + " (matched by content)",
+			"replaced 2026/Best of/best-1.jpg with " + ORIGINAL + " (matched by content)"), report.getLines());
+		assertEquals(2, report.getReplaced());
+		assertEquals(0, report.getSkipped());
+		assertFalse(Files.exists(_incoming.resolve(ORIGINAL)));
+		assertFalse("The incoming name enters no album.", Files.exists(album.resolve(ORIGINAL)));
+		assertEquals(originalHash, HashCache.sha256(album.resolve(UPLOADED).toFile()));
+		assertEquals(originalHash, HashCache.sha256(other.resolve("best-1.jpg").toFile()));
+		assertEquals(originalHash, new HashCache(album.toFile()).storedHashByName().get(UPLOADED));
+		assertEquals(originalHash, new HashCache(other.toFile()).storedHashByName().get("best-1.jpg"));
+		assertEquals(redactedHash,
+			HashCache.sha256(_base.resolve(".valbum/replaced/" + RUN + "/" + ALBUM + "/" + UPLOADED).toFile()));
+		assertEquals(redactedHash,
+			HashCache.sha256(_base.resolve(".valbum/replaced/" + RUN + "/2026/Best of/best-1.jpg").toFile()));
 	}
 
 	/** A name the library holds is matched by that name; the same recording is not taken twice. */
