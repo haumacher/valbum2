@@ -166,6 +166,12 @@ ImageCaption? captionOf(ImagePart image, AlbumInfo? album) {
 /// county) are left out: they are what a person would not say.
 ///
 /// `Karlsruhe Schloss · Innenstadt, Karlsruhe · Baden-Württemberg, Germany`
+///
+/// What a search answers of a photograph ([ImagePart.partial], issue #243)
+/// carries exactly the tags this reads — of each kind the first with a name,
+/// of the town's fallbacks the first there is — with name and kind alone:
+/// `PhotoSearch.placeLine` on the server is tied to this function, and the
+/// two change together.
 String placeLineText(List<PlaceTag> tags) {
   String? of(PlaceKind kind) {
     for (var tag in tags) {

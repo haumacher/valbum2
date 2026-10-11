@@ -266,6 +266,14 @@ public final class AlbumDate {
 		}
 		if (resource instanceof AlbumInfo) {
 			AlbumInfo album = (AlbumInfo) resource;
+			for (ImagePart image : PhotoSearch.images(album)) {
+				if (image.isPartial()) {
+					// Whether a part is the slim copy of a search answer is a property of that
+					// answer, never of the photograph, see ImagePart#isPartial().
+					image.setPartial(false);
+					changed = true;
+				}
+			}
 			if (album.getKind() == de.haumacher.imageServer.shared.model.AlbumKind.INBOX) {
 				// A collection is the one kind that is stored, see issue #221.
 				// Whether a folder is the inbox is decided by where it lies (space.json), never by

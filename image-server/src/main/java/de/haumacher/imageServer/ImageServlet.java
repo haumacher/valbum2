@@ -2574,6 +2574,18 @@ public class ImageServlet extends HttpServlet {
 	/**
 	 * The files the given names of a download stand for, each asked what its original would be
 	 * asked; <code>null</code> where one was refused (and answered).
+	 *
+	 * <p>
+	 * In a plain folder a name is an entry of the folder, or &mdash; with a slash &mdash; the path
+	 * of a photograph below it, so that what a search found in several albums is one archive (issue
+	 * #243). Each is asked exactly what its original is asked in the album it lies in: the right to
+	 * download there, the inbox rule, the label of a link, its privacy against the clearance there
+	 * and its rating against the rating floor there. An entry of the archive is named as it was
+	 * asked, a path keeping the albums' photographs of one name apart; a raw companion (issue #191)
+	 * lies beside its photograph under its own name. A path is a path below the folder and nothing
+	 * else: an empty segment, <code>..</code>, a backslash, a hidden or ignored segment is refused
+	 * as an unknown name is.
+	 * </p>
 	 */
 	private Map<String, File> zipFiles(Context context, Caller caller, PathInfo folder, int viewAs,
 			Collection<String> names) throws IOException {
@@ -2584,24 +2596,25 @@ public class ImageServlet extends HttpServlet {
 		if (PhotoSearch.isSearch(container)) {
 			return searchZipFiles(context, caller, folder, (AlbumInfo) container, viewAs, names);
 		}
-		Inboxes.Visibility inbox =
-			Inboxes.isInbox(_cache.lookup(folder)) ? Inboxes.visibility(_auth, caller, folder, viewAs) : null;
-		int clearance = Math.min(_auth.clearance(caller, folder), viewAs);
-		int minRating = _auth.minRating(caller, folder, viewAs);
 		// A file once, though a photograph and its raw companion be named both.
-		Set<File> files = new LinkedHashSet<>();
+		Map<String, File> result = new LinkedHashMap<>();
 		for (String name : names) {
-			// A name is an entry of this folder, never an address: no separator, nothing hidden.
-			File file = name == null || name.isEmpty() || LibraryFiles.isIgnored(name) || name.indexOf('/') >= 0
-				|| name.indexOf('\\') >= 0 ? null : new File(folder.toFile(), name);
+			PathInfo image = zipEntry(folder, name);
+			File file = image == null ? null : image.toFile();
 			if (file == null || !file.isFile() || !ResourceCache.isImage(file)) {
 				LOG.warning("Refusing the download in '" + context.request().getPathInfo() + "': no photograph '"
 					+ name + "'.");
 				errorInfo(context, HttpServletResponse.SC_NOT_FOUND, notInAlbum(name));
 				return null;
 			}
-			PathInfo image = folder.child(name);
-			if (inbox != null) {
+			// The album the photograph lies in: the folder itself for a plain name.
+			PathInfo source = image.parent();
+			if (!source.equals(folder) && !_auth.rights(caller, image).contains(Rights.DOWNLOAD)) {
+				refuse(context, caller, image, Rights.DOWNLOAD, false);
+				return null;
+			}
+			if (Inboxes.isInbox(_cache.lookup(source))) {
+				Inboxes.Visibility inbox = Inboxes.visibility(_auth, caller, source, viewAs);
 				Resource part = _cache.lookup(image);
 				if (!(part instanceof ImagePart) || !Inboxes.shows(inbox, (ImagePart) part, caller.subject())) {
 					LOG.warning("Hiding the image of an inbox at '" + context.request().getPathInfo() + name + "'.");
@@ -2615,24 +2628,45 @@ public class ImageServlet extends HttpServlet {
 				errorInfo(context, HttpServletResponse.SC_NOT_FOUND, notInAlbum(name));
 				return null;
 			}
+			int clearance = Math.min(_auth.clearance(caller, source), viewAs);
+			int minRating = _auth.minRating(caller, source, viewAs);
 			String refusal = hidden(image, clearance, minRating);
 			if (refusal != null) {
 				imageRefused(context, caller, refusal);
 				return null;
 			}
-			files.add(file);
+			result.putIfAbsent(name, file);
 			// A photograph's originals are its JPEG and the raw shot beside it, see issue #191.
 			Resource part = _cache.lookup(image);
-			if (part instanceof ImagePart && name.equals(((ImagePart) part).getName())) {
-				File raw = RawPairs.companion(folder.toFile(), (ImagePart) part);
+			if (part instanceof ImagePart && image.getName().equals(((ImagePart) part).getName())) {
+				File raw = RawPairs.companion(source.toFile(), (ImagePart) part);
 				if (raw != null) {
-					files.add(raw);
+					int slash = name.lastIndexOf('/');
+					result.putIfAbsent(name.substring(0, slash + 1) + raw.getName(), raw);
 				}
 			}
 		}
-		Map<String, File> result = new LinkedHashMap<>();
-		for (File file : files) {
-			result.put(file.getName(), file);
+		return result;
+	}
+
+	/**
+	 * The photograph a name of a download in the given plain folder stands for, see
+	 * {@link #zipFiles(Context, Caller, PathInfo, int, Collection)}; <code>null</code> where the
+	 * name is no entry of the folder and no path below it.
+	 */
+	private static PathInfo zipEntry(PathInfo folder, String name) {
+		if (name == null || name.indexOf('/') < 0) {
+			// A name is an entry of this folder, never an address: nothing hidden.
+			return name == null || name.isEmpty() || LibraryFiles.isIgnored(name) || name.indexOf('\\') >= 0
+				? null : folder.child(name);
+		}
+		List<String> segments = PhotoSearch.segments(name);
+		if (segments == null) {
+			return null;
+		}
+		PathInfo result = folder;
+		for (String segment : segments) {
+			result = result.child(segment);
 		}
 		return result;
 	}
@@ -6261,7 +6295,9 @@ public class ImageServlet extends HttpServlet {
 				}
 			}
 			Resource answer = folderAnswer(resource, pathInfo, caller, clearance, viewAs);
-			serveJson(context.response(), localized(withRights(answer, _auth.rights(caller, pathInfo)), context));
+			// A saved search answers its photographs slim, see ImagePart#isPartial().
+			serveJson(context.response(),
+				PhotoSearch.partial(localized(withRights(answer, _auth.rights(caller, pathInfo)), context)));
 		} else {
 			error404(context);
 		}
@@ -7889,7 +7925,10 @@ public class ImageServlet extends HttpServlet {
 			rights.add(Rights.DOWNLOAD);
 		}
 		Resource shown = withLabels(answer, caller, viewAs);
-		serveJson(context.response(), localized(withRights(shown, rights), context));
+		// Ten thousand photographs found are ten thousand parts: each answered slim, the faces,
+		// the tags and the full places asked of the photograph when it is opened, see
+		// ImagePart#isPartial().
+		serveJson(context.response(), PhotoSearch.partial(localized(withRights(shown, rights), context)));
 	}
 
 	/**
@@ -8074,7 +8113,8 @@ public class ImageServlet extends HttpServlet {
 		int viewAs = Privacy.PRIVATE;
 		int clearance = Math.min(_auth.clearance(caller, folderPath), viewAs);
 		Resource answer = folderAnswer(stored, folderPath, caller, clearance, viewAs);
-		serveJson(context.response(), localized(withRights(answer, _auth.rights(caller, folderPath)), context));
+		serveJson(context.response(),
+			PhotoSearch.partial(localized(withRights(answer, _auth.rights(caller, folderPath)), context)));
 	}
 
 	/**

@@ -454,6 +454,70 @@ class ImageViewState extends State<ImageView>
     }
   }
 
+  /// The partial photographs whose description is being fetched, see
+  /// [_completePartial]; by identity, a part being the object of the album.
+  final Set<ImagePart> _completing = Set.identity();
+
+  /// The part [_completePartial] last asked for while it was shown, so that a
+  /// change of the dependencies does not ask again; a new picture resets it.
+  ImagePart? _askedFor;
+
+  /// Fetches the photograph's own description where the shown part is the
+  /// slim copy a search answers ([ImagePart.partial], issue #243), and
+  /// adopts its faces, tags and full places.
+  ///
+  /// The part stays the object it is — it is linked to its neighbours, see
+  /// [_adopt] — and is no longer partial afterwards, so paging back to it asks
+  /// nothing again. The picture is shown meanwhile as it always is; a refusal
+  /// is said in the server's own words and leaves the picture usable, and the
+  /// next visit asks again. Offline nothing is asked: the cached picture is
+  /// what there is, and coming back online asks.
+  void _completePartial() {
+    var shown = part;
+    if (!shown.partial ||
+        identical(_askedFor, shown) ||
+        OfflineScope.isOffline(context)) {
+      return;
+    }
+    _askedFor = shown;
+    if (!_completing.add(shown)) {
+      return;
+    }
+    widget.client.imageDescription("${widget.baseUrl}/${shown.name}").then(
+      (full) {
+        _completing.remove(shown);
+        void adopt() {
+          shown.faces = full.faces;
+          shown.tags = full.tags;
+          shown.places = full.places;
+          shown.partial = false;
+        }
+
+        if (mounted) {
+          setState(adopt);
+        } else {
+          adopt();
+        }
+      },
+      onError: (Object error) {
+        _completing.remove(shown);
+        if (!mounted || !identical(part, shown)) {
+          return;
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              error is VAlbumException ? error.message : "$error",
+              key: const Key("image-description-failed"),
+            ),
+            backgroundColor: Colors.red.shade700,
+            duration: const Duration(seconds: 8),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   void dispose() {
     _snapBack.dispose();
@@ -1309,6 +1373,8 @@ class ImageViewState extends State<ImageView>
     super.didChangeDependencies();
     // The first thing a viewer does, before anybody pages anywhere.
     prefetchNeighbours();
+    // What a search answered of the picture is partial, see issue #243.
+    _completePartial();
   }
 
   @override
@@ -1321,6 +1387,9 @@ class ImageViewState extends State<ImageView>
       _failureReported = false;
       // The neighbours of the image now shown are two others, see issue #101.
       prefetchNeighbours();
+      // What a search answered of it is partial, see issue #243.
+      _askedFor = null;
+      _completePartial();
     }
   }
 

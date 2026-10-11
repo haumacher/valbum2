@@ -410,10 +410,34 @@ class SearchViewState extends State<SearchView> {
                   _choose(session.criteria.copyWith(text: value)),
             ),
           ),
+          _count(),
         ],
       ),
     );
   }
+
+  /// How many photographs the search found, once its result is in; nothing
+  /// before, and nothing for a result of none, which the results say in a
+  /// sentence of their own.
+  Widget _count() => FutureBuilder<AlbumInfo>(
+    future: session.result,
+    builder: (context, snapshot) {
+      var count = 0;
+      for (var part in snapshot.data?.parts ?? const <AlbumPart>[]) {
+        count += part is ImageGroup
+            ? part.images.length
+            : (part is ImagePart ? 1 : 0);
+      }
+      if (count == 0) {
+        return const SizedBox.shrink();
+      }
+      return Text(
+        _l10n.searchCount(count),
+        key: const Key("search-count"),
+        style: const TextStyle(color: Colors.white70),
+      );
+    },
+  );
 
   Widget _dateChip({
     required Key key,
@@ -642,48 +666,26 @@ class SearchViewState extends State<SearchView> {
   /// Downloads the originals of the photographs found under [names] — paths
   /// below the folder searched, as [_foundNames] names them.
   ///
-  /// The server takes an archive from one album, of names of that album: the
-  /// names are asked of the album each photograph lies in, one archive per
-  /// album, named after the search (and the album, where there are several).
-  /// One photograph of an album is its own original.
+  /// One request to the folder searched: the server takes paths below a
+  /// folder and asks each photograph what its own album asks (issue #243), so
+  /// a selection of several albums is one archive, named after the search,
+  /// whose entries keep their paths. One photograph is its own original, and
+  /// a phone saves original by original, as [downloadOriginals] decides.
   Future<void> downloadFound(List<String> names) async {
-    var byFolder = <String, List<String>>{};
-    for (var name in names) {
-      var slash = name.lastIndexOf("/");
-      var folder = slash < 0 ? "" : name.substring(0, slash);
-      byFolder.putIfAbsent(folder, () => []).add(name.substring(slash + 1));
-    }
     var title = await _searchTitle();
-    if (!mounted || byFolder.isEmpty) {
+    if (!mounted || names.isEmpty) {
       return;
     }
-    await runDownload(context, (progress) async {
-      var count = 0;
-      String? last;
-      for (var entry in byFolder.entries) {
-        var folder = entry.key.isEmpty ? <String>[] : entry.key.split("/");
-        var result = await downloadOriginals(
-          client,
-          [...path, ...folder],
-          entry.value,
-          archiveName: archiveNameOf(
-            byFolder.length == 1 || folder.isEmpty
-                ? title
-                : "$title - ${folder.last}",
-          ),
-          progress: progress,
-        );
-        count += result.count;
-        last = result.name;
-        if (result.cancelled) {
-          return DownloadResult(count: count, cancelled: true);
-        }
-      }
-      return DownloadResult(
-        count: count,
-        name: byFolder.length == 1 ? last : null,
-      );
-    });
+    await runDownload(
+      context,
+      (progress) => downloadOriginals(
+        client,
+        path,
+        names,
+        archiveName: archiveNameOf(title),
+        progress: progress,
+      ),
+    );
   }
 
   /// The title of the search, as "Save as view…" proposes it.

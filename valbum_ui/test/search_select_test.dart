@@ -3,7 +3,7 @@
 ///
 /// A long press on a result, or "Select" of a tile's menu at the pointer,
 /// enters the mode; its bar replaces the view's bar and criteria, downloads
-/// exactly the selection (each photograph asked of the album it lies in) and
+/// exactly the selection (one archive of the folder searched, issue #243) and
 /// adds exactly the selection to a collection. An editor gets it as well: the
 /// search view has no edit mode. A share link is never in the search view.
 ///
@@ -210,7 +210,7 @@ void main() {
 
     testWidgets(
         '"Download n originals" takes exactly the selection of one '
-        'album as one archive of its names', (tester) async {
+        'album as one archive of its paths', (tester) async {
       var saver = installSaver();
       var space = await pumpSelected(tester, "2020 Trip/x.jpg");
       await tapMark(tester, "2020 Trip/y.jpg");
@@ -220,15 +220,15 @@ void main() {
       await settle(tester);
 
       var zip = space.posts("zip").single;
-      expect(pathOf(zip), "/valbum/data/2020 Trip/",
-          reason: "The archive is asked of the album the photographs lie in.");
-      expect(postedNames(zip), ["x.jpg", "y.jpg"]);
+      expect(pathOf(zip), "/valbum/data/",
+          reason: "The archive is asked of the folder searched (#243).");
+      expect(postedNames(zip), ["2020 Trip/x.jpg", "2020 Trip/y.jpg"]);
       expect(space.originals, isEmpty);
       expect(saver.saved.single.name, "Anne.zip",
           reason: "The archive is named after the search.");
     });
 
-    testWidgets('a selection of several albums asks each album for its own',
+    testWidgets('a selection of several albums is one archive',
         (tester) async {
       var saver = installSaver();
       var space = await pumpSelected(tester, "2020 Trip/x.jpg");
@@ -237,12 +237,25 @@ void main() {
       await tester.tap(find.byKey(const Key("select-mode-download")));
       await settle(tester);
 
+      var zip = space.posts("zip").single;
+      expect(pathOf(zip), "/valbum/data/");
+      expect(postedNames(zip), ["2020 Trip/x.jpg", "2021 Zoo/z.jpg"],
+          reason: "Exactly the selection, by its paths across both albums.");
+      expect(space.originals, isEmpty);
+      expect(saver.saved.single.name, "Anne.zip");
+    });
+
+    testWidgets('one photograph selected is its own original',
+        (tester) async {
+      var saver = installSaver();
+      var space = await pumpSelected(tester, "2021 Zoo/z.jpg");
+
+      await tester.tap(find.byKey(const Key("select-mode-download")));
+      await settle(tester);
+
       expect(space.posts("zip"), isEmpty);
-      expect(space.originals,
-          ["/valbum/data/2020 Trip/x.jpg", "/valbum/data/2021 Zoo/z.jpg"]);
-      expect(space.originals, isNot(contains("/valbum/data/2020 Trip/y.jpg")),
-          reason: "What is not selected is not sent.");
-      expect([for (var file in saver.saved) file.name], ["x.jpg", "z.jpg"]);
+      expect(space.originals, ["/valbum/data/2021 Zoo/z.jpg"]);
+      expect([for (var file in saver.saved) file.name], ["z.jpg"]);
     });
 
     testWidgets('a phone takes the selection original by original',

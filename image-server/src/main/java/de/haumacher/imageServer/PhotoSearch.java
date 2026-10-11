@@ -16,6 +16,8 @@ import de.haumacher.imageServer.shared.model.ImageGroup;
 import de.haumacher.imageServer.shared.model.ImageKind;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.LabelName;
+import de.haumacher.imageServer.shared.model.PlaceInfo;
+import de.haumacher.imageServer.shared.model.PlaceKind;
 import de.haumacher.imageServer.shared.model.PlaceTag;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.model.SearchAnd;
@@ -36,6 +38,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -757,8 +760,116 @@ public final class PhotoSearch {
 			.setRef(image.getRef())
 			.setMissing(image.isMissing())
 			.setPlaces(image.getPlaces())
-			.setPlaceCaption(image.getPlaceCaption());
+			.setPlaceCaption(image.getPlaceCaption())
+			.setPartial(image.isPartial());
 	}
+
+	/**
+	 * The given answer of a search with every photograph in it made {@link #partialCopy(ImagePart)
+	 * partial}; any other resource as it is.
+	 *
+	 * <p>
+	 * Applied last, to what is written out: the place names are put into the caller's language by
+	 * their GeoNames ids before, and the search's own options are read off the full copies.
+	 * </p>
+	 */
+	public static Resource partial(Resource answer) {
+		if (!isSearch(answer)) {
+			return answer;
+		}
+		AlbumInfo album = (AlbumInfo) answer;
+		List<AlbumPart> parts = new ArrayList<>(album.getParts().size());
+		for (AlbumPart part : album.getParts()) {
+			if (part instanceof ImagePart) {
+				parts.add(partialCopy((ImagePart) part));
+			} else if (part instanceof ImageGroup) {
+				ImageGroup group = (ImageGroup) part;
+				List<ImagePart> images = new ArrayList<>(group.getImages().size());
+				for (ImagePart image : group.getImages()) {
+					images.add(partialCopy(image));
+				}
+				parts.add(ImageGroup.create().setRepresentative(group.getRepresentative()).setImages(images));
+			} else {
+				parts.add(part);
+			}
+		}
+		album.setParts(parts);
+		return album;
+	}
+
+	/**
+	 * The slim copy of a photograph a search answers, see {@link ImagePart#isPartial()}: every field
+	 * of {@link #answerCopy(ImagePart)} but the faces and the tags, and the places trimmed to the
+	 * {@link #placeLine(PlaceInfo) place line}.
+	 */
+	public static ImagePart partialCopy(ImagePart image) {
+		return answerCopy(image)
+			.setFaces(java.util.Collections.emptyList())
+			.setTags(java.util.Collections.emptyList())
+			.setPlaces(placeLine(image.getPlaces()))
+			.setPartial(true);
+	}
+
+	/**
+	 * The given places trimmed to what the app's place line reads, <code>null</code> for none.
+	 *
+	 * <p>
+	 * Tied to <code>placeLineText</code> in <code>valbum_ui/lib/image_properties.dart</code>, which
+	 * must be changed together with this: the line reads, of each kind, the first tag with a name
+	 * &mdash; the {@link PlaceKind#FEATURE feature}, the {@link PlaceKind#DISTRICT district}, the
+	 * {@link PlaceKind#ADM_1 state} and the {@link PlaceKind#COUNTRY country}, and as the town the
+	 * first of {@link PlaceKind#PLACE}, {@link PlaceKind#ADM_4}, {@link PlaceKind#ADM_3} and
+	 * {@link PlaceKind#ADM_2} that there is. Exactly those tags are kept, in their order, each with
+	 * its name and kind alone; the sentence why there are no tags yet is kept as it stands.
+	 * </p>
+	 */
+	public static PlaceInfo placeLine(PlaceInfo places) {
+		if (places == null) {
+			return null;
+		}
+		EnumMap<PlaceKind, PlaceTag> first = new EnumMap<>(PlaceKind.class);
+		for (PlaceTag tag : places.getTags()) {
+			if (tag.getKind() != null && tag.getName() != null && !tag.getName().isEmpty()) {
+				first.putIfAbsent(tag.getKind(), tag);
+			}
+		}
+		Set<PlaceTag> read = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+		for (PlaceKind kind : PLACE_LINE_KINDS) {
+			PlaceTag tag = first.get(kind);
+			if (tag != null) {
+				read.add(tag);
+			}
+		}
+		for (PlaceKind kind : PLACE_LINE_TOWN) {
+			PlaceTag tag = first.get(kind);
+			if (tag != null) {
+				read.add(tag);
+				break;
+			}
+		}
+		List<PlaceTag> tags = new ArrayList<>(read.size());
+		for (PlaceTag tag : places.getTags()) {
+			if (read.contains(tag)) {
+				tags.add(PlaceTag.create().setName(tag.getName()).setKind(tag.getKind()));
+			}
+		}
+		return PlaceInfo.create().setTags(tags).setPending(places.getPending());
+	}
+
+	/**
+	 * The kinds the app's place line reads one each of, see {@link #placeLine(PlaceInfo)}; tied to
+	 * <code>placeLineText</code> in <code>image_properties.dart</code>.
+	 */
+	public static final List<PlaceKind> PLACE_LINE_KINDS =
+		List.of(PlaceKind.FEATURE, PlaceKind.DISTRICT, PlaceKind.ADM_1, PlaceKind.COUNTRY);
+
+	/**
+	 * The kinds the app's place line takes the town from, the first there is, see
+	 * {@link #placeLine(PlaceInfo)}; tied to <code>placeLineText</code> in
+	 * <code>image_properties.dart</code>.
+	 */
+	public static final List<PlaceKind> PLACE_LINE_TOWN =
+		List.of(PlaceKind.PLACE, PlaceKind.ADM_4, PlaceKind.ADM_3, PlaceKind.ADM_2);
 
 	/**
 	 * The given album with the given photographs alone, a group by those of its members: a shell

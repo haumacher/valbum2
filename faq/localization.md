@@ -8,7 +8,8 @@ All generated files are committed. Never start a sentence with a placeholder (De
 `test/l10n_guard_test.dart` fails on user-facing literals outside the ARB. Engines without a
 `BuildContext` return `AppNotice` data, not sentences. Server messages are shown verbatim.
 German uses "Sie"; hand corrections in `app_de.arb` survive until the English source changes.
-The plugin may reorder the placeholders of a key (new or old, where the map order differs from the
-text order), and the generated method takes them in that
-order: check the signature in `app_localizations.dart` after a run, and fix the order in
-`app_en.arb` (a later run keeps it).
+The plugin reorders the placeholders of some keys on every run, and the generated method takes
+them in that order, which flips signatures the code still calls in the committed order: after
+`translateArb` and before `gen-l10n` run
+`python3 valbum_ui/tool/arb_placeholder_order.py valbum_ui/lib/l10n/app_en.arb`, which restores
+the committed order of every existing key, then check `git diff` of `app_localizations.dart`.

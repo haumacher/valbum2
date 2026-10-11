@@ -714,6 +714,22 @@ message ImagePart extends AbstractImage {
 	 * </p>
 	 */
 	PlaceCaption placeCaption;
+
+	/**
+	 * Whether this is the slim copy of a photograph a search answers, see issue #227: faces and
+	 * tags are left out and the places trimmed to what the place line reads; the photograph's own
+	 * description, <code>GET &lt;album&gt;/&lt;name&gt;?type=json</code>, has everything.
+	 *
+	 * <p>
+	 * A search finding ten thousand photographs answers ten thousand parts, and the places are
+	 * the bulk of each. The trimmed {@link #places} keep the {@link PlaceKind kinds} the app's
+	 * place line (<code>placeLineText</code> in <code>image_properties.dart</code>) reads, each
+	 * with its name and kind alone, see <code>PhotoSearch.placeLine</code>; the viewer
+	 * fetches the full description when it shows such a part. Derived on every answer and
+	 * <b>never stored</b>.
+	 * </p>
+	 */
+	bool partial;
 }
 
 /**

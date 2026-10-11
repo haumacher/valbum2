@@ -18,6 +18,9 @@ import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.LabelName;
 import de.haumacher.imageServer.shared.model.MoveResult;
 import de.haumacher.imageServer.shared.model.Person;
+import de.haumacher.imageServer.shared.model.PlaceInfo;
+import de.haumacher.imageServer.shared.model.PlaceKind;
+import de.haumacher.imageServer.shared.model.PlaceTag;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.model.SearchAnd;
 import de.haumacher.imageServer.shared.model.SearchCamera;
@@ -529,6 +532,189 @@ public class TestSavedSearch extends ShareTestCase {
 				+ "\"places\":{\"tags\":[{\"geonameId\":7,\"name\":\"N\",\"kind\":\"PLACE\"}],\"pending\":\"w\"},"
 				+ "\"placeCaption\":\"HIDDEN\"}]"));
 		assertEquals(write(PhotoCollections.copy(full)), write(PhotoSearch.answerCopy(full)));
+	}
+
+	// --- The slim answer of a search. ---
+
+	public void testASearchAnswersEachPhotographSlim() throws Exception {
+		FakeResponse response = search("/Family/", and(person(_anne)), SharingFixture.ALICE);
+		assertEquals(response.body(), HttpServletResponse.SC_OK, response.status());
+		ImagePart found = image(album(response), "2024 Garden/garden.jpg");
+		assertTrue("A search answers its photographs partial.", found.isPartial());
+		assertTrue(found.getTags().isEmpty());
+		assertTrue(found.getFaces().isEmpty());
+		assertEquals("Every other field is kept.", day(2024, 6, 1), found.getDate());
+
+		ImagePart own = ownDescription("/Family/2024 Garden/garden.jpg");
+		assertFalse("The photograph's own description has everything.", own.isPartial());
+		assertEquals(2, own.getTags().size());
+	}
+
+	public void testASavedSearchAnswersEachPhotographSlim() throws Exception {
+		createSearch("/Family/Anne", and(person(_anne)));
+		AlbumInfo answer = album(get("/Family/Anne/", "json", SharingFixture.ALICE));
+		ImagePart found = image(answer, "2024 Garden/garden.jpg");
+		assertTrue(found.isPartial());
+		assertTrue(found.getTags().isEmpty());
+		assertTrue(found.getFaces().isEmpty());
+
+		ImagePart own = ownDescription("/Family/Anne/2024 Garden/garden.jpg");
+		assertFalse("Addressed through the saved search, the photograph answers everything.", own.isPartial());
+		assertEquals(2, own.getTags().size());
+		assertFalse("The sidecar never stores the word.",
+			new String(Files.readAllBytes(_base.resolve(GARDEN).resolve("index.json")), StandardCharsets.UTF_8)
+				.contains("partial"));
+	}
+
+	/**
+	 * Review probe: the slim answer is a copy made on the way out. The album the photograph lies in
+	 * answers it full before and after a search, a second search answers slim again, and the
+	 * trimmed places read as the place line reads the full ones.
+	 */
+	public void testProbeTheSlimAnswerNeverTouchesTheAlbum() throws Exception {
+		ImagePart before = image(album(get("/Family/2024 Garden/", "json", SharingFixture.ALICE)), "garden.jpg");
+		assertFalse(before.isPartial());
+		assertEquals(2, before.getTags().size());
+
+		for (int round = 0; round < 2; round++) {
+			FakeResponse response = search("/Family/", and(person(_anne)), SharingFixture.ALICE);
+			assertEquals(response.body(), HttpServletResponse.SC_OK, response.status());
+			ImagePart found = image(album(response), "2024 Garden/garden.jpg");
+			assertTrue("Round " + round + " answers slim.", found.isPartial());
+			assertTrue(found.getTags().isEmpty());
+			for (PlaceTag tag : found.getPlaces() == null ? Collections.<PlaceTag> emptyList()
+				: found.getPlaces().getTags()) {
+				assertEquals("No id travels with a trimmed place.", 0, tag.getGeonameId());
+			}
+		}
+
+		ImagePart after = image(album(get("/Family/2024 Garden/", "json", SharingFixture.ALICE)), "garden.jpg");
+		assertFalse("The album's own answer is untouched by the search.", after.isPartial());
+		assertEquals(2, after.getTags().size());
+		assertEquals(2, image(album(get("/Family/2024 Garden/", "json", SharingFixture.ALICE)), "garden.jpg")
+			.getTags().size());
+
+		// The trimmed places of a full place list keep exactly what the line reads, in order.
+		PlaceInfo full = PlaceInfo.create();
+		String[][] places = { { "COUNTRY", "Germany" }, { "ADM_1", "Baden-Württemberg" }, { "ADM_2", "Karlsruhe Region" },
+			{ "ADM_3", "Stadtkreis Karlsruhe" }, { "ADM_4", "Karlsruhe" }, { "PLACE", "Karlsruhe" },
+			{ "DISTRICT", "Innenstadt" }, { "FEATURE", "Karlsruhe Schloss" } };
+		int id = 1;
+		for (String[] place : places) {
+			full.addTag(PlaceTag.create().setGeonameId(id++).setName(place[1]).setKind(PlaceKind.valueOf(place[0]))
+				.setCountry("DE"));
+		}
+		PlaceInfo slim = PhotoSearch.placeLine(full);
+		List<String> kept = new ArrayList<>();
+		for (PlaceTag tag : slim.getTags()) {
+			kept.add(tag.getKind() + ":" + tag.getName());
+			assertEquals(0, tag.getGeonameId());
+			assertTrue(tag.getCountry() == null || tag.getCountry().isEmpty());
+		}
+		assertEquals(Arrays.asList("COUNTRY:Germany", "ADM_1:Baden-Württemberg", "PLACE:Karlsruhe",
+			"DISTRICT:Innenstadt", "FEATURE:Karlsruhe Schloss"), kept);
+		assertEquals("Without a town, the most local division stands in.", Arrays.asList("ADM_3:Stadtkreis Karlsruhe"),
+			kindsOf(PhotoSearch.placeLine(PlaceInfo.create()
+				.addTag(PlaceTag.create().setGeonameId(9).setName("Karlsruhe Region").setKind(PlaceKind.ADM_2))
+				.addTag(PlaceTag.create().setGeonameId(8).setName("Stadtkreis Karlsruhe").setKind(PlaceKind.ADM_3)))));
+	}
+
+	private static List<String> kindsOf(PlaceInfo places) {
+		List<String> result = new ArrayList<>();
+		for (PlaceTag tag : places.getTags()) {
+			result.add(tag.getKind() + ":" + tag.getName());
+		}
+		return result;
+	}
+
+	public void testTheOptionsAreReadOffTheFullPhotographs() throws Exception {
+		// The options name the persons of what was found; a slim answer must not empty them.
+		SearchOptions options = SearchOptions.readSearchOptions(
+			reader(body(get("/Family/", ImageServlet.SEARCH_OPTIONS_TYPE, SharingFixture.ALICE))));
+		assertEquals(2, options.getPersons().size());
+	}
+
+	/** A photograph with two faces, two tags, eight place names, a description, a camera and two labels. */
+	public void testTheSlimAnswerIsMuchSmallerThanTheFullOne() throws Exception {
+		ImagePart full = (ImagePart) de.haumacher.imageServer.shared.model.AlbumPart.readAlbumPart(reader(
+			"[\"ImagePart\",{\"kind\":\"IMAGE\",\"name\":\"2023 Karlsruhe/IMG_20230701_123456.jpg\","
+				+ "\"date\":1688214896000,\"width\":4000,\"height\":3000,\"orientation\":\"IDENTITY\",\"rating\":1,"
+				+ "\"comment\":\"Anne and Philipp in front of the palace\",\"camera\":\"Google Pixel 7\","
+				+ "\"location\":{\"latitude\":49.0134,\"longitude\":8.4044},"
+				+ "\"faces\":[" + face(0, 0.12, _anne) + "," + face(1, 0.55, _philipp) + "],"
+				+ "\"tags\":[" + tag(_anne, "CONFIRMED", 0.12) + "," + tag(_philipp, "CONFIRMED", 0.55) + "],"
+				+ "\"labels\":[{\"name\":\"Holiday\"},{\"name\":\"Family\"}],"
+				+ "\"ref\":{\"hash\":\"\",\"path\":\"2023 Karlsruhe/IMG_20230701_123456.jpg\"},"
+				+ "\"places\":{\"tags\":["
+				+ place(2921044, "Germany", "COUNTRY", "PCLI") + ","
+				+ place(2953481, "Baden-Württemberg", "ADM1", "ADM1") + ","
+				+ place(3214105, "Regierungsbezirk Karlsruhe", "ADM2", "ADM2") + ","
+				+ place(3214104, "Stadtkreis Karlsruhe", "ADM3", "ADM3") + ","
+				+ place(6555709, "Karlsruhe", "ADM4", "ADM4") + ","
+				+ place(2892794, "Karlsruhe", "PLACE", "PPLA2") + ","
+				+ place(6559171, "Innenstadt-West", "DISTRICT", "PPLX") + ","
+				+ place(6942213, "Karlsruhe Palace", "FEATURE", "CSTL") + "]}}]"));
+		ImagePart slim = PhotoSearch.partialCopy(full);
+		int fullBytes = write(full).getBytes(StandardCharsets.UTF_8).length;
+		int slimBytes = write(slim).getBytes(StandardCharsets.UTF_8).length;
+		System.out.println("A search result photograph: " + fullBytes + " bytes full, " + slimBytes + " bytes partial.");
+		assertTrue(slimBytes + " of " + fullBytes, slimBytes < fullBytes * 0.6);
+
+		List<String> kept = new ArrayList<>();
+		for (de.haumacher.imageServer.shared.model.PlaceTag tag : slim.getPlaces().getTags()) {
+			kept.add(tag.getKind() + " " + tag.getName());
+			assertEquals("No id.", 0, tag.getGeonameId());
+			assertEquals("No country.", "", tag.getCountry());
+			assertEquals("No feature code.", "", tag.getFeatureCode());
+		}
+		assertEquals("What the place line reads: the town once, the divisions it falls back on left out.",
+			Arrays.asList("COUNTRY Germany", "ADM_1 Baden-Württemberg", "PLACE Karlsruhe", "DISTRICT Innenstadt-West",
+				"FEATURE Karlsruhe Palace"),
+			kept);
+		assertEquals("The full photograph is left as it is.", 8, full.getPlaces().getTags().size());
+		assertEquals(2, full.getTags().size());
+	}
+
+	public void testThePlaceLineFallsBackOnTheMostLocalDivision() {
+		de.haumacher.imageServer.shared.model.PlaceInfo places = de.haumacher.imageServer.shared.model.PlaceInfo
+			.create().setPending("")
+			.setTags(Arrays.asList(placeTag("France", de.haumacher.imageServer.shared.model.PlaceKind.COUNTRY),
+				placeTag("Bretagne", de.haumacher.imageServer.shared.model.PlaceKind.ADM_1),
+				placeTag("Finistère", de.haumacher.imageServer.shared.model.PlaceKind.ADM_2),
+				placeTag("Brest", de.haumacher.imageServer.shared.model.PlaceKind.ADM_3)));
+		List<String> kept = new ArrayList<>();
+		for (de.haumacher.imageServer.shared.model.PlaceTag tag : PhotoSearch.placeLine(places).getTags()) {
+			kept.add(tag.getName());
+		}
+		assertEquals(Arrays.asList("France", "Bretagne", "Brest"), kept);
+
+		de.haumacher.imageServer.shared.model.PlaceInfo pending = de.haumacher.imageServer.shared.model.PlaceInfo
+			.create().setPending("Place names for China are being loaded.");
+		assertEquals("The sentence why there are none yet is kept.", pending.getPending(),
+			PhotoSearch.placeLine(pending).getPending());
+		assertNull(PhotoSearch.placeLine(null));
+	}
+
+	private static de.haumacher.imageServer.shared.model.PlaceTag placeTag(String name,
+			de.haumacher.imageServer.shared.model.PlaceKind kind) {
+		return de.haumacher.imageServer.shared.model.PlaceTag.create().setGeonameId(name.hashCode()).setName(name)
+			.setKind(kind).setCountry("FR");
+	}
+
+	private static String face(int index, double x, String person) {
+		return "{\"index\":" + index + ",\"x\":" + x + ",\"y\":0.2,\"w\":0.15,\"h\":0.2,\"cluster\":\"c" + index
+			+ "\",\"person\":\"" + person + "\",\"state\":\"CONFIRMED\"}";
+	}
+
+	private static String place(int id, String name, String kind, String featureCode) {
+		return "{\"geonameId\":" + id + ",\"name\":\"" + name + "\",\"kind\":\"" + kind + "\",\"featureCode\":\""
+			+ featureCode + "\",\"country\":\"DE\"}";
+	}
+
+	private ImagePart ownDescription(String path) throws Exception {
+		FakeResponse response = get(path, "json", SharingFixture.ALICE);
+		assertEquals(response.body(), HttpServletResponse.SC_OK, response.status());
+		return (ImagePart) Resource.readResource(reader(body(response)));
 	}
 
 	// --- Helpers. ---

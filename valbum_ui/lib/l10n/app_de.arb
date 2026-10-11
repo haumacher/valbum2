@@ -989,5 +989,6 @@
   "displayLocation": "Ort anzeigen",
   "placeCaptionAsAlbum": "Wie im Album",
   "placeCaptionShown": "Angezeigt",
-  "placeCaptionHidden": "Ausgeblendet"
+  "placeCaptionHidden": "Ausgeblendet",
+  "searchCount": "{count, plural, =1{1 Foto} other{{count} Fotos}}"
 }

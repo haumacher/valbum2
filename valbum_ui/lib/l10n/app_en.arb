@@ -6307,6 +6307,16 @@
     "description": "Shown in the search view when the search finds nothing",
     "x-translated": "8c4f2fd3"
   },
+  "searchCount": "{count, plural, =1{1 photo} other{{count} photos}}",
+  "@searchCount": {
+    "description": "Shown at the end of the criteria of the search view: how many photographs the search found (issue #243). German: \"{count, plural, =1{1 Foto} other{{count} Fotos}}\"",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "85cbe1ac"
+  },
   "searchNothingToChoose": "There is nothing to choose from here.",
   "@searchNothingToChoose": {
     "description": "Shown in a chooser of the search view when the photos below the folder offer nothing of this kind",

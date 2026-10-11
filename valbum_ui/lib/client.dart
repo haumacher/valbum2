@@ -1939,6 +1939,30 @@ class VAlbumClient {
     return SearchOptions.read(JsonReader.fromString(response.body));
   }
 
+  /// The photograph's own description at [imageUrl] (`<album>/<name>`, for a
+  /// photograph found by a search its path below the folder searched):
+  /// `GET <imageUrl>?type=json`, its faces, tags and full places included.
+  ///
+  /// What a search answers of a photograph is partial ([ImagePart.partial],
+  /// issue #243); the viewer asks this for the photograph it shows. A refusal
+  /// is thrown with the server's own sentence.
+  Future<ImagePart> imageDescription(String imageUrl) async {
+    var url = "$imageUrl?type=json";
+    var response = await _http.get(Uri.parse(url), headers: authHeaders);
+    if (response.statusCode >= 300) {
+      throw failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingAsking("'$url'"),
+      );
+    }
+    var resource = Resource.read(JsonReader.fromString(response.body));
+    if (resource is! ImagePart) {
+      throw VAlbumException(platformMessages.doingAsking("'$url'"));
+    }
+    return resource;
+  }
+
   /// Deletes the named entries of the folder at [path], see issue #109.
   ///
   /// [names] are entries of that folder, and only albums and folders: an image

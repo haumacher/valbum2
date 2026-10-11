@@ -81,6 +81,9 @@ public class ImagePart extends AbstractImage {
 	/** @see #getPlaceCaption() */
 	private static final String PLACE_CAPTION__PROP = "placeCaption";
 
+	/** @see #isPartial() */
+	private static final String PARTIAL__PROP = "partial";
+
 	private de.haumacher.imageServer.shared.model.ImageKind _kind = de.haumacher.imageServer.shared.model.ImageKind.IMAGE;
 
 	private String _name = "";
@@ -126,6 +129,8 @@ public class ImagePart extends AbstractImage {
 	private de.haumacher.imageServer.shared.model.PlaceInfo _places = null;
 
 	private de.haumacher.imageServer.shared.model.PlaceCaption _placeCaption = de.haumacher.imageServer.shared.model.PlaceCaption.UNSET;
+
+	private boolean _partial = false;
 
 	/**
 	 * Creates a {@link ImagePart} instance.
@@ -909,6 +914,37 @@ public class ImagePart extends AbstractImage {
 		_placeCaption = value;
 	}
 
+	/**
+	 * Whether this is the slim copy of a photograph a search answers, see issue #227: faces and
+	 * tags are left out and the places trimmed to what the place line reads; the photograph's own
+	 * description, <code>GET &lt;album&gt;/&lt;name&gt;?type=json</code>, has everything.
+	 *
+	 * <p>
+	 * A search finding ten thousand photographs answers ten thousand parts, and the places are
+	 * the bulk of each. The trimmed {@link #getPlaces()} keep the {@link PlaceKind kinds} the app's
+	 * place line (<code>placeLineText</code> in <code>image_properties.dart</code>) reads, each
+	 * with its name and kind alone, see <code>PhotoSearch.placeLine</code>; the viewer
+	 * fetches the full description when it shows such a part. Derived on every answer and
+	 * <b>never stored</b>.
+	 * </p>
+	 */
+	public final boolean isPartial() {
+		return _partial;
+	}
+
+	/**
+	 * @see #isPartial()
+	 */
+	public de.haumacher.imageServer.shared.model.ImagePart setPartial(boolean value) {
+		internalSetPartial(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #isPartial()} without chain call utility. */
+	protected final void internalSetPartial(boolean value) {
+		_partial = value;
+	}
+
 	@Override
 	public de.haumacher.imageServer.shared.model.ImagePart setPrevious(de.haumacher.imageServer.shared.model.AbstractImage value) {
 		internalSetPrevious(value);
@@ -1018,6 +1054,8 @@ public class ImagePart extends AbstractImage {
 		}
 		out.name(PLACE_CAPTION__PROP);
 		getPlaceCaption().writeTo(out);
+		out.name(PARTIAL__PROP);
+		out.value(isPartial());
 	}
 
 	@Override
@@ -1066,6 +1104,7 @@ public class ImagePart extends AbstractImage {
 			case MISSING__PROP: setMissing(in.nextBoolean()); break;
 			case PLACES__PROP: setPlaces(de.haumacher.imageServer.shared.model.PlaceInfo.readPlaceInfo(in)); break;
 			case PLACE_CAPTION__PROP: setPlaceCaption(de.haumacher.imageServer.shared.model.PlaceCaption.readPlaceCaption(in)); break;
+			case PARTIAL__PROP: setPartial(in.nextBoolean()); break;
 			default: super.readField(in, field);
 		}
 	}

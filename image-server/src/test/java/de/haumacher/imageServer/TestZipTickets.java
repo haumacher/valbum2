@@ -69,6 +69,33 @@ public class TestZipTickets extends ShareTestCase {
 		assertEquals("No refused request left a ticket behind.", 0, servlet().zipTicketCount());
 	}
 
+	public void testATicketTakesPathsBelowTheFolderAsTheZipDoes() throws Exception {
+		SharingFixture.album(_base, SharingFixture.YEAR + "/2024-06-01 Park", "Park",
+			"[\"ImagePart\",{\"name\":\"public.jpg\",\"width\":4,\"height\":3}],"
+				+ "[\"ImagePart\",{\"name\":\"private.jpg\",\"width\":4,\"height\":3,\"privacy\":2}]",
+			"public.jpg", "private.jpg");
+		restartServer();
+		String year = "/" + SharingFixture.YEAR + "/";
+
+		FakeResponse refused = ticket(year, SharingFixture.CAROL, "2024-05-01 Zoo/public.jpg",
+			"2024-06-01 Park/private.jpg");
+		assertEquals(HttpServletResponse.SC_FORBIDDEN, refused.status());
+		assertEquals(ImageServlet.IMAGE_REFUSED, errorMessage(refused));
+		FakeResponse address = ticket(year, SharingFixture.ALICE, "2024-05-01 Zoo/../../Private/secret.jpg");
+		assertEquals(HttpServletResponse.SC_NOT_FOUND, address.status());
+		assertEquals(0, servlet().zipTicketCount());
+
+		MediaUrl url = issued(year, SharingFixture.ALICE, "2024-05-01 Zoo/public.jpg", "2024-06-01 Park/public.jpg");
+		FakeResponse download = fetch(year, url, null);
+		Map<String, byte[]> entries = entries(download);
+		assertEquals(Arrays.asList("2024-05-01 Zoo/public.jpg", "2024-06-01 Park/public.jpg"),
+			Arrays.asList(entries.keySet().toArray()));
+		for (Map.Entry<String, byte[]> entry : entries.entrySet()) {
+			assertTrue(entry.getKey(), Arrays.equals(
+				Files.readAllBytes(_base.resolve(SharingFixture.YEAR).resolve(entry.getKey())), entry.getValue()));
+		}
+	}
+
 	// --- The browser's download. ---
 
 	public void testTheSignedAddressDownloadsOnceWithoutABearer() throws Exception {

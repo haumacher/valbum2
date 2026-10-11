@@ -3854,6 +3854,17 @@ class AppLocalizationsDe extends AppLocalizations {
   String get searchNothingFound => 'Kein Foto entspricht dieser Suche.';
 
   @override
+  String searchCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Fotos',
+      one: '1 Foto',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get searchNothingToChoose => 'Hier gibt es nichts zur Auswahl.';
 
   @override

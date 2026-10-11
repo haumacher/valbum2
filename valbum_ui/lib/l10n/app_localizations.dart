@@ -5961,6 +5961,12 @@ abstract class AppLocalizations {
   /// **'No photo matches this search.'**
   String get searchNothingFound;
 
+  /// Shown at the end of the criteria of the search view: how many photographs the search found (issue #243). German: "{count, plural, =1{1 Foto} other{{count} Fotos}}"
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 photo} other{{count} photos}}'**
+  String searchCount(int count);
+
   /// Shown in a chooser of the search view when the photos below the folder offer nothing of this kind
   ///
   /// In en, this message translates to:

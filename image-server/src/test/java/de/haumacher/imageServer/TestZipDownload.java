@@ -164,7 +164,97 @@ public class TestZipDownload extends ShareTestCase {
 		assertEquals(Inboxes.NOT_FOUND, errorMessage(viewer));
 	}
 
+	// --- Paths below a plain folder, issue #243. ---
+
+	public void testPathsOfTwoAlbumsAreOneArchive() throws Exception {
+		park();
+		String before = albumFingerprint("alice");
+
+		FakeResponse response = zip(YEAR, SharingFixture.ALICE, "2024-05-01 Zoo/public.jpg",
+			"2024-06-01 Park/public.jpg", "2024-06-01 Park/IMG_1.jpg");
+
+		assertEquals(response.body(), HttpServletResponse.SC_OK, response.status());
+		assertEquals("attachment; filename=\"2024.zip\"; filename*=UTF-8''2024.zip",
+			response.header("Content-Disposition"));
+		Map<String, byte[]> entries = entries(response);
+		assertEquals("Each entry keeps its path: the two albums' public.jpg do not collide.",
+			Arrays.asList("2024-05-01 Zoo/public.jpg", "2024-06-01 Park/public.jpg", "2024-06-01 Park/IMG_1.jpg",
+				"2024-06-01 Park/IMG_1.CR2"),
+			Arrays.asList(entries.keySet().toArray()));
+		for (Map.Entry<String, byte[]> entry : entries.entrySet()) {
+			assertTrue("The entry is the original, byte for byte: " + entry.getKey(),
+				Arrays.equals(Files.readAllBytes(_base.resolve(SharingFixture.YEAR).resolve(entry.getKey())),
+					entry.getValue()));
+		}
+		assertEquals("Nothing was written beside the originals.", before, albumFingerprint("alice"));
+	}
+
+	public void testAPathIsAskedWhatItsOwnAlbumAsks() throws Exception {
+		park();
+
+		FakeResponse path = zip(YEAR, SharingFixture.CAROL, "2024-05-01 Zoo/public.jpg", "2024-06-01 Park/private.jpg");
+		FakeResponse plain = zip("/" + PARK + "/", SharingFixture.CAROL, "private.jpg");
+		assertEquals("A photograph above the clearance refuses the whole download.", HttpServletResponse.SC_FORBIDDEN,
+			path.status());
+		assertEquals(plain.status(), path.status());
+		assertEquals("The sentence a plain name gets.", errorMessage(plain), errorMessage(path));
+		assertEquals(ImageServlet.IMAGE_REFUSED, errorMessage(path));
+	}
+
+	public void testAPathIntoAnInboxIsConfinedAsItIsListed() throws Exception {
+		inbox();
+
+		FakeResponse own = zip("/", SharingFixture.BOB, INBOX + "/bobs.jpg");
+		assertEquals(own.body(), HttpServletResponse.SC_OK, own.status());
+		assertEquals(Arrays.asList(INBOX + "/bobs.jpg"), Arrays.asList(entries(own).keySet().toArray()));
+
+		FakeResponse foreign = zip("/", SharingFixture.BOB, INBOX + "/bobs.jpg", INBOX + "/carols.jpg");
+		assertEquals("Somebody else's photograph is not there for a contributor.", HttpServletResponse.SC_NOT_FOUND,
+			foreign.status());
+		assertEquals(ImageServlet.notInAlbum(INBOX + "/carols.jpg"), errorMessage(foreign));
+
+		FakeResponse viewer = zip("/", SharingFixture.DAVE, INBOX + "/bobs.jpg");
+		assertEquals("A viewer is not shown an inbox at all.", HttpServletResponse.SC_NOT_FOUND, viewer.status());
+		assertEquals(ImageServlet.notInAlbum(INBOX + "/bobs.jpg"), errorMessage(viewer));
+	}
+
+	public void testAPathIsNeverAnAddress() throws Exception {
+		park();
+		for (String name : Arrays.asList("2024-05-01 Zoo/../../Private/secret.jpg", "../Private/secret.jpg",
+			"2024-05-01 Zoo/.hashes.json", "2024-05-01 Zoo/index.json", "/2024-05-01 Zoo/public.jpg",
+			"2024-05-01 Zoo//public.jpg", "2024-05-01 Zoo/", ".hidden/public.jpg", "2024-05-01 Zoo/nowhere.jpg")) {
+			FakeResponse response = zip(YEAR, SharingFixture.ALICE, "2024-06-01 Park/public.jpg", name);
+			assertEquals(name, HttpServletResponse.SC_NOT_FOUND, response.status());
+			assertEquals(ImageServlet.notInAlbum(name), errorMessage(response));
+		}
+		// A backslash, spelt as JSON spells it.
+		FakeResponse backslash = zip(YEAR, SharingFixture.ALICE, "2024-05-01 Zoo\\\\public.jpg");
+		assertEquals(HttpServletResponse.SC_NOT_FOUND, backslash.status());
+		assertEquals(ImageServlet.notInAlbum("2024-05-01 Zoo\\public.jpg"), errorMessage(backslash));
+		FakeResponse slashAndBackslash = zip(YEAR, SharingFixture.ALICE, "2024-06-01 Park/..\\\\2024-05-01 Zoo/public.jpg");
+		assertEquals(HttpServletResponse.SC_NOT_FOUND, slashAndBackslash.status());
+	}
+
 	// --- Helpers. ---
+
+	private static final String YEAR = "/" + SharingFixture.YEAR + "/";
+
+	/** A second album below the year, beside the zoo. */
+	private static final String PARK = SharingFixture.YEAR + "/2024-06-01 Park";
+
+	/**
+	 * A second album below the year: a photograph named as one of the zoo, a private one, and one
+	 * with its raw companion (issue #191).
+	 */
+	private void park() throws Exception {
+		SharingFixture.album(_base, PARK, "Park",
+			"[\"ImagePart\",{\"name\":\"public.jpg\",\"width\":4,\"height\":3}],"
+				+ "[\"ImagePart\",{\"name\":\"private.jpg\",\"width\":4,\"height\":3,\"privacy\":2}],"
+				+ "[\"ImagePart\",{\"name\":\"IMG_1.jpg\",\"width\":4,\"height\":3,\"raw\":\"IMG_1.CR2\"}]",
+			"public.jpg", "private.jpg", "IMG_1.jpg");
+		Files.write(_base.resolve(PARK).resolve("IMG_1.CR2"), "raw bytes".getBytes(StandardCharsets.UTF_8));
+		restartServer();
+	}
 
 	private FakeResponse zip(String pathInfo, String token, String... names) throws Exception {
 		StringBuilder body = new StringBuilder("{\"target\":\"\",\"names\":[");

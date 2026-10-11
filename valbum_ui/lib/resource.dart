@@ -1457,6 +1457,20 @@ class ImagePart extends AbstractImage {
 	///  </p>
 	PlaceCaption placeCaption;
 
+	///  Whether this is the slim copy of a photograph a search answers, see issue #227: faces and
+	///  tags are left out and the places trimmed to what the place line reads; the photograph's own
+	///  description, <code>GET &lt;album&gt;/&lt;name&gt;?type=json</code>, has everything.
+	/// 
+	///  <p>
+	///  A search finding ten thousand photographs answers ten thousand parts, and the places are
+	///  the bulk of each. The trimmed {@link #places} keep the {@link PlaceKind kinds} the app's
+	///  place line (<code>placeLineText</code> in <code>image_properties.dart</code>) reads, each
+	///  with its name and kind alone, see <code>PhotoSearch.placeLine</code>; the viewer
+	///  fetches the full description when it shows such a part. Derived on every answer and
+	///  <b>never stored</b>.
+	///  </p>
+	bool partial;
+
 	/// Creates a ImagePart.
 	ImagePart({
 			super.previous, 
@@ -1487,6 +1501,7 @@ class ImagePart extends AbstractImage {
 			this.missing = false, 
 			this.places, 
 			this.placeCaption = PlaceCaption.unset, 
+			this.partial = false, 
 	});
 
 	/// Parses a ImagePart from a string source.
@@ -1622,6 +1637,10 @@ class ImagePart extends AbstractImage {
 				placeCaption = readPlaceCaption(json);
 				break;
 			}
+			case "partial": {
+				partial = json.expectBool();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -1719,6 +1738,9 @@ class ImagePart extends AbstractImage {
 
 		json.addKey("placeCaption");
 		writePlaceCaption(json, placeCaption);
+
+		json.addKey("partial");
+		json.addBool(partial);
 	}
 
 	@override
