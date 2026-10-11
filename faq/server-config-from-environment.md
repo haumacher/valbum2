@@ -4,3 +4,5 @@
 command-line flags. OIDC and passkeys are offered only when `VALBUM_PUBLIC_URL` is set. An invalid
 value refuses the start. `valbum-server`, `/etc/default/valbum` (mode 640) and `compose.yaml` must
 list any new variable.
+`VALBUM_CACHE_MEMORY` (megabytes, default an eighth of the heap) bounds the album cache by weight
+(`ResourceCache.BYTES_PER_PART` per photo); the inotify watches stay bounded by `MAX_FOLDERS` (#245).

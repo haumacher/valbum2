@@ -59,12 +59,14 @@ import java.util.Comparator;
 import java.util.Date;
 import java.util.GregorianCalendar;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
@@ -91,8 +93,28 @@ public class ResourceCache {
 	static final Pattern DATE_PATTERN = Pattern.compile(
 			"(" + "\\d{4}" + ")" + SEP + "(" + "\\d{2}" + ")" + SEP + "(" + "\\d{2}" + ")");
 
-	/** How many folders a cache holds, and so how many folders it watches at most, see issue #235. */
+	/**
+	 * How many folders a cache watches at most, see issue #235: a watch is an operating-system
+	 * resource with a system-wide limit. A held folder beyond this is checked by its modification
+	 * stamp whenever it is opened instead, see {@link Loader#current(PathInfo)} and issue #245.
+	 */
 	public static final int MAX_FOLDERS = 1000;
+
+	/**
+	 * How many bytes of heap one part of a cached album takes, the unit the cache is weighed in
+	 * (see {@link #weight(Resource)} and issue #245).
+	 *
+	 * <p>
+	 * Measured by <code>TestResourceCacheMemory#testHeapPerPart</code>: 200 albums of 50 photographs
+	 * read from their sidecars (a name, a size, a date, a camera, a position, a comment, a label,
+	 * three places, every fourth with a face tag), the used heap after <code>System.gc()</code>
+	 * before and after the albums are in the cache. It said 1270 to 1290 bytes per part (the album,
+	 * its map of parts and the cache's own entry included; a part with a name, a size and a date
+	 * only took 313 bytes), on a JDK 21 with compressed
+	 * references. This constant is that with a fifth more, so that the budget errs on the safe side.
+	 * </p>
+	 */
+	public static final long BYTES_PER_PART = 1536;
 
 	/**
 	 * Who is told about folders this cache notices, see {@link FolderObserver}.
@@ -147,7 +169,10 @@ public class ResourceCache {
 
 	private Loader _loader;
 
-	private LoadingCache<PathInfo, Resource> _cache;
+	private volatile LoadingCache<PathInfo, Resource> _cache;
+
+	/** How many bytes of heap the albums held may take, see {@link #setBudget(long)}. */
+	private long _budget;
 
 	/**
 	 * Creates a {@link ResourceCache} that takes nothing over out of a photograph.
@@ -180,24 +205,89 @@ public class ResourceCache {
 	 *        server's zone, asked at every analysis.
 	 */
 	public ResourceCache(ImageData.Analysis analysis, ZoneId zone) throws IOException {
-		this(analysis, zone, MAX_FOLDERS);
+		this(analysis, zone, MAX_FOLDERS, defaultBudget());
 	}
 
 	/**
-	 * Creates a {@link ResourceCache} holding at most the given number of folders; for the tests.
+	 * Creates a {@link ResourceCache} watching at most the given number of folders and holding
+	 * albums up to the given number of bytes; for the tests.
 	 *
 	 * <p>
-	 * A folder is watched for exactly as long as it is held: its watch is released when it leaves
-	 * the cache, so the watches of a large library are bounded by this number and never grow
-	 * towards the system's limit, see issue #235.
+	 * The two bounds are separate, see issue #245: the watches are bounded for the system's sake
+	 * (issue #235), the albums for the heap's. A folder evicted from the cache loses its watch; a
+	 * folder that loses its watch for room stays held and is checked by its modification stamp
+	 * whenever it is opened, see {@link Loader#current(PathInfo)}.
 	 * </p>
 	 */
-	ResourceCache(ImageData.Analysis analysis, ZoneId zone, int maxFolders) throws IOException {
-		_loader = new Loader(analysis, zone, maxFolders);
-		_cache = CacheBuilder.newBuilder().maximumSize(maxFolders)
+	ResourceCache(ImageData.Analysis analysis, ZoneId zone, int maxWatches, long budget) throws IOException {
+		_loader = new Loader(analysis, zone, maxWatches);
+		_budget = budget;
+		_cache = build(budget);
+		_loader.attach(_cache);
+	}
+
+	private LoadingCache<PathInfo, Resource> build(long budget) {
+		return CacheBuilder.newBuilder().maximumWeight(Math.max(1, budget / BYTES_PER_PART))
+			.weigher((PathInfo path, Resource resource) -> weight(resource))
 			.removalListener((RemovalNotification<PathInfo, Resource> removal) -> _loader.removed(removal.getKey(), removal.wasEvicted()))
 			.build(_loader);
-		_loader.attach(_cache);
+	}
+
+	/**
+	 * The default of {@link #setBudget(long)}: an eighth of the heap, as for the gazetteer (see
+	 * {@link de.haumacher.imageServer.places.Places#defaultBudget()}).
+	 */
+	public static long defaultBudget() {
+		return Runtime.getRuntime().maxMemory() / 8;
+	}
+
+	/**
+	 * Lets the albums held take the given number of bytes of heap, see issue #245 and
+	 * <code>VALBUM_CACHE_MEMORY</code>.
+	 *
+	 * <p>
+	 * Called at start-up, before the cache is used: what is held is carried over into a cache of
+	 * the new size (Guava's cannot be resized), the albums that do not fit leave it as any evicted
+	 * album does.
+	 * </p>
+	 */
+	public synchronized void setBudget(long budget) {
+		if (budget == _budget) {
+			return;
+		}
+		LoadingCache<PathInfo, Resource> before = _cache;
+		LoadingCache<PathInfo, Resource> after = build(budget);
+		after.putAll(before.asMap());
+		_budget = budget;
+		_loader.attach(after);
+		_cache = after;
+	}
+
+	/** How many bytes of heap the albums held may take, see {@link #setBudget(long)}. */
+	public synchronized long getBudget() {
+		return _budget;
+	}
+
+	/**
+	 * What the given folder weighs in the cache, in parts of {@link #BYTES_PER_PART} bytes each:
+	 * an album its photographs (the members of a group one by one), a listing its folders, and
+	 * anything at least one.
+	 */
+	static int weight(Resource resource) {
+		int result = 0;
+		if (resource instanceof AlbumInfo) {
+			for (AlbumPart part : ((AlbumInfo) resource).getParts()) {
+				result += part instanceof ImageGroup ? Math.max(1, ((ImageGroup) part).getImages().size()) : 1;
+			}
+		} else if (resource instanceof ListingInfo) {
+			result = ((ListingInfo) resource).getFolders().size();
+		}
+		return Math.max(1, result);
+	}
+
+	/** How many folders were read from disk so far, for the tests. */
+	long loadCount() {
+		return _loader.loadCount();
 	}
 
 	/** How many folders are watched right now, for the tests. */
@@ -208,6 +298,15 @@ public class ResourceCache {
 	/** How many folders are held right now, for the tests. */
 	long size() {
 		return _cache.size();
+	}
+
+	/** What the folders held weigh together, in parts, for the tests; see {@link #weight(Resource)}. */
+	long weight() {
+		long result = 0;
+		for (Resource resource : _cache.asMap().values()) {
+			result += weight(resource);
+		}
+		return result;
 	}
 
 	/** Processes what the watcher reported, as a request would before it is answered; for the tests. */
@@ -376,17 +475,19 @@ public class ResourceCache {
 			.thenComparing(FolderInfo::getName, String.CASE_INSENSITIVE_ORDER);
 
 	public Resource lookup(PathInfo pathInfo) {
-		_loader.processEvents(_cache);
+		LoadingCache<PathInfo, Resource> cache = _cache;
+		_loader.processEvents(cache);
 		PathInfo folder = pathInfo.toFile().isDirectory() || pathInfo.isRoot() ? pathInfo : pathInfo.parent();
-		if (_cache.getIfPresent(folder) != null && !_loader.current(folder)) {
-			// A folder nobody watches (the watch could not be registered, or was lost) and whose
-			// modification stamp moved: read again, see issue #235.
-			invalidate(_cache, folder);
+		if (cache.getIfPresent(folder) != null && !_loader.current(folder)) {
+			// A folder nobody watches (the watch could not be registered, was lost, or was given up
+			// for room, see issue #245) and whose modification stamp moved: read again, see issue
+			// #235.
+			invalidate(cache, folder);
 		} else if (_loader.placesOutdated(folder)) {
 			// A photograph of this album waits for its places, and the gazetteer may have more to
 			// say now (a country arrived, a download failed): read again, see issue #234. Only the
 			// album, not the listing above it: a listing shows no places.
-			_cache.invalidate(folder);
+			cache.invalidate(folder);
 		}
 		if (!pathInfo.toFile().exists() && Inboxes.isInbox(pathInfo.toFile())) {
 			// The inbox of the space before its first upload, see issue #226: an empty inbox,
@@ -395,7 +496,7 @@ public class ResourceCache {
 			return Loader.createGenericAlbumInfo(pathInfo);
 		}
 		if (pathInfo.toFile().isDirectory()) {
-			return _cache.getUnchecked(pathInfo);
+			return cache.getUnchecked(pathInfo);
 		} else {
 			AlbumInfo container = albumHolding(pathInfo);
 			if (container == null) {
@@ -406,7 +507,7 @@ public class ResourceCache {
 				// A photograph that arrived after its album was cached, before the directory
 				// watcher reported it: the album is read again once rather than the file answered
 				// as nothing.
-				_cache.invalidate(pathInfo.parent());
+				cache.invalidate(pathInfo.parent());
 				container = albumHolding(pathInfo);
 				if (container == null) {
 					return null;
@@ -435,12 +536,13 @@ public class ResourceCache {
 	 */
 	private AlbumInfo albumHolding(PathInfo pathInfo) {
 		PathInfo folder = pathInfo.parent();
-		Resource container = _cache.getUnchecked(folder);
+		LoadingCache<PathInfo, Resource> cache = _cache;
+		Resource container = cache.getUnchecked(folder);
 		if (container instanceof AlbumInfo) {
 			return (AlbumInfo) container;
 		}
-		_cache.invalidate(folder);
-		container = _cache.getUnchecked(folder);
+		cache.invalidate(folder);
+		container = cache.getUnchecked(folder);
 		return container instanceof AlbumInfo ? (AlbumInfo) container : null;
 	}
 
@@ -457,8 +559,15 @@ public class ResourceCache {
 		 */
 		private final Map<WatchKey, PathInfo> _byKey = new HashMap<>();
 
-		/** The watch on each watched folder. */
-		private final Map<PathInfo, WatchKey> _byPath = new HashMap<>();
+		/**
+		 * The watch on each watched folder, in the order the watches were made: the oldest watch of
+		 * a held folder is the one given up when more folders are held than watched, see
+		 * {@link #trim()} and issue #245.
+		 */
+		private final Map<PathInfo, WatchKey> _byPath = new LinkedHashMap<>();
+
+		/** How many folders were read from disk, for the tests. */
+		private final AtomicLong _loads = new AtomicLong();
 
 		/**
 		 * The modification stamp of each held folder when it was loaded: what tells a folder that
@@ -479,7 +588,10 @@ public class ResourceCache {
 		 */
 		private final Set<PathInfo> _orphans = new LinkedHashSet<>();
 
-		/** How many folders are watched at most: the size of the cache. */
+		/**
+		 * How many folders are watched at most, see {@link ResourceCache#MAX_FOLDERS}; independent
+		 * of how many the cache holds (issue #245).
+		 */
 		private final int _maxWatches;
 
 		/** The cache this loader fills, for the watcher's thread. */
@@ -557,6 +669,8 @@ public class ResourceCache {
 						// The same directory under another name (a link): one watch, the latest name.
 						_byPath.remove(before);
 					}
+					// The newest watch last, see #trim().
+					_byPath.remove(path);
 					_byPath.put(path, key);
 					trim();
 					startPump();
@@ -584,13 +698,29 @@ public class ResourceCache {
 			}
 		}
 
-		/** Releases watches of folders that left the cache while more are held than allowed. */
+		/**
+		 * Releases watches while more are held than allowed: first those of folders that left the
+		 * cache, then the oldest of folders still held.
+		 *
+		 * <p>
+		 * A held folder that loses its watch stays held, see issue #245: its modification stamp,
+		 * taken when it was read ({@link #_stamps}), is what tells it changed from now on, see
+		 * {@link #current(PathInfo)}.
+		 * </p>
+		 */
 		private void trim() {
 			java.util.Iterator<PathInfo> oldest = _orphans.iterator();
 			while (_byPath.size() > _maxWatches && oldest.hasNext()) {
 				PathInfo orphan = oldest.next();
 				oldest.remove();
 				cancel(orphan);
+			}
+			java.util.Iterator<Map.Entry<PathInfo, WatchKey>> held = _byPath.entrySet().iterator();
+			while (_byPath.size() > _maxWatches && held.hasNext()) {
+				WatchKey key = held.next().getValue();
+				held.remove();
+				_byKey.remove(key);
+				key.cancel();
 			}
 		}
 
@@ -676,8 +806,13 @@ public class ResourceCache {
 			return _zone == null ? ZoneId.systemDefault() : _zone;
 		}
 
+		long loadCount() {
+			return _loads.get();
+		}
+
 		@Override
 		public Resource load(PathInfo pathInfo) {
+			_loads.incrementAndGet();
 			if (pathInfo.isDirectory()) {
 				Resource result = loadDir(pathInfo);
 				return result;

@@ -210,7 +210,7 @@ public class TestValbumServerScript extends TestCase {
 	static final List<String> ENV_SETTINGS = List.of(ServerEnvironment.PUBLIC_URL, ServerEnvironment.SMTP_HOST,
 		ServerEnvironment.SMTP_PORT, ServerEnvironment.SMTP_USER, ServerEnvironment.SMTP_PASSWORD,
 		ServerEnvironment.SMTP_FROM, ServerEnvironment.SMTP_TLS, ServerEnvironment.GEONAMES_DIR,
-		ServerEnvironment.GEONAMES_MEMORY);
+		ServerEnvironment.GEONAMES_MEMORY, ServerEnvironment.CACHE_MEMORY);
 
 	/** The environment the fake <code>java</code> was started with. */
 	private Map<String, String> environment() throws Exception {

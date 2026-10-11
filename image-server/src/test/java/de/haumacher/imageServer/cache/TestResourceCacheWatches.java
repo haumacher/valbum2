@@ -58,15 +58,44 @@ public class TestResourceCacheWatches extends TestCase {
 		super.tearDown();
 	}
 
-	public void testWatchesAreBoundedByTheCache() throws Exception {
+	/**
+	 * The watches are bounded on their own, not by the albums held (issue #245): a held album that
+	 * gave up its watch for room stays held, and is read again when its stamp moves.
+	 */
+	public void testWatchesAreBoundedNotTheAlbumsHeld() throws Exception {
 		ResourceCache cache = cache(5);
+		List<File> folders = new ArrayList<>();
+		for (int n = 0; n < 20; n++) {
+			File folder = album("album" + n, 1);
+			folders.add(folder);
+			assertTrue(cache.lookup(path(folder)) instanceof AlbumInfo);
+			assertTrue("Never more watches than allowed: " + cache.watchCount(), cache.watchCount() <= 5);
+		}
+		assertEquals("Every album is held.", 20, cache.size());
+		long loads = cache.loadCount();
+		for (File folder : folders) {
+			assertEquals(1, ((AlbumInfo) cache.lookup(path(folder))).getParts().size());
+		}
+		assertEquals("An unwatched album whose stamp stands is not read again.", loads, cache.loadCount());
+
+		File oldest = folders.get(0);
+		photo(new File(oldest, "added.jpg"), 7);
+		assertTrue(oldest.setLastModified(oldest.lastModified() + 5000));
+		assertEquals("The unwatched album's stamp moved: it is read again.", 2,
+			((AlbumInfo) cache.lookup(path(oldest))).getParts().size());
+		assertTrue(cache.watchCount() <= 5);
+	}
+
+	/** An album evicted for the budget gives up its watch, see issue #235. */
+	public void testEvictingAnAlbumDropsItsWatch() throws Exception {
+		ResourceCache cache = new ResourceCache(ImageData.Analysis.NONE, null, 10, 3 * ResourceCache.BYTES_PER_PART);
+		_caches.add(cache);
 		for (int n = 0; n < 20; n++) {
 			File folder = album("album" + n, 1);
 			assertTrue(cache.lookup(path(folder)) instanceof AlbumInfo);
-			assertTrue("Never more watches than folders held: " + cache.watchCount(),
-				cache.watchCount() <= 5);
+			assertTrue("Within the budget: " + cache.size(), cache.size() <= 3);
+			assertTrue("No watch beyond the albums held: " + cache.watchCount(), cache.watchCount() <= cache.size());
 		}
-		assertTrue(cache.size() <= 5);
 	}
 
 	public void testAFolderThatChangedKeepsBeingWatchedWithinTheBound() throws Exception {
@@ -220,8 +249,9 @@ public class TestResourceCacheWatches extends TestCase {
 
 	// --- Helpers. ---
 
-	private ResourceCache cache(int size) throws Exception {
-		ResourceCache cache = new ResourceCache(ImageData.Analysis.NONE, null, size);
+	private ResourceCache cache(int watches) throws Exception {
+		// The albums held are bounded by memory, see issue #245; here by nothing.
+		ResourceCache cache = new ResourceCache(ImageData.Analysis.NONE, null, watches, Long.MAX_VALUE / 2);
 		_caches.add(cache);
 		return cache;
 	}

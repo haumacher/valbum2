@@ -62,6 +62,28 @@ public class TestServerEnvironment extends TestCase {
 		}
 	}
 
+	/** The memory of the album cache, see issue #245: an eighth of the heap by default. */
+	public void testTheCacheMemory() throws Exception {
+		ServerEnvironment defaults = ServerEnvironment.read(Map.of());
+		assertEquals(0, defaults.getCacheMemory());
+		assertEquals(Runtime.getRuntime().maxMemory() / 8, defaults.cacheBudget());
+		ServerEnvironment configured = ServerEnvironment.read(Map.of(ServerEnvironment.CACHE_MEMORY, " 256 "));
+		assertEquals(256L * 1024 * 1024, configured.cacheBudget());
+		String report = Main.cacheReport(configured);
+		assertTrue(report, report.contains("256 MB") && report.contains(ServerEnvironment.CACHE_MEMORY));
+	}
+
+	public void testAnUnusableCacheMemoryIsRefused() {
+		for (String value : List.of("lots", "0", "-5")) {
+			try {
+				ServerEnvironment.read(Map.of(ServerEnvironment.CACHE_MEMORY, value));
+				fail("Accepted: " + value);
+			} catch (ServerEnvironment.Invalid ex) {
+				assertTrue(ex.getMessage(), ex.getMessage().contains(ServerEnvironment.CACHE_MEMORY));
+			}
+		}
+	}
+
 	public void testAMailAccountWithItsDefaults() throws Exception {
 		ServerEnvironment environment = ServerEnvironment.read(Map.of(
 			"VALBUM_SMTP_HOST", " smtp.example.org ",

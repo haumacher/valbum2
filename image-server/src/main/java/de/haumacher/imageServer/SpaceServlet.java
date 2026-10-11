@@ -161,6 +161,17 @@ public class SpaceServlet extends HttpServlet {
 	}
 
 	/**
+	 * Shares the given number of bytes of heap among the album caches of the spaces, in equal parts,
+	 * see {@link ImageServlet#setCacheMemory(long)} and issue #245.
+	 */
+	public void setCacheMemory(long bytes) {
+		long each = bytes / Math.max(1, _data.size());
+		for (ImageServlet servlet : _data.values()) {
+			servlet.setCacheMemory(each);
+		}
+	}
+
+	/**
 	 * Installs the one gazetteer of this server in every space, see issue #234: one instance, so
 	 * that a country is downloaded and held in memory once, whichever space's photos lie in it.
 	 */

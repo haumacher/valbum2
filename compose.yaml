@@ -48,3 +48,4 @@ services:
       # another folder, and the megabytes of countries held in memory (an eighth of the heap):
       # VALBUM_GEONAMES_DIR: /photos/.geonames
       # VALBUM_GEONAMES_MEMORY: "64"
+      # VALBUM_CACHE_MEMORY: "256"

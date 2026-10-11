@@ -115,6 +115,12 @@ VALBUM_SPACES=auto
 #   VALBUM_GEONAMES_DIR=/var/cache/valbum/geonames
 #   VALBUM_GEONAMES_MEMORY=64
 
+# The albums last looked at are kept in memory, at most VALBUM_CACHE_MEMORY
+# megabytes of them for all spaces together (an eighth of the heap by default;
+# a photo takes about 1.5 KB). More makes a search over a large library faster.
+#
+#   VALBUM_CACHE_MEMORY=256
+
 # Further server arguments, appended to the ones above. The most useful one is
 # a fixed sign-in code for the administrator of a space that nobody has signed
 # into yet; without it the server makes a fresh one at every start and prints it

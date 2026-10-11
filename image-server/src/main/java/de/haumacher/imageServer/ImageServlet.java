@@ -891,6 +891,14 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	/**
+	 * Lets the albums this space holds in memory take the given number of bytes of heap, see
+	 * {@link ResourceCache#setBudget(long)} and issue #245; before, an eighth of the heap.
+	 */
+	public void setCacheMemory(long bytes) {
+		_cache.setBudget(bytes);
+	}
+
+	/**
 	 * Installs the gazetteer the places of the photographs come from, see issue #234; before, no
 	 * photograph is answered any place. Adds the warm-up of the gazetteer to the background work of
 	 * the space, behind hashing ({@link PlacesStep}).

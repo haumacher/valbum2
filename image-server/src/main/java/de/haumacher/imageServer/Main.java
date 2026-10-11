@@ -397,6 +397,7 @@ public class Main {
 			System.out.println(line);
 		}
 		System.out.println(placesReport(_environment, _basePath.toPath()));
+		System.out.println(cacheReport(_environment));
 		System.out.println("Spaces: " + spaces.getMode().protocolName());
 		if (spaces.getMode() == SpaceMode.MULTI && spaces.getSpaces().isEmpty()) {
 			System.out.println("  (no folder below the base folder carries .valbum/space.json; "
@@ -443,6 +444,15 @@ public class Main {
 			+ ServerEnvironment.GEONAMES_DIR + "), countries downloaded on demand from "
 			+ de.haumacher.imageServer.places.GeoNamesStore.GEONAMES + ", at most " + budget / (1024 * 1024)
 			+ " MB of them in memory (" + ServerEnvironment.GEONAMES_MEMORY + ")";
+	}
+
+	/** What a start-up says about the memory of the album cache, see issue #245. */
+	static String cacheReport(ServerEnvironment environment) {
+		long budget = environment.cacheBudget();
+		long photos = budget / de.haumacher.imageServer.cache.ResourceCache.BYTES_PER_PART;
+		return "Album cache: at most " + budget / (1024 * 1024) + " MB in memory (" + ServerEnvironment.CACHE_MEMORY
+			+ "), about " + photos + " photos at " + de.haumacher.imageServer.cache.ResourceCache.BYTES_PER_PART
+			+ " bytes each, some " + photos / 100 + " albums of 100";
 	}
 
 	/**
@@ -628,6 +638,8 @@ public class Main {
 		if (spaces.getMode() == SpaceMode.SINGLE) {
 			ImageServlet data = new ImageServlet(basePath, spaces.single().getAuth(), "",
 				spaces.single().getConfig());
+			// Before anything is read, see issue #245.
+			data.setCacheMemory(environment.cacheBudget());
 			data.setEmailProofs(proofs);
 			data.setOidcLogins(oidc);
 			data.setPasskeys(passkeys);
@@ -644,6 +656,8 @@ public class Main {
 			// and the application is rebased onto "/<space>/" like a share session, see SpaceServlet.
 			app.setBaseSegments(spaces.segments());
 			SpaceServlet front = new SpaceServlet(spaces, app);
+			// One budget for all spaces together, before anything is read, see issue #245.
+			front.setCacheMemory(environment.cacheBudget());
 			front.setPlaces(places);
 			// Each space indexes its own photos, and nobody else's, see issue #118.
 			front.startIndexing();

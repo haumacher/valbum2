@@ -153,6 +153,7 @@ The `.deb` reads `/etc/default/valbum`; Docker takes the same variables from `en
 | `VALBUM_OIDC_*` | "Continue with Google", see [Sign-in with Google](#sign-in-with-google) | none | none |
 | `VALBUM_GEONAMES_DIR` | Where the place names ([GeoNames](https://www.geonames.org/), downloaded per country) are kept | `<VALBUM_BASEPATH>/.geonames` | `/photos/.geonames` |
 | `VALBUM_GEONAMES_MEMORY` | Megabytes of place names kept in memory | an eighth of the heap | an eighth of the heap |
+| `VALBUM_CACHE_MEMORY` | Megabytes of albums kept in memory, all spaces together | an eighth of the heap | an eighth of the heap |
 
 On the `.deb`, point it at your photos and restart:
 
