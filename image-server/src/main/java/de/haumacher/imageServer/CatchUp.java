@@ -14,6 +14,7 @@ import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.CatchUpStatus;
 import de.haumacher.imageServer.shared.model.CatchUpStep;
 import de.haumacher.imageServer.shared.model.Crop;
+import de.haumacher.imageServer.shared.model.FolderInfo;
 import de.haumacher.imageServer.shared.model.FolderResource;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.ThumbnailInfo;
@@ -41,7 +42,7 @@ import java.util.logging.Logger;
  * <li>{@link Previews}: the preview of every photograph and video poster, the cut preview of every
  * cropped photograph, and the display rendition of a HEIC, AVIF, JPEG XL or raw picture;</li>
  * <li>{@link Cover}: the picture of the album's tile in the listing, and of the tile of every folder
- * above it;</li>
+ * above it, and the large preview of a starred tile's picture (issue #241);</li>
  * <li>faces, where the space has them on ({@link FaceIndex#step()});</li>
  * <li>places ({@link de.haumacher.imageServer.places.PlacesStep}), installed by
  * {@link ImageServlet#setPlaces};</li>
@@ -292,7 +293,8 @@ public final class CatchUp {
 					if (Thread.currentThread().isInterrupted()) {
 						return Outcome.WAITING;
 					}
-					ThumbnailInfo picture = ResourceCache.tilePicture(tile);
+					FolderInfo info = ResourceCache.tile(tile);
+					ThumbnailInfo picture = info.getIndexPicture();
 					if (picture == null || picture.getImage() == null || picture.getImage().isEmpty()) {
 						continue;
 					}
@@ -303,10 +305,19 @@ public final class CatchUp {
 					String failure = make(image, PreviewCache.previewFile(image),
 						() -> PreviewCache.createPreview(image));
 					Crop crop = picture.getCrop();
-					if (failure == null && crop != null && !PreviewCache.isVideoName(image.getName())) {
-						double[] region = { crop.getX(), crop.getY(), crop.getW(), crop.getH() };
+					boolean video = PreviewCache.isVideoName(image.getName());
+					double[] region = crop == null || video ? null
+						: new double[] { crop.getX(), crop.getY(), crop.getW(), crop.getH() };
+					if (failure == null && region != null) {
 						failure = make(image, PreviewCache.croppedPreviewFile(image, region),
 							() -> PreviewCache.createPreview(image, region));
+					}
+					if (failure == null && info.isStarred() && !video) {
+						// A starred tile is 2x2 and asks for the large preview on a dense screen,
+						// see issue #241. A video's poster has no larger size. A tile that loses
+						// its star keeps what was made for it.
+						failure = make(image, PreviewCache.largePreviewFile(image, region),
+							() -> PreviewCache.createLargePreview(image, region));
 					}
 					if (failure != null) {
 						_pipeline.reportFailure(tile, COVER + ": " + picture.getImage() + ": " + failure);

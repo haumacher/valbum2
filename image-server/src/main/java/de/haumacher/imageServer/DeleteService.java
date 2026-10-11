@@ -436,6 +436,8 @@ public class DeleteService {
 	 * renditions ({@link VideoRenditions.Kind#fileName(String)}) and the face crops of either naming
 	 * (<code>face-&lt;name&gt;-f&lt;12 hex&gt;.jpg</code>, <code>face-&lt;name&gt;-&lt;n&gt;.jpg</code>), the
 	 * previews of its crops (<code>preview-&lt;name&gt;-c&lt;12 hex&gt;.&lt;type&gt;</code>, issue #212),
+	 * its large previews (<code>preview-&lt;name&gt;-large.&lt;type&gt;</code> and
+	 * <code>preview-&lt;name&gt;-large-c&lt;12 hex&gt;.&lt;type&gt;</code>, issue #241),
 	 * each also under its {@value PreviewCache#TMP_SUFFIX} name and with its
 	 * {@value PreviewCache#SOURCE_SUFFIX} record (issue #235). A file of another photograph whose
 	 * name merely begins with this one's is never matched.
@@ -455,9 +457,12 @@ public class DeleteService {
 			exact.add(kind.fileName(name));
 		}
 		exact.add(PreviewCache.DISPLAY_PREFIX + name + "." + PreviewCache.DISPLAY_EXTENSION);
+		// The large preview of a starred tile, see issue #241.
+		exact.add(PreviewCache.PREVIEW_PREFIX + name + PreviewCache.LARGE_INFIX + "." + previewType);
 		String cropPrefix = de.haumacher.imageServer.faces.FaceIndex.CROP_PREFIX + name + "-";
 		// The previews of a cropped photograph, one per region it was ever cut to, see issue #212.
 		String cutPrefix = PreviewCache.PREVIEW_PREFIX + name + PreviewCache.CROP_INFIX;
+		String largeCutPrefix = PreviewCache.PREVIEW_PREFIX + name + PreviewCache.LARGE_INFIX + PreviewCache.CROP_INFIX;
 		for (File file : files) {
 			String fileName = file.getName();
 			if (!file.isFile() || Files.isSymbolicLink(file.toPath()) || !CacheRefresh.isGenerated(fileName)) {
@@ -467,7 +472,9 @@ public class DeleteService {
 			String plain = CacheRefresh.plain(fileName);
 			if (exact.contains(plain)
 				|| (plain.startsWith(cropPrefix) && CROP_KEY.matcher(plain.substring(cropPrefix.length())).matches())
-				|| (plain.startsWith(cutPrefix) && CUT_KEY.matcher(plain.substring(cutPrefix.length())).matches())) {
+				|| (plain.startsWith(cutPrefix) && CUT_KEY.matcher(plain.substring(cutPrefix.length())).matches())
+				|| (plain.startsWith(largeCutPrefix)
+					&& CUT_KEY.matcher(plain.substring(largeCutPrefix.length())).matches())) {
 				result.add(file);
 			}
 		}

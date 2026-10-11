@@ -86,12 +86,20 @@ Matrix4 thumbnailTransform(ThumbnailInfo info, double tileSize) {
 /// costs the fitted picture nothing, and a crop without the field
 /// (`Orientation.identity`, every sidecar written before it) draws exactly the
 /// tree it always drew.
+///
+/// A [large] tile is the 2×2 tile of a starred entry (issues #239, #241): it
+/// asks for the server's large preview where its pixels exceed the normal
+/// one ([wantsLargeThumbnail]), and decodes the picture at the height it is
+/// drawn at — at most the square times the zoom, the bound [thumbnail] needs
+/// to never draw from fewer pixels than shown — rather than the whole large
+/// preview.
 Widget indexPictureTile(
   VAlbumClient client,
   String imageUrl,
   ThumbnailInfo info,
   double size, {
   Key? key,
+  bool large = false,
 }) =>
     SizedBox(
       key: key,
@@ -108,6 +116,9 @@ Widget indexPictureTile(
               imageUrl,
               width: size,
               height: size,
+              displayHeight:
+                  large ? size * (info.scale > 0 ? info.scale : 1.0) : null,
+              largeTileSize: large ? size : null,
               fit: BoxFit.contain,
             ),
           ),
@@ -502,7 +513,7 @@ class ListingView extends StatelessWidget {
                 child: folder.starred
                     ? Stack(
                         children: [
-                          buildFolderWidget(folder, width),
+                          buildFolderWidget(folder, width, large: large),
                           Positioned(
                             top: 6,
                             right: 6,
@@ -510,7 +521,7 @@ class ListingView extends StatelessWidget {
                           ),
                         ],
                       )
-                    : buildFolderWidget(folder, width),
+                    : buildFolderWidget(folder, width, large: large),
               ),
               Text(
                 folder.title,
@@ -581,10 +592,15 @@ class ListingView extends StatelessWidget {
   /// a space is addressed by its own URL now, and nothing of somebody else's
   /// hangs in this tree. A listing that still carries one — an old server —
   /// shows the folder plainly, and never an error.
-  Widget buildFolderWidget(FolderInfo folder, double width) =>
-      buildFolderPicture(folder, width);
+  ///
+  /// A [large] tile is the 2×2 tile of a starred entry, which asks for the
+  /// large preview on a dense screen, see [indexPictureTile] and issue #241.
+  Widget buildFolderWidget(FolderInfo folder, double width,
+          {bool large = false}) =>
+      buildFolderPicture(folder, width, large: large);
 
-  Widget buildFolderPicture(FolderInfo folder, double width) {
+  Widget buildFolderPicture(FolderInfo folder, double width,
+      {bool large = false}) {
     var indexPicture = folder.indexPicture;
     if (indexPicture == null) {
       return Container(
@@ -623,6 +639,7 @@ class ListingView extends StatelessWidget {
           coverRegion(indexPicture)),
       indexPicture,
       width,
+      large: large,
     );
   }
 

@@ -409,6 +409,16 @@ public class ResourceCache {
 	}
 
 	/**
+	 * The tile of the given folder in the listing above it, exactly as that listing answers it: its
+	 * {@link FolderInfo#getIndexPicture() picture} (see {@link #tilePicture(File)}) and whether it is
+	 * {@link FolderInfo#isStarred() starred}, which makes it a 2&times;2 tile asking for the large
+	 * preview on a dense screen (issues #239, #241).
+	 */
+	public static FolderInfo tile(File folder) {
+		return Loader.loadFolderInfo(folder);
+	}
+
+	/**
 	 * Forgets what is cached for the given folder, for everything below it and for the folder
 	 * above it.
 	 *

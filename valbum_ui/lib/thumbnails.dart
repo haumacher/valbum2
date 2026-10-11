@@ -29,10 +29,19 @@ class ThumbnailImage extends ImageProvider<ThumbnailImage> {
   /// The scale to place in the [ImageInfo] of the decoded image.
   final double scale;
 
-  const ThumbnailImage(this.client, this.imageUrl, {this.scale = 1.0});
+  /// Whether the server's large preview is asked for, see
+  /// [wantsLargeThumbnail] and issue #241.
+  final bool large;
+
+  const ThumbnailImage(
+    this.client,
+    this.imageUrl, {
+    this.scale = 1.0,
+    this.large = false,
+  });
 
   /// The URL the bytes are fetched from, the one a test looks for.
-  String get url => client.thumbnailUrl(imageUrl);
+  String get url => client.thumbnailUrl(imageUrl, large: large);
 
   @override
   Future<ThumbnailImage> obtainKey(ImageConfiguration configuration) =>
@@ -54,8 +63,8 @@ class ThumbnailImage extends ImageProvider<ThumbnailImage> {
     Uint8List bytes;
     try {
       bytes = await thumbnailByteCache.fetch(
-        thumbnailBytesKey(client, imageUrl),
-        () => client.thumbnailBytes(imageUrl),
+        thumbnailBytesKey(client, imageUrl, large: large),
+        () => client.thumbnailBytes(imageUrl, large: large),
       );
     } catch (error) {
       // The stream must be told, or the image widget waits forever.
@@ -77,12 +86,13 @@ class ThumbnailImage extends ImageProvider<ThumbnailImage> {
       other is ThumbnailImage &&
       other.imageUrl == imageUrl &&
       other.scale == scale &&
+      other.large == large &&
       other.client.dataUrl == client.dataUrl &&
       other.client.token == client.token;
 
   @override
   int get hashCode =>
-      Object.hash(imageUrl, scale, client.dataUrl, client.token);
+      Object.hash(imageUrl, scale, large, client.dataUrl, client.token);
 
   @override
   String toString() => "ThumbnailImage($url)";
@@ -98,8 +108,14 @@ class ThumbnailImage extends ImageProvider<ThumbnailImage> {
 /// session makes a new one. What the server answered one client is therefore
 /// never handed to another, not even to one with the same token: the bytes
 /// are a convenience for the client that fetched them, never shared state.
-ThumbnailBytesKey thumbnailBytesKey(VAlbumClient client, String imageUrl) =>
-    (client: client, url: client.thumbnailUrl(imageUrl));
+///
+/// The large preview of issue #241 is another address, and so another key.
+ThumbnailBytesKey thumbnailBytesKey(
+  VAlbumClient client,
+  String imageUrl, {
+  bool large = false,
+}) =>
+    (client: client, url: client.thumbnailUrl(imageUrl, large: large));
 
 /// A key of the [thumbnailByteCache], see [thumbnailBytesKey]. A record
 /// compares its fields with `==`, and a [VAlbumClient]'s `==` is identity.
@@ -333,6 +349,11 @@ const Duration thumbnailFadeInDuration = Duration(milliseconds: 150);
 /// Where no [displayHeight] is known but the picture is the one a tile has
 /// already decoded, [asTileDecoded] asks for *that* decoding, see
 /// [decodedThumbnailHeight] and issue #120.
+///
+/// [largeTileSize] is given by a starred 2×2 tile of a listing (issues #239,
+/// #241) and nobody else: the side of its square, in logical pixels. Where
+/// that many pixels on the device exceed the normal preview, the large one is
+/// asked for, see [wantsLargeThumbnail].
 Widget thumbnail(
   VAlbumClient client,
   String imageUrl, {
@@ -341,6 +362,7 @@ Widget thumbnail(
   double? height,
   double? displayHeight,
   bool asTileDecoded = false,
+  double? largeTileSize,
   BoxFit? fit,
 }) =>
     _Thumbnail(
@@ -351,8 +373,29 @@ Widget thumbnail(
       height: height,
       displayHeight: displayHeight,
       asTileDecoded: asTileDecoded,
+      largeTileSize: largeTileSize,
       fit: fit,
     );
+
+/// The height, in pixels, of the server's normal preview of a landscape
+/// picture (`PreviewCache.PREVIEW_HEIGHT`); a portrait one is twice as high,
+/// and the large preview of issue #241 is twice the normal one either way.
+const int normalThumbnailHeight = 600;
+
+/// Whether a starred 2×2 tile of [tileSize] logical pixels asks for the large
+/// preview on a screen of [devicePixelRatio] (issue #241): where the pixels
+/// it shows across exceed the [normalThumbnailHeight].
+///
+/// The tile is a square filled by the picture, so what it shows across is
+/// the picture's short side: the height of a landscape preview — 600 pixels
+/// — and the width of a portrait one, which is at most 900 (the server
+/// counts a picture as a portrait up to 3:4, 1200 pixels high). The tile
+/// knows neither the picture's aspect nor its size, so the threshold is the
+/// one that holds for every picture: at 600 pixels a picture is sharp on
+/// every screen, beyond it the large preview is asked for. An ordinary 1×1
+/// tile never asks for it.
+bool wantsLargeThumbnail(double tileSize, double devicePixelRatio) =>
+    tileSize * devicePixelRatio > normalThumbnailHeight;
 
 /// The thumbnail of [imageUrl], decoded at the size it is shown at.
 ///
@@ -387,23 +430,37 @@ Widget thumbnail(
 /// mipmaps (`FilterQuality.medium`), and nothing is ever drawn from fewer
 /// pixels than shown. A tile that grows decodes at its new height; it keeps
 /// showing its old picture while it does, see [_ThumbnailState._placeheld].
+///
+/// [large] decodes the server's large preview instead (issue #241), which is
+/// another download and another decoding: its decodings are remembered under
+/// its own address, see [_heightKey], and never stand in for the normal
+/// preview's or the other way round.
 ImageProvider resizedThumbnail(
   VAlbumClient client,
   String imageUrl, {
   required double displayHeight,
   required double devicePixelRatio,
+  bool large = false,
 }) {
   var needed = (displayHeight * devicePixelRatio).ceil();
-  var held = _decodedHeights[imageUrl];
+  var key = _heightKey(client, imageUrl, large);
+  var held = _decodedHeights[key];
   var height = held != null &&
           held >= needed &&
           held <= needed * _reusedDecodingBound &&
-          _isDecoding(_decodedAt(client, imageUrl, held))
+          _isDecoding(_decodedAt(client, imageUrl, held, large: large))
       ? held
       : needed;
-  _rememberDecodedHeight(imageUrl, height);
-  return _decodedAt(client, imageUrl, height);
+  _rememberDecodedHeight(key, height);
+  return _decodedAt(client, imageUrl, height, large: large);
 }
+
+/// The key the decoding of a thumbnail is remembered under in
+/// [_decodedHeights]: the image's URL for the normal preview — which is what
+/// [decodedThumbnailHeight] is asked with — and the large preview's own
+/// address for that one (issue #241), which no image URL ever is.
+String _heightKey(VAlbumClient client, String imageUrl, bool large) =>
+    large ? client.thumbnailUrl(imageUrl, large: true) : imageUrl;
 
 /// How many times taller than needed a decoding may be and still be reused,
 /// see [resizedThumbnail] (issue #223).
@@ -435,10 +492,16 @@ bool _isDecoded(ImageProvider provider) {
   return status != null && status.tracked && !status.pending;
 }
 
-/// The provider decoding the thumbnail of [imageUrl] at [height] pixels.
-ImageProvider _decodedAt(VAlbumClient client, String imageUrl, int height) =>
+/// The provider decoding the thumbnail of [imageUrl] at [height] pixels, the
+/// [large] preview where asked (issue #241).
+ImageProvider _decodedAt(
+  VAlbumClient client,
+  String imageUrl,
+  int height, {
+  bool large = false,
+}) =>
     ResizeImage(
-      ThumbnailImage(client, imageUrl),
+      ThumbnailImage(client, imageUrl, large: large),
       height: height,
       allowUpscaling: false,
     );
@@ -459,12 +522,12 @@ final Map<String, int> _decodedHeights = <String, int>{};
 /// those pays the one request of a deep link.
 const int _decodedHeightsRemembered = 1024;
 
-void _rememberDecodedHeight(String imageUrl, int height) {
-  if (_decodedHeights.remove(imageUrl) == null &&
+void _rememberDecodedHeight(String key, int height) {
+  if (_decodedHeights.remove(key) == null &&
       _decodedHeights.length >= _decodedHeightsRemembered) {
     _decodedHeights.remove(_decodedHeights.keys.first);
   }
-  _decodedHeights[imageUrl] = height;
+  _decodedHeights[key] = height;
 }
 
 /// The height, in pixels, the thumbnail of [imageUrl] was last decoded at by
@@ -512,6 +575,7 @@ class _Thumbnail extends StatefulWidget {
   final double? height;
   final double? displayHeight;
   final bool asTileDecoded;
+  final double? largeTileSize;
   final BoxFit? fit;
 
   const _Thumbnail({
@@ -522,6 +586,7 @@ class _Thumbnail extends StatefulWidget {
     required this.height,
     required this.displayHeight,
     required this.asTileDecoded,
+    required this.largeTileSize,
     required this.fit,
   });
 
@@ -568,14 +633,23 @@ class _ThumbnailState extends State<_Thumbnail> {
     onError: (Object error, StackTrace? stack) {},
   );
 
+  /// Whether this tile asks for the large preview, see [wantsLargeThumbnail]
+  /// and issue #241.
+  bool _large(BuildContext context) {
+    var tileSize = widget.largeTileSize;
+    return tileSize != null &&
+        tileSize.isFinite &&
+        wantsLargeThumbnail(tileSize, MediaQuery.devicePixelRatioOf(context));
+  }
+
   /// The provider of this tile, at the size it is drawn at where that is
   /// known, see [thumbnail].
-  ImageProvider _provider(BuildContext context) {
+  ImageProvider _provider(BuildContext context, bool large) {
     var displayHeight = widget.displayHeight;
     if (displayHeight == null ||
         !displayHeight.isFinite ||
         displayHeight <= 0) {
-      if (widget.asTileDecoded) {
+      if (widget.asTileDecoded && !large) {
         // The picture a tile has already decoded, asked for with the tile's
         // own key, see [decodedThumbnailHeight] and issue #120.
         var decoded = decodedThumbnailHeight(widget.imageUrl);
@@ -583,13 +657,14 @@ class _ThumbnailState extends State<_Thumbnail> {
           return _decodedAt(widget.client, widget.imageUrl, decoded);
         }
       }
-      return ThumbnailImage(widget.client, widget.imageUrl);
+      return ThumbnailImage(widget.client, widget.imageUrl, large: large);
     }
     return resizedThumbnail(
       widget.client,
       widget.imageUrl,
       displayHeight: displayHeight,
       devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+      large: large,
     );
   }
 
@@ -605,8 +680,10 @@ class _ThumbnailState extends State<_Thumbnail> {
   /// picture this image never had anywhere is waited for.
   void _hold() {
     var configuration = createLocalImageConfiguration(context);
-    var before = decodedThumbnailHeight(widget.imageUrl);
-    var target = _provider(context);
+    var large = _large(context);
+    var before =
+        _decodedHeights[_heightKey(widget.client, widget.imageUrl, large)];
+    var target = _provider(context, large);
     var stream = target.resolve(configuration);
     if (stream.key != _held?.key) {
       _held?.removeListener(_listener);
@@ -615,7 +692,8 @@ class _ThumbnailState extends State<_Thumbnail> {
 
     ImageProvider? standIn;
     if (!_pictured && before != null && target is ResizeImage) {
-      var borrowed = _decodedAt(widget.client, widget.imageUrl, before);
+      var borrowed =
+          _decodedAt(widget.client, widget.imageUrl, before, large: large);
       if (borrowed != target && !_isDecoded(target) && _isDecoded(borrowed)) {
         standIn = borrowed;
       }

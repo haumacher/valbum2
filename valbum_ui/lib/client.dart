@@ -995,8 +995,15 @@ class VAlbumClient {
   ///
   /// An image address may carry the region of a crop (`?crop=…`, issue #212,
   /// see `croppedImageUrl`), which the thumbnail is then cut to.
-  String thumbnailUrl(String imageUrl) =>
-      imageUrl.contains("?") ? "$imageUrl&type=tn" : "$imageUrl?type=tn";
+  ///
+  /// [large] asks for the server's large preview (`&size=large`, twice as
+  /// high), which a starred 2×2 tile of a listing shows on a dense screen,
+  /// see `wantsLargeThumbnail` and issue #241.
+  String thumbnailUrl(String imageUrl, {bool large = false}) {
+    var url =
+        imageUrl.contains("?") ? "$imageUrl&type=tn" : "$imageUrl?type=tn";
+    return large ? "$url&size=large" : url;
+  }
 
   /// The URL delivering the original of the image at the given URL.
   String originalUrl(String imageUrl) => imageUrl;
@@ -1383,8 +1390,10 @@ class VAlbumClient {
   /// with `--auth all` refuses an anonymous image), and what was fetched is
   /// kept in the [cache], so an album already visited still shows its tiles
   /// while the server is away.
-  Future<Uint8List> thumbnailBytes(String imageUrl) async {
-    var url = thumbnailUrl(imageUrl);
+  ///
+  /// [large] asks for the large preview, see [thumbnailUrl].
+  Future<Uint8List> thumbnailBytes(String imageUrl, {bool large = false}) async {
+    var url = thumbnailUrl(imageUrl, large: large);
     http.Response response;
     try {
       response = await _http

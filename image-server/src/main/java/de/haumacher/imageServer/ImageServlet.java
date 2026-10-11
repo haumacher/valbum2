@@ -435,6 +435,25 @@ public class ImageServlet extends HttpServlet {
 	 */
 	public static final String CROP_PARAMETER = "crop";
 
+	/**
+	 * The parameter of a <code>?type=tn</code> naming the size of the preview, see issue #241:
+	 * {@value #SIZE_NORMAL} (the default) or {@value #SIZE_LARGE}.
+	 */
+	public static final String SIZE_PARAMETER = "size";
+
+	/** The <code>size</code> of the ordinary preview, the one a <code>?type=tn</code> without it gets. */
+	public static final String SIZE_NORMAL = "normal";
+
+	/**
+	 * The <code>size</code> of the large preview a starred tile asks for on a dense screen, see
+	 * {@link PreviewCache#createLargePreview(File, double[])} and issue #241.
+	 */
+	public static final String SIZE_LARGE = "large";
+
+	/** A <code>size</code> parameter that names no size of preview. */
+	public static final String SIZE_UNKNOWN =
+		"A preview comes in the sizes '" + SIZE_NORMAL + "' and '" + SIZE_LARGE + "' only.";
+
 	/** A <code>crop</code> parameter that names no region of the picture. */
 	public static final String CROP_UNREADABLE = "The crop names no region of the picture.";
 
@@ -6443,6 +6462,12 @@ public class ImageServlet extends HttpServlet {
 	private void serveMade(Context context, PathInfo pathInfo, Caller caller, int viewAs, String type)
 			throws IOException {
 		if ("tn".equals(type)) {
+			String size = context.getParameter(SIZE_PARAMETER);
+			boolean large = SIZE_LARGE.equals(size);
+			if (size != null && !large && !SIZE_NORMAL.equals(size)) {
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, SIZE_UNKNOWN);
+				return;
+			}
 			double[] region = null;
 			String cropParameter = context.getParameter(CROP_PARAMETER);
 			if (cropParameter != null) {
@@ -6453,7 +6478,9 @@ public class ImageServlet extends HttpServlet {
 			}
 			File data;
 			try {
-				data = PreviewCache.createPreview(pathInfo.toFile(), region);
+				// The large preview of a starred tile is made like the preview, only larger (#241).
+				data = large ? PreviewCache.createLargePreview(pathInfo.toFile(), region)
+					: PreviewCache.createPreview(pathInfo.toFile(), region);
 			} catch (PreviewException ex) {
 				LOG.log(Level.WARNING, ex.getMessage(), ex.getCause());
 				errorInfo(context, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, previewFailed(pathInfo.toFile(), ex));

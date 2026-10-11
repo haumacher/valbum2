@@ -176,6 +176,18 @@ public class PreviewCache {
 	private static final int PREVIEW_HEIGHT_PORTRAIT = 2 * PREVIEW_HEIGHT;
 
 	/**
+	 * How many times the {@link #previewBox(int, int) box} of a preview the large preview of issue
+	 * #241 is: {@value} times as high and as wide, 1200 pixels high, 2400 for a portrait.
+	 */
+	public static final int LARGE_FACTOR = 2;
+
+	/**
+	 * What follows <code>preview-&lt;name&gt;</code> in the name of a large preview, see
+	 * {@link #largePreviewFile(File, double[])} and issue #241.
+	 */
+	public static final String LARGE_INFIX = "-large";
+
+	/**
 	 * The maximum width of an image (relative to its height) to interpret it as a portrait image.
 	 *
 	 * <p>
@@ -356,7 +368,7 @@ public class PreviewCache {
 			if (!SUPPORTED_EXTENSIONS.contains(suffix)) {
 				throw new PreviewException("Unsupported format: " + fileName);
 			}
-			generate(file, previewCache, tmp -> makePreview(file, tmp, suffix, imageType));
+			generate(file, previewCache, tmp -> makePreview(file, tmp, suffix, imageType, 1));
 		}
 		return previewCache;
 	}
@@ -423,7 +435,7 @@ public class PreviewCache {
 		if (!upToDate(file, previewCache)) {
 			generate(file, previewCache, tmp -> {
 				try {
-					createCroppedPreview(file, region, tmp, imageType(suffix));
+					createCroppedPreview(file, region, tmp, imageType(suffix), 1);
 				} catch (PictureTooLargeException | de.haumacher.imageServer.raw.NoEmbeddedPreviewException ex) {
 					throw new PreviewException(ex.getMessage(), ex);
 				} catch (IOException | RuntimeException ex) {
@@ -434,8 +446,78 @@ public class PreviewCache {
 		return previewCache;
 	}
 
+	/**
+	 * Where the large preview of the given original lies, made or not, see
+	 * {@link #createLargePreview(File, double[])}: <code>preview-&lt;name&gt;-large.&lt;type&gt;</code>
+	 * for the whole picture, <code>preview-&lt;name&gt;-large-c&lt;12 hex&gt;.&lt;type&gt;</code> for a
+	 * region of it, beside the preview of the same picture so that both can be there.
+	 *
+	 * @param region
+	 *        <code>{x, y, w, h}</code>, <code>null</code> for the whole picture.
+	 */
+	public static File largePreviewFile(File file, double[] region) {
+		String fileName = file.getName();
+		String imageType = imageType(Util.suffix(fileName));
+		return new File(new File(file.getParentFile(), CACHE_DIRECTORY_NAME), PREVIEW_PREFIX + fileName + LARGE_INFIX
+			+ (region == null ? "" : CROP_INFIX + Crops.key(region)) + "." + imageType);
+	}
+
+	/**
+	 * Looks up or creates the large preview of the given photograph or of a region of it, see issue
+	 * #241.
+	 *
+	 * <p>
+	 * The preview a starred (2&times;2) tile of a listing asks for where its pixels exceed the
+	 * preview's: made by the very rule of {@link #createPreview(File)} and
+	 * {@link #createPreview(File, double[])} &mdash; the same orientation, the same cut, never
+	 * larger than the picture or the region &mdash; with the {@link #previewBox(int, int) box}
+	 * {@value #LARGE_FACTOR} times as high and as wide. Cached under its own name
+	 * ({@link #largePreviewFile(File, double[])}) beside the preview, with a record of its original,
+	 * under the same permits and stale by the same rule.
+	 * </p>
+	 *
+	 * <p>
+	 * A video has none: its poster is the frame at the video's own size and not made by the box,
+	 * so the large preview of a video is its {@link #createPreview(File) preview}.
+	 * </p>
+	 *
+	 * @param region
+	 *        <code>{x, y, w, h}</code>, <code>null</code> for the whole picture.
+	 */
+	public static File createLargePreview(File file, double[] region) throws PreviewException {
+		String fileName = file.getName();
+		String suffix = Util.suffix(fileName);
+		if (VIDEO_EXTENSIONS.contains(suffix)) {
+			if (region != null) {
+				throw new PreviewException("No cut preview of '" + fileName + "'.");
+			}
+			return createPreview(file);
+		}
+		if (!SUPPORTED_EXTENSIONS.contains(suffix)) {
+			throw new PreviewException("Unsupported format: " + fileName);
+		}
+		String imageType = imageType(suffix);
+		File previewCache = largePreviewFile(file, region);
+		if (!upToDate(file, previewCache)) {
+			if (region == null) {
+				generate(file, previewCache, tmp -> makePreview(file, tmp, suffix, imageType, LARGE_FACTOR));
+			} else {
+				generate(file, previewCache, tmp -> {
+					try {
+						createCroppedPreview(file, region, tmp, imageType, LARGE_FACTOR);
+					} catch (PictureTooLargeException | de.haumacher.imageServer.raw.NoEmbeddedPreviewException ex) {
+						throw new PreviewException(ex.getMessage(), ex);
+					} catch (IOException | RuntimeException ex) {
+						throw new PreviewException("Cannot create the cut preview of '" + fileName + "'.", ex);
+					}
+				});
+			}
+		}
+		return previewCache;
+	}
+
 	/** Writes the preview of the given region, see {@link #createPreview(File, double[])}. */
-	private static void createCroppedPreview(File file, double[] region, File tmp, String imgType)
+	private static void createCroppedPreview(File file, double[] region, File tmp, String imgType, int factor)
 			throws IOException {
 		Orientation exif = de.haumacher.imageServer.faces.FaceIndex.exifOrientation(file);
 		int rawWidth;
@@ -456,7 +538,7 @@ public class PreviewCache {
 		// The region as it is shown, in pixels of the file.
 		int shownWidth = Math.max(1, (int) Math.round((swapped ? rawHeight : rawWidth) * region[2]));
 		int shownHeight = Math.max(1, (int) Math.round((swapped ? rawWidth : rawHeight) * region[3]));
-		int[] box = previewBox(shownWidth, shownHeight);
+		int[] box = previewBox(shownWidth, shownHeight, factor);
 		// Never scaled up, and the canvas no larger than the region (issue #165).
 		int previewWidth = Math.min(box[0], shownWidth);
 		int previewHeight = Math.min(box[1], shownHeight);
@@ -589,7 +671,8 @@ public class PreviewCache {
 	}
 
 	/** Writes the preview of the given original. */
-	private static void makePreview(File file, File tmp, String suffix, String imageType) throws PreviewException {
+	private static void makePreview(File file, File tmp, String suffix, String imageType, int factor)
+			throws PreviewException {
 		String fileName = file.getName();
 		switch (suffix) {
 			case JPG:
@@ -608,7 +691,7 @@ public class PreviewCache {
 				// A raw photograph is read through the JPEG preview it carries, which PictureReader
 				// opens in its place, see issue #191.
 				try {
-					createImagePreview(file, tmp, imageType);
+					createImagePreview(file, tmp, imageType, factor);
 				} catch (PictureTooLargeException | de.haumacher.imageServer.raw.NoEmbeddedPreviewException ex) {
 					// Its message says what is wrong and what to do, and is what the request is answered.
 					throw new PreviewException(ex.getMessage(), ex);
@@ -621,7 +704,7 @@ public class PreviewCache {
 			case AVIF:
 			case JXL:
 				try {
-					createHeifPreview(file, tmp);
+					createHeifPreview(file, tmp, factor);
 				} catch (IOException ex) {
 					throw new PreviewException("Cannot create image preview for '" + fileName + "': "
 						+ ex.getMessage(), ex);
@@ -879,7 +962,7 @@ public class PreviewCache {
 	 * heap cannot hold.
 	 * </p>
 	 */
-	private static void createImagePreview(File file, File previewCache, String imgType)
+	private static void createImagePreview(File file, File previewCache, String imgType, int factor)
 			throws ImageProcessingException, IOException, MetadataException {
 		Metadata metadata = ImageData.readMetadata(file);
 		int orientationCode = getImageOrientation(metadata);
@@ -893,7 +976,7 @@ public class PreviewCache {
 			int origWidth = dimension.getWidth();
 			int origHeight = dimension.getHeight();
 
-			int[] box = previewBox(origWidth, origHeight);
+			int[] box = previewBox(origWidth, origHeight, factor);
 			int previewWidth = box[0];
 			int previewHeight = box[1];
 
@@ -958,12 +1041,12 @@ public class PreviewCache {
 	 * raster asked for (issue #193); both are a {@link CodedPicture}.
 	 * </p>
 	 */
-	private static void createHeifPreview(File file, File previewCache) throws IOException {
+	private static void createHeifPreview(File file, File previewCache, int factor) throws IOException {
 		CodedPicture heif = CodedPictures.read(file);
 		Orientation orientation = heif.getOrientation();
 		int displayWidth = heif.getDisplayWidth();
 		int displayHeight = heif.getDisplayHeight();
-		int[] box = previewBox(displayWidth, displayHeight);
+		int[] box = previewBox(displayWidth, displayHeight, factor);
 		// Never scaled up, and the canvas no larger than the picture (issue #165).
 		int previewWidth = Math.min(box[0], displayWidth);
 		int previewHeight = Math.min(box[1], displayHeight);
@@ -1003,11 +1086,20 @@ public class PreviewCache {
 	 *        Its height, likewise.
 	 */
 	public static int[] previewBox(int displayWidth, int displayHeight) {
+		return previewBox(displayWidth, displayHeight, 1);
+	}
+
+	/**
+	 * The {@link #previewBox(int, int) box} of a preview the given number of times as high and as
+	 * wide, see {@link #LARGE_FACTOR} and issue #241: the same rule, scaled.
+	 */
+	static int[] previewBox(int displayWidth, int displayHeight, int factor) {
 		if (displayWidth <= 0 || displayHeight <= 0) {
-			return new int[] { PREVIEW_HEIGHT, PREVIEW_HEIGHT };
+			return new int[] { factor * PREVIEW_HEIGHT, factor * PREVIEW_HEIGHT };
 		}
 		double unitWidth = ((double) displayWidth) / displayHeight;
-		int previewHeight = unitWidth <= MAX_PORTRAIT_UNIT_WIDTH ? PREVIEW_HEIGHT_PORTRAIT : PREVIEW_HEIGHT;
+		int previewHeight =
+			factor * (unitWidth <= MAX_PORTRAIT_UNIT_WIDTH ? PREVIEW_HEIGHT_PORTRAIT : PREVIEW_HEIGHT);
 		int previewWidth = Math.max(1, (int) Math.round(previewHeight * unitWidth));
 		return new int[] { previewWidth, previewHeight };
 	}
