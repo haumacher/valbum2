@@ -2380,6 +2380,18 @@ class AlbumContentState extends State<AlbumContent>
           // A visitor of a link has no server of their own to configure.
           if (share == null)
             menuItem(Icons.settings, _l10n.serverMenuEntry, openServerSettings),
+          // The way out of this device's sign-in, the very one of the
+          // settings screen; only where there is a sign-in to end.
+          if (share == null && mayOfferSignOut(context))
+            keyedMenuItem(
+              const Key("sign-out"),
+              Icons.logout,
+              _l10n.signOut,
+              (context) => signOutFromMenu(
+                context,
+                showRoot: widget.albumState.showRoot,
+              ),
+            ),
           // What this app is, the last entry of every main menu — and the one
           // a visitor of a share link most wants to find (#187).
           // Who a personal link's visitor is, and the way to be somebody else

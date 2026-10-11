@@ -487,6 +487,11 @@ class ServerSettingsScope extends InheritedNotifier<ServerSettings> {
     required super.child,
   }) : super(notifier: settings);
 
+  /// The settings of the enclosing app, `null` where a view is shown
+  /// without the app around it.
+  static ServerSettingsScope? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<ServerSettingsScope>();
+
   /// The settings of the enclosing app.
   static ServerSettingsScope of(BuildContext context) {
     var scope =
@@ -514,6 +519,94 @@ void openServerSettings(BuildContext context) {
     ),
   );
 }
+
+/// Signs this device out: the one way to sign out, which the sign-out button
+/// of the settings screen and the "Sign out" entry of the main menu both take
+/// (decision of 2026-09-13, evening: one way, not two that drift apart).
+///
+/// Asks first where there is no way back: the last signed-in device (issue
+/// #92), see [confirmLastSignOut]. [devices] are the devices the caller has
+/// already seen; where it has seen none, the server is asked, and a server
+/// that cannot be asked counts as "possibly the last one". [role] is the role
+/// the server reported, empty where it has not said.
+///
+/// Answers whether the device signed out; `false` where the question was
+/// answered with "Cancel".
+Future<bool> signOutThisDevice({
+  required BuildContext context,
+  required ServerSettings settings,
+  required ClientFactory clientFor,
+  DeviceList? devices,
+  String role = "",
+  String? userName,
+}) async {
+  var known = devices ??
+      await _devicesOfThisPerson(settings, clientFor, userName: userName);
+  if (!context.mounted) {
+    return false;
+  }
+  if (!await confirmLastSignOut(
+    context: context,
+    devices: known,
+    role: role,
+  )) {
+    return false;
+  }
+  await settings.signOut();
+  return true;
+}
+
+/// The devices of the person this device is signed in as, asked of the saved
+/// server; `null` where the server could not be asked at all.
+Future<DeviceList?> _devicesOfThisPerson(
+  ServerSettings settings,
+  ClientFactory clientFor, {
+  String? userName,
+}) async {
+  var dataUrl = settings.dataUrl;
+  if (dataUrl == null || !settings.signedIn) {
+    return null;
+  }
+  try {
+    return await clientFor(dataUrl)
+        .withToken(settings.token, userName: userName ?? settings.userName ?? "")
+        .devices();
+  } catch (_) {
+    return null;
+  }
+}
+
+/// The "Sign out" entry of the main menu: [signOutThisDevice], then says so
+/// and shows the root as the anonymous caller sees it (or the sign-in form
+/// where the server lets nobody in anonymously, #91, #92).
+///
+/// Offered only where [mayOfferSignOut] says so: what cannot be done is not
+/// offered.
+Future<void> signOutFromMenu(
+  BuildContext context, {
+  required VoidCallback showRoot,
+}) async {
+  var scope = ServerSettingsScope.maybeOf(context);
+  if (scope == null) {
+    return;
+  }
+  var messenger = ScaffoldMessenger.maybeOf(context);
+  var l10n = AppLocalizations.of(context)!;
+  if (!await signOutThisDevice(
+    context: context,
+    settings: scope.settings,
+    clientFor: scope.clientFor,
+    role: CallerInfo.peek(context)?.role ?? "",
+  )) {
+    return;
+  }
+  messenger?.showSnackBar(SnackBar(content: Text(l10n.signedOutMessage)));
+  showRoot();
+}
+
+/// Whether the main menu offers "Sign out": the device is signed in.
+bool mayOfferSignOut(BuildContext context) =>
+    ServerSettingsScope.maybeOf(context)?.settings.signedIn ?? false;
 
 /// The outcome of a connection test, see [testServerConnection].
 @immutable
@@ -1936,18 +2029,16 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
   /// "probably fine" is no answer to a door that locks behind one.
   Future<void> _signOut() async {
     var l10n = AppLocalizations.of(context)!;
-    var known = await _knownDevices();
-    if (!mounted) {
-      return;
-    }
-    if (!await confirmLastSignOut(
+    if (!await signOutThisDevice(
       context: context,
-      devices: known,
+      settings: widget.settings,
+      clientFor: widget.clientFor,
+      devices: deviceList,
       role: identity?.role ?? "",
+      userName: identity?.userName,
     )) {
       return;
     }
-    await widget.settings.signOut();
     if (!mounted) {
       return;
     }
@@ -1975,27 +2066,6 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
       deviceList = null;
       signOutMessage = l10n.signedOutMessage;
     });
-  }
-
-  /// The caller's devices as this screen last saw them, asked for if it has
-  /// not seen any yet.
-  ///
-  /// `null` where the server could not be asked at all; the sign-out warning
-  /// reads that as "possibly the last one", see [confirmLastSignOut].
-  Future<DeviceList?> _knownDevices() async {
-    var known = deviceList;
-    if (known != null) {
-      return known;
-    }
-    var client = _managementClient();
-    if (client == null || !widget.settings.signedIn) {
-      return null;
-    }
-    try {
-      return await client.devices();
-    } catch (_) {
-      return null;
-    }
   }
 
   /// Fetches the root resource of the *entered* server, without saving it.

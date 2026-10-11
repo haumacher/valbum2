@@ -313,6 +313,16 @@ class ListingView extends StatelessWidget {
             if (link == null)
               menuItem(
                   Icons.settings, l10n.serverMenuEntry, openServerSettings),
+            // The way out of this device's sign-in, the very one of the
+            // settings screen; only where there is a sign-in to end.
+            if (link == null && mayOfferSignOut(context))
+              keyedMenuItem(
+                const Key("sign-out"),
+                Icons.logout,
+                l10n.signOut,
+                (context) =>
+                    signOutFromMenu(context, showRoot: albumState.showRoot),
+              ),
             // What this app is, the last entry of every main menu (#187).
             // Who a personal link's visitor is, and the way to be somebody else
             // (issue #202).

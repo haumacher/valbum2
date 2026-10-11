@@ -44,10 +44,12 @@ class ShareSession {
   /// Whether the link allows contributions, see [AuthInfo.writeAllowed].
   final bool writeAllowed;
 
-  /// Forgets who this browser is on a personal link and asks again: "Not
-  /// you? Switch person" (issue #202). `null` where the session is no
-  /// contact's.
-  final VoidCallback? onSwitchPerson;
+  /// Signs this browser out of the personal link and asks again: "Not you?
+  /// Switch person" (issue #202). The session ends on the server first, so
+  /// that it no longer counts as another browser of the contact; the
+  /// credential is forgotten even where the server cannot be asked. `null`
+  /// where the session is no contact's.
+  final Future<void> Function(BuildContext context)? onSwitchPerson;
 
   /// Signs the contact of this session out of their other browsers: "Also
   /// signed in on n other browsers — sign out others" (issue #203). `null`
@@ -172,7 +174,7 @@ List<PopupMenuEntry<void Function(BuildContext)>> switchPersonEntries(
       ),
     PopupMenuItem<void Function(BuildContext)>(
       key: const Key("switch-person"),
-      value: (_) => switchPerson(),
+      value: switchPerson,
       child: Row(
         children: [
           const Padding(

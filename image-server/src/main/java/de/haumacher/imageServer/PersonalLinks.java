@@ -64,7 +64,10 @@ public final class PersonalLinks {
 	/** What a request for a session the contact does not have is refused with (issue #203). */
 	public static final String SESSION_UNKNOWN = "This browser session of the contact does not exist (any more).";
 
-	/** What "sign out others" is refused to a caller who is no contact (issue #203). */
+	/**
+	 * What "sign out others" (issue #203), and the end of the own session behind "Not you? Switch
+	 * person", is refused to a caller who is no contact.
+	 */
 	public static final String OTHER_SESSIONS_REFUSED =
 		"Only a person who opened a personal link signs out their other browsers.";
 

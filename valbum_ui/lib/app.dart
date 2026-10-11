@@ -1000,7 +1000,7 @@ class VAlbumAppState extends State<VAlbumApp> {
         url: link,
         info: share,
         writeAllowed: answer.writeAllowed,
-        onSwitchPerson: share.contact == null ? null : _switchPerson,
+        onSwitchPerson: share.contact == null ? null : _signOutAndSwitch,
         onSignOutOthers: share.contact == null ? null : _signOutOthers,
         onSignInOptions: share.contact == null ? null : _openSignInOptions,
       );
@@ -1166,8 +1166,51 @@ class VAlbumAppState extends State<VAlbumApp> {
     _openUrl(started.url);
   }
 
+  /// "Not you? Switch person" in the menu of a contact's session: signs this
+  /// browser out on the server, then forgets the credential (issue #202).
+  ///
+  /// The server first, or the session it keeps for this browser would count
+  /// as "another browser" of the contact for as long as it lives, reachable
+  /// by nobody. Where the server refuses or cannot be reached, the credential
+  /// is forgotten all the same — the visitor is never stuck — and the
+  /// refusal is said in the server's own words over the card.
+  Future<void> _signOutAndSwitch(BuildContext context) async {
+    var speaker = client;
+    String? refusal;
+    if (speaker != null) {
+      try {
+        await speaker.endOwnSession();
+      } on VAlbumException catch (error) {
+        refusal = error.message;
+      } catch (error) {
+        refusal = "$error";
+      }
+    }
+    if (!mounted) {
+      return;
+    }
+    _switchPerson();
+    if (refusal != null) {
+      var said = refusal;
+      // The card is shown by the app before the router, whose messenger is
+      // a different one than the menu's.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _preRouterMessenger.currentState
+            ?.showSnackBar(SnackBar(content: Text(said)));
+      });
+    }
+  }
+
+  /// The messenger of the app before the router, see [_beforeTheRouter].
+  final GlobalKey<ScaffoldMessengerState> _preRouterMessenger =
+      GlobalKey<ScaffoldMessengerState>();
+
   /// "Not you? Switch person": forgets who this browser is for the link's
   /// space and asks the link again, which then shows the card (issue #202).
+  ///
+  /// Alone where the server has just refused the credential (the card, the
+  /// page of a link that is gone): there is no live session left to end
+  /// through this link.
   void _switchPerson() {
     var link = session!;
     contactStore.clear(link.dataUrl);
@@ -1451,6 +1494,7 @@ class VAlbumAppState extends State<VAlbumApp> {
   /// [Navigator] the settings screen lives in, and re-creating that would
   /// throw away what the user has typed.
   Widget _beforeTheRouter() => MaterialApp.router(
+        scaffoldMessengerKey: _preRouterMessenger,
         onGenerateTitle: (context) => AppLocalizations.of(context)!.appTitle,
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,

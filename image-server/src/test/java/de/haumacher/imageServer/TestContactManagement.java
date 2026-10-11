@@ -298,6 +298,59 @@ public class TestContactManagement extends PersonalLinkTestCase {
 		assertNotNull(identifyRequired(unidentified));
 	}
 
+	public void testAContactEndsTheirOwnSession() throws Exception {
+		ShareLinkCreated created = created(ZOO, email("Tante Petra", PETRA));
+		String petra = contactOf(created, "Tante Petra");
+		String first = credential(tokenOf(created, "Tante Petra"));
+		String second = secondBrowser(created, petra);
+		String link = created.getToken();
+		assertEquals(1, auth(getAs("/", "auth", link, second)).getShare().getOtherSessions());
+		assertEquals(2, new ContactStore(_base).get(petra).getSessions().size());
+
+		FakeResponse ended = postAs("/", "end-own-session", "{}", link, first);
+		assertEquals(ended.body(), 200, ended.status());
+		assertEquals(1, OtherSessionsEnded.readOtherSessionsEnded(reader(body(ended))).getEnded());
+
+		FakeResponse gone = getAs("/", "json", link, first);
+		FakeResponse neverIssued = getAs("/", "json", link, "never-issued-credential");
+		assertEquals("The ended credential is refused like one never issued.", neverIssued.status(), gone.status());
+		assertEquals(errorMessage(neverIssued), errorMessage(gone));
+		assertEquals("The other browser stays signed in.", 200, getAs("/", "json", link, second).status());
+		assertEquals("No orphan counts as another browser.", 0,
+			auth(getAs("/", "auth", link, second)).getShare().getOtherSessions());
+
+		ContactStore reread = new ContactStore(_base);
+		assertEquals("The end is written to the store.", 1, reread.get(petra).getSessions().size());
+		assertEquals(1, contact(petra).getSessions().size());
+		assertEquals(reread.get(petra).getSessions().get(0).getId(), contact(petra).getSessions().get(0).getId());
+	}
+
+	public void testOnlyAContactEndsTheirOwnSession() throws Exception {
+		ShareLinkCreated created = created(ZOO, email("Tante Petra", PETRA));
+		String petra = contactOf(created, "Tante Petra");
+		String credential = credential(tokenOf(created, "Tante Petra"));
+
+		FakeResponse member = postAs("/", "end-own-session", "{}", SharingFixture.ALICE, null);
+		assertEquals(HttpServletResponse.SC_FORBIDDEN, member.status());
+		assertEquals(PersonalLinks.OTHER_SESSIONS_REFUSED, errorMessage(member));
+		FakeResponse anonymousLink = postAs("/", "end-own-session", "{}", zooToken(), null);
+		assertEquals(HttpServletResponse.SC_FORBIDDEN, anonymousLink.status());
+		assertEquals(PersonalLinks.OTHER_SESSIONS_REFUSED, errorMessage(anonymousLink));
+		String open = created(OPEN).getToken();
+		FakeResponse openLink = postAs("/", "end-own-session", "{}", open, null);
+		assertEquals("An open link asks who is there, as it does for \"sign out others\".",
+			postAs("/", "end-other-sessions", "{}", open, null).status(), openLink.status());
+		assertEquals(HttpServletResponse.SC_UNAUTHORIZED, openLink.status());
+		assertNotNull(identifyRequired(openLink));
+		assertEquals(HttpServletResponse.SC_UNAUTHORIZED, postAs("/", "end-own-session", "{}", null, null).status());
+		FakeResponse unidentified = postAs("/", "end-own-session", "{}", created.getToken(), null);
+		assertEquals("Nobody yet is asked who they are.", HttpServletResponse.SC_UNAUTHORIZED, unidentified.status());
+		assertNotNull(identifyRequired(unidentified));
+
+		assertEquals("Nothing was ended.", 1, new ContactStore(_base).get(petra).getSessions().size());
+		assertEquals(200, getAs("/", "json", created.getToken(), credential).status());
+	}
+
 	public void testNoLinkManagesContacts() throws Exception {
 		ShareLinkCreated created = created(ZOO, email("Tante Petra", PETRA));
 		String contact = contactOf(created, "Tante Petra");

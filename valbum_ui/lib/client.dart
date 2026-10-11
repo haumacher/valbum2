@@ -2642,6 +2642,17 @@ class VAlbumClient {
     return OtherSessionsEnded.read(JsonReader.fromString(response)).ended;
   }
 
+  /// Signs the contact of this session out of this very browser: "Not you?
+  /// Switch person" ends the session on the server before the browser
+  /// forgets its credential, so that no orphaned session keeps counting as
+  /// "another browser" (issue #203). Asked in a session of a personal link
+  /// only; answers how many were ended, one or none.
+  Future<int> endOwnSession() async {
+    var url = "${folderUrl(const [])}?action=end-own-session";
+    var response = await _postBody(url, "{}");
+    return OtherSessionsEnded.read(JsonReader.fromString(response)).ended;
+  }
+
   /// The first open of a recipient's own link (issue #198): the link
   /// identifies the recipient once, and the answer recognises them from then
   /// on. Sent with the recipient's token as the bearer.

@@ -4476,6 +4476,32 @@ public class ImageServlet extends HttpServlet {
 		serveJsonObject(context.response(), OtherSessionsEnded.create().setEnded(ended));
 	}
 
+	/**
+	 * Signs a contact out of this very browser at <code>&lt;data&gt;/?action=end-own-session</code>:
+	 * "Not you? Switch person" ends the session on the server before the browser forgets its
+	 * credential, so that no orphaned session keeps counting as "another browser".
+	 *
+	 * <p>
+	 * The caller rules are those of {@link #endOtherSessions(Context)}: asked by the contact
+	 * themself, in a session of a personal link, and refused to everybody else in the same words.
+	 * Answered with how many were ended, one or none.
+	 * </p>
+	 */
+	private void endOwnSession(Context context) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		if (caller.getContact() == null || caller.getSession() == null) {
+			if (!caller.isPaired() && !caller.isShareLink()) {
+				unauthorized(context, caller, true);
+				return;
+			}
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, PersonalLinks.OTHER_SESSIONS_REFUSED);
+			return;
+		}
+		boolean ended = _auth.getContacts().endSession(caller.getContact().getId(), caller.getSession().getId());
+		LOG.info("Signed " + caller.getContact() + " out of this browser, at their request.");
+		serveJsonObject(context.response(), OtherSessionsEnded.create().setEnded(ended ? 1 : 0));
+	}
+
 	private static ContactShutOut readShutOut(Context context) throws IOException {
 		try {
 			byte[] contents = readBody(context.request());
@@ -5217,6 +5243,10 @@ public class ImageServlet extends HttpServlet {
 		}
 		if ("end-other-sessions".equals(action)) {
 			endOtherSessions(context);
+			return;
+		}
+		if ("end-own-session".equals(action)) {
+			endOwnSession(context);
 			return;
 		}
 		if ("unshare".equals(action)) {
