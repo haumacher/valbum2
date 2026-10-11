@@ -65,6 +65,28 @@ void main() {
       expect(SearchCriteria.fromQuery(stored), chosen);
     });
 
+    test('the grouping travels in the query, and is no criterion (#244)', () {
+      var chosen = const SearchCriteria(
+        persons: const ["anne"],
+        groupBy: const [SearchGroup.year, SearchGroup.country],
+      );
+      var query = chosen.toQuery();
+      expect(query.groupBy, [SearchGroup.year, SearchGroup.country]);
+      expect((query.root as SearchAnd).criteria, hasLength(1));
+      var stored = SearchQuery.read(JsonReader.fromString(_content(query)));
+      expect(SearchCriteria.fromQuery(stored), chosen);
+      expect(chosen, isNot(chosen.copyWith(groupBy: const [])));
+      expect(chosen.findsAs(chosen.copyWith(groupBy: const [])), isTrue);
+      expect(chosen.findsAs(chosen.copyWith(camera: "Pixel 7")), isFalse);
+      expect(const SearchCriteria(groupBy: [SearchGroup.year]).isEmpty, isTrue,
+          reason: "A grouping alone searches for nothing.");
+      expect(
+          SearchCriteria.fromQuery(
+              SearchQuery(version: 1, root: SearchAnd()))!.groupBy,
+          isEmpty,
+          reason: "A query without a grouping is the result by date.");
+    });
+
     test('a query this screen cannot show is not edited here', () {
       expect(SearchCriteria.fromQuery(null), isNull);
       expect(

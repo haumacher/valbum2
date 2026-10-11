@@ -6,7 +6,9 @@ library;
 
 import 'album_edit.dart' show noMinRating;
 import 'inbox_view.dart' show inboxDays;
+import 'locales.dart' show platformMessages;
 import 'resource.dart';
+import 'search_grouping.dart';
 
 /// Rebuilds the transient fields of an album: the [AbstractImage.previous],
 /// [AbstractImage.next], [AbstractImage.home] and [AbstractImage.end] links,
@@ -19,9 +21,32 @@ import 'resource.dart';
 /// that is the order the "alternatives" view of the group navigates in (see
 /// `group_view.dart`), so `previous`/`next`/`home`/`end` of a group member
 /// stay inside its group.
+///
+/// A saved search, and the result of the search view, is grouped here by the
+/// keys of its query (issue #244, see [groupSearchParts]): its headings are
+/// derived from its photos whenever it is initialized, never stored, and the
+/// chain the viewer pages through follows the sections.
 class AlbumInitializer {
+  /// The words of the headings of a grouped search; the app's language where
+  /// none are given.
+  final SearchGroupTexts? searchTexts;
+
+  AlbumInitializer({this.searchTexts});
+
   /// Initializes the transient fields of the given album.
   void init(AlbumInfo self) {
+    if (self.kind == AlbumKind.search) {
+      var keys = self.query?.groupBy ?? const <SearchGroup>[];
+      // Headings of a search are always derived: none is ever answered or
+      // stored, so dropping them first makes this one idempotent.
+      if (keys.isNotEmpty || self.parts.any((part) => part is Heading)) {
+        self.parts = groupSearchParts(
+          self.parts,
+          keys,
+          texts: searchTexts ?? SearchGroupTexts.of(platformMessages),
+        );
+      }
+    }
     for (var part in self.parts) {
       part.owner = self;
       if (part is ImageGroup) {

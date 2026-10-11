@@ -977,6 +977,7 @@
   "searchAnyCamera": "Beliebige Kamera",
   "searchChooseHint": "Wählen Sie aus, wonach Sie suchen möchten: Personen, einen Zeitraum, Orte, Labels, eine Bewertung, Fotos oder Videos, einen Text oder eine Kamera.",
   "searchNothingFound": "Kein Foto entspricht dieser Suche.",
+  "searchCount": "{count, plural, =1{1 Foto} other{{count} Fotos}}",
   "searchNothingToChoose": "Hier gibt es nichts zur Auswahl.",
   "searchCannotEdit": "Diese Suche verwendet Bedingungen, die auf diesem Bildschirm nicht angezeigt werden können, daher kann sie hier nicht bearbeitet werden.",
   "saveAsView": "Als Ansicht speichern…",
@@ -990,5 +991,11 @@
   "placeCaptionAsAlbum": "Wie im Album",
   "placeCaptionShown": "Angezeigt",
   "placeCaptionHidden": "Ausgeblendet",
-  "searchCount": "{count, plural, =1{1 Foto} other{{count} Fotos}}"
+  "searchGroupedBy": "Gruppieren nach: {keys}",
+  "searchGroupByAlbum": "Album",
+  "searchGroupByYear": "Jahr",
+  "searchGroupByMonth": "Monat",
+  "searchWithoutDate": "Ohne Datum",
+  "searchWithoutPlace": "Ohne Ort",
+  "searchWithoutCamera": "Ohne Kamera"
 }

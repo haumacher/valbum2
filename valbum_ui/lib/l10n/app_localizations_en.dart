@@ -3854,4 +3854,27 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get placeCaptionHidden => 'Hidden';
+
+  @override
+  String searchGroupedBy(String keys) {
+    return 'Group by: $keys';
+  }
+
+  @override
+  String get searchGroupByAlbum => 'Album';
+
+  @override
+  String get searchGroupByYear => 'Year';
+
+  @override
+  String get searchGroupByMonth => 'Month';
+
+  @override
+  String get searchWithoutDate => 'Without a date';
+
+  @override
+  String get searchWithoutPlace => 'Without a place';
+
+  @override
+  String get searchWithoutCamera => 'Without a camera';
 }

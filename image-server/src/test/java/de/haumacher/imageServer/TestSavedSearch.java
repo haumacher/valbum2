@@ -14,6 +14,7 @@ import de.haumacher.imageServer.shared.model.AlbumKind;
 import de.haumacher.imageServer.shared.model.AlbumPart;
 import de.haumacher.imageServer.shared.model.FolderInfo;
 import de.haumacher.imageServer.shared.model.FolderKind;
+import de.haumacher.imageServer.shared.model.Heading;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.LabelName;
 import de.haumacher.imageServer.shared.model.MoveResult;
@@ -27,6 +28,7 @@ import de.haumacher.imageServer.shared.model.SearchCamera;
 import de.haumacher.imageServer.shared.model.SearchCriterion;
 import de.haumacher.imageServer.shared.model.SearchDate;
 import de.haumacher.imageServer.shared.model.SearchFolder;
+import de.haumacher.imageServer.shared.model.SearchGroup;
 import de.haumacher.imageServer.shared.model.SearchLabel;
 import de.haumacher.imageServer.shared.model.SearchMedia;
 import de.haumacher.imageServer.shared.model.SearchNot;
@@ -232,6 +234,7 @@ public class TestSavedSearch extends ShareTestCase {
 		assertEquals(PhotoSearch.VERSION, stored.getQuery().getVersion());
 		assertEquals(Collections.emptyList(), stored.getParts());
 		assertNull(stored.getIndexPicture());
+		assertEquals("No grouping was asked for.", Collections.emptyList(), stored.getQuery().getGroupBy());
 		for (File file : _base.resolve("Trips/AP").toFile().listFiles()) {
 			assertTrue("Nothing but the sidecar: " + file.getName(), file.getName().startsWith("index.json"));
 		}
@@ -359,6 +362,46 @@ public class TestSavedSearch extends ShareTestCase {
 		assertTrue(names(album(get("/Trips/AP/", "json", SharingFixture.ALICE))).contains("2021 Lake/anne.jpg"));
 		assertEquals("A viewer may not change it.", HttpServletResponse.SC_FORBIDDEN,
 			put("/Trips/AP/", write(answer), SharingFixture.DAVE).status());
+	}
+
+	/**
+	 * The grouping of a saved search (issue #244) is stored with its query and read back, and the
+	 * server evaluates nothing of it: the same photographs, by date.
+	 */
+	public void testTheGroupingIsStoredWithTheQuery() throws Exception {
+		SearchQuery grouped = and(person(_anne), person(_philipp))
+			.setGroupBy(new ArrayList<>(Arrays.asList(SearchGroup.YEAR, SearchGroup.COUNTRY)));
+		assertNull("A grouping is no criterion and never refused.", PhotoSearch.refusal(grouped));
+		createSearch("/Trips/AP", grouped);
+
+		AlbumInfo stored = stored("Trips/AP");
+		assertEquals(Arrays.asList(SearchGroup.YEAR, SearchGroup.COUNTRY), stored.getQuery().getGroupBy());
+		assertEquals(Collections.emptyList(), stored.getParts());
+		assertNull(stored.getIndexPicture());
+
+		AlbumInfo answer = album(get("/Trips/AP/", "json", SharingFixture.ALICE));
+		assertEquals("Answered to the app, which derives the headings.",
+			Arrays.asList(SearchGroup.YEAR, SearchGroup.COUNTRY), answer.getQuery().getGroupBy());
+		createSearch("/Trips/Plain", and(person(_anne), person(_philipp)));
+		assertEquals("The grouping changes nothing of what is found.",
+			names(album(get("/Trips/Plain/", "json", SharingFixture.ALICE))), names(answer));
+		for (AlbumPart part : answer.getParts()) {
+			assertFalse("No heading is made by the server.", part instanceof Heading);
+		}
+		assertEquals(names(answer), search("/Trips/", grouped));
+	}
+
+	/** An edit of a saved search changes its grouping alone, see issue #244. */
+	public void testEditingTheGroupingChangesTheStoredQuery() throws Exception {
+		createSearch("/Trips/AP", and(person(_anne), person(_philipp)));
+		AlbumInfo answer = album(get("/Trips/AP/", "json", SharingFixture.CAROL));
+		answer.setQuery(and(person(_anne), person(_philipp)).setGroupBy(new ArrayList<>(Arrays.asList(SearchGroup.ALBUM))));
+		assertEquals(HttpServletResponse.SC_OK, put("/Trips/AP/", write(answer), SharingFixture.CAROL).status());
+
+		AlbumInfo stored = stored("Trips/AP");
+		assertEquals(Arrays.asList(SearchGroup.ALBUM), stored.getQuery().getGroupBy());
+		assertEquals(2, ((SearchAnd) stored.getQuery().getRoot()).getCriteria().size());
+		assertEquals(Collections.emptyList(), stored.getParts());
 	}
 
 	public void testAnAlbumNeverBecomesASavedSearch() throws Exception {
@@ -493,6 +536,20 @@ public class TestSavedSearch extends ShareTestCase {
 		AlbumInfo again = (AlbumInfo) Resource.readResource(reader(written));
 		assertEquals(written, write(again));
 		assertEquals(8, ((SearchAnd) again.getQuery().getRoot()).getCriteria().size());
+	}
+
+	/** A saved search with a grouping (issue #244) reads, writes and reads again unchanged. */
+	public void testReadWriteReadKeepsTheGrouping() throws Exception {
+		String source = "[\"AlbumInfo\",{\"kind\":\"SEARCH\",\"title\":\"Anne\",\"query\":{\"version\":1,"
+			+ "\"root\":[\"SearchAnd\",{\"criteria\":[[\"SearchPerson\",{\"person\":\"anne\"}]]}],"
+			+ "\"groupBy\":[\"MONTH\",\"TOWN\"]}}]";
+		AlbumInfo read = (AlbumInfo) Resource.readResource(reader(source));
+		assertNull(PhotoSearch.refusal(read.getQuery()));
+		assertEquals(Arrays.asList(SearchGroup.MONTH, SearchGroup.TOWN), read.getQuery().getGroupBy());
+		String written = write(read);
+		AlbumInfo again = (AlbumInfo) Resource.readResource(reader(written));
+		assertEquals(written, write(again));
+		assertEquals(Arrays.asList(SearchGroup.MONTH, SearchGroup.TOWN), again.getQuery().getGroupBy());
 	}
 
 	public void testAnUnknownCriterionIsRefusedVisibly() throws Exception {

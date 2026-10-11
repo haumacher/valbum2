@@ -6387,5 +6387,46 @@
   "@placeCaptionHidden": {
     "description": "Option of the \"Display location\" choice in the image properties: the place is never shown as caption. German: \"Ausblenden\"",
     "x-translated": "8ff1ec8b"
+  },
+  "searchGroupedBy": "Group by: {keys}",
+  "@searchGroupedBy": {
+    "description": "Chip of the search view while the photos found are grouped (issue #244): the keys chosen, the first making the headings and the second the subheadings, joined by \" › \" (\"Year › Country\"). German: \"Gruppieren nach: {keys}\"",
+    "placeholders": {
+      "keys": {
+        "type": "String",
+        "example": "Year › Country"
+      }
+    },
+    "x-translated": "ee79cb62"
+  },
+  "searchGroupByAlbum": "Album",
+  "@searchGroupByAlbum": {
+    "description": "Choice of the search view's \"Group by\" dialog (issue #244): one heading per album the photos found lie in. German: \"Album\"",
+    "x-translated": "f8594147"
+  },
+  "searchGroupByYear": "Year",
+  "@searchGroupByYear": {
+    "description": "Choice of the search view's \"Group by\" dialog (issue #244): one heading per year the photos found were taken in. German: \"Jahr\"",
+    "x-translated": "1bb0dc09"
+  },
+  "searchGroupByMonth": "Month",
+  "@searchGroupByMonth": {
+    "description": "Choice of the search view's \"Group by\" dialog (issue #244): one heading per month the photos found were taken in. German: \"Monat\"",
+    "x-translated": "4f773f02"
+  },
+  "searchWithoutDate": "Without a date",
+  "@searchWithoutDate": {
+    "description": "The last heading of a search grouped by year or month (issue #244): the photos found that carry no recording time. German: \"Ohne Datum\"",
+    "x-translated": "238c61d6"
+  },
+  "searchWithoutPlace": "Without a place",
+  "@searchWithoutPlace": {
+    "description": "The last heading of a search grouped by country, region or town (issue #244): the photos found that name no place of that kind. German: \"Ohne Ort\"",
+    "x-translated": "abf4ae58"
+  },
+  "searchWithoutCamera": "Without a camera",
+  "@searchWithoutCamera": {
+    "description": "The last heading of a search grouped by camera (issue #244): the photos found that name no camera. German: \"Ohne Kamera\"",
+    "x-translated": "bba66033"
   }
 }

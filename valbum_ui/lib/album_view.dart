@@ -3149,7 +3149,8 @@ class AlbumContentState extends State<AlbumContent>
   /// `HeadingDisplay`: edit the text and delete the heading.
   Widget headingView(Heading heading) {
     var view = headingRow(heading);
-    if (!editMode) {
+    // A search's headings are derived, never dragged (issue #244).
+    if (!editMode || isSearch(widget.album)) {
       return view;
     }
     // A heading is an album part like any other: it can be dragged, and an
@@ -3182,6 +3183,9 @@ class AlbumContentState extends State<AlbumContent>
     // The select mode's headings carry the check box too, and nothing else
     // of the edit mode's (issue #209).
     var selectable = editMode || selectMode;
+    // The headings of a search are derived from its grouping on every open
+    // (issue #244): never edited, never deleted.
+    var editable = editMode && !isSearch(widget.album);
     var text = Text(
       heading.text,
       style: TextStyle(fontSize: fontSize, color: Colors.white),
@@ -3205,7 +3209,7 @@ class AlbumContentState extends State<AlbumContent>
           ),
         ] else
           Flexible(child: text),
-        if (editMode)
+        if (editable)
           IconButton(
             icon: const Icon(Icons.edit),
             iconSize: 20,
@@ -3213,7 +3217,7 @@ class AlbumContentState extends State<AlbumContent>
             tooltip: _l10n.editHeadingTitle,
             onPressed: () => editHeading(heading),
           ),
-        if (editMode)
+        if (editable)
           IconButton(
             icon: const Icon(Icons.delete_outline),
             iconSize: 20,
@@ -3223,7 +3227,7 @@ class AlbumContentState extends State<AlbumContent>
           ),
         // The drag handle of the edit mode stands in the top right corner,
         // see [ReorderablePart.handle]; the row keeps clear of it.
-        if (editMode) const SizedBox(width: dragHandleSize),
+        if (editable) const SizedBox(width: dragHandleSize),
       ],
     );
     var padded = Padding(

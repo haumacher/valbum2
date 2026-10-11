@@ -12,6 +12,10 @@
 /// query that says something else — an OR across kinds, a NOT, a folder — is
 /// stored faithfully but cannot be edited on this screen, see
 /// [SearchCriteria.fromQuery].
+///
+/// What the photographs found are grouped by ([SearchCriteria.groupBy], issue
+/// #244) travels in the query as well, but is no criterion: it changes the
+/// headings the result is shown with, never what is found.
 library;
 
 import 'resource.dart';
@@ -63,6 +67,13 @@ class SearchCriteria {
   /// The camera the photograph was taken with; `null` for any.
   final String? camera;
 
+  /// The keys the photographs found are grouped by, the first making the
+  /// sections, the second the subsections; empty for the result by date, see
+  /// [SearchQuery.groupBy] and `search_grouping.dart` (issue #244).
+  ///
+  /// No criterion: [isEmpty] does not look at it.
+  final List<SearchGroup> groupBy;
+
   const SearchCriteria({
     this.persons = const [],
     this.from,
@@ -73,6 +84,7 @@ class SearchCriteria {
     this.media = SearchMediaKind.all,
     this.text = "",
     this.camera,
+    this.groupBy = const [],
   });
 
   /// No criterion at all: the search view asks for one before it searches.
@@ -103,6 +115,7 @@ class SearchCriteria {
     String? text,
     String? camera,
     bool clearCamera = false,
+    List<SearchGroup>? groupBy,
   }) => SearchCriteria(
     persons: persons ?? this.persons,
     from: clearFrom ? null : from ?? this.from,
@@ -113,7 +126,12 @@ class SearchCriteria {
     media: media ?? this.media,
     text: text ?? this.text,
     camera: clearCamera ? null : camera ?? this.camera,
+    groupBy: groupBy ?? this.groupBy,
   );
+
+  /// Whether these criteria find what [other] finds: they differ in the
+  /// grouping at most, which is re-derived from a result already in.
+  bool findsAs(SearchCriteria other) => copyWith(groupBy: other.groupBy) == other;
 
   /// The stored form, see the library comment: one AND over the kinds, a
   /// place and a label each an OR of the ones chosen.
@@ -146,6 +164,7 @@ class SearchCriteria {
     return SearchQuery(
       version: searchQueryVersion,
       root: SearchAnd(criteria: criteria),
+      groupBy: [...groupBy],
     );
   }
 
@@ -239,6 +258,7 @@ class SearchCriteria {
       media: media,
       text: text,
       camera: camera,
+      groupBy: [...query.groupBy],
     );
   }
 
@@ -299,7 +319,8 @@ class SearchCriteria {
       minRating == other.minRating &&
       media == other.media &&
       text == other.text &&
-      camera == other.camera;
+      camera == other.camera &&
+      _listEquals(groupBy, other.groupBy);
 
   @override
   int get hashCode => Object.hash(
@@ -312,6 +333,7 @@ class SearchCriteria {
     media,
     text,
     camera,
+    Object.hashAll(groupBy),
   );
 
   static bool _listEquals<T>(List<T> a, List<T> b) {

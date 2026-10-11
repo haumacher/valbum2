@@ -23,6 +23,11 @@
 /// at the pointer enters it, its bar replaces the view's bar and criteria
 /// while it is on, and its actions download the selection and add it to a
 /// collection.
+///
+/// "Group by" (issue #244) shows what was found under headings by album,
+/// year, month, place or camera, see `search_grouping.dart`: it travels in the
+/// query and is stored by "Save as view…", and a change of it alone groups the
+/// result already in anew, without asking the server again.
 library;
 
 import 'package:flutter/foundation.dart'
@@ -72,7 +77,10 @@ class SearchSession extends ChangeNotifier {
     if (criteria.isEmpty) {
       result = null;
     } else {
-      var search = client.search(scope, criteria.toQuery()).then((album) {
+      var query = criteria.toQuery();
+      var search = client.search(scope, query).then((album) {
+        // Grouped by what was asked for, whatever the server echoed.
+        album.query = query;
         AlbumInitializer().init(album);
         return album;
       });
@@ -84,10 +92,34 @@ class SearchSession extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Chooses [value] and searches for it.
+  /// Chooses [value] and searches for it; a change of the grouping alone
+  /// groups the result there is anew, see [regroup].
   void choose(SearchCriteria value, VAlbumClient client, List<String> scope) {
+    var found = result != null && criteria.findsAs(value);
     criteria = value;
-    run(client, scope);
+    if (found) {
+      regroup();
+    } else {
+      run(client, scope);
+    }
+  }
+
+  /// Groups the result there is by the grouping of [criteria] (issue #244):
+  /// the headings are derived in the app, the server is not asked again.
+  void regroup() {
+    var current = result;
+    if (current == null) {
+      return;
+    }
+    var groupBy = [...criteria.groupBy];
+    var regrouped = current.then((album) {
+      album.query = (album.query ?? criteria.toQuery())..groupBy = groupBy;
+      AlbumInitializer().init(album);
+      return album;
+    });
+    regrouped.ignore();
+    result = regrouped;
+    notifyListeners();
   }
 
   /// Starts editing the saved search [album] at [path] with what it stores.
@@ -367,6 +399,27 @@ class SearchViewState extends State<SearchView> {
                   onDeleted: () =>
                       _choose(criteria.copyWith(clearCamera: true)),
                 ),
+          criteria.groupBy.isEmpty
+              ? ActionChip(
+                  key: const Key("search-group-by"),
+                  avatar: const Icon(Icons.segment, size: 18),
+                  label: Text(l10n.groupByTitle),
+                  onPressed: chooseGrouping,
+                )
+              : InputChip(
+                  key: const Key("search-group-by"),
+                  avatar: const Icon(Icons.segment, size: 18),
+                  label: Text(
+                    l10n.searchGroupedBy(
+                      criteria.groupBy
+                          .map((key) => searchGroupName(l10n, key))
+                          .join(" › "),
+                    ),
+                  ),
+                  onPressed: chooseGrouping,
+                  onDeleted: () =>
+                      _choose(criteria.copyWith(groupBy: const [])),
+                ),
           DropdownButton<SearchMediaKind>(
             key: const Key("search-media"),
             value: criteria.media,
@@ -585,6 +638,20 @@ class SearchViewState extends State<SearchView> {
     );
   }
 
+  /// Asks what the photographs found are grouped by (issue #244), and groups
+  /// them so.
+  Future<void> chooseGrouping() async {
+    var picked = await showFormDialog<List<SearchGroup>>(
+      context: context,
+      builder: (context) =>
+          SearchGroupDialog(groupBy: session.criteria.groupBy),
+    );
+    if (picked == null || !mounted) {
+      return;
+    }
+    _choose(session.criteria.copyWith(groupBy: picked));
+  }
+
   /// Asks which of [choices] (by their value, shown by their name) are
   /// chosen, starting from [chosen]; `null` where the dialog was left.
   Future<List<T>?> _chooseMany<T>({
@@ -627,7 +694,9 @@ class SearchViewState extends State<SearchView> {
           album,
           widget.albumState.baseUrl,
           widget.albumState.pushPart,
-          key: ObjectKey(album),
+          // A new grouping is a new page: the layout, the scroll position
+          // and the select mode start afresh (issue #244).
+          key: ValueKey((album, album.query?.groupBy.join(","))),
           onSelectModeChanged: _selectModeChanged,
           downloadSelected: downloadFound,
           collectSelected: collectFound,
@@ -959,6 +1028,135 @@ class _ChooseManyDialogState<T> extends State<_ChooseManyDialog<T>> {
           key: const Key("search-choose-done"),
           onPressed: () => Navigator.of(context).pop(_chosen),
           child: Text(l10n.done),
+        ),
+      ],
+    );
+  }
+}
+
+/// The name of [key] in the search view (issue #244).
+String searchGroupName(AppLocalizations l10n, SearchGroup key) =>
+    switch (key) {
+      SearchGroup.album => l10n.searchGroupByAlbum,
+      SearchGroup.year => l10n.searchGroupByYear,
+      SearchGroup.month => l10n.searchGroupByMonth,
+      SearchGroup.country => l10n.groupByKeyCountry,
+      SearchGroup.region => l10n.groupByKeyRegion,
+      SearchGroup.town => l10n.groupByKeyTown,
+      SearchGroup.camera => l10n.searchCamera,
+    };
+
+/// The dialog of the search view's "Group by" (issue #244): what makes the
+/// sections and, optionally, the subsections — two dropdowns, which read at a
+/// phone's width where two lists of eight choices would not. The subsections
+/// are never by the key of the sections. Answers the keys chosen, empty for
+/// none.
+class SearchGroupDialog extends StatefulWidget {
+  /// The grouping there is.
+  final List<SearchGroup> groupBy;
+
+  const SearchGroupDialog({super.key, required this.groupBy});
+
+  @override
+  State<SearchGroupDialog> createState() => _SearchGroupDialogState();
+}
+
+class _SearchGroupDialogState extends State<SearchGroupDialog> {
+  late SearchGroup? first =
+      widget.groupBy.isEmpty ? null : widget.groupBy.first;
+
+  late SearchGroup? second =
+      widget.groupBy.length < 2 ? null : widget.groupBy[1];
+
+  List<SearchGroup> get chosen => [
+        if (first != null) first!,
+        if (first != null && second != null && second != first) second!,
+      ];
+
+  Widget keyChoice({
+    required String key,
+    required String label,
+    required SearchGroup? value,
+    required List<SearchGroup> offered,
+    required ValueChanged<SearchGroup?>? onChanged,
+  }) {
+    var l10n = AppLocalizations.of(context)!;
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: DropdownButtonFormField<SearchGroup?>(
+        // Rebuilt with what it offers: a value it no longer offers is gone.
+        key: ValueKey((key, offered.join(","))),
+        initialValue: value,
+        isExpanded: true,
+        decoration: InputDecoration(labelText: label),
+        items: [
+          DropdownMenuItem<SearchGroup?>(
+            key: Key("$key-none"),
+            value: null,
+            child: Text(l10n.groupByKeyNone),
+          ),
+          for (var choice in offered)
+            DropdownMenuItem<SearchGroup?>(
+              key: Key("$key-${choice.name}"),
+              value: choice,
+              child: Text(searchGroupName(l10n, choice)),
+            ),
+        ],
+        onChanged: onChanged,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
+    return FormDialogFrame(
+      key: const Key("search-group-by-dialog"),
+      title: Text(l10n.groupByTitle),
+      fields: [
+        KeyedSubtree(
+          key: const Key("search-group-first"),
+          child: keyChoice(
+            key: "search-group-first",
+            label: l10n.groupBySectionKey,
+            value: first,
+            offered: SearchGroup.values,
+            onChanged: (value) => setState(() {
+              first = value;
+              if (value == null || second == value) {
+                second = null;
+              }
+            }),
+          ),
+        ),
+        KeyedSubtree(
+          key: const Key("search-group-second"),
+          child: keyChoice(
+            key: "search-group-second",
+            label: l10n.groupBySubsectionKey,
+            value: first == null ? null : second,
+            offered: [
+              for (var choice in SearchGroup.values)
+                if (choice != first) choice,
+            ],
+            // Subsections need sections.
+            onChanged: first == null
+                ? null
+                : (value) => setState(() => second = value),
+          ),
+        ),
+      ],
+      actions: [
+        TextButton(
+          key: const Key("search-group-cancel"),
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(l10n.cancel),
+        ),
+        ElevatedButton.icon(
+          key: const Key("search-group-apply"),
+          icon: const Icon(Icons.check),
+          label: Text(l10n.apply),
+          onPressed: () => Navigator.of(context).pop(chosen),
         ),
       ],
     );

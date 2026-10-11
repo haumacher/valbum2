@@ -138,7 +138,8 @@ public final class PhotoSearch {
 	 * <p>
 	 * A query of a {@link SearchQuery#getVersion() version} beyond {@link #VERSION}, and one holding
 	 * a criterion this build does not know (read as <code>null</code>), is refused rather than
-	 * answered narrower or wider than its author meant.
+	 * answered narrower or wider than its author meant. The {@link SearchQuery#getGroupBy() grouping}
+	 * (issue #244) is no criterion: it is presentation, derived by the app, and never refused.
 	 * </p>
 	 */
 	public static String refusal(SearchQuery query) {

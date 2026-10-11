@@ -11538,10 +11538,22 @@ class SearchQuery extends _JsonObject {
 	///  </p>
 	SearchCriterion? root;
 
+	///  The keys the photographs found are grouped by, in order, see issue #244: the first makes the
+	///  headings, the second the subheadings; empty for the plain result by date.
+	/// 
+	///  <p>
+	///  Up to two are honoured, and the app offers at most two. Presentation alone: the server stores
+	///  it with the query of a saved search and evaluates nothing of it &mdash; the headings are
+	///  derived by the app on every open and never stored. Not a criterion, so a build that does not
+	///  know it answers the same photographs, by date, and {@link #version} stays.
+	///  </p>
+	List<SearchGroup> groupBy;
+
 	/// Creates a SearchQuery.
 	SearchQuery({
 			this.version = 0, 
 			this.root, 
+			this.groupBy = const [], 
 	});
 
 	/// Parses a SearchQuery from a string source.
@@ -11570,6 +11582,14 @@ class SearchQuery extends _JsonObject {
 				root = json.tryNull() ? null : SearchCriterion.read(json);
 				break;
 			}
+			case "groupBy": {
+				json.expectArray();
+				groupBy = [];
+				while (json.hasNext()) {
+					groupBy.add(readSearchGroup(json));
+				}
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -11586,8 +11606,61 @@ class SearchQuery extends _JsonObject {
 			json.addKey("root");
 			_root.writeTo(json);
 		}
+
+		json.addKey("groupBy");
+		json.startArray();
+		for (var _element in groupBy) {
+			writeSearchGroup(json, _element);
+		}
+		json.endArray();
 	}
 
+}
+
+///  A key the photographs found by a {@link SearchQuery} are grouped by, see issue #244.
+enum SearchGroup {
+	///  The album the photograph lies in, by its path.
+	album,
+	///  The year of the recording time, in the zone of the device showing it.
+	year,
+	///  The month of the recording time, in the zone of the device showing it.
+	month,
+	///  The country ({@link PlaceKind#COUNTRY}).
+	country,
+	///  The region, the first administrative level ({@link PlaceKind#ADM1}).
+	region,
+	///  The town ({@link PlaceKind#PLACE}).
+	town,
+	///  The camera ({@link ImagePart#camera}).
+	camera,
+}
+
+/// Writes a value of SearchGroup to a JSON stream.
+void writeSearchGroup(JsonSink json, SearchGroup value) {
+	switch (value) {
+		case SearchGroup.album: json.addString("ALBUM"); break;
+		case SearchGroup.year: json.addString("YEAR"); break;
+		case SearchGroup.month: json.addString("MONTH"); break;
+		case SearchGroup.country: json.addString("COUNTRY"); break;
+		case SearchGroup.region: json.addString("REGION"); break;
+		case SearchGroup.town: json.addString("TOWN"); break;
+		case SearchGroup.camera: json.addString("CAMERA"); break;
+		default: throw ("No such literal: " + value.name);
+	}
+}
+
+/// Reads a value of SearchGroup from a JSON stream.
+SearchGroup readSearchGroup(JsonReader json) {
+	switch (json.expectString()) {
+		case "ALBUM": return SearchGroup.album;
+		case "YEAR": return SearchGroup.year;
+		case "MONTH": return SearchGroup.month;
+		case "COUNTRY": return SearchGroup.country;
+		case "REGION": return SearchGroup.region;
+		case "TOWN": return SearchGroup.town;
+		case "CAMERA": return SearchGroup.camera;
+		default: return SearchGroup.album;
+	}
 }
 
 /// Visitor interface for SearchCriterion.

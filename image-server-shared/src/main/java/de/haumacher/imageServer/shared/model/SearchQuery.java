@@ -31,9 +31,14 @@ public class SearchQuery extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getRoot() */
 	private static final String ROOT__PROP = "root";
 
+	/** @see #getGroupBy() */
+	private static final String GROUP_BY__PROP = "groupBy";
+
 	private int _version = 0;
 
 	private de.haumacher.imageServer.shared.model.SearchCriterion _root = null;
+
+	private final java.util.List<de.haumacher.imageServer.shared.model.SearchGroup> _groupBy = new java.util.ArrayList<>();
 
 	/**
 	 * Creates a {@link SearchQuery} instance.
@@ -98,6 +103,56 @@ public class SearchQuery extends de.haumacher.msgbuf.data.AbstractDataObject {
 		return _root != null;
 	}
 
+	/**
+	 * The keys the photographs found are grouped by, in order, see issue #244: the first makes the
+	 * headings, the second the subheadings; empty for the plain result by date.
+	 *
+	 * <p>
+	 * Up to two are honoured, and the app offers at most two. Presentation alone: the server stores
+	 * it with the query of a saved search and evaluates nothing of it &mdash; the headings are
+	 * derived by the app on every open and never stored. Not a criterion, so a build that does not
+	 * know it answers the same photographs, by date, and {@link #getVersion()} stays.
+	 * </p>
+	 */
+	public final java.util.List<de.haumacher.imageServer.shared.model.SearchGroup> getGroupBy() {
+		return _groupBy;
+	}
+
+	/**
+	 * @see #getGroupBy()
+	 */
+	public de.haumacher.imageServer.shared.model.SearchQuery setGroupBy(java.util.List<? extends de.haumacher.imageServer.shared.model.SearchGroup> value) {
+		internalSetGroupBy(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getGroupBy()} without chain call utility. */
+	protected final void internalSetGroupBy(java.util.List<? extends de.haumacher.imageServer.shared.model.SearchGroup> value) {
+		if (value == null) throw new IllegalArgumentException("Property 'groupBy' cannot be null.");
+		_groupBy.clear();
+		_groupBy.addAll(value);
+	}
+
+	/**
+	 * Adds a value to the {@link #getGroupBy()} list.
+	 */
+	public de.haumacher.imageServer.shared.model.SearchQuery addGroupBy(de.haumacher.imageServer.shared.model.SearchGroup value) {
+		internalAddGroupBy(value);
+		return this;
+	}
+
+	/** Implementation of {@link #addGroupBy(de.haumacher.imageServer.shared.model.SearchGroup)} without chain call utility. */
+	protected final void internalAddGroupBy(de.haumacher.imageServer.shared.model.SearchGroup value) {
+		_groupBy.add(value);
+	}
+
+	/**
+	 * Removes a value from the {@link #getGroupBy()} list.
+	 */
+	public final void removeGroupBy(de.haumacher.imageServer.shared.model.SearchGroup value) {
+		_groupBy.remove(value);
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.SearchQuery readSearchQuery(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.SearchQuery result = new de.haumacher.imageServer.shared.model.SearchQuery();
@@ -119,6 +174,12 @@ public class SearchQuery extends de.haumacher.msgbuf.data.AbstractDataObject {
 			out.name(ROOT__PROP);
 			getRoot().writeTo(out);
 		}
+		out.name(GROUP_BY__PROP);
+		out.beginArray();
+		for (de.haumacher.imageServer.shared.model.SearchGroup x : getGroupBy()) {
+			x.writeTo(out);
+		}
+		out.endArray();
 	}
 
 	@Override
@@ -126,6 +187,14 @@ public class SearchQuery extends de.haumacher.msgbuf.data.AbstractDataObject {
 		switch (field) {
 			case VERSION__PROP: setVersion(in.nextInt()); break;
 			case ROOT__PROP: setRoot(de.haumacher.imageServer.shared.model.SearchCriterion.readSearchCriterion(in)); break;
+			case GROUP_BY__PROP: {
+				in.beginArray();
+				while (in.hasNext()) {
+					addGroupBy(de.haumacher.imageServer.shared.model.SearchGroup.readSearchGroup(in));
+				}
+				in.endArray();
+			}
+			break;
 			default: super.readField(in, field);
 		}
 	}

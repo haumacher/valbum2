@@ -4162,6 +4162,43 @@ message SearchQuery {
 	 * </p>
 	 */
 	SearchCriterion root;
+
+	/**
+	 * The keys the photographs found are grouped by, in order, see issue #244: the first makes the
+	 * headings, the second the subheadings; empty for the plain result by date.
+	 *
+	 * <p>
+	 * Up to two are honoured, and the app offers at most two. Presentation alone: the server stores
+	 * it with the query of a saved search and evaluates nothing of it &mdash; the headings are
+	 * derived by the app on every open and never stored. Not a criterion, so a build that does not
+	 * know it answers the same photographs, by date, and {@link #version} stays.
+	 * </p>
+	 */
+	repeated SearchGroup groupBy;
+}
+
+/** A key the photographs found by a {@link SearchQuery} are grouped by, see issue #244. */
+enum SearchGroup {
+	/** The album the photograph lies in, by its path. */
+	ALBUM;
+
+	/** The year of the recording time, in the zone of the device showing it. */
+	YEAR;
+
+	/** The month of the recording time, in the zone of the device showing it. */
+	MONTH;
+
+	/** The country ({@link PlaceKind#COUNTRY}). */
+	COUNTRY;
+
+	/** The region, the first administrative level ({@link PlaceKind#ADM1}). */
+	REGION;
+
+	/** The town ({@link PlaceKind#PLACE}). */
+	TOWN;
+
+	/** The camera ({@link ImagePart#camera}). */
+	CAMERA;
 }
 
 /**

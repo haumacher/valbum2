@@ -6044,6 +6044,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Hidden'**
   String get placeCaptionHidden;
+
+  /// Chip of the search view while the photos found are grouped (issue #244): the keys chosen, the first making the headings and the second the subheadings, joined by " › " ("Year › Country"). German: "Gruppieren nach: {keys}"
+  ///
+  /// In en, this message translates to:
+  /// **'Group by: {keys}'**
+  String searchGroupedBy(String keys);
+
+  /// Choice of the search view's "Group by" dialog (issue #244): one heading per album the photos found lie in. German: "Album"
+  ///
+  /// In en, this message translates to:
+  /// **'Album'**
+  String get searchGroupByAlbum;
+
+  /// Choice of the search view's "Group by" dialog (issue #244): one heading per year the photos found were taken in. German: "Jahr"
+  ///
+  /// In en, this message translates to:
+  /// **'Year'**
+  String get searchGroupByYear;
+
+  /// Choice of the search view's "Group by" dialog (issue #244): one heading per month the photos found were taken in. German: "Monat"
+  ///
+  /// In en, this message translates to:
+  /// **'Month'**
+  String get searchGroupByMonth;
+
+  /// The last heading of a search grouped by year or month (issue #244): the photos found that carry no recording time. German: "Ohne Datum"
+  ///
+  /// In en, this message translates to:
+  /// **'Without a date'**
+  String get searchWithoutDate;
+
+  /// The last heading of a search grouped by country, region or town (issue #244): the photos found that name no place of that kind. German: "Ohne Ort"
+  ///
+  /// In en, this message translates to:
+  /// **'Without a place'**
+  String get searchWithoutPlace;
+
+  /// The last heading of a search grouped by camera (issue #244): the photos found that name no camera. German: "Ohne Kamera"
+  ///
+  /// In en, this message translates to:
+  /// **'Without a camera'**
+  String get searchWithoutCamera;
 }
 
 class _AppLocalizationsDelegate
