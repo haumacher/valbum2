@@ -3,10 +3,14 @@
 ///
 /// A level on the folder it searches (`/<folder>/.search/`, see
 /// [SearchRoute]), reached from the search icon of a folder's app bar — the
-/// start page's searches the space — and offered to the members of the space
-/// alone. What was chosen and what was found live with the router
-/// ([SearchSession]), so a photograph opened from the results and closed again
-/// finds the search as it was left.
+/// start page's searches the space — or of an album's controls, which
+/// searches the folder the album lies in (issue #243), and offered to the
+/// members of the space alone. What was chosen and what was found live with
+/// the router ([SearchSession]), so a photograph opened from the results and
+/// closed again finds the search as it was left. The criteria travel in the
+/// location as well (`?q=`, issue #243), so that a reload or a bookmark shows
+/// the same search; a change of them replaces the location rather than adding
+/// a step to the history, see `VAlbumRouterDelegate.searchChanged`.
 ///
 /// The server answers the search as an album of [AlbumKind.search] whose
 /// photographs are named by their path below the folder, so the album grid
@@ -77,6 +81,48 @@ class SearchSession extends ChangeNotifier {
   /// The saved search being edited, as it was opened.
   AlbumInfo? editedAlbum;
 
+  /// The query of a location this screen cannot show (issue #243), as it was
+  /// written; `null` while the location said nothing of the kind.
+  ///
+  /// The view then says that the search cannot be edited here, as "Edit
+  /// search" does of such a saved search, and the location keeps it, so that
+  /// a reload says the same. The first criterion chosen replaces it.
+  String? unreadable;
+
+  /// The criteria as the location carries them, see [SearchRoute.query]:
+  /// the stored query as JSON, `null` while nothing is chosen.
+  String? get addressQuery =>
+      unreadable ?? (criteria.isEmpty ? null : criteria.toAddress());
+
+  /// Takes over the criteria a location carries ([SearchRoute.query]) and
+  /// searches for them: a reload, a bookmark, the browser's back and forward
+  /// buttons (issue #243).
+  ///
+  /// What the session holds already is kept as it is, its result too, and a
+  /// query this screen cannot show is kept as [unreadable].
+  void adopt(String query, VAlbumClient client, List<String> scope) {
+    if (query == addressQuery) {
+      return;
+    }
+    var read = SearchCriteria.fromAddress(query);
+    if (read == null) {
+      unreadable = query;
+      criteria = const SearchCriteria();
+      result = null;
+      notifyListeners();
+      return;
+    }
+    unreadable = null;
+    criteria = read;
+    adoptions++;
+    run(client, scope);
+  }
+
+  /// How often [adopt] took over criteria, so that the view puts their text
+  /// into its field — and only then: a text typed but not yet submitted is
+  /// kept while other criteria are chosen.
+  int adoptions = 0;
+
   /// Searches below [scope] for the current [criteria].
   void run(VAlbumClient client, List<String> scope) {
     if (criteria.isEmpty) {
@@ -101,6 +147,7 @@ class SearchSession extends ChangeNotifier {
   /// groups the result there is anew, see [regroup].
   void choose(SearchCriteria value, VAlbumClient client, List<String> scope) {
     var found = result != null && criteria.findsAs(value);
+    unreadable = null;
     criteria = value;
     if (found) {
       regroup();
@@ -131,6 +178,7 @@ class SearchSession extends ChangeNotifier {
   void edit(List<String> path, AlbumInfo album, SearchCriteria stored) {
     edited = path;
     editedAlbum = album;
+    unreadable = null;
     criteria = stored;
     result = null;
   }
@@ -139,6 +187,7 @@ class SearchSession extends ChangeNotifier {
   void endEdit() {
     edited = null;
     editedAlbum = null;
+    unreadable = null;
     criteria = const SearchCriteria();
     result = null;
   }
@@ -187,6 +236,7 @@ class SearchViewState extends State<SearchView> {
     // offer nothing, and the search itself still says why.
     _listened.options ??= client.searchOptions(path)..ignore();
     _text.text = _listened.criteria.text;
+    _adopted = _listened.adoptions;
     if (_listened.result == null && !_listened.criteria.isEmpty) {
       _listened.run(client, path);
     }
@@ -199,8 +249,15 @@ class SearchViewState extends State<SearchView> {
     super.dispose();
   }
 
+  /// The [SearchSession.adoptions] whose text the field shows.
+  int _adopted = 0;
+
   void _changed() {
     if (mounted) {
+      if (_adopted != session.adoptions) {
+        _adopted = session.adoptions;
+        _text.text = session.criteria.text;
+      }
       setState(() {
         if (_selecting && !identical(_selectedIn, session.result)) {
           _selecting = false;
@@ -219,7 +276,12 @@ class SearchViewState extends State<SearchView> {
     }
   }
 
-  void _choose(SearchCriteria value) => session.choose(value, client, path);
+  /// Chooses [value] and searches for it; the location follows, replacing
+  /// its entry of the history (issue #243).
+  void _choose(SearchCriteria value) {
+    session.choose(value, client, path);
+    widget.albumState.navigator.delegate.searchChanged(context);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -847,6 +909,13 @@ class SearchViewState extends State<SearchView> {
     var l10n = _l10n;
     var result = session.result;
     if (result == null) {
+      // A location naming what this screen cannot show (issue #243).
+      if (session.unreadable != null) {
+        return _sentence(
+          l10n.searchCannotEdit,
+          const Key("search-cannot-edit"),
+        );
+      }
       return _sentence(l10n.searchChooseHint, const Key("search-hint"));
     }
     return FutureBuilder<AlbumInfo>(

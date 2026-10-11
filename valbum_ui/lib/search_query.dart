@@ -26,6 +26,8 @@
 /// headings the result is shown with, never what is found.
 library;
 
+import 'package:jsontool/jsontool.dart';
+
 import 'resource.dart';
 
 /// The version of the stored query this app writes, see
@@ -443,6 +445,22 @@ class SearchCriteria {
     );
   }
 
+  /// The stored form ([toQuery]) as the location of the search view carries
+  /// it (issue #243): the JSON a saved search stores, which [fromAddress]
+  /// reads back to these criteria.
+  String toAddress() => queryText(toQuery());
+
+  /// The criteria the location of the search view carries ([toAddress]),
+  /// `null` where it is no query or says something this screen cannot show,
+  /// see [fromQuery].
+  static SearchCriteria? fromAddress(String text) {
+    try {
+      return fromQuery(SearchQuery.fromString(text));
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// The title a saved search is offered under: what was looked for, in a
   /// few words ("Anne & Philipp, 2020–2026", "Anne, not Philipp", "Rome or
   /// Florence, not 2019"), what is excluded last; [fallback] where nothing
@@ -565,3 +583,11 @@ bool isSearch(AlbumInfo album) => album.kind == AlbumKind.search;
 /// below: the folder it lies in, see issue #227.
 List<String> searchScopeOf(List<String> path) =>
     path.isEmpty ? path : path.sublist(0, path.length - 1);
+
+/// The JSON of [query] as a saved search stores it and the server is asked
+/// it: its properties, without the type in front.
+String queryText(SearchQuery query) {
+  var buffer = StringBuffer();
+  query.writeContent(jsonStringWriter(buffer));
+  return buffer.toString();
+}

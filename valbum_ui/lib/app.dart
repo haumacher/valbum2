@@ -1754,7 +1754,9 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
     List<NavigatorObserver> observers = const [],
   })  : _client = client,
         _route = initialRoute,
-        _observers = observers;
+        _observers = observers {
+    _route = _arrive(initialRoute);
+  }
 
   /// Watchers of the [Navigator] beside [_imperative], see
   /// [VAlbumApp.navigatorObservers].
@@ -1784,15 +1786,61 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
   /// The view currently shown.
   VAlbumRoute get route => _route;
 
+  /// The view shown, the criteria of the search view included: the location
+  /// of a [SearchRoute] carries what is chosen there (issue #243), so that a
+  /// reload or a bookmark shows the same search, see [searchChanged].
   @override
-  VAlbumRoute get currentConfiguration => _route;
+  VAlbumRoute get currentConfiguration {
+    var route = _route;
+    if (route is SearchRoute) {
+      return SearchRoute(
+        route.albumPath,
+        query: _searchSessions[_pathKey(route.albumPath)]?.addressQuery,
+      );
+    }
+    return route;
+  }
+
+  /// The route kept for [target]: the criteria a [SearchRoute] carries are
+  /// handed to the search of its folder ([SearchSession.adopt]), which runs
+  /// it at once, and the route is kept without them — the session holds
+  /// them from then on, and [currentConfiguration] writes them back.
+  VAlbumRoute _arrive(VAlbumRoute target) {
+    if (target is SearchRoute) {
+      var query = target.query;
+      if (query == null) {
+        return target;
+      }
+      var path = target.albumPath;
+      searchSession(path).adopt(query, _client, path);
+      return SearchRoute(path);
+    }
+    return target;
+  }
+
+  /// The criteria of the search view shown changed: the location follows
+  /// them, replacing its entry of the history rather than adding one, so
+  /// that the browser's back button leaves the search instead of stepping
+  /// through every criterion chosen (issue #243).
+  ///
+  /// [context] lies below the app's [Router].
+  void searchChanged(BuildContext context) {
+    if (_route is! SearchRoute) {
+      return;
+    }
+    if (Router.maybeOf(context) == null) {
+      notifyListeners();
+      return;
+    }
+    Router.neglect(context, notifyListeners);
+  }
 
   @override
   Future<void> setNewRoutePath(VAlbumRoute configuration) {
     var may = _mayLeaveFor(configuration);
     if (may is bool) {
       if (may) {
-        _route = configuration;
+        _route = _arrive(configuration);
       } else {
         // The location has moved on already (a deep link, the browser's
         // history): saying "stay" must put it back where the view is.
@@ -1805,7 +1853,7 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
     // and the location follows it then.
     may.then((leaving) {
       if (leaving) {
-        _route = configuration;
+        _route = _arrive(configuration);
       }
       notifyListeners();
     });
@@ -1839,7 +1887,7 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
     if (target == _route) {
       return;
     }
-    _route = target;
+    _route = _arrive(target);
     notifyListeners();
   }
 

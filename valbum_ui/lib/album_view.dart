@@ -2237,7 +2237,31 @@ class AlbumContentState extends State<AlbumContent>
   /// listing below the root offers the home from there.
   List<Widget> navigationActions(BuildContext context) => [
         ...wayUp(),
+        ...searchAction(),
         ...albumMenu(context),
+      ];
+
+  /// Whether the search of the folder this album lies in is offered (issue
+  /// #243): under the rule of a folder's app bar — to a member of the space
+  /// or an editor, never inside a link — and not on a saved search, which is
+  /// a search of its own, nor on the results of the search view.
+  bool get maySearch =>
+      share == null &&
+      !isSearchView &&
+      !isSearch(widget.album) &&
+      (_permission.named || rights.mayEdit);
+
+  /// The search of the folder this album lies in, so that it looks across
+  /// the album's siblings, see [maySearch].
+  List<Widget> searchAction() => [
+        if (maySearch)
+          IconButton(
+            key: const Key("open-search"),
+            icon: const Icon(Icons.search),
+            tooltip: _l10n.searchAction,
+            onPressed: () => widget.albumState.navigator
+                .go(SearchRoute(searchScopeOf(widget.albumState.path))),
+          ),
       ];
 
   /// The way out of the album, nothing at the root.
@@ -2869,7 +2893,7 @@ class AlbumContentState extends State<AlbumContent>
             Positioned(
               top: insets.top + floatingMargin,
               right: insets.right + floatingMargin,
-              child: floating(albumMenu(context)),
+              child: floating([...searchAction(), ...albumMenu(context)]),
             ),
         ],
       ),

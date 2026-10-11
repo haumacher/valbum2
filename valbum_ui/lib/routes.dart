@@ -18,6 +18,7 @@
 /// | `/2005-08-24 Blumen/IMG_0417.JPG/alternatives/` | [AlternativesRoute]                    |
 /// | `/2005-08-24 Blumen/IMG_0417.JPG/alternatives/IMG_0418.JPG` | [MemberRoute]          |
 /// | `/.duplicates/`                              | [DuplicatesRoute]                         |
+/// | `/2005-08-24 Blumen/.search/?q=…`            | [SearchRoute], the criteria in `q`        |
 /// | `/.duplicates/2005-08-24 Blumen/IMG_0417.JPG` | [ImageRoute] seen from the overview     |
 /// | `/.duplicates/2005-08-24 Blumen/IMG_0417.JPG/alternatives/` | [AlternativesRoute] seen from the overview |
 /// | `/.duplicates/2005-08-24 Blumen/IMG_0417.JPG/alternatives/IMG_0418.JPG` | [MemberRoute] seen from the overview |
@@ -79,6 +80,10 @@ const String duplicatesSegment = ".duplicates";
 /// issue #227 and [SearchRoute]. No folder of a library carries a leading dot,
 /// so it shadows nothing.
 const String searchSegment = ".search";
+
+/// The parameter of the location carrying the criteria of the search view,
+/// see [SearchRoute.query] (issue #243).
+const String searchQueryParameter = "q";
 
 /// One addressable view of the app.
 ///
@@ -466,19 +471,29 @@ class DuplicatesRoute extends VAlbumRoute {
 /// folder and everything below it that match the criteria chosen there.
 ///
 /// A level on the folder's own listing or album, like the trash is on an
-/// album: the folder stays mounted beneath it. The criteria live with the
-/// router, not in the location — a search that is to be kept is saved as a
-/// view ("Save as view…") — so a reload of `/<folder>/.search/` shows the
-/// search view without criteria. A photograph opened from it is an
-/// [ImageRoute] with [ImageRoute.fromSearch], addressed
+/// album: the folder stays mounted beneath it. A photograph opened from it is
+/// an [ImageRoute] with [ImageRoute.fromSearch], addressed
 /// `/<folder>/.search/<path below the folder>`, which pages through the
 /// results and returns here.
+///
+/// The criteria chosen travel in the location as its [searchQueryParameter]
+/// (issue #243), `/<folder>/.search/?q=<query>`: the stored query of a saved
+/// search (`SearchQuery` as JSON), so that a reload or a bookmark shows the
+/// same search. Without it the view shows what the router holds for the
+/// folder — nothing after a reload. The router keeps the route it shows
+/// without the [query] and writes the criteria it holds into the location,
+/// see `VAlbumRouterDelegate.currentConfiguration`.
 class SearchRoute extends VAlbumRoute {
   /// The folder searched below; empty for the whole space.
   @override
   final List<String> albumPath;
 
-  const SearchRoute(this.albumPath);
+  /// The query of the location as it was written, `null` for none: the JSON
+  /// of a `SearchQuery`, read by the search view — which says so where it
+  /// cannot show what this says.
+  final String? query;
+
+  const SearchRoute(this.albumPath, {this.query});
 
   @override
   VAlbumRoute? get up => ListingOrAlbumRoute(albumPath);
@@ -487,14 +502,18 @@ class SearchRoute extends VAlbumRoute {
   List<String> get segments => [...albumPath, searchSegment, ""];
 
   @override
-  VAlbumRoute withAlbumPath(List<String> path) => SearchRoute(path);
+  VAlbumRoute withAlbumPath(List<String> path) =>
+      SearchRoute(path, query: query);
 
   @override
   bool operator ==(Object other) =>
-      other is SearchRoute && listEquals(albumPath, other.albumPath);
+      other is SearchRoute &&
+      query == other.query &&
+      listEquals(albumPath, other.albumPath);
 
   @override
-  int get hashCode => Object.hash(searchSegment, Object.hashAll(albumPath));
+  int get hashCode =>
+      Object.hash(searchSegment, Object.hashAll(albumPath), query);
 
   @override
   String toString() => "SearchRoute($path)";
@@ -569,7 +588,10 @@ VAlbumRoute parseRoute(Uri uri, {String basePath = "/"}) {
   if (folder) {
     // `/<folder>/.search/`, the search view of issue #227.
     if (segments.isNotEmpty && segments.last == searchSegment) {
-      return SearchRoute(segments.sublist(0, segments.length - 1));
+      return SearchRoute(
+        segments.sublist(0, segments.length - 1),
+        query: uri.queryParameters[searchQueryParameter],
+      );
     }
     // `/.duplicates/`, at the root only.
     if (segments.length == 1 && segments.single == duplicatesSegment) {
@@ -612,9 +634,15 @@ VAlbumRoute parseRoute(Uri uri, {String basePath = "/"}) {
 }
 
 /// The location the given route is shown at, below [basePath].
+///
+/// The criteria of a [SearchRoute] are its query, see [SearchRoute.query].
 Uri routeToUri(VAlbumRoute route, {String basePath = "/"}) {
   var segments = [..._baseSegments(basePath), ...route.segments];
-  return Uri.parse("/${Uri(pathSegments: segments).path}");
+  var uri = Uri.parse("/${Uri(pathSegments: segments).path}");
+  var query = route is SearchRoute ? route.query : null;
+  return query == null
+      ? uri
+      : uri.replace(queryParameters: {searchQueryParameter: query});
 }
 
 /// The non-empty segments of the app base, e.g. `[valbum]` for `/valbum/`.
