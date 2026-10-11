@@ -225,6 +225,20 @@ Never trust a green result from a tree with uncommitted foreign edits; check `gi
 - The agents don't commit; you do, after review. Regenerated `resource.dart` and Java model files
   ride the same commit as the `model.proto` change that produced them.
 
+## 6a. Releasing
+
+When `gh issue list` holds nothing actionable and CI is green on the master commit, release
+without asking (the standing directive): follow RELEASE.md "Cutting a release" — the roadmap's
+decisions-log record of the release first, the annotated tag `valbum-<x.y.z>` on that commit, the
+"Open <next>" pom bump right after the tag push, then watch the Release run and verify the five
+assets. **Then write the release notes**: the workflow's generated body is only the changelog
+link, and a release without notes is not finished. Notes are for the ordinary user and name the
+major features first — `**New in <version>**` or `**Fixes in <version>**`, one bullet per theme,
+no hashes or issue numbers, upgrade hints on a line of their own, the `**Full Changelog**` link
+kept last — drawn from the roadmap record, and applied with
+`gh release edit valbum-<version> --notes-file <file>` (the full rule is in RELEASE.md). A patch
+release for a fresh bug gets `**Fixes in …**` notes the same way.
+
 ## 7. The run loop
 
 Two things to run, always in this order:

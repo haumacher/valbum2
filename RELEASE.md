@@ -221,7 +221,15 @@ before the first release; the secret and the environment were checked by then.
 5. **Check the result.**
    - The release page <https://github.com/haumacher/valbum2/releases> shows `VAlbum 1.1.0`
      with `valbum_1.1.0_arm64.deb`, `_amd64.deb`, `_armhf.deb`, `valbum-1.1.0.apk` and
-     `SHA256SUMS`. Edit the generated notes if they need a human sentence.
+     `SHA256SUMS`.
+   - **Write the release notes.** The workflow only puts the changelog link there. Replace the
+     body with notes for an ordinary user, the major features first, in the style of the earlier
+     releases: a bold `**New in <version>**` (or `**Fixes in <version>**` for a patch release),
+     one bullet per theme with its features in a sentence or two, no commit hashes and no issue
+     numbers, anything an upgrade needs (a new environment variable, a package growing, a new app
+     id) in a line of its own, and the `**Full Changelog**` link kept as the last line. The
+     roadmap's decisions-log entry of the release is the source; write it before the tag where
+     possible. Apply with `gh release edit valbum-<version> --notes-file <file>`.
    - <https://haumacher.github.io/valbum2/> lists the new version, and on a machine with the
      repository configured `sudo apt update && apt policy valbum` offers it.
    - The container image carries both architectures under the same digest on both registries:
