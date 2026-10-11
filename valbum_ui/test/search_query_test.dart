@@ -67,8 +67,8 @@ void main() {
 
     test('the grouping travels in the query, and is no criterion (#244)', () {
       var chosen = const SearchCriteria(
-        persons: const ["anne"],
-        groupBy: const [SearchGroup.year, SearchGroup.country],
+        persons: ["anne"],
+        groupBy: [SearchGroup.year, SearchGroup.country],
       );
       var query = chosen.toQuery();
       expect(query.groupBy, [SearchGroup.year, SearchGroup.country]);
