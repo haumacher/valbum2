@@ -165,6 +165,7 @@ public final class Labels {
 			.setTitle(album.getTitle())
 			.setSubTitle(album.getSubTitle())
 			.setStarred(album.isStarred())
+			.setPlaceCaption(album.getPlaceCaption())
 			.setDate(album.getDate())
 			.setEffectiveDate(album.getEffectiveDate())
 			.setFacesPending(album.isFacesPending());

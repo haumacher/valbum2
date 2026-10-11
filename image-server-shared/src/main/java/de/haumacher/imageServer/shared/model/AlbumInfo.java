@@ -42,6 +42,9 @@ public class AlbumInfo extends FolderResource {
 	/** @see #getQuery() */
 	private static final String QUERY__PROP = "query";
 
+	/** @see #getPlaceCaption() */
+	private static final String PLACE_CAPTION__PROP = "placeCaption";
+
 	/** @see #getParts() */
 	private static final String PARTS__PROP = "parts";
 
@@ -62,6 +65,8 @@ public class AlbumInfo extends FolderResource {
 	private boolean _starred = false;
 
 	private de.haumacher.imageServer.shared.model.SearchQuery _query = null;
+
+	private de.haumacher.imageServer.shared.model.PlaceCaption _placeCaption = de.haumacher.imageServer.shared.model.PlaceCaption.UNSET;
 
 	private final java.util.List<de.haumacher.imageServer.shared.model.AlbumPart> _parts = new java.util.ArrayList<>();
 
@@ -337,6 +342,36 @@ public class AlbumInfo extends FolderResource {
 	}
 
 	/**
+	 * Whether the photographs of this album show the place they were taken in as their caption
+	 * where they have no description.
+	 *
+	 * <p>
+	 * {@link PlaceCaption#UNSET} means <b>shown</b>: an album written before the field shows the
+	 * places, and an album where they are unwanted says {@link PlaceCaption#HIDDEN} once. A
+	 * photograph may say otherwise for itself, see {@link ImagePart#getPlaceCaption()}. Stored in the
+	 * album's <code>index.json</code> and written by the ordinary sidecar <code>PUT</code>, like
+	 * its {@link #getTitle()}; a collection and a saved search carry it as their own statement.
+	 * </p>
+	 */
+	public final de.haumacher.imageServer.shared.model.PlaceCaption getPlaceCaption() {
+		return _placeCaption;
+	}
+
+	/**
+	 * @see #getPlaceCaption()
+	 */
+	public de.haumacher.imageServer.shared.model.AlbumInfo setPlaceCaption(de.haumacher.imageServer.shared.model.PlaceCaption value) {
+		internalSetPlaceCaption(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getPlaceCaption()} without chain call utility. */
+	protected final void internalSetPlaceCaption(de.haumacher.imageServer.shared.model.PlaceCaption value) {
+		if (value == null) throw new IllegalArgumentException("Property 'placeCaption' cannot be null.");
+		_placeCaption = value;
+	}
+
+	/**
 	 * The list of images in this album.
 	 */
 	public final java.util.List<de.haumacher.imageServer.shared.model.AlbumPart> getParts() {
@@ -500,6 +535,8 @@ public class AlbumInfo extends FolderResource {
 			out.name(QUERY__PROP);
 			getQuery().writeTo(out);
 		}
+		out.name(PLACE_CAPTION__PROP);
+		getPlaceCaption().writeTo(out);
 		out.name(PARTS__PROP);
 		out.beginArray();
 		for (de.haumacher.imageServer.shared.model.AlbumPart x : getParts()) {
@@ -520,6 +557,7 @@ public class AlbumInfo extends FolderResource {
 			case INDEX_PICTURE__PROP: setIndexPicture(de.haumacher.imageServer.shared.model.ThumbnailInfo.readThumbnailInfo(in)); break;
 			case STARRED__PROP: setStarred(in.nextBoolean()); break;
 			case QUERY__PROP: setQuery(de.haumacher.imageServer.shared.model.SearchQuery.readSearchQuery(in)); break;
+			case PLACE_CAPTION__PROP: setPlaceCaption(de.haumacher.imageServer.shared.model.PlaceCaption.readPlaceCaption(in)); break;
 			case PARTS__PROP: {
 				in.beginArray();
 				while (in.hasNext()) {

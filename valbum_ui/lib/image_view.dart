@@ -544,32 +544,37 @@ class ImageViewState extends State<ImageView>
       );
       return;
     }
-    await _askForDescription(self, part, part.comment);
+    await _askForDescription(
+      self,
+      part,
+      ImagePropertiesResult(part.comment, part.placeCaption),
+    );
   }
 
-  /// Asks for the description of [image], starting from [initial], and applies
-  /// what comes back.
+  /// Asks for the description of [image] and whether its place stands in for
+  /// a missing one, starting from [initial], and applies what comes back.
   ///
-  /// A refused write comes back here with the text that was typed: the server
+  /// A refused write comes back here with what was entered: the server
   /// said why, and what was written must not be lost to a failed request.
   Future<void> _askForDescription(
     AlbumInfo owner,
     ImagePart image,
-    String initial,
+    ImagePropertiesResult initial,
   ) async {
     // The one image properties dialog, which the album's tile editor opens as
     // well: what it shows of an image is composed in one place, see issue
     // #122 and `image_properties.dart`.
-    var text = await showImageProperties(
+    var answer = await showImageProperties(
       context,
       image,
-      initialDescription: initial,
+      initialDescription: initial.description,
+      initialPlaceCaption: initial.placeCaption,
     );
-    if (text == null || !mounted || text == image.comment) {
+    if (answer == null || !mounted || !answer.changes(image)) {
       return;
     }
-    var before = image.comment;
-    setState(() => image.comment = text);
+    var before = ImagePropertiesResult(image.comment, image.placeCaption);
+    setState(() => answer.applyTo(image));
     if (inEditSession) {
       // The album is being edited: this belongs in the same buffer as every
       // other edit, and is written when the album is saved.
@@ -582,7 +587,7 @@ class ImageViewState extends State<ImageView>
       return;
     }
     if (refuseWhileOffline(context)) {
-      setState(() => image.comment = before);
+      setState(() => before.applyTo(image));
       return;
     }
     var messenger = ScaffoldMessenger.of(context);
@@ -596,7 +601,7 @@ class ImageViewState extends State<ImageView>
       }
       // Nothing was stored, so nothing has changed: the caption says what the
       // server holds, not what was attempted.
-      setState(() => image.comment = before);
+      setState(() => before.applyTo(image));
       messenger.showSnackBar(
         SnackBar(
           content: Text(
@@ -609,7 +614,7 @@ class ImageViewState extends State<ImageView>
       );
       // The text is not thrown away with the request: the dialog comes back
       // holding it, so that a retry costs no typing.
-      await _askForDescription(owner, image, text);
+      await _askForDescription(owner, image, answer);
     }
   }
 
@@ -2359,6 +2364,9 @@ class ImageViewState extends State<ImageView>
     var l10n = AppLocalizations.of(context)!;
     var self = part;
     var attribution = attributionOf(context, self);
+    // The description, or the place where there is none, by the one rule the
+    // album's tiles follow as well.
+    var caption = captionOf(self, album);
     // The controls stay clear of the system bars (issue #60): the viewer runs
     // immersive, but a bar shown by a swipe from the edge must never sit on a
     // button — in landscape the navigation bar is exactly where the chevrons
@@ -2574,12 +2582,12 @@ class ImageViewState extends State<ImageView>
             ),
           ),
         )
-      else if (self.comment.isNotEmpty || attribution != null)
+      else if (caption != null || attribution != null)
         Positioned(
           left: 0,
           right: 0,
           bottom: 0,
-          child: buildCaption(self.comment, attribution, insets),
+          child: buildCaption(caption, attribution, insets),
         ),
     ];
   }
@@ -2594,14 +2602,14 @@ class ImageViewState extends State<ImageView>
       imageOverlayButton(icon, tooltip, onPressed, key: key, color: color);
 
   /// What is written under the image: who added it, and what was said about
-  /// it.
+  /// it — or, where nothing was, where it was taken, see [captionOf].
   ///
   /// One block, not two: the attribution and the comment read as one caption,
   /// in one style, with the attribution first — it says where the picture
   /// comes from, the comment says what it shows. An image with neither carries
   /// no caption at all, exactly as before issue #53.
   Widget buildCaption(
-    String comment,
+    ImageCaption? caption,
     String? attribution,
     EdgeInsets insets,
   ) =>
@@ -2629,10 +2637,45 @@ class ImageViewState extends State<ImageView>
                   textAlign: TextAlign.center,
                 ),
               ),
-            if (comment.isNotEmpty) buildComment(comment),
+            if (caption != null)
+              caption.isPlace
+                  ? buildPlaceCaption(caption.text)
+                  : buildComment(caption.text),
           ],
         ),
       );
+
+  /// The place the image was taken in, standing in for a missing description,
+  /// with the map marker opening it on the space's map.
+  Widget buildPlaceCaption(String place) {
+    var location = part.location!;
+    var mapUrl = CallerInfo.mapUrlOf(context);
+    return Text.rich(
+      key: const Key("image-place-caption"),
+      TextSpan(
+        children: [
+          TextSpan(text: place),
+          const TextSpan(text: " "),
+          WidgetSpan(
+            alignment: PlaceholderAlignment.middle,
+            child: IconButton(
+              key: const Key("image-place-caption-map"),
+              icon: const Icon(mapMarkerIcon),
+              iconSize: 18,
+              color: Colors.white,
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              tooltip: AppLocalizations.of(context)!.showOnMap,
+              onPressed: () => openMap(mapUrl, location),
+            ),
+          ),
+        ],
+      ),
+      style: const TextStyle(color: Colors.white),
+      textAlign: TextAlign.center,
+    );
+  }
 
   /// The comment of the image, one [Text] per paragraph.
   Widget buildComment(String comment) => Column(

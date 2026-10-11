@@ -385,6 +385,50 @@ AlbumKind readAlbumKind(JsonReader json) {
 	}
 }
 
+///  Whether a photograph without a description shows the place it was taken in as its caption, see
+///  {@link AlbumInfo#placeCaption} and {@link ImagePart#placeCaption}.
+/// 
+///  <p>
+///  The caption of a photograph is its {@link ImagePart#comment description} where it has one;
+///  where it has none and its place is shown, the names of its {@link ImagePart#places places}
+///  stand there instead, with a link to the map. The album says it for all its photographs, a
+///  photograph may say otherwise for itself.
+///  </p>
+enum PlaceCaption {
+	///  Nothing said: a photograph follows its album, and an album shows the places.
+	/// 
+	///  <p>
+	///  The first constant and therefore what a sidecar written before the field reads as. Not
+	///  named <code>DEFAULT</code>: that is a reserved word of Dart, which the app's model is
+	///  generated in.
+	///  </p>
+	unset,
+	///  The place is shown where there is no description.
+	shown,
+	///  The place is never shown as caption.
+	hidden,
+}
+
+/// Writes a value of PlaceCaption to a JSON stream.
+void writePlaceCaption(JsonSink json, PlaceCaption value) {
+	switch (value) {
+		case PlaceCaption.unset: json.addString("UNSET"); break;
+		case PlaceCaption.shown: json.addString("SHOWN"); break;
+		case PlaceCaption.hidden: json.addString("HIDDEN"); break;
+		default: throw ("No such literal: " + value.name);
+	}
+}
+
+/// Reads a value of PlaceCaption from a JSON stream.
+PlaceCaption readPlaceCaption(JsonReader json) {
+	switch (json.expectString()) {
+		case "UNSET": return PlaceCaption.unset;
+		case "SHOWN": return PlaceCaption.shown;
+		case "HIDDEN": return PlaceCaption.hidden;
+		default: return PlaceCaption.unset;
+	}
+}
+
 ///  {@link Resource} describing a collection of {@link AlbumPart}s.
 class AlbumInfo extends FolderResource {
 	///  Whether this is an ordinary album or the inbox of its space, see issues #131 and #226.
@@ -472,6 +516,18 @@ class AlbumInfo extends FolderResource {
 	///  </p>
 	SearchQuery? query;
 
+	///  Whether the photographs of this album show the place they were taken in as their caption
+	///  where they have no description.
+	/// 
+	///  <p>
+	///  {@link PlaceCaption#UNSET} means <b>shown</b>: an album written before the field shows the
+	///  places, and an album where they are unwanted says {@link PlaceCaption#HIDDEN} once. A
+	///  photograph may say otherwise for itself, see {@link ImagePart#placeCaption}. Stored in the
+	///  album's <code>index.json</code> and written by the ordinary sidecar <code>PUT</code>, like
+	///  its {@link #title}; a collection and a saved search carry it as their own statement.
+	///  </p>
+	PlaceCaption placeCaption;
+
 	///  The list of images in this album.
 	List<AlbumPart> parts;
 
@@ -496,6 +552,7 @@ class AlbumInfo extends FolderResource {
 			this.indexPicture, 
 			this.starred = false, 
 			this.query, 
+			this.placeCaption = PlaceCaption.unset, 
 			this.parts = const [], 
 			this.imageByName = const {}, 
 			this.minRating = 0, 
@@ -555,6 +612,10 @@ class AlbumInfo extends FolderResource {
 				query = json.tryNull() ? null : SearchQuery.read(json);
 				break;
 			}
+			case "placeCaption": {
+				placeCaption = readPlaceCaption(json);
+				break;
+			}
 			case "parts": {
 				json.expectArray();
 				parts = [];
@@ -608,6 +669,9 @@ class AlbumInfo extends FolderResource {
 			json.addKey("query");
 			_query.writeContent(json);
 		}
+
+		json.addKey("placeCaption");
+		writePlaceCaption(json, placeCaption);
 
 		json.addKey("parts");
 		json.startArray();
@@ -1382,6 +1446,17 @@ class ImagePart extends AbstractImage {
 	///  </p>
 	PlaceInfo? places;
 
+	///  Whether this photograph shows its {@link #places place} as its caption where it has no
+	///  {@link #comment description}.
+	/// 
+	///  <p>
+	///  {@link PlaceCaption#UNSET} means as its album says, see {@link AlbumInfo#placeCaption};
+	///  {@link PlaceCaption#SHOWN} and {@link PlaceCaption#HIDDEN} are the photograph's own word,
+	///  whatever the album says. Stored in the sidecar of the album the photograph lies in, and
+	///  written like its description, also through a collection or a saved search.
+	///  </p>
+	PlaceCaption placeCaption;
+
 	/// Creates a ImagePart.
 	ImagePart({
 			super.previous, 
@@ -1411,6 +1486,7 @@ class ImagePart extends AbstractImage {
 			this.ref, 
 			this.missing = false, 
 			this.places, 
+			this.placeCaption = PlaceCaption.unset, 
 	});
 
 	/// Parses a ImagePart from a string source.
@@ -1542,6 +1618,10 @@ class ImagePart extends AbstractImage {
 				places = json.tryNull() ? null : PlaceInfo.read(json);
 				break;
 			}
+			case "placeCaption": {
+				placeCaption = readPlaceCaption(json);
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -1636,6 +1716,9 @@ class ImagePart extends AbstractImage {
 			json.addKey("places");
 			_places.writeContent(json);
 		}
+
+		json.addKey("placeCaption");
+		writePlaceCaption(json, placeCaption);
 	}
 
 	@override

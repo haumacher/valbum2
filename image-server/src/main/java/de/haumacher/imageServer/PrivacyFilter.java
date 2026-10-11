@@ -138,6 +138,7 @@ public class PrivacyFilter {
 			.setSubTitle(album.getSubTitle())
 			// Nor whether it stands out in its folder, see issue #239.
 			.setStarred(album.isStarred())
+			.setPlaceCaption(album.getPlaceCaption())
 			// Hiding an image does not change when the album happened.
 			.setDate(album.getDate())
 			.setEffectiveDate(album.getEffectiveDate());

@@ -6352,5 +6352,30 @@
       }
     },
     "x-translated": "4bc00fc4"
+  },
+  "displayLocations": "Display locations",
+  "@displayLocations": {
+    "description": "Switch in the album properties: whether the photos of the album show the place they were taken in as their caption where they have no description. German: \"Orte anzeigen\"",
+    "x-translated": "e2b6413f"
+  },
+  "displayLocation": "Display location",
+  "@displayLocation": {
+    "description": "Label of the choice in the image properties: whether this photo shows the place it was taken in as its caption where it has no description. German: \"Ort anzeigen\"",
+    "x-translated": "1515b9c"
+  },
+  "placeCaptionAsAlbum": "As in the album",
+  "@placeCaptionAsAlbum": {
+    "description": "Option of the \"Display location\" choice in the image properties: the photo follows the album's \"Display locations\" switch. German: \"Wie im Album\"",
+    "x-translated": "f67e4093"
+  },
+  "placeCaptionShown": "Shown",
+  "@placeCaptionShown": {
+    "description": "Option of the \"Display location\" choice in the image properties: the place is shown as caption whatever the album says. German: \"Anzeigen\"",
+    "x-translated": "cefcb299"
+  },
+  "placeCaptionHidden": "Hidden",
+  "@placeCaptionHidden": {
+    "description": "Option of the \"Display location\" choice in the image properties: the place is never shown as caption. German: \"Ausblenden\"",
+    "x-translated": "8ff1ec8b"
   }
 }

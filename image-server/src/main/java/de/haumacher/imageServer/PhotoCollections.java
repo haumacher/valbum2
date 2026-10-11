@@ -252,6 +252,7 @@ public final class PhotoCollections {
 			.setSubTitle(collection.getSubTitle())
 			// A star is the collection's own statement, see issue #239.
 			.setStarred(collection.isStarred())
+			.setPlaceCaption(collection.getPlaceCaption())
 			.setDate(collection.getDate())
 			.setEffectiveDate(collection.getEffectiveDate());
 		Map<File, Map<String, String>> sidecars = new HashMap<>();

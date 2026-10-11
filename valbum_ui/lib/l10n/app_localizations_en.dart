@@ -3828,4 +3828,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String searchRatingAtLeast(String rating) {
     return 'At least: $rating';
   }
+
+  @override
+  String get displayLocations => 'Display locations';
+
+  @override
+  String get displayLocation => 'Display location';
+
+  @override
+  String get placeCaptionAsAlbum => 'As in the album';
+
+  @override
+  String get placeCaptionShown => 'Shown';
+
+  @override
+  String get placeCaptionHidden => 'Hidden';
 }

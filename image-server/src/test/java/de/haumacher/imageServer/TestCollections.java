@@ -19,6 +19,7 @@ import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.LabelName;
 import de.haumacher.imageServer.shared.model.MoveResult;
 import de.haumacher.imageServer.shared.model.Orientation;
+import de.haumacher.imageServer.shared.model.PlaceCaption;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.msgbuf.json.JsonWriter;
 import de.haumacher.msgbuf.server.io.WriterAdapter;
@@ -349,6 +350,40 @@ public class TestCollections extends ShareTestCase {
 			outline(album(get(BEST, "json", SharingFixture.CAROL))));
 		assertEquals("The collection stores no statement about a photograph.", Orientation.IDENTITY,
 			((ImagePart) stored("Best of").getParts().get(1)).getOrientation());
+	}
+
+	/**
+	 * Whether a photograph shows its place as caption is its own word: written through a
+	 * collection, it lands in the album it lies in; the collection's own word stays the
+	 * collection's.
+	 */
+	public void testThePlaceCaptionIsWrittenToThePhotographsAlbum() throws Exception {
+		createCollection("Best of");
+		collect(ZOO, "/Best of", SharingFixture.ALICE, "public.jpg", "members.jpg");
+		AlbumInfo answer = album(get(BEST, "json", SharingFixture.CAROL));
+		assertEquals(PlaceCaption.UNSET, answer.getPlaceCaption());
+		image(answer, "members.jpg").setPlaceCaption(PlaceCaption.HIDDEN);
+		answer.setPlaceCaption(PlaceCaption.HIDDEN);
+
+		assertEquals(HttpServletResponse.SC_OK, put(BEST, write(answer), SharingFixture.CAROL).status());
+
+		AlbumInfo zoo = album(get(ZOO, "json", SharingFixture.ALICE));
+		assertEquals("Seen in the album it lies in.", PlaceCaption.HIDDEN,
+			image(zoo, "members.jpg").getPlaceCaption());
+		assertEquals("Its neighbour is untouched.", PlaceCaption.UNSET, image(zoo, "public.jpg").getPlaceCaption());
+		assertEquals("The album's own word is untouched.", PlaceCaption.UNSET, zoo.getPlaceCaption());
+		AlbumInfo again = album(get(BEST, "json", SharingFixture.CAROL));
+		assertEquals("The collection answers the photograph's word.", PlaceCaption.HIDDEN,
+			image(again, "members.jpg").getPlaceCaption());
+		assertEquals("And its own.", PlaceCaption.HIDDEN, again.getPlaceCaption());
+		assertEquals("The collection stores no statement about a photograph.", PlaceCaption.UNSET,
+			((ImagePart) stored("Best of").getParts().get(1)).getPlaceCaption());
+
+		ImagePart shown = image(again, "members.jpg").setPlaceCaption(PlaceCaption.SHOWN);
+		assertNotNull(shown);
+		assertEquals(HttpServletResponse.SC_OK, put(BEST, write(again), SharingFixture.CAROL).status());
+		assertEquals("Changed again, written again.", PlaceCaption.SHOWN,
+			image(album(get(ZOO, "json", SharingFixture.ALICE)), "members.jpg").getPlaceCaption());
 	}
 
 	public void testAnInvisibleReferenceSurvivesAWriteOfSomebodyWhoCannotSeeIt() throws Exception {

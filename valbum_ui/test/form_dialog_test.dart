@@ -195,7 +195,8 @@ List<FormCase> formCases(List<http.Request> requests) => [
         fill: (tester) =>
             typeInto(tester, find.byType(TextField), "At the lake"),
         primary: () => find.text(en.apply),
-        expectAnswer: (answer) => expect(answer, "At the lake"),
+        expectAnswer: (answer) => expect(
+            (answer as ImagePropertiesResult).description, "At the lake"),
       ),
       FormCase(
         name: "AdjustRecordingTimeDialog",

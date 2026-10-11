@@ -526,7 +526,8 @@ public class TestSavedSearch extends ShareTestCase {
 				+ "\"tags\":[{\"x\":0.1,\"person\":\"p\",\"state\":\"CONFIRMED\"}],\"raw\":\"a.dng\","
 				+ "\"crop\":{\"x\":0.1,\"y\":0.1,\"w\":0.5,\"h\":0.5},\"labels\":[{\"name\":\"L\"}],"
 				+ "\"ref\":{\"hash\":\"h\",\"path\":\"p/a.mp4\"},\"missing\":true,"
-				+ "\"places\":{\"tags\":[{\"geonameId\":7,\"name\":\"N\",\"kind\":\"PLACE\"}],\"pending\":\"w\"}}]"));
+				+ "\"places\":{\"tags\":[{\"geonameId\":7,\"name\":\"N\",\"kind\":\"PLACE\"}],\"pending\":\"w\"},"
+				+ "\"placeCaption\":\"HIDDEN\"}]"));
 		assertEquals(write(PhotoCollections.copy(full)), write(PhotoSearch.answerCopy(full)));
 	}
 

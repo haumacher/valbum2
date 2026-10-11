@@ -127,6 +127,36 @@ enum AlbumKind {
 	SEARCH;
 }
 
+/**
+ * Whether a photograph without a description shows the place it was taken in as its caption, see
+ * {@link AlbumInfo#placeCaption} and {@link ImagePart#placeCaption}.
+ *
+ * <p>
+ * The caption of a photograph is its {@link ImagePart#comment description} where it has one;
+ * where it has none and its place is shown, the names of its {@link ImagePart#places places}
+ * stand there instead, with a link to the map. The album says it for all its photographs, a
+ * photograph may say otherwise for itself.
+ * </p>
+ */
+enum PlaceCaption {
+	/**
+	 * Nothing said: a photograph follows its album, and an album shows the places.
+	 *
+	 * <p>
+	 * The first constant and therefore what a sidecar written before the field reads as. Not
+	 * named <code>DEFAULT</code>: that is a reserved word of Dart, which the app's model is
+	 * generated in.
+	 * </p>
+	 */
+	UNSET;
+
+	/** The place is shown where there is no description. */
+	SHOWN;
+
+	/** The place is never shown as caption. */
+	HIDDEN;
+}
+
 /** {@link Resource} describing a collection of {@link AlbumPart}s. */
 message AlbumInfo extends FolderResource {
 	/**
@@ -225,6 +255,20 @@ message AlbumInfo extends FolderResource {
 	 * </p>
 	 */
 	SearchQuery query;
+
+	/**
+	 * Whether the photographs of this album show the place they were taken in as their caption
+	 * where they have no description.
+	 *
+	 * <p>
+	 * {@link PlaceCaption#UNSET} means <b>shown</b>: an album written before the field shows the
+	 * places, and an album where they are unwanted says {@link PlaceCaption#HIDDEN} once. A
+	 * photograph may say otherwise for itself, see {@link ImagePart#placeCaption}. Stored in the
+	 * album's <code>index.json</code> and written by the ordinary sidecar <code>PUT</code>, like
+	 * its {@link #title}; a collection and a saved search carry it as their own statement.
+	 * </p>
+	 */
+	PlaceCaption placeCaption;
 
 	/** The list of images in this album. */
 	repeated AlbumPart parts;
@@ -657,6 +701,19 @@ message ImagePart extends AbstractImage {
 	 * </p>
 	 */
 	PlaceInfo places;
+
+	/**
+	 * Whether this photograph shows its {@link #places place} as its caption where it has no
+	 * {@link #comment description}.
+	 *
+	 * <p>
+	 * {@link PlaceCaption#UNSET} means as its album says, see {@link AlbumInfo#placeCaption};
+	 * {@link PlaceCaption#SHOWN} and {@link PlaceCaption#HIDDEN} are the photograph's own word,
+	 * whatever the album says. Stored in the sidecar of the album the photograph lies in, and
+	 * written like its description, also through a collection or a saved search.
+	 * </p>
+	 */
+	PlaceCaption placeCaption;
 }
 
 /**

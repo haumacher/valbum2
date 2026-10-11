@@ -6008,6 +6008,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'At least: {rating}'**
   String searchRatingAtLeast(String rating);
+
+  /// Switch in the album properties: whether the photos of the album show the place they were taken in as their caption where they have no description. German: "Orte anzeigen"
+  ///
+  /// In en, this message translates to:
+  /// **'Display locations'**
+  String get displayLocations;
+
+  /// Label of the choice in the image properties: whether this photo shows the place it was taken in as its caption where it has no description. German: "Ort anzeigen"
+  ///
+  /// In en, this message translates to:
+  /// **'Display location'**
+  String get displayLocation;
+
+  /// Option of the "Display location" choice in the image properties: the photo follows the album's "Display locations" switch. German: "Wie im Album"
+  ///
+  /// In en, this message translates to:
+  /// **'As in the album'**
+  String get placeCaptionAsAlbum;
+
+  /// Option of the "Display location" choice in the image properties: the place is shown as caption whatever the album says. German: "Anzeigen"
+  ///
+  /// In en, this message translates to:
+  /// **'Shown'**
+  String get placeCaptionShown;
+
+  /// Option of the "Display location" choice in the image properties: the place is never shown as caption. German: "Ausblenden"
+  ///
+  /// In en, this message translates to:
+  /// **'Hidden'**
+  String get placeCaptionHidden;
 }
 
 class _AppLocalizationsDelegate

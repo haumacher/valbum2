@@ -1337,6 +1337,7 @@ public class FaceIndex {
 			.setTitle(album.getTitle())
 			.setSubTitle(album.getSubTitle())
 			.setStarred(album.isStarred())
+			.setPlaceCaption(album.getPlaceCaption())
 			.setDate(album.getDate())
 			.setEffectiveDate(album.getEffectiveDate());
 		if (album.getIndexPicture() != null) {

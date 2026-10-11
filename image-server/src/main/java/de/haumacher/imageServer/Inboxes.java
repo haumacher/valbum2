@@ -344,6 +344,7 @@ public final class Inboxes {
 			.setTitle(album.getTitle())
 			.setSubTitle(album.getSubTitle())
 			.setStarred(album.isStarred())
+			.setPlaceCaption(album.getPlaceCaption())
 			.setDate(album.getDate())
 			// An inbox has no date; it is derived as 0 and answered as it is derived.
 			.setEffectiveDate(album.getEffectiveDate())

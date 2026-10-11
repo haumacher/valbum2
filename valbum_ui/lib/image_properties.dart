@@ -100,6 +100,57 @@ List<Widget> imagePropertyLines(
 bool hasPlaceLine(PlaceInfo? places) =>
     places != null && (places.tags.isNotEmpty || places.pending.isNotEmpty);
 
+/// Whether the server named the place of [image]: a position, and the names
+/// of the places it lies in (issue #234) — not the sentence why there are
+/// none yet.
+bool hasNamedPlace(ImagePart image) =>
+    hasPosition(image.location) &&
+    image.places != null &&
+    placeLineText(image.places!.tags).isNotEmpty;
+
+/// Whether [image] shows its place as its caption where it has no
+/// description: its own word ([ImagePart.placeCaption]) where it said one,
+/// else its album's ([AlbumInfo.placeCaption]), where nothing said means
+/// shown.
+///
+/// [album] is `null` where the image is shown without one; it is then shown
+/// as an album that said nothing shows it.
+bool placeCaptionShown(ImagePart image, AlbumInfo? album) =>
+    switch (image.placeCaption) {
+      PlaceCaption.shown => true,
+      PlaceCaption.hidden => false,
+      PlaceCaption.unset => album?.placeCaption != PlaceCaption.hidden,
+    };
+
+/// What is written under a picture, see [captionOf].
+class ImageCaption {
+  /// The text: the description, or the [placeLineText] of the place.
+  final String text;
+
+  /// Whether [text] is the place and not a description: the viewer then puts
+  /// the map marker behind it.
+  final bool isPlace;
+
+  const ImageCaption(this.text, {this.isPlace = false});
+}
+
+/// The caption of [image] in [album], `null` where there is none.
+///
+/// The one rule every display of a picture follows — the caption under the
+/// viewer's picture and the tooltip of the album's tile: the description
+/// where there is one; else, where the place is shown as caption
+/// ([placeCaptionShown]) and the server named it ([hasNamedPlace]), the
+/// place line; else nothing.
+ImageCaption? captionOf(ImagePart image, AlbumInfo? album) {
+  if (image.comment.trim().isNotEmpty) {
+    return ImageCaption(image.comment);
+  }
+  if (placeCaptionShown(image, album) && hasNamedPlace(image)) {
+    return ImageCaption(placeLineText(image.places!.tags), isPlace: true);
+  }
+  return null;
+}
+
 /// The place line of [tags], from the most specific name to the country.
 ///
 /// Three groups, separated by a middle dot, each only where it has a name:
@@ -299,14 +350,37 @@ class ImageLocationLine extends StatelessWidget {
   }
 }
 
-/// The properties of one image: the details block, the attribution note and
-/// the description field.
+/// What the editable [ImagePropertiesDialog] answers: the description and
+/// whether the place stands in for a missing one.
+class ImagePropertiesResult {
+  /// The description as typed.
+  final String description;
+
+  /// The picture's own word on its place caption, see [ImagePart.placeCaption].
+  final PlaceCaption placeCaption;
+
+  const ImagePropertiesResult(this.description, this.placeCaption);
+
+  /// Whether this says anything else than [image] holds.
+  bool changes(ImagePart image) =>
+      description != image.comment || placeCaption != image.placeCaption;
+
+  /// Writes this into [image].
+  void applyTo(ImagePart image) {
+    image.comment = description;
+    image.placeCaption = placeCaption;
+  }
+}
+
+/// The properties of one image: the details block, the attribution note, the
+/// description field and — where the server named the image's place — whether
+/// that place stands in as caption where there is no description.
 ///
-/// Answers the edited description, `null` when it was cancelled. What is
+/// Answers an [ImagePropertiesResult], `null` when it was cancelled. What is
 /// done with the answer is the caller's own business — the tile writes it
 /// into the album buffer, the viewer either writes the album at once or marks
 /// the buffer dirty, see issue #122.
-class ImagePropertiesDialog extends StatelessWidget {
+class ImagePropertiesDialog extends StatefulWidget {
   /// The image the dialog shows and whose description it edits.
   final ImagePart image;
 
@@ -315,6 +389,10 @@ class ImagePropertiesDialog extends StatelessWidget {
   /// The viewer hands the text of a refused write back in, so that a retry
   /// costs no typing.
   final String? initial;
+
+  /// The place caption the choice starts with, the image's own by default;
+  /// handed back in with [initial].
+  final PlaceCaption? initialPlaceCaption;
 
   /// Whether the description may be edited here at all, see issue #136.
   ///
@@ -329,12 +407,24 @@ class ImagePropertiesDialog extends StatelessWidget {
     this.image, {
     super.key,
     this.initial,
+    this.initialPlaceCaption,
     this.editable = true,
   });
 
   @override
+  State<ImagePropertiesDialog> createState() => ImagePropertiesDialogState();
+}
+
+class ImagePropertiesDialogState extends State<ImagePropertiesDialog> {
+  /// The place caption being chosen.
+  late PlaceCaption placeCaption =
+      widget.initialPlaceCaption ?? widget.image.placeCaption;
+
+  ImagePart get image => widget.image;
+
+  @override
   Widget build(BuildContext context) =>
-      editable ? _editor(context) : _reader(context);
+      widget.editable ? _editor(context) : _reader(context);
 
   /// What the dialog shows where nothing is edited: the same lines, no field.
   Widget _reader(BuildContext context) {
@@ -382,8 +472,14 @@ class ImagePropertiesDialog extends StatelessWidget {
     return TextInputDialog(
       title: l10n.imageProperties,
       label: l10n.commentLabel,
-      text: initial ?? image.comment,
+      text: widget.initial ?? image.comment,
       multiLine: true,
+      // Edited with the description and only where there is a place to show:
+      // a choice about nothing would be noise.
+      fields: [
+        if (hasNamedPlace(image)) _placeCaptionChoice(l10n),
+      ],
+      answer: (text) => ImagePropertiesResult(text, placeCaption),
       details: imagePropertyLines(
         l10n,
         image,
@@ -394,27 +490,74 @@ class ImagePropertiesDialog extends StatelessWidget {
       note: attributionShown(l10n, image),
     );
   }
+
+  /// Whether the place stands in for a missing description: as the album
+  /// says, or the picture's own word either way.
+  Widget _placeCaptionChoice(AppLocalizations l10n) => Padding(
+        padding: const EdgeInsets.only(top: 12),
+        child: DropdownButtonFormField<PlaceCaption>(
+          key: const Key("image-place-caption-choice"),
+          initialValue: placeCaption,
+          // A phone's dialog is narrow: the option shrinks, the row never
+          // overflows.
+          isExpanded: true,
+          decoration: InputDecoration(label: Text(l10n.displayLocation)),
+          items: [
+            DropdownMenuItem(
+              value: PlaceCaption.unset,
+              child: Text(
+                l10n.placeCaptionAsAlbum,
+                key: const Key("place-caption-unset"),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            DropdownMenuItem(
+              value: PlaceCaption.shown,
+              child: Text(
+                l10n.placeCaptionShown,
+                key: const Key("place-caption-shown"),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            DropdownMenuItem(
+              value: PlaceCaption.hidden,
+              child: Text(
+                l10n.placeCaptionHidden,
+                key: const Key("place-caption-hidden"),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+          onChanged: (value) {
+            if (value != null) {
+              setState(() => placeCaption = value);
+            }
+          },
+        ),
+      );
 }
 
-/// Opens the [ImagePropertiesDialog] on [image] and answers what was typed.
+/// Opens the [ImagePropertiesDialog] on [image] and answers what was edited.
 ///
 /// With [editable] `false` the dialog shows what the image is and edits
 /// nothing, and the answer is always `null`, see [ImagePropertiesDialog].
-Future<String?> showImageProperties(
+Future<ImagePropertiesResult?> showImageProperties(
   BuildContext context,
   ImagePart image, {
   String? initialDescription,
+  PlaceCaption? initialPlaceCaption,
   bool editable = true,
 }) {
   Widget build(BuildContext context) => ImagePropertiesDialog(
         image,
         initial: initialDescription,
+        initialPlaceCaption: initialPlaceCaption,
         editable: editable,
       );
   // The description is typed input and is closed by Cancel or Escape only;
   // the read-only details are something shown, which a tap beside closes,
   // see issue #178.
   return editable
-      ? showFormDialog<String>(context: context, builder: build)
-      : showDialog<String>(context: context, builder: build);
+      ? showFormDialog<ImagePropertiesResult>(context: context, builder: build)
+      : showDialog<ImagePropertiesResult>(context: context, builder: build);
 }

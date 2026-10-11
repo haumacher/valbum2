@@ -1897,6 +1897,7 @@ class AlbumContentState extends State<AlbumContent>
           date: album.date,
           indexPicture: album.indexPicture,
           kind: album.kind,
+          placeCaption: album.placeCaption,
         ),
         client: client,
         baseUrl: widget.baseUrl,
@@ -1919,6 +1920,7 @@ class AlbumContentState extends State<AlbumContent>
       date: album.date,
       indexPicture: album.indexPicture,
       kind: album.kind,
+      placeCaption: album.placeCaption,
     );
 
     void apply(AlbumProperties values) {
@@ -1928,6 +1930,7 @@ class AlbumContentState extends State<AlbumContent>
       // by the server on every read and is never written by the app.
       album.date = values.date;
       album.indexPicture = values.indexPicture;
+      album.placeCaption = values.placeCaption;
     }
 
     setState(() {
@@ -3414,12 +3417,37 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
     }
   }
 
+  /// The thumbnail of the given image, filling the tile box, with the
+  /// picture's caption ([captionOf]) as its tooltip where it has one.
+  ///
+  /// The tooltip is the viewer's caption in a word: the description, or the
+  /// place where there is none — the text alone, the map is a tap into the
+  /// viewer away. It comes with the mouse only: the long press of a tile is
+  /// the way into the edit and select modes, and a tooltip triggered by it
+  /// would take that gesture, so it is [TooltipTriggerMode.manual]. Here,
+  /// where the viewing and the editing tile both build their picture, so that
+  /// both behave alike.
+  Widget imageThumbnail(ImagePart image) {
+    var thumbnail = _imageThumbnail(image);
+    var caption = captionOf(image, state.widget.album);
+    if (caption == null) {
+      return thumbnail;
+    }
+    return Tooltip(
+      key: const Key("tile-caption"),
+      message: caption.text,
+      triggerMode: TooltipTriggerMode.manual,
+      waitDuration: const Duration(milliseconds: 500),
+      child: thumbnail,
+    );
+  }
+
   /// The thumbnail of the given image, filling the tile box.
   ///
   /// The server bakes the orientation of the image *file* into the thumbnail
   /// it serves; what is stored beside the image comes on top of it and is
   /// applied here, see [orientedImageThumbnail].
-  Widget imageThumbnail(ImagePart image) {
+  Widget _imageThumbnail(ImagePart image) {
     if (image.missing) {
       // A photograph of a collection that is gone (issue #221): nothing to
       // ask a thumbnail of.
@@ -4020,11 +4048,11 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
   }
 
   Future<void> editImageProperties() async {
-    var text = await showImageProperties(context, image);
-    if (text == null || !mounted) {
+    var answer = await showImageProperties(context, image);
+    if (answer == null || !mounted) {
       return;
     }
-    album.editImage(() => image.comment = text);
+    album.editImage(() => answer.applyTo(image));
   }
 }
 
@@ -4441,6 +4469,16 @@ class TextInputDialog extends StatefulWidget {
   /// — the field is what the album stores, the note is what the server knows.
   final String? note;
 
+  /// Further edited fields under the text field, whose state is their owner's,
+  /// see [answer]: the place caption choice of an image's properties.
+  final List<Widget> fields;
+
+  /// What "Apply" answers for the typed text, the text itself where `null`.
+  ///
+  /// A dialog that edits more than the text ([fields]) answers all of it at
+  /// once, see `ImagePropertiesDialog`.
+  final Object Function(String text)? answer;
+
   const TextInputDialog({
     super.key,
     required this.title,
@@ -4449,6 +4487,8 @@ class TextInputDialog extends StatefulWidget {
     this.multiLine = false,
     this.note,
     this.details = const [],
+    this.fields = const [],
+    this.answer,
   });
 
   @override
@@ -4477,6 +4517,7 @@ class TextInputDialogState extends State<TextInputDialog> {
           maxLines: widget.multiLine ? 8 : 1,
           decoration: InputDecoration(label: Text(widget.label)),
         ),
+        ...widget.fields,
         if (widget.details.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 12),
@@ -4508,7 +4549,9 @@ class TextInputDialogState extends State<TextInputDialog> {
         ElevatedButton.icon(
           icon: const Icon(Icons.check),
           label: Text(AppLocalizations.of(context)!.apply),
-          onPressed: () => Navigator.of(context).pop(controller.text),
+          onPressed: () => Navigator.of(context).pop(
+            widget.answer?.call(controller.text) ?? controller.text,
+          ),
         ),
       ],
     );
@@ -4809,12 +4852,17 @@ class AlbumProperties {
   /// the dialog of the inbox shows no date and no album picture.
   final AlbumKind kind;
 
+  /// Whether the photos of the album show their place as caption where they
+  /// have no description, see [AlbumInfo.placeCaption]: "Display locations".
+  final PlaceCaption placeCaption;
+
   const AlbumProperties({
     required this.title,
     required this.subTitle,
     this.date = 0,
     this.indexPicture,
     this.kind = AlbumKind.album,
+    this.placeCaption = PlaceCaption.unset,
   });
 }
 
@@ -4882,6 +4930,11 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
   /// The explicit date being edited, `0` while none is set.
   late int date = widget.properties.date;
 
+  /// Whether "Display locations" is on: unless the album said
+  /// [PlaceCaption.hidden], an album that said nothing shows them.
+  late bool placesShown =
+      widget.properties.placeCaption != PlaceCaption.hidden;
+
   /// The crop being edited, a copy: the album's own is replaced on apply.
   late ThumbnailInfo? indexPicture = copyOf(widget.properties.indexPicture);
 
@@ -4932,6 +4985,16 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
           decoration: InputDecoration(label: Text(l10n.subtitleLabel)),
         ),
         if (!isInbox) buildDateRow(context),
+        // An inbox shows nothing but what waits to be sorted: like its date,
+        // its captions are not its own business.
+        if (!isInbox)
+          SwitchListTile(
+            key: const Key("album-place-caption"),
+            contentPadding: EdgeInsets.zero,
+            title: Text(l10n.displayLocations),
+            value: placesShown,
+            onChanged: (value) => setState(() => placesShown = value),
+          ),
       ],
       // Only the fields above scroll (issue #178). The crop editor stands
       // below them, outside the scroll view: a scroll view would take the
@@ -5218,7 +5281,19 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
         date: date,
         indexPicture: indexPicture,
         kind: widget.properties.kind,
+        placeCaption: placeCaption,
       ),
     );
+  }
+
+  /// What "Display locations" answers: the album's own word where the switch
+  /// was left as it stood (so that an album that said nothing goes on saying
+  /// nothing), else [PlaceCaption.shown] or [PlaceCaption.hidden].
+  PlaceCaption get placeCaption {
+    var stated = widget.properties.placeCaption;
+    if (isInbox || placesShown == (stated != PlaceCaption.hidden)) {
+      return stated;
+    }
+    return placesShown ? PlaceCaption.shown : PlaceCaption.hidden;
   }
 }

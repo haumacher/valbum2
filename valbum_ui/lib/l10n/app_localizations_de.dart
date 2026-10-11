@@ -3880,4 +3880,19 @@ class AppLocalizationsDe extends AppLocalizations {
   String searchRatingAtLeast(String rating) {
     return 'Mindestens: $rating';
   }
+
+  @override
+  String get displayLocations => 'Orte anzeigen';
+
+  @override
+  String get displayLocation => 'Ort anzeigen';
+
+  @override
+  String get placeCaptionAsAlbum => 'Wie im Album';
+
+  @override
+  String get placeCaptionShown => 'Angezeigt';
+
+  @override
+  String get placeCaptionHidden => 'Ausgeblendet';
 }

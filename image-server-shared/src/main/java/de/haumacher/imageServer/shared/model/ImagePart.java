@@ -78,6 +78,9 @@ public class ImagePart extends AbstractImage {
 	/** @see #getPlaces() */
 	private static final String PLACES__PROP = "places";
 
+	/** @see #getPlaceCaption() */
+	private static final String PLACE_CAPTION__PROP = "placeCaption";
+
 	private de.haumacher.imageServer.shared.model.ImageKind _kind = de.haumacher.imageServer.shared.model.ImageKind.IMAGE;
 
 	private String _name = "";
@@ -121,6 +124,8 @@ public class ImagePart extends AbstractImage {
 	private boolean _missing = false;
 
 	private de.haumacher.imageServer.shared.model.PlaceInfo _places = null;
+
+	private de.haumacher.imageServer.shared.model.PlaceCaption _placeCaption = de.haumacher.imageServer.shared.model.PlaceCaption.UNSET;
 
 	/**
 	 * Creates a {@link ImagePart} instance.
@@ -875,6 +880,35 @@ public class ImagePart extends AbstractImage {
 		return _places != null;
 	}
 
+	/**
+	 * Whether this photograph shows its {@link #getPlaces() place} as its caption where it has no
+	 * {@link #getComment() description}.
+	 *
+	 * <p>
+	 * {@link PlaceCaption#UNSET} means as its album says, see {@link AlbumInfo#getPlaceCaption()};
+	 * {@link PlaceCaption#SHOWN} and {@link PlaceCaption#HIDDEN} are the photograph's own word,
+	 * whatever the album says. Stored in the sidecar of the album the photograph lies in, and
+	 * written like its description, also through a collection or a saved search.
+	 * </p>
+	 */
+	public final de.haumacher.imageServer.shared.model.PlaceCaption getPlaceCaption() {
+		return _placeCaption;
+	}
+
+	/**
+	 * @see #getPlaceCaption()
+	 */
+	public de.haumacher.imageServer.shared.model.ImagePart setPlaceCaption(de.haumacher.imageServer.shared.model.PlaceCaption value) {
+		internalSetPlaceCaption(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getPlaceCaption()} without chain call utility. */
+	protected final void internalSetPlaceCaption(de.haumacher.imageServer.shared.model.PlaceCaption value) {
+		if (value == null) throw new IllegalArgumentException("Property 'placeCaption' cannot be null.");
+		_placeCaption = value;
+	}
+
 	@Override
 	public de.haumacher.imageServer.shared.model.ImagePart setPrevious(de.haumacher.imageServer.shared.model.AbstractImage value) {
 		internalSetPrevious(value);
@@ -982,6 +1016,8 @@ public class ImagePart extends AbstractImage {
 			out.name(PLACES__PROP);
 			getPlaces().writeTo(out);
 		}
+		out.name(PLACE_CAPTION__PROP);
+		getPlaceCaption().writeTo(out);
 	}
 
 	@Override
@@ -1029,6 +1065,7 @@ public class ImagePart extends AbstractImage {
 			case REF__PROP: setRef(de.haumacher.imageServer.shared.model.PhotoRef.readPhotoRef(in)); break;
 			case MISSING__PROP: setMissing(in.nextBoolean()); break;
 			case PLACES__PROP: setPlaces(de.haumacher.imageServer.shared.model.PlaceInfo.readPlaceInfo(in)); break;
+			case PLACE_CAPTION__PROP: setPlaceCaption(de.haumacher.imageServer.shared.model.PlaceCaption.readPlaceCaption(in)); break;
 			default: super.readField(in, field);
 		}
 	}

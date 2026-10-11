@@ -756,7 +756,8 @@ public final class PhotoSearch {
 			.setLabels(image.getLabels())
 			.setRef(image.getRef())
 			.setMissing(image.isMissing())
-			.setPlaces(image.getPlaces());
+			.setPlaces(image.getPlaces())
+			.setPlaceCaption(image.getPlaceCaption());
 	}
 
 	/**
@@ -785,6 +786,7 @@ public final class PhotoSearch {
 			.setTitle(album.getTitle())
 			.setSubTitle(album.getSubTitle())
 			.setStarred(album.isStarred())
+			.setPlaceCaption(album.getPlaceCaption())
 			.setDate(album.getDate())
 			.setEffectiveDate(album.getEffectiveDate())
 			.setParts(parts);

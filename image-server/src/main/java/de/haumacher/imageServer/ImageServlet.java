@@ -98,6 +98,7 @@ import de.haumacher.imageServer.shared.model.PersonLink;
 import de.haumacher.imageServer.shared.model.PersonMerge;
 import de.haumacher.imageServer.shared.model.PersonRename;
 import de.haumacher.imageServer.shared.model.PhotoRef;
+import de.haumacher.imageServer.shared.model.PlaceCaption;
 import de.haumacher.imageServer.shared.model.PresentFile;
 import de.haumacher.imageServer.shared.model.ProofMethod;
 import de.haumacher.imageServer.shared.model.RefusedFile;
@@ -162,6 +163,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.apache.commons.fileupload2.jakarta.JakartaServletFileUpload;
 
@@ -5651,6 +5653,8 @@ public class ImageServlet extends HttpServlet {
 			rearranged |= Inboxes.restoreArrangement(resourcePath.toFile(), resource);
 			// An app older than issue #213 does not know the labels and must not remove them.
 			rearranged |= Labels.keepUnknown(contents, resource, existing);
+			// Nor the place captions it does not know either.
+			rearranged |= keepPlaceCaptions(contents, resource, existing);
 		}
 
 		PathInfo target = resourcePath;
@@ -5769,6 +5773,7 @@ public class ImageServlet extends HttpServlet {
 			.setTitle(received.getTitle())
 			.setSubTitle(received.getSubTitle())
 			.setStarred(received.isStarred())
+			.setPlaceCaption(received.getPlaceCaption())
 			.setDate(received.getDate());
 		if (cover != null) {
 			result.setIndexPicture(Crops.copy(cover));
@@ -5878,6 +5883,7 @@ public class ImageServlet extends HttpServlet {
 			.setSubTitle(received.getSubTitle())
 			// Whether the collection stands out in its folder is its own statement (#239).
 			.setStarred(received.isStarred())
+			.setPlaceCaption(received.getPlaceCaption())
 			.setDate(received.getDate())
 			.setParts(parts);
 		if (cover != null) {
@@ -5953,6 +5959,60 @@ public class ImageServlet extends HttpServlet {
 		return true;
 	}
 
+	/** Recognises a body that names the place caption at all, see {@link #keepPlaceCaptions}. */
+	private static final Pattern PLACE_CAPTION_KEY = Pattern.compile("\"placeCaption\"\\s*:");
+
+	/**
+	 * Keeps the stored {@link AlbumInfo#getPlaceCaption() place captions} of the album and its
+	 * photographs in an album written by an app that does not know the field.
+	 *
+	 * <p>
+	 * Such an app writes back what it read, without the field, and would silently reset what the
+	 * author said &mdash; exactly as {@link Labels#keepUnknown} guards the labels. A body that names
+	 * the field anywhere is taken as it stands.
+	 * </p>
+	 *
+	 * @return Whether anything was taken over from the stored album.
+	 */
+	static boolean keepPlaceCaptions(byte[] contents, FolderResource received, Resource stored) {
+		if (!(received instanceof AlbumInfo) || !(stored instanceof AlbumInfo)) {
+			return false;
+		}
+		if (PLACE_CAPTION_KEY.matcher(new String(contents, StandardCharsets.UTF_8)).find()) {
+			return false;
+		}
+		AlbumInfo album = (AlbumInfo) received;
+		AlbumInfo before = (AlbumInfo) stored;
+		boolean kept = false;
+		if (before.getPlaceCaption() != PlaceCaption.UNSET) {
+			album.setPlaceCaption(before.getPlaceCaption());
+			kept = true;
+		}
+		Map<String, PlaceCaption> byName = new HashMap<>();
+		for (AlbumPart part : before.getParts()) {
+			for (ImagePart image : imagesOf(part)) {
+				if (image.getPlaceCaption() != PlaceCaption.UNSET) {
+					byName.put(image.getName(), image.getPlaceCaption());
+				}
+			}
+		}
+		for (AlbumPart part : album.getParts()) {
+			for (ImagePart image : imagesOf(part)) {
+				PlaceCaption caption = byName.get(image.getName());
+				if (caption != null) {
+					image.setPlaceCaption(caption);
+					kept = true;
+				}
+			}
+		}
+		return kept;
+	}
+
+	private static List<ImagePart> imagesOf(AlbumPart part) {
+		return part instanceof ImagePart ? Collections.singletonList((ImagePart) part)
+			: part instanceof ImageGroup ? ((ImageGroup) part).getImages() : Collections.<ImagePart> emptyList();
+	}
+
 	/** Takes over into the given stored part what the given received one says about it. */
 	private static boolean applyEdit(AlbumInfo album, ImagePart image, ImagePart received) {
 		boolean changed = false;
@@ -5979,6 +6039,11 @@ public class ImageServlet extends HttpServlet {
 		}
 		if (received.getDate() > 0 && received.getDate() != image.getDate()) {
 			image.setDate(received.getDate());
+			changed = true;
+		}
+		if (received.getPlaceCaption() != image.getPlaceCaption()) {
+			// Whether the place stands in for a missing description is the photograph's own word.
+			image.setPlaceCaption(received.getPlaceCaption());
 			changed = true;
 		}
 		if (image.getKind() == ImageKind.IMAGE) {
@@ -6246,6 +6311,7 @@ public class ImageServlet extends HttpServlet {
 				.setTitle(album.getTitle())
 				.setSubTitle(album.getSubTitle())
 				.setStarred(album.isStarred())
+				.setPlaceCaption(album.getPlaceCaption())
 				.setDate(album.getDate())
 				.setEffectiveDate(album.getEffectiveDate())
 				// How far the face index has got is not a question of who is asking either, and
@@ -7730,6 +7796,7 @@ public class ImageServlet extends HttpServlet {
 			.setTitle(search.getTitle())
 			.setSubTitle(search.getSubTitle())
 			.setStarred(search.isStarred())
+			.setPlaceCaption(search.getPlaceCaption())
 			.setDate(search.getDate())
 			.setEffectiveDate(search.getEffectiveDate())
 			.setParts(new ArrayList<>(parts));
