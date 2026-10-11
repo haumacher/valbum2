@@ -3929,4 +3929,24 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get searchWithoutCamera => 'Ohne Kamera';
+
+  @override
+  String get searchAllOf => 'Alle davon';
+
+  @override
+  String get searchAnyOf => 'Eines davon';
+
+  @override
+  String get searchExclude => 'Ausschließen';
+
+  @override
+  String searchExcluded(String criterion) {
+    return 'Nicht: $criterion';
+  }
+
+  @override
+  String get searchWordNot => 'nicht';
+
+  @override
+  String get searchWordOr => 'oder';
 }

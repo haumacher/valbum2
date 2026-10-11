@@ -98,10 +98,11 @@ void main() {
           SearchCriteria.fromQuery(SearchQuery(
               version: 1,
               root: SearchAnd(criteria: [
-                SearchNot(criterion: SearchPerson(person: "anne")),
+                SearchNot(
+                    criterion: SearchNot(criterion: SearchPerson(person: "a"))),
               ]))),
           isNull,
-          reason: "A NOT.");
+          reason: "A NOT of a NOT.");
       expect(
           SearchCriteria.fromQuery(SearchQuery(
               version: 1,
@@ -121,6 +122,196 @@ void main() {
           reason: "A folder.");
       expect(SearchCriteria.fromQuery(SearchQuery(version: 1)), isNull,
           reason: "An absent root is what a newer criterion reads as.");
+    });
+  });
+
+  group('exclusion and "any of these" (#242)', () {
+    SearchCriteria? readBack(SearchCriteria chosen) => SearchCriteria.fromQuery(
+        SearchQuery.read(JsonReader.fromString(_content(chosen.toQuery()))));
+
+    test('"Anne without Philipp" is a person and a NOT of a person', () {
+      var chosen = const SearchCriteria(
+          persons: ["anne"], excludedPersons: ["philipp"]);
+      var root = chosen.toQuery().root as SearchAnd;
+      expect(root.criteria, hasLength(2));
+      expect((root.criteria[0] as SearchPerson).person, "anne");
+      var not = root.criteria[1] as SearchNot;
+      expect((not.criterion as SearchPerson).person, "philipp");
+      expect(readBack(chosen), chosen);
+    });
+
+    test('"Rome or Florence, but not 2019" is an OR of places and a NOT of '
+        'the year', () {
+      var chosen = SearchCriteria(
+        places: const [3169070, 3176959],
+        from: DateTime(2019, 1, 1),
+        to: DateTime(2019, 12, 31),
+        excluded: const {SearchKind.date},
+      );
+      var root = chosen.toQuery().root as SearchAnd;
+      expect(root.criteria.map((c) => c.runtimeType).toList(),
+          [SearchNot, SearchOr]);
+      var date = (root.criteria[0] as SearchNot).criterion as SearchDate;
+      expect(date.from, DateTime(2019, 1, 1).millisecondsSinceEpoch);
+      expect(date.to, DateTime(2020, 1, 1).millisecondsSinceEpoch);
+      expect(
+          (root.criteria[1] as SearchOr)
+              .criteria
+              .map((c) => (c as SearchPlace).geonameId),
+          [3169070, 3176959]);
+      expect(readBack(chosen), chosen);
+    });
+
+    test('an excluded person among included ones is a row of its own', () {
+      var chosen = const SearchCriteria(
+          persons: ["anne", "clara"], excludedPersons: ["philipp"]);
+      expect(readBack(chosen), chosen);
+      // Stored in another order, the rows are the same.
+      var interleaved = SearchQuery(
+          version: 1,
+          root: SearchAnd(criteria: [
+            SearchPerson(person: "anne"),
+            SearchNot(criterion: SearchPerson(person: "philipp")),
+            SearchPerson(person: "clara"),
+          ]));
+      expect(SearchCriteria.fromQuery(interleaved), chosen);
+    });
+
+    test('every row can be excluded, and reads back so', () {
+      var chosen = SearchCriteria(
+        persons: const ["anne"],
+        excludedPlaces: const [3169070],
+        labels: const ["Holiday"],
+        excludedLabels: const ["Work", "School"],
+        minRating: 1,
+        text: "lake",
+        camera: "Pixel 7",
+        to: DateTime(2020, 6, 30),
+        excluded: const {
+          SearchKind.rating,
+          SearchKind.text,
+          SearchKind.camera,
+        },
+      );
+      var root = chosen.toQuery().root as SearchAnd;
+      expect(root.criteria.whereType<SearchNot>(), hasLength(6));
+      expect(readBack(chosen), chosen);
+    });
+
+    test('"any of these" is an OR over the rows, persons each a row', () {
+      var chosen = const SearchCriteria(
+        persons: ["anne", "philipp"],
+        places: [3169070],
+        camera: "Pixel 7",
+        excludedLabels: ["Work"],
+        anyOf: true,
+      );
+      var root = chosen.toQuery().root as SearchOr;
+      expect(root.criteria.map((c) => c.runtimeType).toList(), [
+        SearchPerson,
+        SearchPerson,
+        SearchOr,
+        SearchNot,
+        SearchCamera,
+      ]);
+      expect(readBack(chosen), chosen);
+      expect(readBack(chosen.copyWith(anyOf: false))!.anyOf, isFalse);
+      expect(chosen.findsAs(chosen.copyWith(anyOf: false)), isFalse);
+    });
+
+    test('a mix nested deeper than the rows is still not edited here', () {
+      SearchCriteria? read(SearchCriterion root) =>
+          SearchCriteria.fromQuery(SearchQuery(version: 1, root: root));
+      expect(
+          read(SearchAnd(criteria: [
+            SearchOr(criteria: [
+              SearchPerson(person: "anne"),
+              SearchPlace(geonameId: 3169070),
+            ]),
+            SearchRating(min: 1),
+          ])),
+          isNull,
+          reason: "And(Or(Person, Place), Rating).");
+      expect(
+          read(SearchOr(criteria: [
+            SearchAnd(criteria: [SearchPerson(person: "anne")]),
+          ])),
+          isNull,
+          reason: "An AND below an OR.");
+      expect(
+          read(SearchAnd(criteria: [
+            SearchNot(
+                criterion: SearchOr(criteria: [
+              SearchPlace(geonameId: 1),
+              SearchPlace(geonameId: 2),
+            ])),
+          ])),
+          isNull,
+          reason: "A NOT of an OR.");
+      expect(read(SearchAnd(criteria: [SearchNot()])), isNull,
+          reason: "A NOT of nothing.");
+      expect(
+          read(SearchAnd(criteria: [
+            SearchNot(criterion: SearchRating(min: 1)),
+            SearchRating(min: 0),
+          ])),
+          isNull,
+          reason: "A rating twice.");
+    });
+
+    test('"not videos" reads as photos only', () {
+      var read = SearchCriteria.fromQuery(SearchQuery(
+          version: 1,
+          root: SearchAnd(criteria: [
+            SearchNot(criterion: SearchMedia(video: true)),
+          ])));
+      expect(read, const SearchCriteria(media: SearchMediaKind.photos));
+    });
+
+    test('an exclusion goes with the row it excludes', () {
+      var chosen = const SearchCriteria(camera: "Pixel 7")
+          .toggled(SearchKind.camera);
+      expect(chosen.excludes(SearchKind.camera), isTrue);
+      expect(chosen.toggled(SearchKind.camera).excluded, isEmpty);
+      var cleared = chosen.copyWith(clearCamera: true);
+      expect(cleared.excluded, isEmpty);
+      expect(cleared, const SearchCriteria());
+      expect(const SearchCriteria().toggled(SearchKind.text).excluded, isEmpty,
+          reason: "Nothing chosen is nothing to exclude.");
+      expect(const SearchCriteria(excludedPersons: ["p"]).isEmpty, isFalse);
+      expect(const SearchCriteria(anyOf: true).isEmpty, isTrue);
+    });
+
+    test('the title says "not" and "or" in the language shown', () {
+      const names = {"anne": "Anne", "philipp": "Philipp"};
+      const places = {3169070: "Rome", 3176959: "Florence"};
+      expect(
+          const SearchCriteria(persons: ["anne"], excludedPersons: ["philipp"])
+              .title(fallback: "Search", personNames: names),
+          "Anne, not Philipp");
+      expect(
+          SearchCriteria(
+            places: const [3169070, 3176959],
+            from: DateTime(2019, 1, 1),
+            to: DateTime(2019, 12, 31),
+            excluded: const {SearchKind.date},
+          ).title(fallback: "Search", placeNames: places),
+          "Rome or Florence, not 2019");
+      expect(
+          const SearchCriteria(
+            persons: ["anne", "philipp"],
+            places: [3169070],
+            anyOf: true,
+          ).title(fallback: "Search", personNames: names, placeNames: places),
+          "Anne or Philipp or Rome");
+      expect(
+          const SearchCriteria(persons: ["anne"], excludedPersons: ["philipp"])
+              .title(
+                  fallback: "Suche",
+                  personNames: names,
+                  not: "nicht",
+                  or: "oder"),
+          "Anne, nicht Philipp");
     });
   });
 

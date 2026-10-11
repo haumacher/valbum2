@@ -997,5 +997,11 @@
   "searchGroupByMonth": "Monat",
   "searchWithoutDate": "Ohne Datum",
   "searchWithoutPlace": "Ohne Ort",
-  "searchWithoutCamera": "Ohne Kamera"
+  "searchWithoutCamera": "Ohne Kamera",
+  "searchAllOf": "Alle davon",
+  "searchAnyOf": "Eines davon",
+  "searchExclude": "Ausschließen",
+  "searchExcluded": "Nicht: {criterion}",
+  "searchWordNot": "nicht",
+  "searchWordOr": "oder"
 }

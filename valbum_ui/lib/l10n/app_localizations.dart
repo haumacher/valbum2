@@ -6086,6 +6086,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Without a camera'**
   String get searchWithoutCamera;
+
+  /// Toggle at the start of the criteria of the search view (issue #242): a photo is found where it matches every criterion chosen; tapping it switches to "Any of these". German: "Alle davon"
+  ///
+  /// In en, this message translates to:
+  /// **'All of these'**
+  String get searchAllOf;
+
+  /// Toggle at the start of the criteria of the search view (issue #242): a photo is found where it matches at least one criterion chosen; tapping it switches to "All of these". German: "Eines davon"
+  ///
+  /// In en, this message translates to:
+  /// **'Any of these'**
+  String get searchAnyOf;
+
+  /// Switch and tooltip of the search view (issue #242) that turns a criterion into its opposite: the photos found must not match it ("without Philipp"). German: "Ausschließen"
+  ///
+  /// In en, this message translates to:
+  /// **'Exclude'**
+  String get searchExclude;
+
+  /// Label of an excluded criterion of the search view (issue #242): the photos found must not match it, e.g. "Not: Philipp". German: "Nicht: {criterion}"
+  ///
+  /// In en, this message translates to:
+  /// **'Not: {criterion}'**
+  String searchExcluded(String criterion);
+
+  /// One lowercase word put before an excluded criterion in the title proposed for a saved search (issue #242): "Anne, not Philipp". German: "nicht"
+  ///
+  /// In en, this message translates to:
+  /// **'not'**
+  String get searchWordNot;
+
+  /// One lowercase word joining alternatives in the title proposed for a saved search (issue #242): "Rome or Florence, not 2019". German: "oder"
+  ///
+  /// In en, this message translates to:
+  /// **'or'**
+  String get searchWordOr;
 }
 
 class _AppLocalizationsDelegate

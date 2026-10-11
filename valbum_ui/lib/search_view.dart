@@ -28,6 +28,11 @@
 /// year, month, place or camera, see `search_grouping.dart`: it travels in the
 /// query and is stored by "Save as view…", and a change of it alone groups the
 /// result already in anew, without asking the server again.
+///
+/// Every chosen criterion can be excluded (issue #242): a long press on its
+/// chip, or a secondary click, turns it into "Not: …", and the choosers say
+/// so with a switch of their own; "All of these" at the start of the criteria
+/// turns into "Any of these", which finds what matches one of them.
 library;
 
 import 'package:flutter/foundation.dart'
@@ -304,14 +309,31 @@ class SearchViewState extends State<SearchView> {
         runSpacing: 6,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          for (var person in criteria.persons)
-            InputChip(
-              key: Key("search-person-$person"),
-              avatar: const Icon(Icons.person, size: 18),
-              label: Text(personNames[person] ?? person),
-              onDeleted: () => _choose(
+          ActionChip(
+            key: const Key("search-any-of"),
+            avatar: Icon(
+              criteria.anyOf ? Icons.join_full : Icons.join_inner,
+              size: 18,
+            ),
+            label: Text(criteria.anyOf ? l10n.searchAnyOf : l10n.searchAllOf),
+            onPressed: () => _choose(criteria.copyWith(anyOf: !criteria.anyOf)),
+          ),
+          for (var (person, excluded) in _rows(
+            criteria.persons,
+            criteria.excludedPersons,
+          ))
+            _valueChip<String>(
+              key: "search-person-$person",
+              icon: Icons.person,
+              name: personNames[person] ?? person,
+              value: person,
+              excluded: excluded,
+              included: criteria.persons,
+              excludedValues: criteria.excludedPersons,
+              choose: (included, excludedValues) => _choose(
                 criteria.copyWith(
-                  persons: [...criteria.persons]..remove(person),
+                  persons: included,
+                  excludedPersons: excludedValues,
                 ),
               ),
             ),
@@ -322,26 +344,36 @@ class SearchViewState extends State<SearchView> {
             onPressed: () => choosePersons(options),
           ),
           _dateChip(
-            key: const Key("search-from"),
+            key: "search-from",
             label: l10n.searchFrom,
             value: criteria.from,
             onPicked: (day) => _choose(criteria.copyWith(from: day)),
             onCleared: () => _choose(criteria.copyWith(clearFrom: true)),
           ),
           _dateChip(
-            key: const Key("search-to"),
+            key: "search-to",
             label: l10n.searchTo,
             value: criteria.to,
             onPicked: (day) => _choose(criteria.copyWith(to: day)),
             onCleared: () => _choose(criteria.copyWith(clearTo: true)),
           ),
-          for (var place in criteria.places)
-            InputChip(
-              key: Key("search-place-$place"),
-              avatar: const Icon(Icons.place, size: 18),
-              label: Text(placeNames[place] ?? "$place"),
-              onDeleted: () => _choose(
-                criteria.copyWith(places: [...criteria.places]..remove(place)),
+          for (var (place, excluded) in _rows(
+            criteria.places,
+            criteria.excludedPlaces,
+          ))
+            _valueChip<int>(
+              key: "search-place-$place",
+              icon: Icons.place,
+              name: placeNames[place] ?? "$place",
+              value: place,
+              excluded: excluded,
+              included: criteria.places,
+              excludedValues: criteria.excludedPlaces,
+              choose: (included, excludedValues) => _choose(
+                criteria.copyWith(
+                  places: included,
+                  excludedPlaces: excludedValues,
+                ),
               ),
             ),
           ActionChip(
@@ -350,13 +382,23 @@ class SearchViewState extends State<SearchView> {
             label: Text(l10n.searchPlaces),
             onPressed: () => choosePlaces(options),
           ),
-          for (var label in criteria.labels)
-            InputChip(
-              key: Key("search-label-$label"),
-              avatar: const Icon(Icons.label_outline, size: 18),
-              label: Text(label),
-              onDeleted: () => _choose(
-                criteria.copyWith(labels: [...criteria.labels]..remove(label)),
+          for (var (label, excluded) in _rows(
+            criteria.labels,
+            criteria.excludedLabels,
+          ))
+            _valueChip<String>(
+              key: "search-label-$label",
+              icon: Icons.label_outline,
+              name: label,
+              value: label,
+              excluded: excluded,
+              included: criteria.labels,
+              excludedValues: criteria.excludedLabels,
+              choose: (included, excludedValues) => _choose(
+                criteria.copyWith(
+                  labels: included,
+                  excludedLabels: excludedValues,
+                ),
               ),
             ),
           ActionChip(
@@ -372,13 +414,12 @@ class SearchViewState extends State<SearchView> {
                   label: Text(l10n.searchRating),
                   onPressed: chooseRating,
                 )
-              : InputChip(
-                  key: const Key("search-rating"),
-                  avatar: const Icon(Icons.star, size: 18),
-                  label: Text(
-                    l10n.searchRatingAtLeast(
-                      ratingNames[criteria.minRating] ?? "",
-                    ),
+              : _kindChip(
+                  key: "search-rating",
+                  kind: SearchKind.rating,
+                  icon: Icons.star,
+                  name: l10n.searchRatingAtLeast(
+                    ratingNames[criteria.minRating] ?? "",
                   ),
                   onPressed: chooseRating,
                   onDeleted: () =>
@@ -391,10 +432,11 @@ class SearchViewState extends State<SearchView> {
                   label: Text(l10n.searchCamera),
                   onPressed: () => chooseCamera(options),
                 )
-              : InputChip(
-                  key: const Key("search-camera"),
-                  avatar: const Icon(Icons.photo_camera, size: 18),
-                  label: Text(criteria.camera!),
+              : _kindChip(
+                  key: "search-camera",
+                  kind: SearchKind.camera,
+                  icon: Icons.photo_camera,
+                  name: criteria.camera!,
                   onPressed: () => chooseCamera(options),
                   onDeleted: () =>
                       _choose(criteria.copyWith(clearCamera: true)),
@@ -455,7 +497,29 @@ class SearchViewState extends State<SearchView> {
               textInputAction: TextInputAction.search,
               decoration: InputDecoration(
                 isDense: true,
-                prefixIcon: const Icon(Icons.search, color: Colors.white70),
+                // The exclusion of the text: the field has no chip to press
+                // long, its long press selects (issue #242).
+                prefixIcon: IconButton(
+                  key: Key(
+                    criteria.excludes(SearchKind.text)
+                        ? "search-text-exclude-excluded"
+                        : "search-text-exclude",
+                  ),
+                  isSelected: criteria.excludes(SearchKind.text),
+                  icon: const Icon(Icons.search, color: Colors.white70),
+                  selectedIcon: const Icon(
+                    Icons.block,
+                    color: Colors.redAccent,
+                  ),
+                  tooltip: l10n.searchExclude,
+                  onPressed: criteria.has(SearchKind.text)
+                      ? () => _choose(
+                          session.criteria
+                              .copyWith(text: _text.text)
+                              .toggled(SearchKind.text),
+                        )
+                      : null,
+                ),
                 hintText: l10n.searchText,
                 hintStyle: const TextStyle(color: Colors.white54),
               ),
@@ -492,8 +556,82 @@ class SearchViewState extends State<SearchView> {
     },
   );
 
+  /// The rows of a kind of several values: the included ones, then the
+  /// excluded ones, each with whether it is excluded.
+  static Iterable<(T, bool)> _rows<T>(List<T> included, List<T> excluded) => [
+    for (var value in included) (value, false),
+    for (var value in excluded) (value, true),
+  ];
+
+  /// The chip of [value] of a kind of several values (a person, a place, a
+  /// label): "Not: …" where [excluded] (issue #242), turned the other way by
+  /// a long press or a secondary click, and taken away by its delete icon.
+  Widget _valueChip<T>({
+    required String key,
+    required IconData icon,
+    required String name,
+    required T value,
+    required bool excluded,
+    required List<T> included,
+    required List<T> excludedValues,
+    required void Function(List<T> included, List<T> excluded) choose,
+  }) => _excludable(
+    onToggle: () => excluded
+        ? choose(
+            [...included, value],
+            [...excludedValues]..remove(value),
+          )
+        : choose(
+            [...included]..remove(value),
+            [...excludedValues, value],
+          ),
+    child: InputChip(
+      key: Key(excluded ? "$key-excluded" : key),
+      avatar: Icon(icon, size: 18),
+      label: Text(excluded ? _l10n.searchExcluded(name) : name),
+      onDeleted: () => choose(
+        [...included]..remove(value),
+        [...excludedValues]..remove(value),
+      ),
+    ),
+  );
+
+  /// The chip of the row of [kind], chosen: "Not: …" where it is excluded
+  /// (issue #242), turned the other way by a long press or a secondary click.
+  Widget _kindChip({
+    required String key,
+    required SearchKind kind,
+    required IconData icon,
+    required String name,
+    required VoidCallback onPressed,
+    required VoidCallback onDeleted,
+  }) {
+    var excluded = session.criteria.excludes(kind);
+    return _excludable(
+      onToggle: () => _choose(session.criteria.toggled(kind)),
+      child: InputChip(
+        key: Key(excluded ? "$key-excluded" : key),
+        avatar: Icon(icon, size: 18),
+        label: Text(excluded ? _l10n.searchExcluded(name) : name),
+        onPressed: onPressed,
+        onDeleted: onDeleted,
+      ),
+    );
+  }
+
+  /// [child], whose exclusion a long press (touch) or a secondary click
+  /// (mouse) turns, see issue #242.
+  static Widget _excludable({
+    required VoidCallback onToggle,
+    required Widget child,
+  }) => GestureDetector(
+    onLongPress: onToggle,
+    onSecondaryTap: onToggle,
+    child: child,
+  );
+
   Widget _dateChip({
-    required Key key,
+    required String key,
     required String label,
     required DateTime? value,
     required void Function(DateTime day) onPicked,
@@ -514,16 +652,18 @@ class SearchViewState extends State<SearchView> {
 
     if (value == null) {
       return ActionChip(
-        key: key,
+        key: Key(key),
         avatar: const Icon(Icons.event, size: 18),
         label: Text(label),
         onPressed: pick,
       );
     }
-    return InputChip(
+    // Both ends are one row: excluding one excludes the range.
+    return _kindChip(
       key: key,
-      avatar: const Icon(Icons.event, size: 18),
-      label: Text("$label ${dayLabel(value)}"),
+      kind: SearchKind.date,
+      icon: Icons.event,
+      name: "$label ${dayLabel(value)}",
       onPressed: pick,
       onDeleted: onCleared,
     );
@@ -544,9 +684,15 @@ class SearchViewState extends State<SearchView> {
       title: _l10n.searchPersons,
       choices: {for (var p in options.persons) p.id: p.name},
       chosen: session.criteria.persons,
+      excluded: session.criteria.excludedPersons,
     );
     if (chosen != null) {
-      _choose(session.criteria.copyWith(persons: chosen));
+      _choose(
+        session.criteria.copyWith(
+          persons: chosen.included,
+          excludedPersons: chosen.excluded,
+        ),
+      );
     }
   }
 
@@ -558,9 +704,15 @@ class SearchViewState extends State<SearchView> {
           p.geonameId: p.country.isEmpty ? p.name : "${p.name} (${p.country})",
       },
       chosen: session.criteria.places,
+      excluded: session.criteria.excludedPlaces,
     );
     if (chosen != null) {
-      _choose(session.criteria.copyWith(places: chosen));
+      _choose(
+        session.criteria.copyWith(
+          places: chosen.included,
+          excludedPlaces: chosen.excluded,
+        ),
+      );
     }
   }
 
@@ -569,29 +721,33 @@ class SearchViewState extends State<SearchView> {
       title: _l10n.searchLabels,
       choices: {for (var l in options.labels) l.name: l.name},
       chosen: session.criteria.labels,
+      excluded: session.criteria.excludedLabels,
     );
     if (chosen != null) {
-      _choose(session.criteria.copyWith(labels: chosen));
+      _choose(
+        session.criteria.copyWith(
+          labels: chosen.included,
+          excludedLabels: chosen.excluded,
+        ),
+      );
     }
   }
 
   Future<void> chooseRating() async {
     var names = _ratingNames(_l10n);
-    var picked = await showDialog<int>(
+    var picked = await showDialog<(int, bool)>(
       context: context,
-      builder: (context) => SimpleDialog(
+      builder: (context) => _ExcludableChoiceDialog<int>(
         key: const Key("search-rating-dialog"),
-        title: Text(_l10n.searchRating),
-        children: [
-          SimpleDialogOption(
-            onPressed: () => Navigator.of(context).pop(_noRating),
-            child: Text(_l10n.searchAnyRating),
-          ),
+        title: _l10n.searchRating,
+        excluded: session.criteria.excludes(SearchKind.rating),
+        none: (_noRating, _l10n.searchAnyRating),
+        choices: [
           for (var entry in names.entries)
-            SimpleDialogOption(
-              key: Key("search-rating-${entry.key}"),
-              onPressed: () => Navigator.of(context).pop(entry.key),
-              child: Text(_l10n.searchRatingAtLeast(entry.value)),
+            (
+              "search-rating-${entry.key}",
+              entry.key,
+              _l10n.searchRatingAtLeast(entry.value),
             ),
         ],
       ),
@@ -599,42 +755,57 @@ class SearchViewState extends State<SearchView> {
     if (picked == null) {
       return;
     }
+    var (rating, exclude) = picked;
     _choose(
-      picked == _noRating
+      rating == _noRating
           ? session.criteria.copyWith(clearMinRating: true)
-          : session.criteria.copyWith(minRating: picked),
+          : _excluding(
+              session.criteria.copyWith(minRating: rating),
+              SearchKind.rating,
+              exclude,
+            ),
     );
   }
+
+  /// [criteria] with the row of [kind] excluded where [exclude] says so.
+  static SearchCriteria _excluding(
+    SearchCriteria criteria,
+    SearchKind kind,
+    bool exclude,
+  ) => criteria.copyWith(
+    excluded: exclude
+        ? {...criteria.excluded, kind}
+        : ({...criteria.excluded}..remove(kind)),
+  );
 
   static const int _noRating = -99;
 
   Future<void> chooseCamera(SearchOptions options) async {
-    var picked = await showDialog<String>(
+    var picked = await showDialog<(String, bool)>(
       context: context,
-      builder: (context) => SimpleDialog(
+      builder: (context) => _ExcludableChoiceDialog<String>(
         key: const Key("search-camera-dialog"),
-        title: Text(_l10n.searchCamera),
-        children: [
-          SimpleDialogOption(
-            onPressed: () => Navigator.of(context).pop(""),
-            child: Text(_l10n.searchAnyCamera),
-          ),
+        title: _l10n.searchCamera,
+        excluded: session.criteria.excludes(SearchKind.camera),
+        none: ("", _l10n.searchAnyCamera),
+        choices: [
           for (var camera in options.cameras)
-            SimpleDialogOption(
-              key: Key("search-camera-${camera.name}"),
-              onPressed: () => Navigator.of(context).pop(camera.name),
-              child: Text(camera.name),
-            ),
+            ("search-camera-${camera.name}", camera.name, camera.name),
         ],
       ),
     );
     if (picked == null) {
       return;
     }
+    var (camera, exclude) = picked;
     _choose(
-      picked.isEmpty
+      camera.isEmpty
           ? session.criteria.copyWith(clearCamera: true)
-          : session.criteria.copyWith(camera: picked),
+          : _excluding(
+              session.criteria.copyWith(camera: camera),
+              SearchKind.camera,
+              exclude,
+            ),
     );
   }
 
@@ -653,15 +824,21 @@ class SearchViewState extends State<SearchView> {
   }
 
   /// Asks which of [choices] (by their value, shown by their name) are
-  /// chosen, starting from [chosen]; `null` where the dialog was left.
-  Future<List<T>?> _chooseMany<T>({
+  /// chosen and which of them excluded (issue #242), starting from [chosen]
+  /// and [excluded]; `null` where the dialog was left.
+  Future<({List<T> included, List<T> excluded})?> _chooseMany<T>({
     required String title,
     required Map<T, String> choices,
     required List<T> chosen,
-  }) => showDialog<List<T>>(
+    required List<T> excluded,
+  }) => showDialog<({List<T> included, List<T> excluded})>(
     context: context,
-    builder: (context) =>
-        _ChooseManyDialog<T>(title: title, choices: choices, chosen: chosen),
+    builder: (context) => _ChooseManyDialog<T>(
+      title: title,
+      choices: choices,
+      chosen: chosen,
+      excluded: excluded,
+    ),
   );
 
   // --- The results. ---
@@ -765,6 +942,8 @@ class SearchViewState extends State<SearchView> {
     }
     return session.criteria.title(
       fallback: _l10n.searchAction,
+      not: _l10n.searchWordNot,
+      or: _l10n.searchWordOr,
       personNames: {for (var p in options?.persons ?? <Person>[]) p.id: p.name},
       placeNames: {
         for (var p in options?.places ?? <PlaceTag>[]) p.geonameId: p.name,
@@ -814,6 +993,8 @@ class SearchViewState extends State<SearchView> {
     var criteria = session.criteria;
     var proposed = criteria.title(
       fallback: l10n.searchAction,
+      not: l10n.searchWordNot,
+      or: l10n.searchWordOr,
       personNames: {for (var p in options?.persons ?? <Person>[]) p.id: p.name},
       placeNames: {
         for (var p in options?.places ?? <PlaceTag>[]) p.geonameId: p.name,
@@ -909,13 +1090,19 @@ class SearchViewState extends State<SearchView> {
 class _ChooseManyDialog<T> extends StatefulWidget {
   final String title;
   final Map<T, String> choices;
+
+  /// The values chosen and included.
   final List<T> chosen;
+
+  /// The values chosen and excluded (issue #242).
+  final List<T> excluded;
 
   const _ChooseManyDialog({
     super.key,
     required this.title,
     required this.choices,
     required this.chosen,
+    required this.excluded,
   });
 
   @override
@@ -923,7 +1110,11 @@ class _ChooseManyDialog<T> extends StatefulWidget {
 }
 
 class _ChooseManyDialogState<T> extends State<_ChooseManyDialog<T>> {
-  late final List<T> _chosen = [...widget.chosen];
+  /// Every value ticked, the excluded ones included.
+  late final List<T> _chosen = [...widget.chosen, ...widget.excluded];
+
+  /// The values ticked and excluded, see issue #242.
+  late final Set<T> _excluded = {...widget.excluded};
 
   /// The filter of a long list (issue #243).
   final TextEditingController _filter = TextEditingController();
@@ -974,12 +1165,33 @@ class _ChooseManyDialogState<T> extends State<_ChooseManyDialog<T>> {
           CheckboxListTile(
             key: Key("search-choice-${entry.key}"),
             value: _chosen.contains(entry.key),
-            title: Text(entry.value),
+            title: Text(
+              _excluded.contains(entry.key)
+                  ? l10n.searchExcluded(entry.value)
+                  : entry.value,
+            ),
+            // Excluding a value ticks it: "without Philipp" is a choice.
+            secondary: IconButton(
+              key: Key("search-exclude-${entry.key}"),
+              isSelected: _excluded.contains(entry.key),
+              icon: const Icon(Icons.block),
+              selectedIcon: const Icon(Icons.block, color: Colors.redAccent),
+              tooltip: l10n.searchExclude,
+              onPressed: () => setState(() {
+                if (!_excluded.remove(entry.key)) {
+                  _excluded.add(entry.key);
+                  if (!_chosen.contains(entry.key)) {
+                    _chosen.add(entry.key);
+                  }
+                }
+              }),
+            ),
             onChanged: (value) => setState(() {
               if (value == true) {
                 _chosen.add(entry.key);
               } else {
                 _chosen.remove(entry.key);
+                _excluded.remove(entry.key);
               }
             }),
           ),
@@ -1026,9 +1238,72 @@ class _ChooseManyDialogState<T> extends State<_ChooseManyDialog<T>> {
         ),
         ElevatedButton(
           key: const Key("search-choose-done"),
-          onPressed: () => Navigator.of(context).pop(_chosen),
+          onPressed: () => Navigator.of(context).pop((
+            included: [
+              for (var value in _chosen)
+                if (!_excluded.contains(value)) value,
+            ],
+            excluded: [
+              for (var value in _chosen)
+                if (_excluded.contains(value)) value,
+            ],
+          )),
           child: Text(l10n.done),
         ),
+      ],
+    );
+  }
+}
+
+/// The chooser of one value of the rating or the camera: [none] for no
+/// value, one of [choices] (key, value, name), and the switch excluding the
+/// value chosen (issue #242). Answers the value and whether it is excluded.
+class _ExcludableChoiceDialog<T> extends StatefulWidget {
+  final String title;
+  final bool excluded;
+  final (T, String) none;
+  final List<(String, T, String)> choices;
+
+  const _ExcludableChoiceDialog({
+    super.key,
+    required this.title,
+    required this.excluded,
+    required this.none,
+    required this.choices,
+  });
+
+  @override
+  State<_ExcludableChoiceDialog<T>> createState() =>
+      _ExcludableChoiceDialogState<T>();
+}
+
+class _ExcludableChoiceDialogState<T>
+    extends State<_ExcludableChoiceDialog<T>> {
+  late bool _excluded = widget.excluded;
+
+  @override
+  Widget build(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
+    var (noValue, noName) = widget.none;
+    return SimpleDialog(
+      title: Text(widget.title),
+      children: [
+        SwitchListTile(
+          key: const Key("search-exclude-switch"),
+          value: _excluded,
+          title: Text(l10n.searchExclude),
+          onChanged: (value) => setState(() => _excluded = value),
+        ),
+        SimpleDialogOption(
+          onPressed: () => Navigator.of(context).pop((noValue, false)),
+          child: Text(noName),
+        ),
+        for (var (key, value, name) in widget.choices)
+          SimpleDialogOption(
+            key: Key(key),
+            onPressed: () => Navigator.of(context).pop((value, _excluded)),
+            child: Text(_excluded ? l10n.searchExcluded(name) : name),
+          ),
       ],
     );
   }

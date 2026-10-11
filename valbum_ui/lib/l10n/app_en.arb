@@ -6428,5 +6428,41 @@
   "@searchWithoutCamera": {
     "description": "The last heading of a search grouped by camera (issue #244): the photos found that name no camera. German: \"Ohne Kamera\"",
     "x-translated": "bba66033"
+  },
+  "searchAllOf": "All of these",
+  "@searchAllOf": {
+    "description": "Toggle at the start of the criteria of the search view (issue #242): a photo is found where it matches every criterion chosen; tapping it switches to \"Any of these\". German: \"Alle davon\"",
+    "x-translated": "a0e0be66"
+  },
+  "searchAnyOf": "Any of these",
+  "@searchAnyOf": {
+    "description": "Toggle at the start of the criteria of the search view (issue #242): a photo is found where it matches at least one criterion chosen; tapping it switches to \"All of these\". German: \"Eines davon\"",
+    "x-translated": "390b4d0b"
+  },
+  "searchExclude": "Exclude",
+  "@searchExclude": {
+    "description": "Switch and tooltip of the search view (issue #242) that turns a criterion into its opposite: the photos found must not match it (\"without Philipp\"). German: \"Ausschließen\"",
+    "x-translated": "ad3fdee5"
+  },
+  "searchExcluded": "Not: {criterion}",
+  "@searchExcluded": {
+    "description": "Label of an excluded criterion of the search view (issue #242): the photos found must not match it, e.g. \"Not: Philipp\". German: \"Nicht: {criterion}\"",
+    "placeholders": {
+      "criterion": {
+        "type": "String",
+        "example": "Philipp"
+      }
+    },
+    "x-translated": "c7643d90"
+  },
+  "searchWordNot": "not",
+  "@searchWordNot": {
+    "description": "One lowercase word put before an excluded criterion in the title proposed for a saved search (issue #242): \"Anne, not Philipp\". German: \"nicht\"",
+    "x-translated": "805fd75"
+  },
+  "searchWordOr": "or",
+  "@searchWordOr": {
+    "description": "One lowercase word joining alternatives in the title proposed for a saved search (issue #242): \"Rome or Florence, not 2019\". German: \"oder\"",
+    "x-translated": "1db77587"
   }
 }
