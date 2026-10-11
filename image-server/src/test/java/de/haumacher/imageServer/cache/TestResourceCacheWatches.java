@@ -5,6 +5,7 @@ package de.haumacher.imageServer.cache;
 
 import de.haumacher.imageServer.PathInfo;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
+import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.ListingInfo;
 import de.haumacher.imageServer.shared.model.Resource;
 import java.awt.image.BufferedImage;
@@ -150,6 +151,35 @@ public class TestResourceCacheWatches extends TestCase {
 
 		assertEquals("The folder's stamp moved: it is read again.", 2,
 			((AlbumInfo) cache.lookup(path(folder))).getParts().size());
+	}
+
+	/**
+	 * A folder read while empty is a listing; the first video or photograph copied into it is asked
+	 * for before the watcher reports it (the CI failure of 48f317d): the file is answered, never a
+	 * cast of the listing to an album.
+	 */
+	public void testAFileArrivingInAFolderCachedAsAListingIsAnswered() throws Exception {
+		ResourceCache cache = cache(10);
+		File folder = album("empty", 0);
+		// No watch, and a stamp that does not move: the listing stays cached, as it does while a
+		// watcher has not reported the arrival yet.
+		cache.close();
+		long stamp = folder.lastModified();
+		assertFalse(cache.lookup(path(folder)) instanceof AlbumInfo);
+
+		File arrived = new File(folder, "arrived.jpg");
+		photo(arrived, 3);
+		assertTrue(folder.setLastModified(stamp));
+
+		Resource answer = cache.lookup(path(arrived));
+		assertTrue("The file is answered: " + answer, answer instanceof ImagePart);
+		assertEquals("arrived.jpg", ((ImagePart) answer).getName());
+		assertTrue("The folder is an album now.", cache.lookup(path(folder)) instanceof AlbumInfo);
+
+		// A file of no media kind in a folder that stays a listing is nothing, not a failure.
+		File note = new File(album("notes", 0), "readme.txt");
+		assertTrue(note.createNewFile());
+		assertNull(cache.lookup(path(note)));
 	}
 
 	public void testANewFolderInAWatchedOneIsNoticedWithEverythingInIt() throws Exception {

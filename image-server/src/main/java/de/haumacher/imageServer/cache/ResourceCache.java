@@ -397,14 +397,20 @@ public class ResourceCache {
 		if (pathInfo.toFile().isDirectory()) {
 			return _cache.getUnchecked(pathInfo);
 		} else {
-			AlbumInfo container = (AlbumInfo) _cache.getUnchecked(pathInfo.parent());
+			AlbumInfo container = albumHolding(pathInfo);
+			if (container == null) {
+				return null;
+			}
 			ImagePart image = container.getImageByName().get(pathInfo.getName());
 			if (image == null && isImage(pathInfo.toFile())) {
 				// A photograph that arrived after its album was cached, before the directory
 				// watcher reported it: the album is read again once rather than the file answered
 				// as nothing.
 				_cache.invalidate(pathInfo.parent());
-				container = (AlbumInfo) _cache.getUnchecked(pathInfo.parent());
+				container = albumHolding(pathInfo);
+				if (container == null) {
+					return null;
+				}
 				image = container.getImageByName().get(pathInfo.getName());
 			}
 			if (image == null) {
@@ -414,6 +420,28 @@ public class ResourceCache {
 			}
 			return image;
 		}
+	}
+
+	/**
+	 * The album the given file lies in, <code>null</code> where its folder holds no media.
+	 *
+	 * <p>
+	 * A folder read while it held no photograph is cached as a listing; the first media file that
+	 * arrives in it afterwards turns it into an album, which the directory watcher may not have
+	 * reported yet when that file is asked for (a video copied into an empty folder and served at
+	 * once). The folder is read again once then; a folder that still holds no media answers
+	 * <code>null</code> rather than a cast that fails.
+	 * </p>
+	 */
+	private AlbumInfo albumHolding(PathInfo pathInfo) {
+		PathInfo folder = pathInfo.parent();
+		Resource container = _cache.getUnchecked(folder);
+		if (container instanceof AlbumInfo) {
+			return (AlbumInfo) container;
+		}
+		_cache.invalidate(folder);
+		container = _cache.getUnchecked(folder);
+		return container instanceof AlbumInfo ? (AlbumInfo) container : null;
 	}
 
 	static final class Loader extends CacheLoader<PathInfo, Resource> {
