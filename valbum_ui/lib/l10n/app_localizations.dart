@@ -3020,18 +3020,6 @@ abstract class AppLocalizations {
   /// **'Place: {place}'**
   String propertyPlace(String place);
 
-  /// Tooltip of the button under the place of a photo that unfolds its coordinates and the map link (issue #234).
-  ///
-  /// In en, this message translates to:
-  /// **'Show the coordinates'**
-  String get showCoordinates;
-
-  /// Tooltip of the button that folds the coordinates of a photo away again (issue #234).
-  ///
-  /// In en, this message translates to:
-  /// **'Hide the coordinates'**
-  String get hideCoordinates;
-
   /// The line naming who brought a photo into an album
   ///
   /// In en, this message translates to:

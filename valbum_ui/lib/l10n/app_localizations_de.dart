@@ -1831,12 +1831,6 @@ class AppLocalizationsDe extends AppLocalizations {
   }
 
   @override
-  String get showCoordinates => 'Koordinaten anzeigen';
-
-  @override
-  String get hideCoordinates => 'Koordinaten ausblenden';
-
-  @override
   String addedBy(String user) {
     return 'Hinzugefügt von $user';
   }

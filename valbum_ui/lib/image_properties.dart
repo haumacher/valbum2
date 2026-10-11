@@ -79,9 +79,9 @@ List<Widget> imagePropertyLines(
           const Key("property-raw"),
           l10n.propertyRaw(image.raw),
         ),
-      // Where it was taken: the place the server named (issue #234), with the
-      // coordinates one tap away; the coordinates alone from a server that
-      // names none.
+      // Where it was taken: the place the server named (issue #234) with the
+      // map a tap away; the coordinates and the map from a server that names
+      // none.
       if (hasPosition(image.location) && hasPlaceLine(image.places))
         ImagePlaceLine(
           image.places!,
@@ -152,9 +152,10 @@ String placeLineText(List<PlaceTag> tags) {
 
 /// Where a photo was taken, as a place: the [placeLineText] of its tags, or
 /// the server's sentence why there are none yet (shown as it stands, like
-/// every server message), with the [ImageLocationLine] — the coordinates and
-/// the map — unfolded by the button beside it (issue #234).
-class ImagePlaceLine extends StatefulWidget {
+/// every server message), followed by the marker opening the position on the
+/// map (issue #234). The coordinates themselves are not shown: the place says
+/// where, the map shows where exactly.
+class ImagePlaceLine extends StatelessWidget {
   /// What the server said about the place.
   final PlaceInfo places;
 
@@ -171,52 +172,51 @@ class ImagePlaceLine extends StatefulWidget {
     this.mapUrl = "",
   });
 
-  @override
-  State<ImagePlaceLine> createState() => _ImagePlaceLineState();
-}
-
-class _ImagePlaceLineState extends State<ImagePlaceLine> {
-  bool _expanded = false;
+  /// Opens the map of [location], doing nothing where nothing can show it.
+  Future<void> open() => openMap(mapUrl, location);
 
   @override
   Widget build(BuildContext context) {
     var l10n = AppLocalizations.of(context)!;
-    var places = widget.places;
     var pending = places.tags.isEmpty;
     var text = pending
         ? places.pending
         : l10n.propertyPlace(placeLineText(places.tags));
-    return Column(
+    return Row(
       key: const Key("property-place"),
-      crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Flexible(
-              child: SelectableText(
-                text,
-                key: Key(
-                  pending ? "property-place-pending" : "property-place-text",
-                ),
-              ),
-            ),
-            IconButton(
-              key: const Key("property-place-expand"),
-              icon: Icon(_expanded ? Icons.expand_less : Icons.expand_more),
-              iconSize: 18,
-              visualDensity: VisualDensity.compact,
-              tooltip: _expanded ? l10n.hideCoordinates : l10n.showCoordinates,
-              onPressed: () => setState(() => _expanded = !_expanded),
-            ),
-          ],
+        Flexible(
+          child: SelectableText(
+            text,
+            key:
+                Key(pending ? "property-place-pending" : "property-place-text"),
+          ),
         ),
-        if (_expanded)
-          ImageLocationLine(widget.location, mapUrl: widget.mapUrl),
+        IconButton(
+          key: const Key("property-place-map"),
+          icon: const Icon(mapMarkerIcon),
+          iconSize: 18,
+          visualDensity: VisualDensity.compact,
+          tooltip: l10n.showOnMap,
+          onPressed: open,
+        ),
       ],
     );
   }
+}
+
+/// The icon of the button opening a position on the map: the map marker, the
+/// inverted drop every map draws, on the place line and the coordinates line
+/// alike.
+const IconData mapMarkerIcon = Icons.location_on;
+
+/// Opens [location] on the map [mapUrl] names, see [mapUrlFor], with whatever
+/// the device shows maps with — a browser opens a tab, a phone its map
+/// application.
+Future<void> openMap(String mapUrl, GeoLocation location) async {
+  var url = Uri.parse(mapUrlFor(mapUrl, location));
+  await launchUrl(url, mode: LaunchMode.externalApplication);
 }
 
 /// Whether [location] names a place at all, see issue #161.
@@ -276,10 +276,7 @@ class ImageLocationLine extends StatelessWidget {
   const ImageLocationLine(this.location, {super.key, this.mapUrl = ""});
 
   /// Opens the map of [location], doing nothing where nothing can show it.
-  Future<void> open() async {
-    var url = Uri.parse(mapUrlFor(mapUrl, location));
-    await launchUrl(url, mode: LaunchMode.externalApplication);
-  }
+  Future<void> open() => openMap(mapUrl, location);
 
   @override
   Widget build(BuildContext context) {
@@ -291,7 +288,7 @@ class ImageLocationLine extends StatelessWidget {
         Flexible(child: SelectableText(mapLocationText(l10n, location))),
         IconButton(
           key: const Key("property-location-map"),
-          icon: const Icon(Icons.map_outlined),
+          icon: const Icon(mapMarkerIcon),
           iconSize: 18,
           visualDensity: VisualDensity.compact,
           tooltip: l10n.showOnMap,

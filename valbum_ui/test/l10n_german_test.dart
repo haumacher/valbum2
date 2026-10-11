@@ -278,8 +278,7 @@ void sliceThree() {
           isNot(l10nOf(const Locale("en")).headingLevelSubsection));
     });
 
-    testWidgets('the dialog making a collection (issue #221)',
-        (tester) async {
+    testWidgets('the dialog making a collection (issue #221)', (tester) async {
       speakGerman(tester);
       await tester.pumpWidget(
         localizedApp(
@@ -406,12 +405,9 @@ void sliceThree() {
 
       expect(find.text(de.propertyPlace("München · Bayern, Deutschland")),
           findsOneWidget);
-      expect(find.byTooltip(de.showCoordinates), findsOneWidget);
-      await tester.tap(find.byTooltip(de.showCoordinates));
-      await tester.pumpAndSettle();
-      expect(find.byTooltip(de.hideCoordinates), findsOneWidget);
+      expect(find.byTooltip(de.showOnMap), findsOneWidget);
       expect(find.text(de.propertyLocation("48.137000", "11.575000")),
-          findsOneWidget);
+          findsNothing);
       expect(de.propertyPlace("x"), isNot(l10nOf().propertyPlace("x")));
     });
 
@@ -770,8 +766,8 @@ void sliceTwo() {
       });
 
       expect(find.byTooltip(de.duplicatesDeleteTooltip), findsWidgets);
-      await tester.tap(find
-          .byKey(const ValueKey("duplicates-delete-2023-07-01 Trip/IMG_1.jpg")));
+      await tester.tap(find.byKey(
+          const ValueKey("duplicates-delete-2023-07-01 Trip/IMG_1.jpg")));
       await tester.pumpAndSettle();
 
       expect(find.text(de.duplicatesDeleteTitle), findsOneWidget);

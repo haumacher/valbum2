@@ -484,8 +484,6 @@
   "propertyLocation": "Standort: {latitude}, {longitude}",
   "showOnMap": "Auf der Karte anzeigen",
   "propertyPlace": "Ort: {place}",
-  "showCoordinates": "Koordinaten anzeigen",
-  "hideCoordinates": "Koordinaten ausblenden",
   "addedBy": "Hinzugefügt von {user}",
   "rightLabelView": "Ansehen",
   "rightLabelDownload": "Herunterladen",

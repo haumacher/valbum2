@@ -2,15 +2,17 @@
 ///
 /// The server names the places a photo's position lies in (GeoNames entries
 /// from the country to a feature close by) in `ImagePart.places`, in the
-/// language the app asks for; the properties dialog shows them as one line
-/// and keeps the coordinates and the map one tap away. While the server has no
-/// tags yet it says why, and the dialog shows that sentence instead.
+/// language the app asks for; the properties dialog shows them as one line,
+/// followed by the marker opening the position on the map. While the server
+/// has no tags yet it says why, and the dialog shows that sentence instead.
 library;
 
 import 'package:flutter/material.dart' hide Orientation;
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:valbum_ui/caller.dart' show defaultMapUrl;
 import 'package:valbum_ui/client.dart';
 import 'package:valbum_ui/image_properties.dart';
 import 'package:valbum_ui/locales.dart';
@@ -85,29 +87,65 @@ void main() {
   });
 
   group('the properties dialog', () {
-    testWidgets('shows the place, the coordinates one tap away',
+    /// The URLs launched while the test runs, through the method channel the
+    /// url_launcher plugin speaks in a test, where no platform plugin is
+    /// registered.
+    List<String> launched(WidgetTester tester) {
+      var urls = <String>[];
+      var messenger = tester.binding.defaultBinaryMessenger;
+      const channel = MethodChannel("plugins.flutter.io/url_launcher");
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        if (call.method == "launch") {
+          urls.add((call.arguments as Map)["url"] as String);
+        }
+        return true;
+      });
+      addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+      return urls;
+    }
+
+    testWidgets('shows the place and the map, not the coordinates',
         (tester) async {
       await tester.pumpWidget(dialogOn(imageWith(PlaceInfo(tags: schloss))));
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key("property-place")), findsOneWidget);
       expect(find.text(testL10n.propertyPlace(schlossLine)), findsOneWidget);
+      var map = find.byKey(const Key("property-place-map"));
+      expect(map, findsOneWidget);
+      expect(
+        find.descendant(of: map, matching: find.byIcon(Icons.location_on)),
+        findsOneWidget,
+      );
+      expect(find.byTooltip(testL10n.showOnMap), findsOneWidget);
+      expect(find.byKey(const Key("property-place-expand")), findsNothing);
       expect(find.byKey(const Key("property-location")), findsNothing);
       expect(find.byKey(const Key("property-location-map")), findsNothing);
-
-      await tester.tap(find.byTooltip(testL10n.showCoordinates));
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key("property-location")), findsOneWidget);
-      expect(find.text("Location: 48.123456, 8.654321"), findsOneWidget);
-      expect(find.byKey(const Key("property-location-map")), findsOneWidget);
-
-      await tester.tap(find.byTooltip(testL10n.hideCoordinates));
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key("property-location")), findsNothing);
+      expect(find.textContaining("48.123456"), findsNothing);
+      expect(find.text(mapLocationText(testL10n, atHome)), findsNothing);
     });
 
-    testWidgets('shows why there is no place yet', (tester) async {
+    testWidgets('opens the position on the map', (tester) async {
+      var urls = launched(tester);
+      await tester.pumpWidget(dialogOn(
+        imageWith(PlaceInfo(tags: schloss)),
+        mapUrl: "https://www.openstreetmap.org/?mlat={lat}&mlon={lon}",
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key("property-place-map")));
+      await tester.pumpAndSettle();
+      expect(urls, [
+        mapUrlFor(
+            "https://www.openstreetmap.org/?mlat={lat}&mlon={lon}", atHome),
+      ]);
+      expect(urls.single,
+          "https://www.openstreetmap.org/?mlat=48.123456&mlon=8.654321");
+    });
+
+    testWidgets('shows why there is no place yet, and the map', (tester) async {
       const sentence = "Place names for China are being loaded.";
+      var urls = launched(tester);
       await tester
           .pumpWidget(dialogOn(imageWith(PlaceInfo(pending: sentence))));
       await tester.pumpAndSettle();
@@ -115,10 +153,17 @@ void main() {
       expect(find.byKey(const Key("property-place-pending")), findsOneWidget);
       expect(find.text(sentence), findsOneWidget);
       expect(find.byKey(const Key("property-place-text")), findsNothing);
+      expect(find.byKey(const Key("property-place-expand")), findsNothing);
+      expect(find.byKey(const Key("property-location")), findsNothing);
 
-      await tester.tap(find.byKey(const Key("property-place-expand")));
+      var map = find.byKey(const Key("property-place-map"));
+      expect(
+        find.descendant(of: map, matching: find.byIcon(Icons.location_on)),
+        findsOneWidget,
+      );
+      await tester.tap(map);
       await tester.pumpAndSettle();
-      expect(find.text("Location: 48.123456, 8.654321"), findsOneWidget);
+      expect(urls, [mapUrlFor(defaultMapUrl, atHome)]);
     });
 
     testWidgets('shows the coordinates where the server names no place',
@@ -127,7 +172,16 @@ void main() {
         await tester.pumpWidget(dialogOn(imageWith(places)));
         await tester.pumpAndSettle();
         expect(find.byKey(const Key("property-place")), findsNothing);
+        expect(find.byKey(const Key("property-place-map")), findsNothing);
         expect(find.byKey(const Key("property-location")), findsOneWidget);
+        expect(find.text(mapLocationText(testL10n, atHome)), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byKey(const Key("property-location-map")),
+            matching: find.byIcon(Icons.location_on),
+          ),
+          findsOneWidget,
+        );
       }
     });
 
@@ -136,6 +190,8 @@ void main() {
       await tester.pumpWidget(dialogOn(image));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key("property-place")), findsNothing);
+      expect(find.byKey(const Key("property-place-map")), findsNothing);
+      expect(find.byKey(const Key("property-location")), findsNothing);
     });
   });
 

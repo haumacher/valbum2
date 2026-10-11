@@ -1807,12 +1807,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get showCoordinates => 'Show the coordinates';
-
-  @override
-  String get hideCoordinates => 'Hide the coordinates';
-
-  @override
   String addedBy(String user) {
     return 'Added by $user';
   }

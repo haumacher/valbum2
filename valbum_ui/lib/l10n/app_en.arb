@@ -2953,16 +2953,6 @@
     },
     "x-translated": "2b2582af"
   },
-  "showCoordinates": "Show the coordinates",
-  "@showCoordinates": {
-    "description": "Tooltip of the button under the place of a photo that unfolds its coordinates and the map link (issue #234).",
-    "x-translated": "9e1a044f"
-  },
-  "hideCoordinates": "Hide the coordinates",
-  "@hideCoordinates": {
-    "description": "Tooltip of the button that folds the coordinates of a photo away again (issue #234).",
-    "x-translated": "a5f6ce9e"
-  },
   "addedBy": "Added by {user}",
   "@addedBy": {
     "description": "The line naming who brought a photo into an album",
