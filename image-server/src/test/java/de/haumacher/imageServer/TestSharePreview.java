@@ -326,6 +326,26 @@ public class TestSharePreview extends TestCase {
 	}
 
 	/**
+	 * A link on an album whose <code>index.json</code> cannot be read (issue #254): the page is
+	 * served, its card says nothing out of the album, and the link's title is empty, never a 500.
+	 */
+	public void testALinkOnAnUnreadableAlbumDrawsNoCard() throws Exception {
+		single();
+		String token = share("", ZOO, Privacy.MEMBERS, Ratings.MIN);
+		Path sidecar = _base.resolve(ZOO).resolve("index.json");
+		byte[] broken = "[\"AlbumInfo\",{\"title\":\"Zoo\",\"parts\":[".getBytes(StandardCharsets.UTF_8);
+		Files.write(sidecar, broken);
+		assertTrue(sidecar.toFile().setLastModified(System.currentTimeMillis() + 10_000));
+
+		FakeResponse page = get("/s/" + token + "/");
+		assertEquals(page.body(), HttpServletResponse.SC_OK, page.status());
+		assertFalse(page.body(), page.body().contains("og:image"));
+		assertEquals("", SharePreview.linkTitle(_data.get("").cache(), _base,
+			auth("").getShares().lookup(token)));
+		assertTrue("Never written.", Arrays.equals(broken, Files.readAllBytes(sidecar)));
+	}
+
+	/**
 	 * A link an earlier build made on a NAS's <code>@eaDir</code>, which it listed as an album, draws
 	 * no card: that folder is no part of the library any more, see issue #173.
 	 */

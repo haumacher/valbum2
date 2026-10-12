@@ -395,6 +395,14 @@ public class TestImageServletPut extends TestCase {
 							throw new UnsupportedOperationException();
 						}
 					};
+				case "isCommitted":
+					return Boolean.FALSE;
+				case "reset":
+					_status = HttpServletResponse.SC_OK;
+					_headers.clear();
+					_body.reset();
+					_contentType = null;
+					return null;
 				case "toString":
 					return "FakeResponse[" + _status + "]";
 				default:

@@ -210,6 +210,9 @@ public class DeleteService {
 		if (!dir.isDirectory()) {
 			throw new MoveRefused(HttpServletResponse.SC_NOT_FOUND, FOLDER_MISSING);
 		}
+		// What is deleted from a folder is deleted from its sidecar, which is never written over
+		// where it cannot be read, see issue #254: refused before anything moves.
+		ResourceCache.checkSidecar(dir);
 
 		MoveOutcome[] outcomes = new MoveOutcome[names.size()];
 		List<String> images = new ArrayList<>();

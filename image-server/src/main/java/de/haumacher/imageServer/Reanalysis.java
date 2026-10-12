@@ -252,7 +252,14 @@ public final class Reanalysis {
 		if (!dir.isDirectory()) {
 			return;
 		}
-		Resource resource = _cache.lookup(folder);
+		Resource resource;
+		try {
+			resource = _cache.lookup(folder);
+		} catch (ResourceCache.UnreadableSidecar ex) {
+			// Never written over, see issue #254; the folders below are read all the same.
+			LOG.warning("Skipping '" + dir + "': " + ex.getMessage());
+			resource = null;
+		}
 		if (resource instanceof AlbumInfo) {
 			try {
 				album(folder, progress);

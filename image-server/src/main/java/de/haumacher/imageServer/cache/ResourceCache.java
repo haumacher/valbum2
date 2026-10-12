@@ -123,6 +123,69 @@ public class ResourceCache {
 	}
 
 	/**
+	 * A folder whose own <code>index.json</code> cannot be read, see issue #254.
+	 *
+	 * <p>
+	 * Thrown by {@link ResourceCache#lookup(PathInfo)} for the folder and for every file in it, and
+	 * by {@link ResourceCache#checkSidecar(File)} before anything would be written over the file.
+	 * The servlet answers it with a refusal carrying {@link #getMessage()}: the album is never
+	 * answered from its files alone, because a write of such an album would overwrite the titles,
+	 * the order and the privacy the user may have in the file, and a photograph whose privacy cannot
+	 * be read is no photograph to show.
+	 * </p>
+	 */
+	public static final class UnreadableSidecar extends RuntimeException {
+
+		private static final long serialVersionUID = 1L;
+
+		private final File _folder;
+
+		UnreadableSidecar(File folder, Throwable cause) {
+			super(message(reason(cause)), cause);
+			_folder = folder;
+		}
+
+		/** The folder whose <code>index.json</code> cannot be read. */
+		public File getFolder() {
+			return _folder;
+		}
+
+		/** The sentence a request touching a folder with an unreadable sidecar is refused with. */
+		public static String message(String reason) {
+			return "index.json of this album cannot be read: " + reason + " \u2014 repair or remove it";
+		}
+
+		private static String reason(Throwable cause) {
+			String message = cause.getMessage();
+			return message == null || message.isBlank() ? cause.getClass().getSimpleName() : message.strip();
+		}
+	}
+
+	/**
+	 * Refuses with {@link UnreadableSidecar} where the given folder has an <code>index.json</code>
+	 * that cannot be read; nothing happens where it has none or a readable one.
+	 *
+	 * <p>
+	 * Asked before anything is written into the folder, its sidecar above all, see issue #254: a
+	 * file that could not be read may hold what the user wrote, and is never overwritten.
+	 * </p>
+	 */
+	public static void checkSidecar(File dir) throws UnreadableSidecar {
+		readSidecar(dir);
+	}
+
+	/**
+	 * The <code>index.json</code> of the given folder, <code>null</code> if it has none; the strict
+	 * form of {@link #sidecar(File)}, see issue #254.
+	 *
+	 * @throws UnreadableSidecar
+	 *         Where the folder has an <code>index.json</code> that cannot be read.
+	 */
+	public static FolderResource readSidecar(File dir) throws UnreadableSidecar {
+		return Loader.readDirIndex(dir);
+	}
+
+	/**
 	 * Forgets, in every cache of this process, what is held for the given folder and for the folder
 	 * containing it: its analysis record was written (see {@link AnalysisRecord}), or a watch of
 	 * the background reported a change in it. The next request reads both again, from their
@@ -504,7 +567,7 @@ public class ResourceCache {
 			return Loader.createGenericAlbumInfo(pathInfo);
 		}
 		if (pathInfo.toFile().isDirectory()) {
-			return cache.getUnchecked(pathInfo);
+			return load(cache, pathInfo);
 		} else {
 			AlbumInfo container = albumHolding(pathInfo);
 			if (container == null) {
@@ -535,13 +598,29 @@ public class ResourceCache {
 	private AlbumInfo albumHolding(PathInfo pathInfo) {
 		PathInfo folder = pathInfo.parent();
 		LoadingCache<PathInfo, Resource> cache = _cache;
-		Resource container = cache.getUnchecked(folder);
+		Resource container = load(cache, folder);
 		if (container instanceof AlbumInfo) {
 			return (AlbumInfo) container;
 		}
 		cache.invalidate(folder);
-		container = cache.getUnchecked(folder);
+		container = load(cache, folder);
 		return container instanceof AlbumInfo ? (AlbumInfo) container : null;
+	}
+
+	/**
+	 * What the cache holds for the given folder, read where it holds nothing; a folder whose
+	 * sidecar cannot be read is refused with {@link UnreadableSidecar}, never held, so that the
+	 * repaired file is read on the next request, see issue #254.
+	 */
+	private static Resource load(LoadingCache<PathInfo, Resource> cache, PathInfo folder) {
+		try {
+			return cache.getUnchecked(folder);
+		} catch (com.google.common.util.concurrent.UncheckedExecutionException ex) {
+			if (ex.getCause() instanceof UnreadableSidecar) {
+				throw (UnreadableSidecar) ex.getCause();
+			}
+			throw ex;
+		}
 	}
 
 	static final class Loader extends CacheLoader<PathInfo, Resource> {
@@ -641,7 +720,7 @@ public class ResourceCache {
 				return;
 			}
 			try {
-				FolderResource sidecar = loadDirIndex(dir);
+				FolderResource sidecar = readDirIndex(dir);
 				if (sidecar instanceof AlbumInfo) {
 					return;
 				}
@@ -662,7 +741,7 @@ public class ResourceCache {
 			for (File folder : folders) {
 				FolderResource sidecar;
 				try {
-					sidecar = loadDirIndex(folder);
+					sidecar = readDirIndex(folder);
 				} catch (RuntimeException ex) {
 					sidecar = null;
 				}
@@ -772,7 +851,14 @@ public class ResourceCache {
 			_stamps.put(path, stamp(dir));
 			_keys.computeIfAbsent(keyOf(dir), x -> java.util.concurrent.ConcurrentHashMap.newKeySet()).add(path);
 
-			FolderResource resource = loadDirIndex(dir);
+			FolderResource resource;
+			try {
+				resource = readDirIndex(dir);
+			} catch (UnreadableSidecar ex) {
+				// Never held: the next request reads the file again, repaired or not.
+				_stamps.remove(path);
+				throw ex;
+			}
 			if (resource instanceof ListingInfo) {
 				return loadListing(path, (ListingInfo) resource);
 			}
@@ -821,32 +907,54 @@ public class ResourceCache {
 			return album;
 		}
 
+		/**
+		 * The <code>index.json</code> of the given folder, <code>null</code> where it has none or
+		 * one that cannot be read (logged); see {@link #readDirIndex(File)} for the strict read.
+		 */
 		private static FolderResource loadDirIndex(File dir) {
-			File indexFile = new File(dir, "index.json");
-			FolderResource resource;
-			if (indexFile.exists()) {
-				try {
-					resource = loadJSON(indexFile, FolderResource::readFolderResource);
-					if (resource instanceof AlbumInfo) {
-						// Where the folder lies says whether it is the inbox, never the sidecar: an
-						// album an older build flagged as one reads as an album, see issue #226.
-						// A collection is the one kind a sidecar states, see issue #221.
-						AlbumInfo album = (AlbumInfo) resource;
-						AlbumKind kind = Inboxes.kindOf(dir);
-						// So is a saved search, see issue #227.
-						album.setKind(kind == AlbumKind.ALBUM
-							&& (album.getKind() == AlbumKind.COLLECTION || album.getKind() == AlbumKind.SEARCH)
-								? album.getKind() : kind);
-					}
-					dropZeroLocations(resource);
-					dropIgnoredParts(resource);
-				} catch (IOException ex) {
-					LOG.log(Level.WARNING, "Faild to directory index: " + indexFile.getAbsolutePath(), ex);
-					resource = null;
-				}
-			} else {
-				resource = null;
+			try {
+				return readDirIndex(dir);
+			} catch (UnreadableSidecar ex) {
+				LOG.log(Level.WARNING, "Cannot read the sidecar of '" + dir.getAbsolutePath() + "': "
+					+ ex.getCause().getMessage(), ex.getCause());
+				return null;
 			}
+		}
+
+		/**
+		 * The <code>index.json</code> of the given folder, <code>null</code> where it has none.
+		 *
+		 * @throws UnreadableSidecar
+		 *         Where the file is there but cannot be read: whatever the reader fails with, a
+		 *         malformed file and a field of the wrong type alike, see issue #254.
+		 */
+		static FolderResource readDirIndex(File dir) throws UnreadableSidecar {
+			File indexFile = new File(dir, "index.json");
+			if (!indexFile.exists()) {
+				return null;
+			}
+			FolderResource resource;
+			try {
+				resource = loadJSON(indexFile, FolderResource::readFolderResource);
+			} catch (IOException | RuntimeException ex) {
+				throw new UnreadableSidecar(dir, ex);
+			}
+			if (resource == null) {
+				throw new UnreadableSidecar(dir, new IOException("it describes no album and no folder"));
+			}
+			if (resource instanceof AlbumInfo) {
+				// Where the folder lies says whether it is the inbox, never the sidecar: an
+				// album an older build flagged as one reads as an album, see issue #226.
+				// A collection is the one kind a sidecar states, see issue #221.
+				AlbumInfo album = (AlbumInfo) resource;
+				AlbumKind kind = Inboxes.kindOf(dir);
+				// So is a saved search, see issue #227.
+				album.setKind(kind == AlbumKind.ALBUM
+					&& (album.getKind() == AlbumKind.COLLECTION || album.getKind() == AlbumKind.SEARCH)
+						? album.getKind() : kind);
+			}
+			dropZeroLocations(resource);
+			dropIgnoredParts(resource);
 			return resource;
 		}
 
@@ -1004,7 +1112,9 @@ public class ResourceCache {
 			FolderInfo folderInfo = FolderInfo.create();
 			folderInfo.setName(folderName);
 
-			FolderResource folderResource = loadDirIndex(folder);
+			// Strict: a folder whose sidecar cannot be read is a tile by its name alone, never one
+			// built from its files (whose privacy that sidecar would say), see issue #254.
+			FolderResource folderResource = readDirIndex(folder);
 
 			// The sidecar and the name, and nothing else: a listing never opens the images of the
 			// albums it shows, see FolderInfo#getEffectiveDate().

@@ -416,7 +416,13 @@ public class SharePreview implements ResourceServlet.PageDecorator, ResourceServ
 		if (path == null || !path.isDirectory()) {
 			return "";
 		}
-		Resource resource = cache.lookup(path);
+		Resource resource;
+		try {
+			resource = cache.lookup(path);
+		} catch (ResourceCache.UnreadableSidecar ex) {
+			// A title is a label; a folder whose sidecar cannot be read has none, see issue #254.
+			return "";
+		}
 		if (resource == null) {
 			return "";
 		}
@@ -457,7 +463,13 @@ public class SharePreview implements ResourceServlet.PageDecorator, ResourceServ
 		if (data == null) {
 			return null;
 		}
-		Resource resource = data.cache().lookup(path);
+		Resource resource;
+		try {
+			resource = data.cache().lookup(path);
+		} catch (ResourceCache.UnreadableSidecar ex) {
+			// Nothing is shown of a folder whose sidecar cannot be read, see issue #254.
+			return null;
+		}
 		if (resource == null) {
 			return null;
 		}

@@ -478,13 +478,24 @@ public class PrivacyFilter {
 		PathInfo albumPath = FolderCover.albumOf(childPath, indexPicture.getImage());
 		boolean nested = albumPath != childPath;
 
-		FolderResource sidecar = ResourceCache.sidecar(albumPath.toFile());
-		if (!(sidecar instanceof AlbumInfo)) {
-			// No sidecar, no privacy: a folder the server described by itself holds public images.
-			return folder;
+		FolderResource sidecar;
+		boolean unreadable = false;
+		try {
+			sidecar = ResourceCache.readSidecar(albumPath.toFile());
+		} catch (ResourceCache.UnreadableSidecar ex) {
+			// A photograph whose privacy cannot be read is shown to nobody, see issue #254.
+			sidecar = null;
+			unreadable = true;
 		}
-		if (shown((AlbumInfo) sidecar, FolderCover.imageName(indexPicture.getImage()), clearance, minRating, label)) {
-			return folder;
+		if (!unreadable) {
+			if (!(sidecar instanceof AlbumInfo)) {
+				// No sidecar, no privacy: a folder the server described by itself holds public images.
+				return folder;
+			}
+			if (shown((AlbumInfo) sidecar, FolderCover.imageName(indexPicture.getImage()), clearance, minRating,
+				label)) {
+				return folder;
+			}
 		}
 
 		FolderInfo result = FolderInfo.create()
@@ -501,7 +512,7 @@ public class PrivacyFilter {
 			.setLink(folder.getLink())
 			// The listing keeps its order whoever is looking at it.
 			.setEffectiveDate(folder.getEffectiveDate());
-		if (nested) {
+		if (nested || unreadable) {
 			// A folder is shown by the picture its author chose and by no other: where the caller
 			// may not see that one, the tile carries the folder icon. Falling back to some other
 			// photograph would answer a choice nobody made, see issue #110.

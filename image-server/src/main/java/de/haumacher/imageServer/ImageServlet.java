@@ -893,7 +893,7 @@ public class ImageServlet extends HttpServlet {
 		_collections = new PhotoCollections(_basePath, _index);
 		_faces = new FaceIndex(_basePath, facesEnabled);
 		_reanalysis = new Reanalysis(_cache, _space.isEmpty() ? basePath.getName() : _space);
-		_searchIndex = new SearchIndex(_basePath, _cache::lookup, () -> {
+		_searchIndex = new SearchIndex(_basePath, this::lookupOrSkip, () -> {
 			Places places = _cache.places();
 			return places == null ? -1 : places.epoch();
 		});
@@ -1033,8 +1033,59 @@ public class ImageServlet extends HttpServlet {
 		super.destroy();
 	}
 
+	/**
+	 * The status a request touching a folder whose own <code>index.json</code> cannot be read is
+	 * refused with, see issue #254 and {@link ResourceCache.UnreadableSidecar}: the request is
+	 * understood, but the folder it addresses cannot be processed until somebody repairs or removes
+	 * the file.
+	 */
+	public static final int SC_UNREADABLE_SIDECAR = 422;
+
 	@Override
 	protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+		try {
+			serveGet(request, response);
+		} catch (ResourceCache.UnreadableSidecar ex) {
+			refuseUnreadable(request, response, ex);
+		}
+	}
+
+	@Override
+	protected void doPut(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+		try {
+			servePut(request, response);
+		} catch (ResourceCache.UnreadableSidecar ex) {
+			refuseUnreadable(request, response, ex);
+		}
+	}
+
+	@Override
+	protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+		try {
+			servePost(request, response);
+		} catch (ResourceCache.UnreadableSidecar ex) {
+			refuseUnreadable(request, response, ex);
+		}
+	}
+
+	/**
+	 * Answers a request that touched a folder whose own <code>index.json</code> cannot be read, see
+	 * issue #254: a refusal saying so, never a <code>500</code> and never an album made up from the
+	 * files, which the next write would store over what the user wrote. The file is left as it is.
+	 */
+	private static void refuseUnreadable(HttpServletRequest request, HttpServletResponse response,
+			ResourceCache.UnreadableSidecar ex) throws IOException {
+		LOG.warning("Refusing '" + request.getMethod() + " " + request.getPathInfo() + "': the sidecar of '"
+			+ ex.getFolder() + "' cannot be read: " + ex.getCause().getMessage());
+		if (response.isCommitted()) {
+			// Nothing can be said any more; the connection tells the client.
+			throw ex;
+		}
+		response.reset();
+		errorInfo(new Context(request, response), SC_UNREADABLE_SIDECAR, ex.getMessage());
+	}
+
+	private void serveGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
 		String pathInfo = request.getPathInfo();
 		Context context = new Context(request, response);
 
@@ -1359,8 +1410,7 @@ public class ImageServlet extends HttpServlet {
 		response.sendRedirect(location);
 	}
 
-	@Override
-	protected void doPut(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+	private void servePut(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
 		String pathInfo = request.getPathInfo();
 		Context context = new Context(request, response);
 
@@ -1453,6 +1503,8 @@ public class ImageServlet extends HttpServlet {
 				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PhotoSearch.UPLOAD_REFUSED);
 				return;
 			}
+			// Nothing lands in a folder whose sidecar cannot be read, see issue #254.
+			ResourceCache.checkSidecar(folder.toFile());
 			storeSingleImage(context, caller, folder, file);
 			return;
 		}
@@ -1472,6 +1524,8 @@ public class ImageServlet extends HttpServlet {
 				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PhotoSearch.UPLOAD_REFUSED);
 				return;
 			}
+			// Nothing lands in a folder whose sidecar cannot be read, see issue #254.
+			ResourceCache.checkSidecar(file);
 			storeUploads(context, caller, resourcePath);
 			return;
 		}
@@ -5169,8 +5223,7 @@ public class ImageServlet extends HttpServlet {
 	 * like a PUT.
 	 * </p>
 	 */
-	@Override
-	protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+	private void servePost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
 		Context context = new Context(request, response);
 
 		String action = context.getParameter("action");
@@ -5644,6 +5697,22 @@ public class ImageServlet extends HttpServlet {
 		errorInfo(context, HttpServletResponse.SC_GONE, message);
 	}
 
+	/**
+	 * What the cache holds for the given path, <code>null</code> where it lies in a folder whose
+	 * own <code>index.json</code> cannot be read: for an answer drawn from many folders (a search,
+	 * a collection, the duplicates), which leaves such a folder out rather than failing as a whole,
+	 * see issue #254. A request addressing that folder itself is refused, see
+	 * {@link #refuseUnreadable(HttpServletRequest, HttpServletResponse, ResourceCache.UnreadableSidecar)}.
+	 */
+	private Resource lookupOrSkip(PathInfo path) {
+		try {
+			return _cache.lookup(path);
+		} catch (ResourceCache.UnreadableSidecar ex) {
+			LOG.warning("Leaving out '" + path.toFile() + "': " + ex.getMessage());
+			return null;
+		}
+	}
+
 	/** Answers with the given status and an {@link ErrorInfo} body carrying the given message. */
 	static void errorInfo(Context context, int status, String message) throws IOException {
 		HttpServletResponse response = context.response();
@@ -6018,7 +6087,8 @@ public class ImageServlet extends HttpServlet {
 			if (!_auth.mayEdit(caller, folder)) {
 				continue;
 			}
-			Resource resource = _cache.lookup(folder);
+			// An album whose sidecar cannot be read is never written over, see issue #254.
+			Resource resource = lookupOrSkip(folder);
 			if (!(resource instanceof AlbumInfo) || PhotoCollections.isCollection(resource)) {
 				continue;
 			}
@@ -6225,8 +6295,16 @@ public class ImageServlet extends HttpServlet {
 	 * the same path, so there is only ever one sidecar format. A pre-existing sidecar is kept as a
 	 * timestamped backup and the new one appears by a rename, so a reader never sees half a file.
 	 * </p>
+	 *
+	 * @throws ResourceCache.UnreadableSidecar
+	 *         Where the folder's present <code>index.json</code> cannot be read: it is never
+	 *         written over, see issue #254.
 	 */
 	static void storeSidecar(File directory, byte[] contents) throws IOException {
+		// A sidecar that cannot be read may hold what the user wrote, and is never written over,
+		// see issue #254.
+		ResourceCache.checkSidecar(directory);
+
 		File indexFile = new File(directory, "index.json");
 
 		File tmpFile = File.createTempFile("index", ".json", directory);
@@ -6775,7 +6853,7 @@ public class ImageServlet extends HttpServlet {
 				if (!_auth.mayView(caller, path)) {
 					return null;
 				}
-				Resource resource = _cache.lookup(path);
+				Resource resource = lookupOrSkip(path);
 				return resource instanceof AlbumInfo ? (AlbumInfo) resource : null;
 			}
 
@@ -6783,7 +6861,7 @@ public class ImageServlet extends HttpServlet {
 			public ImagePart photo(String file) {
 				PathInfo path = new PathInfo(root, Paths.get(file));
 				PathInfo folder = path.parent();
-				Resource resource = _cache.lookup(path);
+				Resource resource = lookupOrSkip(path);
 				if (!(resource instanceof ImagePart)) {
 					return null;
 				}
@@ -7880,7 +7958,7 @@ public class ImageServlet extends HttpServlet {
 	private List<ImagePart> searchMatches(PathInfo scope, SearchQuery query,
 			java.util.function.BiFunction<PathInfo, Set<String>, AlbumInfo> sources, boolean member,
 			Map<String, PhotoSearch.Photo> stored) {
-		List<PhotoSearch.Match> found = PhotoSearch.find(scope, query, _cache::lookup, _people, _searchIndex);
+		List<PhotoSearch.Match> found = PhotoSearch.find(scope, query, this::lookupOrSkip, _people, _searchIndex);
 		// Each album is asked once, for its matches alone: what its filters and its faces cost is
 		// paid for what is answered, not for the whole album.
 		Map<PathInfo, Set<String>> matched = new LinkedHashMap<>();
@@ -8145,7 +8223,7 @@ public class ImageServlet extends HttpServlet {
 		String relative = path.toFile().toPath().toAbsolutePath().normalize().toString();
 		String base = search.toFile().toPath().toAbsolutePath().normalize().toString();
 		relative = relative.substring(base.length() + 1).replace(File.separatorChar, '/');
-		PathInfo folder = PhotoSearch.matching(searchScope(search), relative, query, _cache::lookup, _people);
+		PathInfo folder = PhotoSearch.matching(searchScope(search), relative, query, this::lookupOrSkip, _people);
 		if (folder == null) {
 			LOG.warning("No photograph of the saved search at '" + context.request().getPathInfo() + "'.");
 			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, PhotoSearch.NO_MATCH);
@@ -8193,7 +8271,7 @@ public class ImageServlet extends HttpServlet {
 			if (PhotoSearch.refusal(query) != null) {
 				return null;
 			}
-			PathInfo source = PhotoSearch.matching(searchScope(folder), name, query, _cache::lookup, _people);
+			PathInfo source = PhotoSearch.matching(searchScope(folder), name, query, this::lookupOrSkip, _people);
 			return source == null ? null : source.child(segments.get(segments.size() - 1));
 		}
 		PathInfo result = folder;
@@ -8282,7 +8360,7 @@ public class ImageServlet extends HttpServlet {
 		if (!folder.toFile().isDirectory() || !_auth.mayView(caller, folder)) {
 			return null;
 		}
-		Resource stored = _cache.lookup(folder);
+		Resource stored = lookupOrSkip(folder);
 		if (!(stored instanceof AlbumInfo) || PhotoCollections.isCollection(stored)) {
 			return null;
 		}
@@ -8308,7 +8386,7 @@ public class ImageServlet extends HttpServlet {
 			if (!folder.toFile().isDirectory()) {
 				return null;
 			}
-			Resource stored = _cache.lookup(folder);
+			Resource stored = lookupOrSkip(folder);
 			if (!(stored instanceof AlbumInfo) || PhotoCollections.isCollection(stored)) {
 				return null;
 			}
@@ -8336,7 +8414,7 @@ public class ImageServlet extends HttpServlet {
 			if (!folder.toFile().isDirectory()) {
 				return null;
 			}
-			Resource stored = _cache.lookup(folder);
+			Resource stored = lookupOrSkip(folder);
 			if (!(stored instanceof AlbumInfo) || PhotoSearch.holdsNoFiles(stored)) {
 				return null;
 			}
@@ -8402,7 +8480,7 @@ public class ImageServlet extends HttpServlet {
 			return folder;
 		}
 		PathInfo albumPath = FolderCover.albumOf(childPath, cover.getImage());
-		Resource album = albumPath.toFile().isDirectory() ? _cache.lookup(albumPath) : null;
+		Resource album = albumPath.toFile().isDirectory() ? lookupOrSkip(albumPath) : null;
 		if (!PhotoCollections.isCollection(album)) {
 			return folder;
 		}
@@ -8443,7 +8521,7 @@ public class ImageServlet extends HttpServlet {
 	 * search would ask, a link's limits included.
 	 */
 	private FolderInfo searchTile(FolderInfo folder, PathInfo childPath, Caller caller, int viewAs, String label) {
-		Resource stored = childPath.toFile().isDirectory() ? _cache.lookup(childPath) : null;
+		Resource stored = childPath.toFile().isDirectory() ? lookupOrSkip(childPath) : null;
 		ThumbnailInfo cover = null;
 		if (PhotoSearch.isSearch(stored) && PhotoSearch.refusal(((AlbumInfo) stored).getQuery()) == null) {
 			int clearance = Math.min(_auth.clearance(caller, childPath), viewAs);
