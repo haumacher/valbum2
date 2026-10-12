@@ -23,6 +23,7 @@ library;
 import 'package:flutter/material.dart';
 
 import 'l10n/app_localizations.dart';
+import 'selectable.dart';
 
 /// The bar of the select mode: the way out, how many are selected, and the
 /// download of the selection — nothing else (issue #209).
@@ -102,8 +103,12 @@ class SelectableTile extends StatelessWidget {
     required this.child,
   });
 
+  /// A gesture surface of its own, see [SelectionExcluded].
   @override
-  Widget build(BuildContext context) => GestureDetector(
+  Widget build(BuildContext context) =>
+      SelectionExcluded(child: _buildTile(context));
+
+  Widget _buildTile(BuildContext context) => GestureDetector(
         onTap: onTap,
         onLongPress: onToggle,
         child: Stack(

@@ -58,6 +58,7 @@ import 'offline.dart';
 import 'resource.dart';
 import 'routes.dart';
 import 'search_query.dart';
+import 'selectable.dart';
 
 /// What the search view below one folder holds: the criteria, the search
 /// running or done, and the options offered, see issue #227.
@@ -686,6 +687,13 @@ class SearchViewState extends State<SearchView> {
   static Widget _excludable({
     required VoidCallback onToggle,
     required Widget child,
+  }) => SelectionExcluded(
+    child: _excludableTile(onToggle: onToggle, child: child),
+  );
+
+  static Widget _excludableTile({
+    required VoidCallback onToggle,
+    required Widget child,
   }) => GestureDetector(
     onLongPress: onToggle,
     onSecondaryTap: onToggle,
@@ -797,7 +805,7 @@ class SearchViewState extends State<SearchView> {
 
   Future<void> chooseRating() async {
     var names = _ratingNames(_l10n);
-    var picked = await showDialog<(int, bool)>(
+    var picked = await showAppDialog<(int, bool)>(
       context: context,
       builder: (context) => _ExcludableChoiceDialog<int>(
         key: const Key("search-rating-dialog"),
@@ -843,7 +851,7 @@ class SearchViewState extends State<SearchView> {
   static const int _noRating = -99;
 
   Future<void> chooseCamera(SearchOptions options) async {
-    var picked = await showDialog<(String, bool)>(
+    var picked = await showAppDialog<(String, bool)>(
       context: context,
       builder: (context) => _ExcludableChoiceDialog<String>(
         key: const Key("search-camera-dialog"),
@@ -893,7 +901,7 @@ class SearchViewState extends State<SearchView> {
     required Map<T, String> choices,
     required List<T> chosen,
     required List<T> excluded,
-  }) => showDialog<({List<T> included, List<T> excluded})>(
+  }) => showAppDialog<({List<T> included, List<T> excluded})>(
     context: context,
     builder: (context) => _ChooseManyDialog<T>(
       title: title,
@@ -1069,7 +1077,7 @@ class SearchViewState extends State<SearchView> {
         for (var p in options?.places ?? <PlaceTag>[]) p.geonameId: p.name,
       },
     );
-    var title = await showDialog<String>(
+    var title = await showAppDialog<String>(
       context: context,
       builder: (context) => TextInputDialog(
         key: const Key("save-as-view-title"),

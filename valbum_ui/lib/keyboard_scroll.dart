@@ -34,9 +34,12 @@ bool get scrollbarAlwaysVisible {
 
 /// Whether the keyboard focus is in a text field right now: then every key
 /// is the text field's, and a page scrolls by none of them.
+///
+/// Asked from focus listeners as well, while a closing dialog or page is
+/// taken out of the tree: a focus whose widget is gone is no text field.
 bool get typingIntoText {
   var context = FocusManager.instance.primaryFocus?.context;
-  if (context == null) {
+  if (context == null || !context.mounted) {
     return false;
   }
   return context.widget is EditableText ||

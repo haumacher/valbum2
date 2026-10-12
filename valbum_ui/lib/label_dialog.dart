@@ -9,6 +9,7 @@ import 'album_labels.dart';
 import 'form_dialog.dart';
 import 'l10n/app_localizations.dart';
 import 'resource.dart';
+import 'selectable.dart';
 
 /// Asks which labels the given selected [parts] are to carry.
 ///
@@ -243,7 +244,7 @@ class _LabelRenameDialogState extends State<_LabelRenameDialog> {
 /// Asks whether [label] is to be taken off every photograph of the album.
 Future<bool> confirmLabelDelete(BuildContext context, String label) async {
   var l10n = AppLocalizations.of(context)!;
-  var confirmed = await showDialog<bool>(
+  var confirmed = await showAppDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
       key: const Key("label-delete-dialog"),

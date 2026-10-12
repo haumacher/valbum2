@@ -35,6 +35,7 @@ import 'l10n/app_localizations.dart';
 import 'resource.dart';
 import 'rights.dart';
 import 'routes.dart' show ImageRoute;
+import 'selectable.dart';
 import 'share_session.dart';
 import 'thumbnails.dart';
 import 'video_view.dart';
@@ -898,7 +899,7 @@ class ImageViewState extends State<ImageView>
         face.state == FaceState.undecided &&
         _people[face.person] != null;
     var decided = face.state != FaceState.undecided;
-    var chosen = await showModalBottomSheet<String>(
+    var chosen = await showAppModalBottomSheet<String>(
       context: context,
       builder: (context) => SafeArea(
         key: const Key("face-decision"),
@@ -1613,9 +1614,23 @@ class ImageViewState extends State<ImageView>
               return Stack(
                 fit: StackFit.expand,
                 children: [
-                  isVideo ? buildVideoViewer() : buildViewer(page),
+                  // The picture pans, zooms and pages, the faces are drawn
+                  // and dragged: gesture surfaces, whose text is not
+                  // selected, see [SelectionExcluded]. The caption and the
+                  // controls over them are the page's.
+                  SelectionExcluded(
+                    key: const Key("viewer-surface"),
+                    child: isVideo ? buildVideoViewer() : buildViewer(page),
+                  ),
                   // The faces, in the coordinates of the page (issue #147).
-                  if (editPersons) ...buildFaceEditing(transform(page)),
+                  if (editPersons)
+                    Positioned.fill(
+                      child: SelectionExcluded(
+                        child: Stack(
+                          children: buildFaceEditing(transform(page)),
+                        ),
+                      ),
+                    ),
                   ...buildOverlay(context),
                 ],
               );

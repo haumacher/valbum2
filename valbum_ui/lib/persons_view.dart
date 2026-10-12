@@ -64,6 +64,7 @@ import 'oriented_thumbnail.dart';
 import 'person_names.dart';
 import 'resource.dart';
 import 'rights.dart';
+import 'selectable.dart';
 import 'share_session.dart';
 import 'thumbnails.dart';
 import 'page_insets.dart';
@@ -1176,7 +1177,7 @@ class PersonsContentState extends State<PersonsContent>
     if (!mounted) {
       return;
     }
-    var chosen = await showDialog<UserEntry>(
+    var chosen = await showAppDialog<UserEntry>(
       context: context,
       builder: (context) => MemberChooser(members: linkableMembers(members)),
     );
@@ -1331,7 +1332,7 @@ class PersonsContentState extends State<PersonsContent>
       widget.albumState.navigator.up();
       return;
     }
-    var discard = await showDialog<bool>(
+    var discard = await showAppDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         key: const Key("persons-discard-dialog"),
@@ -1367,7 +1368,7 @@ class PersonsContentState extends State<PersonsContent>
     if (!mounted || !dirty) {
       return true;
     }
-    var choice = await showDialog<LeaveEdit>(
+    var choice = await showAppDialog<LeaveEdit>(
       context: context,
       builder: (context) => AlertDialog(
         key: const Key("persons-leave-dialog"),
@@ -1848,7 +1849,11 @@ class PersonsContentState extends State<PersonsContent>
       );
 
   /// One face: its crop, selectable, draggable and openable.
-  Widget _tile(AlbumFace face) {
+  /// A face is tapped, long-pressed and carried: a gesture surface of its
+  /// own, see [SelectionExcluded].
+  Widget _tile(AlbumFace face) => SelectionExcluded(child: _faceTile(face));
+
+  Widget _faceTile(AlbumFace face) {
     var picture = FaceTile(
       client: client,
       baseUrl: widget.baseUrl,
@@ -1976,7 +1981,7 @@ class PersonsContentState extends State<PersonsContent>
   /// delivered it.
   void showPhoto(AlbumFace face) {
     _forgetClick();
-    showDialog<void>(
+    showAppDialog<void>(
       context: context,
       builder: (context) => Dialog(
         key: const Key("persons-photo"),

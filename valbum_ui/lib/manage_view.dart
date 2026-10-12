@@ -23,6 +23,7 @@ import 'device_code_payload.dart';
 import 'form_dialog.dart';
 import 'l10n/app_localizations.dart';
 import 'resource.dart';
+import 'selectable.dart';
 import 'settings.dart';
 import 'sign_in_options.dart' show showSignInOptions;
 import 'urls.dart';
@@ -56,7 +57,7 @@ Future<bool?> confirmHere({
   required String confirmLabel,
   required String confirmKey,
 }) =>
-    showDialog<bool>(
+    showAppDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         key: Key(dialogKey),
@@ -584,7 +585,7 @@ class DevicesSectionState extends State<DevicesSection> {
   /// a code to type, a QR code to scan and a link to send. What differs is
   /// that this one does not count down, and that it says to write it down.
   Future<void> _createBackupCode() async {
-    await showDialog<void>(
+    await showAppDialog<void>(
       context: context,
       builder: (context) => DeviceCodeDialog(
         key: backupCodeDialogKey,
@@ -648,7 +649,7 @@ class DevicesSectionState extends State<DevicesSection> {
   /// open is the other device arriving, which is also what makes a stranger
   /// using the code visible at once.
   Future<void> _addDevice() async {
-    await showDialog<void>(
+    await showAppDialog<void>(
       context: context,
       builder: (context) => DeviceCodeDialog(
         client: widget.client,
@@ -1739,7 +1740,7 @@ class PeopleSectionState extends State<PeopleSection> {
   /// Shows how [user] signs in besides a code, each way with "Remove"
   /// (issue #233).
   Future<void> _signIns(UserEntry user) async {
-    await showDialog<void>(
+    await showAppDialog<void>(
       context: context,
       builder: (context) => UserSignInsDialog(
         client: widget.client!,
@@ -1759,7 +1760,7 @@ class PeopleSectionState extends State<PeopleSection> {
   /// Shows a code signing a device of [user] in, for somebody who lost theirs
   /// (issue #89).
   Future<void> _recoveryCode(UserEntry user) async {
-    await showDialog<void>(
+    await showAppDialog<void>(
       context: context,
       builder: (context) => DeviceCodeDialog(
         key: recoveryCodeKey,
@@ -2101,7 +2102,7 @@ class ContactsSectionState extends State<ContactsSection> {
     if (client == null) {
       return;
     }
-    await showDialog<void>(
+    await showAppDialog<void>(
       context: context,
       builder: (context) => ContactSessionsDialog(
         client: client,
@@ -2127,7 +2128,7 @@ class ContactsSectionState extends State<ContactsSection> {
     if (client == null) {
       return;
     }
-    await showDialog<void>(
+    await showAppDialog<void>(
       context: context,
       builder: (context) => ContactSignInsDialog(
         client: client,

@@ -35,6 +35,7 @@ import 'manage_view.dart';
 import 'offline.dart';
 import 'platform.dart';
 import 'resource.dart';
+import 'selectable.dart';
 import 'sign_in_form.dart';
 import 'upload_target_view.dart';
 import 'urls.dart';
@@ -510,11 +511,13 @@ void openServerSettings(BuildContext context) {
   var scope = ServerSettingsScope.of(context);
   Navigator.of(context).push(
     MaterialPageRoute<void>(
-      builder: (_) => ServerSettingsScreen(
-        settings: scope.settings,
-        clientFor: scope.clientFor,
-        diagnostics: scope.diagnostics,
-        closable: true,
+      builder: (_) => SelectableArea(
+        child: ServerSettingsScreen(
+          settings: scope.settings,
+          clientFor: scope.clientFor,
+          diagnostics: scope.diagnostics,
+          closable: true,
+        ),
       ),
     ),
   );
@@ -1886,7 +1889,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
   /// Empties the cache, after asking; what happened is shown on the screen.
   Future<void> _clearCache(OfflineCache cache) async {
     var l10n = AppLocalizations.of(context)!;
-    var confirmed = await showDialog<bool>(
+    var confirmed = await showAppDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text(l10n.clearCacheTitle),

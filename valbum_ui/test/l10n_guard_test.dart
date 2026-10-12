@@ -113,6 +113,7 @@ const List<String> convertedFiles = [
   "lib/search_query.dart",
   "lib/search_view.dart",
   "lib/select_mode.dart",
+  "lib/selectable.dart",
   "lib/settings.dart",
   "lib/share_session.dart",
   "lib/share_view.dart",

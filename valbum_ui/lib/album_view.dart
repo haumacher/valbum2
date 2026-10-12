@@ -44,6 +44,7 @@ import 'routes.dart';
 import 'search_query.dart';
 import 'rights.dart';
 import 'select_mode.dart';
+import 'selectable.dart';
 import 'settings.dart';
 import 'share_session.dart';
 import 'share_view.dart';
@@ -1128,7 +1129,7 @@ class AlbumContentState extends State<AlbumContent>
       });
       return;
     }
-    var discard = await showDialog<bool>(
+    var discard = await showAppDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         key: const Key("discard-dialog"),
@@ -1190,7 +1191,7 @@ class AlbumContentState extends State<AlbumContent>
     if (!mounted) {
       return true;
     }
-    var choice = await showDialog<LeaveEdit>(
+    var choice = await showAppDialog<LeaveEdit>(
       context: context,
       builder: (context) => AlertDialog(
         key: const Key("leave-dialog"),
@@ -1539,15 +1540,18 @@ class AlbumContentState extends State<AlbumContent>
     }
     // An editor renames or removes a label where it is shown: a long press
     // on a touch screen, a secondary click with a mouse.
-    return Builder(
-      builder: (context) => GestureDetector(
-        onLongPress: () {
-          var box = context.findRenderObject() as RenderBox;
-          _showLabelMenu(label, box.localToGlobal(box.size.center(Offset.zero)));
-        },
-        onSecondaryTapUp: (details) =>
-            _showLabelMenu(label, details.globalPosition),
-        child: chip,
+    return SelectionExcluded(
+      child: Builder(
+        builder: (context) => GestureDetector(
+          onLongPress: () {
+            var box = context.findRenderObject() as RenderBox;
+            _showLabelMenu(
+                label, box.localToGlobal(box.size.center(Offset.zero)));
+          },
+          onSecondaryTapUp: (details) =>
+              _showLabelMenu(label, details.globalPosition),
+          child: chip,
+        ),
       ),
     );
   }
@@ -2667,7 +2671,7 @@ class AlbumContentState extends State<AlbumContent>
   /// *reached* is answered from it, so the next request overwrites it, see
   /// [VAlbumClient.thumbnailBytes].
   Future<void> refreshPreviews() async {
-    var confirmed = await showDialog<bool>(
+    var confirmed = await showAppDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         key: const Key("refresh-previews-dialog"),
@@ -2723,7 +2727,7 @@ class AlbumContentState extends State<AlbumContent>
     if (refuseWhileOffline(context)) {
       return;
     }
-    var confirmed = await showDialog<bool>(
+    var confirmed = await showAppDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         key: const Key("reanalyze-dialog"),
@@ -3138,8 +3142,13 @@ class AlbumContentState extends State<AlbumContent>
   }
 
   /// The tile of the given image, with the tile editor in the edit mode.
+  ///
+  /// A tile's gestures are its own (a tap opens, a long press selects, a drag
+  /// reorders), so its surface takes no part in the text selection of the
+  /// page, see [SelectionExcluded].
   Widget imageTile(AbstractImage image, double width, double height) =>
-      image.visitAbstractImage(ImageWidgetBuilder(this, width, height), null);
+      SelectionExcluded.keyed(image.visitAbstractImage(
+          ImageWidgetBuilder(this, width, height), null));
 
   /// Runs [body] with the images set to the orientation they are laid out
   /// with, see [_layoutOrientation].
@@ -3729,7 +3738,7 @@ Future<bool> confirmTrashing(BuildContext context, int count) async {
     return true;
   }
   var l10n = AppLocalizations.of(context)!;
-  var confirmed = await showDialog<bool>(
+  var confirmed = await showAppDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
       key: const Key("trash-confirm-dialog"),
@@ -4304,7 +4313,9 @@ class ReorderablePartState extends State<ReorderablePart> {
       return widget.child;
     }
     var dragged = widget.album.dragOf(widget.part);
-    return DragTarget<DraggedParts>(
+    // A part that is dragged is a gesture surface, see [SelectionExcluded].
+    return SelectionExcluded(
+        child: DragTarget<DraggedParts>(
       // A carried part is not dropped onto itself.
       onWillAcceptWithDetails: (details) => !details.data.contains(widget.part),
       // A rejected target is told about the move all the same, so a part
@@ -4355,7 +4366,7 @@ class ReorderablePartState extends State<ReorderablePart> {
             ),
         ],
       ),
-    );
+    ));
   }
 
   /// A [Draggable] carrying [dragged], built once for the tile and once for
@@ -5263,26 +5274,29 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
       children: [
         Padding(
           padding: const EdgeInsets.only(top: 4),
-          child: Listener(
-            onPointerSignal: onPointerSignal,
-            child: GestureDetector(
-              onScaleStart: onScaleStart,
-              onScaleUpdate: onScaleUpdate,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey),
-                ),
-                child: indexPictureTile(
-                  client,
-                  // The cut picture of a cropped photograph, on which the
-                  // album picture is measured (issue #212).
-                  _croppedImage == null
-                      ? "${widget.baseUrl}/${info.image}"
-                      : croppedImageUrl(
-                          "${widget.baseUrl}/${info.image}", _croppedImage!),
-                  info,
-                  indexPictureEditorSize,
-                  key: const Key("index-picture-editor"),
+          // Panned and zoomed, see [SelectionExcluded].
+          child: SelectionExcluded(
+            child: Listener(
+              onPointerSignal: onPointerSignal,
+              child: GestureDetector(
+                onScaleStart: onScaleStart,
+                onScaleUpdate: onScaleUpdate,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey),
+                  ),
+                  child: indexPictureTile(
+                    client,
+                    // The cut picture of a cropped photograph, on which the
+                    // album picture is measured (issue #212).
+                    _croppedImage == null
+                        ? "${widget.baseUrl}/${info.image}"
+                        : croppedImageUrl(
+                            "${widget.baseUrl}/${info.image}", _croppedImage!),
+                    info,
+                    indexPictureEditorSize,
+                    key: const Key("index-picture-editor"),
+                  ),
                 ),
               ),
             ),

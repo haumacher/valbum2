@@ -16,6 +16,7 @@ import 'camera_roll.dart';
 import 'l10n/app_localizations.dart';
 import 'notices.dart';
 import 'photo_library.dart';
+import 'selectable.dart';
 import 'settings.dart';
 import 'upload_target_view.dart';
 
@@ -162,7 +163,9 @@ class _CameraRollSectionState extends State<CameraRollSection> {
     // gave is not something to type off a screen. One region around the whole
     // section, so that a selection may span the status and the background
     // line; the switches, the boxes and the buttons take their taps as before.
-    return SelectionArea(
+    // The settings page is one [SelectableArea] already; shown alone, the
+    // section is one of its own.
+    return SelectableArea(
       key: cameraRollSelectableKey,
       child: _content(
           context, sync, config, status, guest, hasLibrary, available, l10n),

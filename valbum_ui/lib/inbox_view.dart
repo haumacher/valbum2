@@ -84,6 +84,7 @@ import 'persons_view.dart' show browserMenu;
 import 'resource.dart';
 import 'rights.dart';
 import 'routes.dart' show TrashRoute;
+import 'selectable.dart';
 import 'settings.dart';
 import 'share_session.dart';
 import 'trash_view.dart' show hasTrashedImages, trashRating;
@@ -778,7 +779,7 @@ class InboxContentState extends State<InboxContent> {
       return;
     }
     var messenger = ScaffoldMessenger.of(context);
-    var confirmed = await showDialog<bool>(
+    var confirmed = await showAppDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         key: const Key("inbox-delete-dialog"),
@@ -1292,7 +1293,10 @@ class InboxTileState extends State<InboxTile> {
   bool get active => selected || _hovered;
 
   @override
-  Widget build(BuildContext context) => MouseRegion(
+  Widget build(BuildContext context) =>
+      SelectionExcluded(child: _buildTile(context));
+
+  Widget _buildTile(BuildContext context) => MouseRegion(
         hitTestBehavior: HitTestBehavior.translucent,
         opaque: false,
         onEnter: (event) => setState(() => _hovered = true),

@@ -34,6 +34,8 @@ library;
 
 import 'package:flutter/material.dart';
 
+import 'selectable.dart';
+
 /// Shows the form dialog [builder] builds, which a tap beside it does not
 /// close; Escape, the system's back and the dialog's own Cancel do.
 ///
@@ -51,7 +53,8 @@ Future<T?> showFormDialog<T>({
   var navigator = Navigator.of(context, rootNavigator: true);
   return navigator.push<T>(_FormDialogRoute<T>(
     context: context,
-    builder: builder,
+    // Its text selectable like every dialog's, see [SelectableArea].
+    builder: (context) => SelectableArea(child: builder(context)),
     barrierColor: DialogTheme.of(context).barrierColor ??
         Theme.of(context).dialogTheme.barrierColor ??
         Colors.black54,

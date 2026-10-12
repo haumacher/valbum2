@@ -29,6 +29,7 @@ import 'recipient_chooser.dart';
 import 'recipient_send.dart';
 import 'resource.dart';
 import 'rights.dart';
+import 'selectable.dart';
 import 'share_session.dart' show ratingFloorLabel, ratingName;
 import 'urls.dart';
 
@@ -1122,7 +1123,7 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
   /// Deletes a link, after asking once (issue #217): it is gone as if it had
   /// never been made, and whoever has it can no longer open it.
   Future<void> _delete(ShareLink link) async {
-    var confirmed = await showDialog<bool>(
+    var confirmed = await showAppDialog<bool>(
       context: context,
       builder: (context) {
         var l10n = AppLocalizations.of(context)!;

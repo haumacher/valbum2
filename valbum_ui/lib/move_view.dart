@@ -17,6 +17,7 @@ import 'listing_view.dart';
 import 'offline.dart';
 import 'resource.dart';
 import 'rights.dart';
+import 'selectable.dart';
 
 /// What a move acts on, as the button and the message name it.
 ///
@@ -342,7 +343,7 @@ Future<bool> deleteWithConfirmation({
   }
   var l10n = AppLocalizations.of(context)!;
   var messenger = ScaffoldMessenger.of(context);
-  var confirmed = await showDialog<bool>(
+  var confirmed = await showAppDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
       key: const Key("delete-dialog"),
@@ -430,7 +431,7 @@ Future<void> reportOutcomes({
   if (!context.mounted) {
     return;
   }
-  await showDialog<void>(
+  await showAppDialog<void>(
     context: context,
     builder: (context) => AlertDialog(
       key: const Key("move-outcome"),

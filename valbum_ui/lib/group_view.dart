@@ -22,6 +22,7 @@ import 'l10n/app_localizations.dart';
 import 'oriented_thumbnail.dart';
 import 'resource.dart';
 import 'page_insets.dart';
+import 'selectable.dart';
 
 /// The height a row of the group layout aims at, as in the album view.
 const double _maxRowHeight = 250;
@@ -105,6 +106,16 @@ class GroupView extends StatelessWidget {
     double height,
   ) {
     var self = layouter.ToImage.toImage(image);
+    // A gesture surface of its own, see [SelectionExcluded].
+    return SelectionExcluded(child: _tileOf(context, self, width, height));
+  }
+
+  Widget _tileOf(
+    BuildContext context,
+    ImagePart self,
+    double width,
+    double height,
+  ) {
     return GestureDetector(
       onTap: () => showDetail(context, self),
       child: Stack(

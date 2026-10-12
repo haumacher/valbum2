@@ -35,6 +35,7 @@ import 'move_view.dart' show showRefusal;
 import 'offline.dart';
 import 'oriented_thumbnail.dart';
 import 'resource.dart';
+import 'selectable.dart';
 import 'share_session.dart';
 import 'page_insets.dart';
 
@@ -142,7 +143,7 @@ class TrashContentState extends State<TrashContent> {
     if (refuseWhileOffline(context)) {
       return;
     }
-    var confirmed = await showDialog<bool>(
+    var confirmed = await showAppDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         key: const Key("trash-purge-dialog"),
@@ -199,7 +200,7 @@ class TrashContentState extends State<TrashContent> {
   /// A dialog and not the viewer route: the viewer is a page level of the
   /// *album*, so opening it would take this page off the stack.
   void showPhoto(ImagePart image) {
-    showDialog<void>(
+    showAppDialog<void>(
       context: context,
       builder: (context) => Dialog(
         key: const Key("trash-photo"),
@@ -333,7 +334,11 @@ class TrashContentState extends State<TrashContent> {
 
   /// One trashed photograph: its thumbnail, a tap to see it large, and the
   /// Restore tool.
-  Widget _tile(ImagePart image) => SizedBox(
+  ///
+  /// A gesture surface of its own, see [SelectionExcluded].
+  Widget _tile(ImagePart image) => SelectionExcluded.keyed(_trashTile(image));
+
+  Widget _trashTile(ImagePart image) => SizedBox(
         key: ValueKey("trash-tile-${image.name}"),
         width: trashTileSize,
         height: trashTileSize,

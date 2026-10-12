@@ -20,6 +20,7 @@ import 'package:intl/intl.dart';
 import 'l10n/app_localizations.dart';
 import 'notices.dart';
 import 'photo_library.dart';
+import 'selectable.dart';
 
 /// The key of the screen itself.
 const Key photoPickerKey = Key("photoPicker");
@@ -77,7 +78,8 @@ Future<List<PhotoItem>> pickFromLibrary(
 ) async {
   var picked = await Navigator.of(context).push<List<PhotoItem>>(
     MaterialPageRoute<List<PhotoItem>>(
-      builder: (context) => PhotoPickerScreen(library: library),
+      builder: (context) =>
+          SelectableArea(child: PhotoPickerScreen(library: library)),
     ),
   );
   return picked ?? const [];
@@ -359,6 +361,10 @@ class PhotoPickerScreenState extends State<PhotoPickerScreen> {
 
   Widget _tile(PhotoItem item) {
     var selected = _selected.containsKey(item.id);
+    return SelectionExcluded.keyed(_photoTile(item, selected));
+  }
+
+  Widget _photoTile(PhotoItem item, bool selected) {
     return GestureDetector(
       key: photoItemKey(item.id),
       onTap: () => _toggle(item),
@@ -487,7 +493,7 @@ const Key uploadFromFilesKey = Key("upload.fromFiles");
 /// one way to pick a file, and a menu offering one entry is a menu that should
 /// not be there, so the caller opens the system picker directly.
 Future<UploadSource?> askUploadSource(BuildContext context) =>
-    showModalBottomSheet<UploadSource>(
+    showAppModalBottomSheet<UploadSource>(
       context: context,
       builder: (context) {
         var l10n = AppLocalizations.of(context)!;

@@ -20,6 +20,7 @@ import 'caller.dart';
 import 'collections.dart';
 import 'l10n/app_localizations.dart';
 import 'resource.dart';
+import 'selectable.dart';
 
 /// How the recording time is spelled in the details block.
 final DateFormat imagePropertyTimeFormat = DateFormat("yyyy-MM-dd HH:mm:ss");
@@ -565,5 +566,5 @@ Future<ImagePropertiesResult?> showImageProperties(
   // see issue #178.
   return editable
       ? showFormDialog<ImagePropertiesResult>(context: context, builder: build)
-      : showDialog<ImagePropertiesResult>(context: context, builder: build);
+      : showAppDialog<ImagePropertiesResult>(context: context, builder: build);
 }

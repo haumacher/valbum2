@@ -43,6 +43,7 @@ import 'platform.dart';
 import 'resource.dart';
 import 'routes.dart';
 import 'search_view.dart';
+import 'selectable.dart';
 import 'settings.dart';
 import 'share_session.dart';
 import 'sign_in_options.dart';
@@ -1689,7 +1690,7 @@ class SilentRouterDelegate extends RouterDelegate<Object> with ChangeNotifier {
         pages: [
           MaterialPage<void>(
             key: const ValueKey("valbum:startup"),
-            child: Builder(builder: screen),
+            child: SelectableArea(child: Builder(builder: screen)),
           ),
         ],
         onDidRemovePage: (page) {},
@@ -2199,7 +2200,9 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
   static Page<void> _pageOf(VAlbumRoute level) => _LevelPage(
         key: ValueKey(_pageKey(level)),
         level: level,
-        child: VAlbumView(route: level),
+        // Every page's text can be selected, see [SelectableArea]; the
+        // gesture surfaces of a page exclude themselves.
+        child: SelectableArea(child: VAlbumView(route: level)),
       );
 
   /// What makes the page of [level] the same page across a step, see
@@ -2981,7 +2984,7 @@ class VAlbumState extends State<VAlbumView>
     }
 
     unawaited(
-      showDialog<void>(
+      showAppDialog<void>(
         context: context,
         // Only the Cancel button ends this, and only by ending the upload:
         // a tap beside the dialog must not hide a transfer that is running.

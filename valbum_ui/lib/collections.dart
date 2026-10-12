@@ -23,6 +23,7 @@ import 'l10n/app_localizations.dart';
 import 'move_view.dart';
 import 'offline.dart';
 import 'resource.dart';
+import 'selectable.dart';
 
 /// Whether [album] is a collection.
 bool isCollection(AlbumInfo album) => album.kind == AlbumKind.collection;
@@ -140,7 +141,7 @@ Future<bool> removeFromCollection({
   }
   var l10n = AppLocalizations.of(context)!;
   var messenger = ScaffoldMessenger.of(context);
-  var confirmed = await showDialog<bool>(
+  var confirmed = await showAppDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
       key: const Key("remove-from-collection-dialog"),

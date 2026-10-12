@@ -154,9 +154,8 @@ class LoadFailureView extends StatelessWidget {
                     childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                     expandedAlignment: Alignment.centerLeft,
                     children: [
-                      SelectableText(
-                        l10n.loadFailureTechnical(url, refusal!.status!),
-                      ),
+                      // Selectable like the whole page, see [SelectableArea].
+                      Text(l10n.loadFailureTechnical(url, refusal!.status!)),
                     ],
                   ),
                 ],

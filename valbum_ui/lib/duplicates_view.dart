@@ -38,6 +38,7 @@ import 'page_insets.dart';
 import 'resource.dart';
 import 'rights.dart';
 import 'routes.dart';
+import 'selectable.dart';
 import 'trash_view.dart' show trashRating;
 
 /// The side of a group's thumbnail, in logical pixels.
@@ -194,7 +195,7 @@ class DuplicatesViewState extends State<DuplicatesView> {
       return;
     }
     var album = _albumWord(copy);
-    var confirmed = await showDialog<bool>(
+    var confirmed = await showAppDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         key: const Key("duplicates-delete-dialog"),

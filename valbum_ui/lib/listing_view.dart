@@ -24,6 +24,7 @@ import 'offline.dart';
 import 'oriented_thumbnail.dart';
 import 'rights.dart';
 import 'routes.dart' show DuplicatesRoute, SearchRoute;
+import 'selectable.dart';
 import 'settings.dart';
 import 'share_session.dart';
 import 'share_view.dart';
@@ -486,7 +487,20 @@ class ListingView extends StatelessWidget {
   ///
   /// The tile of a starred entry (issue #239) carries a star in the corner of
   /// its picture, and its title is set larger: the tile is twice as wide.
+  ///
+  /// A tap opens it, a long press offers its actions: a gesture surface of
+  /// its own, see [SelectionExcluded].
   Widget buildTile(
+    BuildContext context,
+    FolderInfo folder,
+    TileCell cell,
+    double width,
+    double imageBorder,
+  ) =>
+      SelectionExcluded.keyed(
+          _buildTile(context, folder, cell, width, imageBorder));
+
+  Widget _buildTile(
     BuildContext context,
     FolderInfo folder,
     TileCell cell,
