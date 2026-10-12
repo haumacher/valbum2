@@ -5883,6 +5883,11 @@
     "description": "Name of the root folder of the space in the details of the preparation progress (issue #236)",
     "x-translated": "210b390"
   },
+  "catchUpStepAnalysis": "Reading new files",
+  "@catchUpStepAnalysis": {
+    "description": "Name of a background step: finding the photos and videos of a folder and reading their size, date and camera (issue #253)",
+    "x-translated": "e60114ae"
+  },
   "catchUpStepHash": "Fingerprints",
   "@catchUpStepHash": {
     "description": "Name of a background step: computing the content hashes of the photos (issue #236)",
@@ -6464,5 +6469,47 @@
   "@searchWordOr": {
     "description": "One lowercase word joining alternatives in the title proposed for a saved search (issue #242): \"Rome or Florence, not 2019\". German: \"oder\"",
     "x-translated": "1db77587"
+  },
+  "brokenImageExplanation": "This photo cannot be shown: the file is damaged or incomplete.",
+  "@brokenImageExplanation": {
+    "description": "Viewer page of a photo file the server could not read (issue #253), under the file name.",
+    "x-translated": "bed091b7"
+  },
+  "brokenVideoExplanation": "This video cannot be played: the file is damaged or incomplete.",
+  "@brokenVideoExplanation": {
+    "description": "Viewer page of a video file the server could not read (issue #253), e.g. a recording cut off before its index; under the file name.",
+    "x-translated": "bcaac064"
+  },
+  "brokenFileReason": "Reason given by the server: {reason}",
+  "@brokenFileReason": {
+    "description": "Viewer page of an unreadable file (issue #253): the server's own technical reason, shown verbatim, e.g. 'moov atom not found'.",
+    "placeholders": {
+      "reason": {
+        "type": "String",
+        "example": "moov atom not found"
+      }
+    },
+    "x-translated": "c40ea493"
+  },
+  "brokenFileSize": "File size: {size}",
+  "@brokenFileSize": {
+    "description": "Viewer page of an unreadable file (issue #253): the size of the file, e.g. 'File size: 4.0 GB'.",
+    "placeholders": {
+      "size": {
+        "type": "String",
+        "example": "4.0 GB"
+      }
+    },
+    "x-translated": "c9ef1af5"
+  },
+  "albumPreparing": "This album is being prepared. Its photos appear here as soon as the server has read them.",
+  "@albumPreparing": {
+    "description": "Shown in an album the server has not processed yet and that therefore shows no photos yet (issue #253); the app asks again by itself every few seconds.",
+    "x-translated": "43095afc"
+  },
+  "albumStillPreparing": "This album is still being prepared. Photos the server has not read yet appear here shortly.",
+  "@albumStillPreparing": {
+    "description": "Shown above the photos of an album the server has not completely processed yet (issue #253): newly added photos are still missing; the app asks again by itself every few seconds.",
+    "x-translated": "54ad6d25"
   }
 }

@@ -463,7 +463,9 @@ public class FaceIndex {
 	}
 
 	private Indexed indexLocked(File folder, boolean background) {
-		File[] images = folder.listFiles(f -> f.isFile() && ResourceCache.isImage(f));
+		// A file that cannot be read is never handed to the detector, see issue #253.
+		java.util.Set<String> broken = de.haumacher.imageServer.cache.AnalysisRecord.broken(folder);
+		File[] images = folder.listFiles(f -> f.isFile() && ResourceCache.isImage(f) && !broken.contains(f.getName()));
 		if (images == null || images.length == 0) {
 			return Indexed.COMPLETE;
 		}

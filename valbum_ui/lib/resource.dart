@@ -491,6 +491,21 @@ class AlbumInfo extends FolderResource {
 	///  </p>
 	bool facesPending;
 
+	///  Whether the background work of the space has not recorded this folder yet, see issue #253.
+	/// 
+	///  <p>
+	///  A request never lists a folder nor opens a photograph: it answers what the background
+	///  recorded of the folder (its analysis record beside the previews) and what the album's own
+	///  <code>index.json</code> says. A folder the background has not reached yet is answered with
+	///  the parts its <code>index.json</code> lists (an album an older build wrote), or empty, and
+	///  this flag: the app says that the album is being prepared and asks again a moment later.
+	///  </p>
+	/// 
+	///  <p>
+	///  Derived on every read and never stored, exactly like {@link #effectiveDate}.
+	///  </p>
+	bool preparing;
+
 	///  Description of the image used to display this whole album in a listing.
 	ThumbnailInfo? indexPicture;
 
@@ -549,6 +564,7 @@ class AlbumInfo extends FolderResource {
 			this.date = 0, 
 			this.effectiveDate = 0, 
 			this.facesPending = false, 
+			this.preparing = false, 
 			this.indexPicture, 
 			this.starred = false, 
 			this.query, 
@@ -598,6 +614,10 @@ class AlbumInfo extends FolderResource {
 			}
 			case "facesPending": {
 				facesPending = json.expectBool();
+				break;
+			}
+			case "preparing": {
+				preparing = json.expectBool();
 				break;
 			}
 			case "indexPicture": {
@@ -654,6 +674,9 @@ class AlbumInfo extends FolderResource {
 
 		json.addKey("facesPending");
 		json.addBool(facesPending);
+
+		json.addKey("preparing");
+		json.addBool(preparing);
 
 		var _indexPicture = indexPicture;
 		if (_indexPicture != null) {
@@ -1471,6 +1494,30 @@ class ImagePart extends AbstractImage {
 	///  </p>
 	bool partial;
 
+	///  Why this file cannot be read, see issue #253; the empty string for every file that can.
+	/// 
+	///  <p>
+	///  A file with the extension of a photograph or a video that the background could not analyse
+	///  (a recording cut off before its index, a truncated download) is not left out of its album:
+	///  it is answered as a <em>broken</em> part, which carries its {@link #name}, its {@link #kind}
+	///  as its extension says it, its {@link #fileSize} and this reason, and nothing that would have
+	///  to be read out of the file &mdash; no size in pixels, no date of its own (the file's
+	///  modification time stands in), no position. The app shows it as a tile with a broken-picture
+	///  icon and its name; its original can be downloaded and deleted, and nothing ever decodes it.
+	///  It is left out of a search, of the places, the faces, the duplicates and the covers.
+	///  </p>
+	/// 
+	///  <p>
+	///  Derived on every read from the analysis record of the folder, and <b>never stored</b> in the
+	///  <code>index.json</code>: the record keys a failure by the file's size and modification time,
+	///  so a file that is repaired or replaced is analysed again and becomes an ordinary part.
+	///  </p>
+	String broken;
+
+	///  The size of the file in bytes, answered for a {@link #broken} part only, see issue #253; the
+	///  viewer says it. Derived and never stored.
+	int fileSize;
+
 	/// Creates a ImagePart.
 	ImagePart({
 			super.previous, 
@@ -1502,6 +1549,8 @@ class ImagePart extends AbstractImage {
 			this.places, 
 			this.placeCaption = PlaceCaption.unset, 
 			this.partial = false, 
+			this.broken = "", 
+			this.fileSize = 0, 
 	});
 
 	/// Parses a ImagePart from a string source.
@@ -1641,6 +1690,14 @@ class ImagePart extends AbstractImage {
 				partial = json.expectBool();
 				break;
 			}
+			case "broken": {
+				broken = json.expectString();
+				break;
+			}
+			case "fileSize": {
+				fileSize = json.expectInt();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -1741,6 +1798,12 @@ class ImagePart extends AbstractImage {
 
 		json.addKey("partial");
 		json.addBool(partial);
+
+		json.addKey("broken");
+		json.addString(broken);
+
+		json.addKey("fileSize");
+		json.addNumber(fileSize);
 	}
 
 	@override
@@ -4740,6 +4803,10 @@ enum CatchUpStep {
 	videos,
 	///  A step this description does not name.
 	other,
+	///  Finding out what the files of a folder are: which photographs and videos it holds, their
+	///  sizes and dates, and which cannot be read, see issue #253. An album is answered from what
+	///  this step recorded.
+	analysis,
 }
 
 /// Writes a value of CatchUpStep to a JSON stream.
@@ -4753,6 +4820,7 @@ void writeCatchUpStep(JsonSink json, CatchUpStep value) {
 		case CatchUpStep.places: json.addString("PLACES"); break;
 		case CatchUpStep.videos: json.addString("VIDEOS"); break;
 		case CatchUpStep.other: json.addString("OTHER"); break;
+		case CatchUpStep.analysis: json.addString("ANALYSIS"); break;
 		default: throw ("No such literal: " + value.name);
 	}
 }
@@ -4768,6 +4836,7 @@ CatchUpStep readCatchUpStep(JsonReader json) {
 		case "PLACES": return CatchUpStep.places;
 		case "VIDEOS": return CatchUpStep.videos;
 		case "OTHER": return CatchUpStep.other;
+		case "ANALYSIS": return CatchUpStep.analysis;
 		default: return CatchUpStep.idle;
 	}
 }

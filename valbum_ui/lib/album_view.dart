@@ -2,6 +2,7 @@
 /// mode with the per-tile editor and the album properties editor.
 library;
 
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/gestures.dart';
@@ -18,6 +19,7 @@ import 'album_edit.dart';
 import 'album_labels.dart';
 import 'album_model.dart';
 import 'app.dart';
+import 'broken.dart';
 import 'cache_refresh.dart';
 import 'camera_roll_view.dart';
 import 'caller.dart';
@@ -167,6 +169,10 @@ enum LeaveEdit {
   /// Do not leave; the edit goes on.
   stay,
 }
+
+/// How often an album the server is still preparing is asked again, see
+/// [AlbumInfo.preparing] and issue #253.
+const Duration albumPreparingInterval = Duration(seconds: 5);
 
 class AlbumContent extends StatefulWidget {
   final VAlbumState albumState;
@@ -365,6 +371,7 @@ class AlbumContentState extends State<AlbumContent>
     // [confirmLeave] and [VAlbumRouterDelegate.leaveAlbum] (issue #99).
     widget.albumState.navigator.delegate
         .registerLeaveGuard(widget.albumState.path, _leaveGuard);
+    _schedulePreparingPoll();
   }
 
   @override
@@ -380,7 +387,42 @@ class AlbumContentState extends State<AlbumContent>
       _layoutOrientation.clear();
       selection.clear();
       lastClicked = null;
+      _schedulePreparingPoll();
     }
+  }
+
+  /// Asks the server again while it is still preparing the album, see
+  /// [AlbumInfo.preparing] (issue #253).
+  Timer? _preparingPoll;
+
+  /// Starts (or stops) asking for the album again every
+  /// [albumPreparingInterval] while the server says it is being prepared, so
+  /// that its photos appear when the background work has read them.
+  ///
+  /// The fetch is the ordinary reload of the album, the one the face editor's
+  /// poll uses as well ([PersonsContentState]). It is skipped while it would
+  /// get in somebody's way: in the edit mode and the select mode, whose
+  /// selection a re-read album takes away, in a "view as" preview, offline,
+  /// and while a page above — the viewer — is shown, which a re-read album
+  /// would rebuild under the fingers.
+  void _schedulePreparingPoll() {
+    _preparingPoll?.cancel();
+    _preparingPoll = null;
+    if (!widget.album.preparing) {
+      return;
+    }
+    _preparingPoll = Timer.periodic(albumPreparingInterval, (_) {
+      if (!mounted ||
+          editMode ||
+          selectMode ||
+          previewing ||
+          OfflineScope.isOffline(context) ||
+          !(ModalRoute.of(context)?.isCurrent ?? true)) {
+        return;
+      }
+      widget.albumState.navigator.delegate.forget(widget.albumState.path);
+      widget.albumState.reload();
+    });
   }
 
   /// Lays the album out anew, after a part changed its aspect behind the
@@ -552,6 +594,7 @@ class AlbumContentState extends State<AlbumContent>
 
   @override
   void dispose() {
+    _preparingPoll?.cancel();
     widget.albumState.navigator.delegate
         .unregisterLeaveGuard(widget.albumState.path, _leaveGuard);
     _dragScroller.dispose();
@@ -1350,7 +1393,7 @@ class AlbumContentState extends State<AlbumContent>
         for (var part in widget.album.parts)
           if (isSelected(part) &&
               part is AbstractImage &&
-              !layouter.ToImage.toImage(part).missing)
+              layouter.ToImage.toImage(part).hasPicture)
             part.thumbnailName,
       ];
 
@@ -1794,7 +1837,7 @@ class AlbumContentState extends State<AlbumContent>
             value: () => enterSelectMode(part),
             child: Text(_l10n.select),
           ),
-        if (collect != null && !image.missing)
+        if (collect != null && image.hasPicture)
           PopupMenuItem<void Function()>(
             key: const Key("tile-context-collect"),
             value: () => collect([image.name]),
@@ -2206,7 +2249,18 @@ class AlbumContentState extends State<AlbumContent>
           OfflineBanner(onRetry: widget.albumState.reload),
           // Says plainly when the album below is what somebody else sees.
           if (previewing) previewBanner(),
-          if (self.parts.isNotEmpty) Expanded(child: contentView(self)),
+          if (self.parts.isNotEmpty)
+            Expanded(child: contentView(self))
+          // An empty album the server has not read yet (issue #253): the
+          // album is not empty, its photos are still on their way.
+          else if (self.preparing)
+            Expanded(
+              child: Center(
+                child: SingleChildScrollView(
+                  child: preparingNotice(empty: true),
+                ),
+              ),
+            ),
         ],
       ),
       // Nothing is added to an album while somebody else's view of it is on
@@ -3024,6 +3078,14 @@ class AlbumContentState extends State<AlbumContent>
         result.add(SliverToBoxAdapter(child: chips));
       }
     }
+    // An album the server has not read yet says so (issue #253): an empty
+    // page would look like an empty album, and one missing its newest photos
+    // like an album without them. It is asked for again meanwhile, see
+    // [_schedulePreparingPoll].
+    if (self.preparing) {
+      var empty = !self.parts.any((part) => part is AbstractImage);
+      result.add(SliverToBoxAdapter(child: preparingNotice(empty: empty)));
+    }
     // A filter that hides everything says so: an empty black page would look
     // like an empty album.
     if (hidesEverything) {
@@ -3094,6 +3156,35 @@ class AlbumContentState extends State<AlbumContent>
     flushImages();
 
     return result;
+  }
+
+  /// What an album the server has not read yet says (issue #253), see
+  /// [AlbumInfo.preparing]: that its photos are on their way where it shows
+  /// none ([empty]), that some may still be missing where it shows some.
+  Widget preparingNotice({required bool empty}) {
+    var l10n = AppLocalizations.of(context)!;
+    return Padding(
+      padding: empty
+          ? const EdgeInsets.fromLTRB(16, 32, 16, 32)
+          : const EdgeInsets.fromLTRB(16, 4, 16, 12),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (empty) ...[
+            // A still icon and not a spinner: the album is asked for again
+            // every few seconds, nothing on this page is running.
+            const Icon(Icons.hourglass_empty, size: 32, color: Colors.white70),
+            const SizedBox(height: 16),
+          ],
+          Text(
+            empty ? l10n.albumPreparing : l10n.albumStillPreparing,
+            key: Key(empty ? "album-preparing" : "album-still-preparing"),
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: empty ? 16 : 14, color: Colors.white70),
+          ),
+        ],
+      ),
+    );
   }
 
   /// The parts in the order their tiles are shown, see [_displayOrder].
@@ -3593,6 +3684,11 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
   /// it serves; what is stored beside the image comes on top of it and is
   /// applied here, see [orientedImageThumbnail].
   Widget _imageThumbnail(ImagePart image) {
+    if (image.isBroken) {
+      // A file that cannot be read (issue #253): its icon and its name, and
+      // no thumbnail, teaser or play mark — nothing of it can be decoded.
+      return brokenTile(image, width, height);
+    }
     if (image.missing) {
       // A photograph of a collection that is gone (issue #221): nothing to
       // ask a thumbnail of.
@@ -3885,10 +3981,11 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
           () => album.toggleSelection(part),
           active: selected,
         ),
-        if (!image.missing) ...[
-        toolButton(Icons.rotate_right, _l10n.turnRight, rotateRight),
-        toolButton(Icons.swap_vert, _l10n.flipVertically, flipVertically),
-        toolButton(Icons.rotate_left, _l10n.turnLeft, rotateLeft),
+        // Nor has a file that cannot be read (issue #253).
+        if (image.hasPicture) ...[
+          toolButton(Icons.rotate_right, _l10n.turnRight, rotateRight),
+          toolButton(Icons.swap_vert, _l10n.flipVertically, flipVertically),
+          toolButton(Icons.rotate_left, _l10n.turnLeft, rotateLeft),
         ],
       ]);
 
@@ -3905,7 +4002,8 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
     // in date order (issue #227).
     var search = isSearch(album.widget.album);
     return toolbar([
-      if (!search && multiSelected && !collection)
+      // A file that cannot be read represents no group (issue #253).
+      if (!search && multiSelected && !collection && image.hasPicture)
         toolButton(Icons.join_left, _l10n.group, createGroup)
       else if (!search && multiSelected)
         toolButton(Icons.title, _l10n.insertHeading, createHeading)
@@ -3930,41 +4028,47 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
       // recording time correction below then works on, see issue #78. An
       // image whose camera is unknown has nothing to gather, so the tool is
       // not offered on it rather than refusing the tap.
-      if (image.camera.isNotEmpty)
+      if (image.camera.isNotEmpty && image.hasPicture)
         toolButton(
           Icons.photo_camera,
           _l10n.selectAllFromCamera,
           () => album.selectSameCamera(image),
         ),
       // A camera whose clock is off files its photos in the wrong place; the
-      // correction acts on the whole selection, see issue #77.
-      toolButton(
-        Icons.more_time,
-        _l10n.adjustRecordingTimeAction,
-        () => album.adjustRecordingTimeOf(part),
-      ),
+      // correction acts on the whole selection, see issue #77. A file that
+      // cannot be read has no recording time, only the time of the file
+      // (issue #253), and no picture to stand for the album.
+      if (image.hasPicture)
+        toolButton(
+          Icons.more_time,
+          _l10n.adjustRecordingTimeAction,
+          () => album.adjustRecordingTimeOf(part),
+        ),
       toolButton(Icons.notes, _l10n.imageProperties, editImageProperties),
       // The image standing for the album in the listing above, chosen where
       // the images are compared: the representative of a group stands for it.
-      toolButton(
-        Icons.photo_album,
-        _l10n.useAsAlbumPicture,
-        setIndexPicture,
-        active: isIndexPicture(album.widget.album, image),
-      ),
+      if (image.hasPicture)
+        toolButton(
+          Icons.photo_album,
+          _l10n.useAsAlbumPicture,
+          setIndexPicture,
+          active: isIndexPicture(album.widget.album, image),
+        ),
     ]);
   }
 
   /// The rating chooser and, beside it, the privacy level.
-  Widget? bottomBar() => image.missing ? null : toolbar([
-        ...ratingButtons(
-          _l10n,
-          rating: image.rating,
-          onRate: setRating,
-          button: toolButton,
-        ),
-        privacyButton(),
-      ]);
+  Widget? bottomBar() => image.missing
+      ? null
+      : toolbar([
+          ...ratingButtons(
+            _l10n,
+            rating: image.rating,
+            onRate: setRating,
+            button: toolButton,
+          ),
+          privacyButton(),
+        ]);
 
   /// The privacy level of this tile, one tap per step (issue #46).
   ///
@@ -4140,14 +4244,14 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
             child: Text(_l10n.removeFromCollection),
           ),
         if (!image.missing)
-        PopupMenuItem<void Function()>(
-          key: const Key("tile-context-properties"),
-          value: editImageProperties,
-          child: Text(_l10n.imageProperties),
-        ),
+          PopupMenuItem<void Function()>(
+            key: const Key("tile-context-properties"),
+            value: editImageProperties,
+            child: Text(_l10n.imageProperties),
+          ),
         // The region of this photograph, and of no other (issue #212): the
         // editor opens at once and writes at once, see [cropImage].
-        if (image.kind == ImageKind.image && !image.missing)
+        if (image.kind == ImageKind.image && image.hasPicture)
           PopupMenuItem<void Function()>(
             key: const Key("tile-context-crop"),
             value: cropImage,
@@ -5079,8 +5183,7 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
 
   /// Whether "Display locations" is on: unless the album said
   /// [PlaceCaption.hidden], an album that said nothing shows them.
-  late bool placesShown =
-      widget.properties.placeCaption != PlaceCaption.hidden;
+  late bool placesShown = widget.properties.placeCaption != PlaceCaption.hidden;
 
   /// The crop being edited, a copy: the album's own is replaced on apply.
   late ThumbnailInfo? indexPicture = copyOf(widget.properties.indexPicture);

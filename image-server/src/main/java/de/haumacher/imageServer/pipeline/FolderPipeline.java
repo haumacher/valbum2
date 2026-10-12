@@ -65,10 +65,11 @@ import java.util.logging.Logger;
  * <ul>
  * <li>By a walk over the whole space, see {@link #process(File)}, which the owner of the pipeline
  * runs once at start-up.</li>
- * <li>When the {@link ResourceCache} notices it: a folder that is loaded, a folder whose watch
- * reports a new or changed photograph, a new folder appearing in a watched one (with everything
- * below it), see {@link #notice(File, boolean)}. No restart, no admin action: a library copied in
- * while the server runs is taken care of by itself.</li>
+ * <li>When the {@link LibraryWatch} of the space reports it: a folder whose watch reports a new,
+ * changed or deleted photograph, a new folder appearing in a watched one (with everything below
+ * it), see {@link #notice(File, boolean)}; and when the sweep finds its modification time moved
+ * (see {@link #sweep(boolean)}). No restart, no admin action: a library copied in while the server
+ * runs is taken care of by itself. A request never notices anything, see issue #253.</li>
  * </ul>
  *
  * <p>
@@ -123,7 +124,7 @@ import java.util.logging.Logger;
  * for a restart. The back-off starts at {@link #RETRY_MILLIS} and doubles with every failure in a row
  * up to {@link #MAX_RETRY_MILLIS}, so a folder that stays unreadable costs one attempt an hour; a
  * repeated failure is logged quietly. A watch reporting a change in the folder (also of permissions
- * only, see {@link ResourceCache.FolderObserver#folderChanged(File)}) ends the back-off at once.
+ * only, see {@link #changed(File)}) ends the back-off at once.
  * </p>
  *
  * <p>
@@ -164,7 +165,14 @@ public class FolderPipeline {
 
 	/** When a step runs, see {@link FolderPipeline}. */
 	public enum Stage {
-		/** What the index of the space needs: run for every folder before anything else. */
+		/**
+		 * What a folder is: which media files it holds, and what each of them is, see issue #253 and
+		 * {@link de.haumacher.imageServer.cache.AnalysisRecord}. A request answers nothing else, so
+		 * this runs first of all.
+		 */
+		RECORD,
+
+		/** What the index of the space needs: run for every folder before anything else but the record. */
 		INDEX,
 
 		/** What an album needs to be shown without waiting: previews, cover, faces, places. */
@@ -249,6 +257,14 @@ public class FolderPipeline {
 		/** When the step runs, see {@link Stage}. */
 		default Stage stage() {
 			return Stage.PHOTOS;
+		}
+
+		/**
+		 * Takes the cheap first look at the given folder that the walk at start-up takes of every
+		 * folder before any step runs, see {@link FolderPipeline#discover(File)}; nothing by default.
+		 */
+		default void discover(File folder) throws IOException {
+			// Nothing to look at.
 		}
 	}
 
@@ -584,17 +600,11 @@ public class FolderPipeline {
 	/** How many failures were reported, the sequence of {@link Failure#_seq}; guarded by this. */
 	private long _failures;
 
-	private final ResourceCache.FolderObserver _observer = new ResourceCache.FolderObserver() {
-		@Override
-		public void folderNoticed(File folder, boolean tree) {
-			notice(folder, tree);
-		}
+	/** The watches of the library, see {@link LibraryWatch}; while started. */
+	private LibraryWatch _watch;
 
-		@Override
-		public void folderChanged(File folder) {
-			changed(folder);
-		}
-	};
+	/** How many folders are watched at most, see {@link #setMaxWatches(int)}. */
+	private int _maxWatches = Integer.MAX_VALUE;
 
 	/**
 	 * Creates the pipeline of the given space and reads its progress file; nothing runs until
@@ -633,6 +643,19 @@ public class FolderPipeline {
 		return new ArrayList<>(_steps);
 	}
 
+	/**
+	 * Watches at most the given number of folders from the next {@link #start()} on; for the tests,
+	 * which simulate the system's limit of watches, see {@link LibraryWatch}.
+	 */
+	public void setMaxWatches(int maxWatches) {
+		_maxWatches = maxWatches;
+	}
+
+	/** The watches of the library while started, <code>null</code> otherwise; for the tests. */
+	public synchronized LibraryWatch watch() {
+		return _watch;
+	}
+
 	/** Sets the quiet period, for the tests. */
 	public void setQuietMillis(long millis) {
 		_quietMillis = millis;
@@ -669,7 +692,7 @@ public class FolderPipeline {
 	// --- The thread. ---
 
 	/**
-	 * Starts the pipeline's thread and listens to what the {@link ResourceCache}s notice.
+	 * Starts the pipeline's thread and watches the whole library, see {@link LibraryWatch}.
 	 *
 	 * @return Whether it was started by this call.
 	 */
@@ -683,7 +706,8 @@ public class FolderPipeline {
 			thread.setPriority(Thread.MIN_PRIORITY);
 			return thread;
 		});
-		ResourceCache.addObserver(_observer);
+		_watch = new LibraryWatch(_root, this, _name, _maxWatches);
+		_watch.start();
 		// The first look at the folders, before anything else runs: what changes from now on is
 		// what the next sweep finds.
 		_executor.execute(() -> sweep(true));
@@ -707,16 +731,21 @@ public class FolderPipeline {
 
 	/** Stops the thread; what is done is written. */
 	public void shutdown() {
-		ResourceCache.removeObserver(_observer);
 		ScheduledExecutorService executor;
+		LibraryWatch watch;
 		synchronized (this) {
 			executor = _executor;
 			_executor = null;
+			watch = _watch;
+			_watch = null;
 			_pending.clear();
 			// Nothing is lost: the next walk finds the same work again, and what is done is recorded.
 			_photoQueue.clear();
 			_unitQueue.clear();
 			_workScheduled = false;
+		}
+		if (watch != null) {
+			watch.close();
 		}
 		if (executor != null) {
 			executor.shutdownNow();
@@ -853,8 +882,8 @@ public class FolderPipeline {
 	 * Looks at the modification time of every folder of the space, see issue #236.
 	 *
 	 * <p>
-	 * The directory watches of the {@link ResourceCache} are the fast path, but only for folders a
-	 * request loaded, and they are bounded (the operating system grants a limited number). This is
+	 * The directory watches of the {@link LibraryWatch} are the fast path, but they are bounded (the
+	 * operating system grants a limited number), and a folder beyond the bound is watched by nobody. This is
 	 * the guarantee for everything else: a library copied in while nobody browses is hashed and
 	 * prepared all the same. A folder's modification time changes when an entry is added to it,
 	 * removed or renamed in it; a folder whose time moved since the last sweep is noticed (with the
@@ -963,7 +992,7 @@ public class FolderPipeline {
 	/**
 	 * Ends the back-off of the steps that failed on the given folder, and notices it: a watch saw a
 	 * photograph in it change, maybe just its permissions, see
-	 * {@link ResourceCache.FolderObserver#folderChanged(File)}.
+	 * {@link LibraryWatch}.
 	 */
 	public void changed(File folder) {
 		String path = relative(folder);
@@ -1160,7 +1189,7 @@ public class FolderPipeline {
 			}
 		}
 		boolean stopped = false;
-		for (Step step : _steps) {
+		for (Step step : byStage()) {
 			if (step.stage() == Stage.VIDEOS || step.stage().compareTo(upTo) > 0) {
 				continue;
 			}
@@ -1252,6 +1281,32 @@ public class FolderPipeline {
 				scheduleWork();
 			}
 			persist(false);
+		}
+	}
+
+	/** The steps in the order they run: by {@link Stage}, then in the order they were added. */
+	private List<Step> byStage() {
+		List<Step> result = new ArrayList<>(_steps);
+		result.sort(Comparator.comparing(Step::stage));
+		return result;
+	}
+
+	/**
+	 * Takes the cheap first look of every step at the given folder, see {@link Step#discover(File)}:
+	 * what the walk at start-up does for every folder, root first, before any step runs, so that a
+	 * library is known as a whole long before every album of it is analysed.
+	 */
+	public void discover(File folder) {
+		if (relative(folder) == null || !folder.isDirectory()) {
+			return;
+		}
+		for (Step step : byStage()) {
+			try {
+				step.discover(folder);
+			} catch (IOException | RuntimeException ex) {
+				LOG.log(Level.WARNING, "Step '" + step.name() + "' cannot look at '" + folder.getAbsolutePath() + "': "
+					+ ex.getMessage(), ex);
+			}
 		}
 	}
 

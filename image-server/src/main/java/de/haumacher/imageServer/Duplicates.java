@@ -164,7 +164,8 @@ public class Duplicates {
 				return null;
 			}
 			ImagePart image = view.photo(path);
-			if (image == null) {
+			if (image == null || de.haumacher.imageServer.cache.BrokenParts.isBroken(image)) {
+				// A file that cannot be read is no copy of a photograph to sort out, see issue #253.
 				return null;
 			}
 			return new Photo(folder, image, album);

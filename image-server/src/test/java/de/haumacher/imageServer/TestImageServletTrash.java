@@ -11,6 +11,7 @@ import de.haumacher.imageServer.auth.Roles;
 import de.haumacher.imageServer.auth.UserStore;
 import de.haumacher.imageServer.auth.UserStore.Device;
 import de.haumacher.imageServer.auth.UserStore.User;
+import de.haumacher.imageServer.cache.AnalysisRecord;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.AlbumPart;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
@@ -196,7 +197,10 @@ public class TestImageServletTrash extends TestCase {
 
 		assertFalse("The original is gone from disk.", _base.resolve("Trip/a.jpg").toFile().exists());
 		assertFalse("Nothing went to the trash folder.", trash().exists());
-		assertEquals(Arrays.asList(".vacache/face-a.jpg-1.jpg-f0123456789ab.jpg",
+		assertEquals(Arrays.asList(
+			// What the folder holds, see issue #253: the record stays, without the purged file.
+			".vacache/" + AnalysisRecord.FILE_NAME,
+			".vacache/face-a.jpg-1.jpg-f0123456789ab.jpg",
 			".vacache/face-b.jpg-f0123456789ab.jpg", ".vacache/faces.json", ".vacache/preview-b.jpg",
 			// The record of the original b.jpg's preview was made from stays with it, see issue #235.
 			".vacache/preview-b.jpg" + PreviewCache.SOURCE_SUFFIX),
@@ -317,6 +321,10 @@ public class TestImageServletTrash extends TestCase {
 			+ part("b.jpg", "\"rating\":-2") + "]}]");
 		ImageServlet servlet = servlet(AuthMode.OFF);
 		album(servlet, "/Trip/", null, null);
+		// As a running server: the request reads what the background recorded, which has not
+		// noticed the delete yet, see issue #253 (without a background, the request itself would
+		// record the folder first and find the file gone).
+		servlet.cache().setBackground(true);
 		// Gone behind the server's back, after the album was read: the sidecar still names it.
 		Files.delete(_base.resolve("Trip/b.jpg"));
 		String before = read(_base.resolve("Trip/index.json"));

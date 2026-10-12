@@ -51,6 +51,13 @@ import junit.framework.TestCase;
  * reads. One unreadable file never fails more than itself, one broken folder never fails a
  * listing, and what is left out is said.
  * </p>
+ *
+ * <p>
+ * Since issue #253 such a file is no longer left out: the background records it as broken, and its
+ * album answers it as a broken part (its name, its size and why it cannot be read), which the app
+ * shows with a broken-picture icon. It is analysed once per state of the file, never by a request
+ * of a running server.
+ * </p>
  */
 @SuppressWarnings("javadoc")
 public class TestUnreadableFile extends TestCase {
@@ -97,15 +104,24 @@ public class TestUnreadableFile extends TestCase {
 		}
 	}
 
-	/** An album holding a file that cannot be read is answered, with every other photograph. */
+	/**
+	 * An album holding a file that cannot be read is answered, with every other photograph, and the
+	 * file as a broken part (issue #253).
+	 */
 	public void testAnAlbumHoldingAnUnreadableFileIsAnswered() throws Exception {
 		jpeg("2025-08-14 Mission", "a.jpg");
 		jpeg("2025-08-14 Mission", "b.jpg");
-		noTrack("2025-08-14 Mission", "x.mp4");
+		Path broken = noTrack("2025-08-14 Mission", "x.mp4");
 
 		AlbumInfo album = album("/2025-08-14 Mission/");
 
-		assertEquals(Arrays.asList("a.jpg", "b.jpg"), names(album));
+		assertEquals(Arrays.asList("a.jpg", "b.jpg", "x.mp4"), sorted(names(album)));
+		assertEquals("", album.getImageByName().get("a.jpg").getBroken());
+		ImagePart x = album.getImageByName().get("x.mp4");
+		assertTrue(x.getBroken(), x.getBroken().contains(NEITHER));
+		assertEquals(ImageKind.VIDEO, x.getKind());
+		assertEquals(Files.size(broken), x.getFileSize());
+		assertEquals("No size in pixels is known.", 0, x.getWidth());
 	}
 
 	/**
@@ -155,7 +171,7 @@ public class TestUnreadableFile extends TestCase {
 	 * It is left out of its album, which is answered with everything else, the listing above holds
 	 * every folder, and the file is named in the status.
 	 */
-	public void testACutOffRecordingIsLeftOutAndSaid() throws Exception {
+	public void testACutOffRecordingIsABrokenPartAndSaid() throws Exception {
 		Path dir = Files.createDirectories(_base.resolve("2025/2025-08-14 Mission"));
 		Files.write(dir.resolve("20250903_185939.mp4"), LargeMp4.truncated());
 		jpeg("2025/2025-08-14 Mission", "a.jpg");
@@ -168,13 +184,17 @@ public class TestUnreadableFile extends TestCase {
 			folderNames(listing));
 		assertEquals("Alone", byName(listing, "2025-08-15 Alone").getTitle());
 
-		assertEquals(Arrays.asList("a.jpg"), names(album("/2025/2025-08-14 Mission/")));
+		AlbumInfo mission = album("/2025/2025-08-14 Mission/");
+		assertEquals(Arrays.asList("20250903_185939.mp4", "a.jpg"), sorted(names(mission)));
+		assertTrue(mission.getImageByName().get("20250903_185939.mp4").getBroken().contains("FFmpeg"));
 
 		FolderPipeline.Status status = _servlet.index().pipeline().status();
 		assertNotNull("The failure is said.", status.getFailure());
 		assertTrue(status.getFailure(), status.getFailure().startsWith("20250903_185939.mp4: "));
 		assertTrue("FFmpeg was asked as well: " + status.getFailure(), status.getFailure().contains("FFmpeg"));
-		assertEquals("2025/2025-08-14 Mission", status.getFailureFolder());
+		// Both albums hold the file; the most recent failure is the one said.
+		assertTrue(status.getFailureFolder(), Arrays.asList("2025/2025-08-14 Mission", "2025/2025-08-15 Alone")
+			.contains(status.getFailureFolder()));
 		assertTrue("The original is untouched.", Arrays.equals(LargeMp4.truncated(),
 			Files.readAllBytes(dir.resolve("20250903_185939.mp4"))));
 	}
@@ -206,16 +226,18 @@ public class TestUnreadableFile extends TestCase {
 			cache.setRefusals((folder, reason) -> said.add(folder.getName() + " " + reason));
 			PathInfo album = new PathInfo(_base, Path.of("Album"));
 
-			assertEquals(Arrays.asList("a.jpg"), names((AlbumInfo) cache.lookup(album)));
+			assertEquals(Arrays.asList("a.jpg", "x.mp4"), sorted(names((AlbumInfo) cache.lookup(album))));
 			cache.invalidate(album);
-			assertEquals(Arrays.asList("a.jpg"), names((AlbumInfo) cache.lookup(album)));
-			assertEquals("Said once, though tried twice: " + said, 1, said.size());
+			long analyses = ImageData.analyses();
+			assertEquals(Arrays.asList("a.jpg", "x.mp4"), sorted(names((AlbumInfo) cache.lookup(album))));
+			assertEquals("Recorded as broken: not analysed again, see issue #253.", analyses, ImageData.analyses());
+			assertEquals("Said once, though read twice: " + said, 1, said.size());
 			assertTrue(said.get(0), said.get(0).startsWith("Album x.mp4: "));
 
 			// Changed, and still unreadable: said again.
 			Files.write(broken, new byte[] { 0, 0, 0, 8, 'f', 'r', 'e', 'e' }, StandardOpenOption.APPEND);
 			cache.invalidate(album);
-			assertEquals(Arrays.asList("a.jpg"), names((AlbumInfo) cache.lookup(album)));
+			assertEquals(Arrays.asList("a.jpg", "x.mp4"), sorted(names((AlbumInfo) cache.lookup(album))));
 			assertEquals(said.toString(), 2, said.size());
 		} finally {
 			cache.close();
@@ -223,10 +245,10 @@ public class TestUnreadableFile extends TestCase {
 	}
 
 	/**
-	 * Read, written and read again says the same: the file left out never reaches the sidecar, so
-	 * that a build that can read it does.
+	 * Read, written and read again says the same: why the file cannot be read never reaches the
+	 * sidecar (its part does, with what was said about it), so that a build that can read it does.
 	 */
-	public void testTheFileLeftOutNeverReachesTheSidecar() throws Exception {
+	public void testTheFailureNeverReachesTheSidecar() throws Exception {
 		jpeg("2025-08-14 Mission", "a.jpg");
 		jpeg("2025-08-14 Mission", "b.jpg");
 		noTrack("2025-08-14 Mission", "x.mp4");
@@ -239,7 +261,7 @@ public class TestUnreadableFile extends TestCase {
 		String sidecar = new String(Files.readAllBytes(_base.resolve("2025-08-14 Mission/index.json")),
 			StandardCharsets.UTF_8);
 		assertTrue("Written: " + sidecar, sidecar.contains("a.jpg"));
-		assertFalse("Never written: " + sidecar, sidecar.contains("x.mp4"));
+		assertFalse("Never written: " + sidecar, sidecar.contains(NEITHER));
 
 		FakeResponse again = get("/2025-08-14 Mission/");
 		assertEquals(again.body(), HttpServletResponse.SC_OK, again.status());
@@ -312,6 +334,10 @@ public class TestUnreadableFile extends TestCase {
 		return result;
 	}
 
+	private static List<String> sorted(List<String> names) {
+		return names.stream().sorted().collect(Collectors.toList());
+	}
+
 	private static List<String> folderNames(ListingInfo listing) {
 		return listing.getFolders().stream().map(FolderInfo::getName).collect(Collectors.toList());
 	}
@@ -329,6 +355,7 @@ public class TestUnreadableFile extends TestCase {
 	private AlbumInfo album(String pathInfo) throws Exception {
 		Resource resource = json(pathInfo);
 		assertTrue("Expected an album, got: " + resource, resource instanceof AlbumInfo);
+		de.haumacher.imageServer.shared.util.UpdateTransient.updateTransient(resource);
 		return (AlbumInfo) resource;
 	}
 

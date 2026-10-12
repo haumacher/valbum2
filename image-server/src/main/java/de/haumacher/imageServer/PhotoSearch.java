@@ -613,6 +613,10 @@ public final class PhotoSearch {
 			}
 			Album texts = albumOf(album, folder);
 			for (ImagePart image : images(album)) {
+				if (de.haumacher.imageServer.cache.BrokenParts.isBroken(image)) {
+					// A file that cannot be read is no photograph to find, see issue #253.
+					continue;
+				}
 				Photo photo = Photo.of(image, Interner.NONE);
 				if (!photo.isTrash() && test.test(photo, texts)) {
 					result.add(new Match(folder, prefix + photo._name, photo));

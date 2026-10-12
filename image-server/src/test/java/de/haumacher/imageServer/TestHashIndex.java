@@ -346,7 +346,9 @@ public class TestHashIndex extends ShareTestCase {
 		files.sort(Comparator.comparing(Path::toString));
 		for (Path file : files) {
 			String relative = root.relativize(file).toString();
-			if (relative.endsWith(HashCache.FILE_NAME) || relative.startsWith(UserStore.DIRECTORY_NAME)) {
+			if (relative.endsWith(HashCache.FILE_NAME) || relative.startsWith(UserStore.DIRECTORY_NAME)
+				// What the background found the files to be, the server's cache, see issue #253.
+				|| file.getFileName().toString().equals(de.haumacher.imageServer.cache.AnalysisRecord.FILE_NAME)) {
 				continue;
 			}
 			digest.update(relative.getBytes(StandardCharsets.UTF_8));

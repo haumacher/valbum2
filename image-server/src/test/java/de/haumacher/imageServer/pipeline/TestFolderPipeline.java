@@ -440,6 +440,9 @@ public class TestFolderPipeline extends TestCase {
 		pipeline.setRetryMillis(10_000, 80_000);
 		pipeline.setQuietMillis(20);
 		pipeline.setSweepMillis(20);
+		// A folder nobody watches: a watch would report the chmod below as a change, which ends the
+		// back-off at once (see TestLibraryWatch); this is about the back-off itself.
+		pipeline.setMaxWatches(0);
 		Reading step = new Reading();
 		Counting behind = onAlbum("behind");
 		pipeline.addStep(step);

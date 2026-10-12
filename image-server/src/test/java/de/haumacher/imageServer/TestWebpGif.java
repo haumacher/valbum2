@@ -113,8 +113,10 @@ public class TestWebpGif extends ShareTestCase {
 		for (String file : cache.list()) {
 			assertTrue("Everything generated is named so that a refresh finds it: " + file,
 				CacheRefresh.isGenerated(file));
-			// A preview's record of its original belongs to it, see issue #235.
-			assertTrue("A JPEG preview: " + file, CacheRefresh.plain(file).endsWith(".jpg"));
+			// A preview's record of its original belongs to it, see issue #235; the record of what
+			// the folder holds is the folder's, see issue #253.
+			assertTrue("A JPEG preview: " + file, CacheRefresh.plain(file).endsWith(".jpg")
+				|| file.equals(de.haumacher.imageServer.cache.AnalysisRecord.FILE_NAME));
 		}
 	}
 

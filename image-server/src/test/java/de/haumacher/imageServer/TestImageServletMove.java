@@ -308,7 +308,10 @@ public class TestImageServletMove extends TestCase {
 		assertEquals(MoveService.nameTaken("Trip"), result.getOutcomes().get(0).getMessage());
 		assertEquals("", result.getOutcomes().get(0).getNewName());
 		assertTrue("Nothing is overwritten.", _base.resolve("A/Trip/a.jpg").toFile().exists());
-		assertEquals(Collections.emptyList(), Arrays.asList(_base.resolve("B/Trip").toFile().list()));
+		// Nothing lands in the taken folder; the server's own cache of what it holds (issue #253)
+		// is all that may be there.
+		assertEquals(Collections.emptyList(), Arrays.asList(_base.resolve("B/Trip").toFile()
+			.list((dir, name) -> !name.equals(PreviewCache.CACHE_DIRECTORY_NAME))));
 	}
 
 	public void testAGroupWhoseMemberIsAlreadyAtTheTarget() throws Exception {

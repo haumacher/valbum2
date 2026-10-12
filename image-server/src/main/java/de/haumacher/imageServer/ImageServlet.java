@@ -25,6 +25,9 @@ import de.haumacher.imageServer.auth.SignIns;
 import de.haumacher.imageServer.auth.SpaceStore;
 import de.haumacher.imageServer.auth.TotpSignIns;
 import de.haumacher.imageServer.auth.UserStore;
+import de.haumacher.imageServer.cache.AnalysisRecord;
+import de.haumacher.imageServer.cache.AnalysisStep;
+import de.haumacher.imageServer.cache.BrokenParts;
 import de.haumacher.imageServer.cache.ResourceCache;
 import de.haumacher.imageServer.coded.CodedPictures;
 import de.haumacher.imageServer.faces.FaceCache;
@@ -773,6 +776,9 @@ public class ImageServlet extends HttpServlet {
 				_catchUpInstalled = true;
 			}
 		}
+		// From now on the background records the folders, and a request is a pure read of what it
+		// recorded, see issue #253.
+		_cache.setBackground(true);
 		_index.start();
 	}
 
@@ -878,8 +884,11 @@ public class ImageServlet extends HttpServlet {
 		_privacy = new PrivacyFilter(_cache);
 		_auth = auth;
 		_index = new HashIndex(_basePath);
-		// A file left out of its album because it cannot be read is named in the status of the
-		// background work, see issue #252.
+		// What a folder holds is found out in the background, first of all, see issue #253. A file
+		// that cannot be read is a broken part of its album and is named in the status of the
+		// background work (issue #252); where no background runs (a test's servlet), the request
+		// that records the folder says so.
+		_index.pipeline().addStep(new AnalysisStep(_cache, _index.pipeline()));
 		_cache.setRefusals((folder, reason) -> _index.pipeline().reportFailure(folder, reason));
 		_collections = new PhotoCollections(_basePath, _index);
 		_faces = new FaceIndex(_basePath, facesEnabled);
@@ -1722,6 +1731,7 @@ public class ImageServlet extends HttpServlet {
 		File folder = target.getParentFile();
 		HashCache hashes = new HashCache(folder);
 		UploadResult result;
+		List<File> stored = Collections.emptyList();
 		try {
 			String hash = HashCache.sha256(upload.getUpload());
 			String existing = hashes.nameOf(hash);
@@ -1739,15 +1749,37 @@ public class ImageServlet extends HttpServlet {
 				hashes.put(target, hash, attribution(caller, folderPath));
 				LOG.info("Storing image: " + target);
 				result = UploadResult.create().addFile(uploaded(name, name, hash, STORED));
+				stored = Collections.singletonList(target);
 			}
 		} finally {
 			hashes.flush();
 		}
 
+		// What was stored is analysed now, so that the album shows it with the next read, see #253.
+		recordUploads(folder, stored);
+
 		// The next read must see the new photo, and with it who contributed it.
 		_cache.invalidate(folderPath);
 
 		serveJsonObject(context.response(), result);
+	}
+
+	/**
+	 * Records the given files, just uploaded into the given folder, see issue #253: the upload
+	 * request analyses what it brought (it is a write, never a read of an album), so that the album
+	 * shows it with the next read instead of after the background's quiet period. A file that cannot
+	 * be read is recorded as broken.
+	 */
+	private void recordUploads(File folder, List<File> stored) {
+		if (stored.isEmpty()) {
+			return;
+		}
+		try {
+			AnalysisRecord.add(folder, stored, _cache.analyst());
+		} catch (IOException | RuntimeException ex) {
+			// The background records them after its quiet period.
+			LOG.log(Level.WARNING, "Cannot record the upload into '" + folder + "': " + ex.getMessage(), ex);
+		}
 	}
 
 	/**
@@ -1875,6 +1907,7 @@ public class ImageServlet extends HttpServlet {
 		Map<String, String> reserved = new HashMap<>();
 
 		HashCache hashes = new HashCache(folder);
+		List<File> stored = new ArrayList<>();
 		try {
 			for (UploadItem upload : uploads) {
 				String name = baseName(upload.getName());
@@ -1893,10 +1926,14 @@ public class ImageServlet extends HttpServlet {
 				hashes.put(targetFile, hash, attribution(caller, folderPath));
 				LOG.info("Storing image: " + targetFile);
 				result.addFile(uploaded(name, targetFile.getName(), hash, STORED));
+				stored.add(targetFile);
 			}
 		} finally {
 			hashes.flush();
 		}
+
+		// What was stored is analysed now, so that the album shows it with the next read, see #253.
+		recordUploads(folder, stored);
 
 		// The next read must see the new photos, and with them who contributed them.
 		_cache.invalidate(folderPath);
@@ -6206,6 +6243,9 @@ public class ImageServlet extends HttpServlet {
 		// The one writer of a sidecar tells the search of issue #227, see SearchIndex.
 		SearchIndex.sidecarWritten(directory);
 
+		// And the record of what the folder holds, which a move or a delete changed, see issue #253.
+		AnalysisRecord.sidecarWritten(directory);
+
 		LOG.info("Stored folder resource: " + indexFile.getAbsolutePath());
 	}
 
@@ -6383,6 +6423,8 @@ public class ImageServlet extends HttpServlet {
 				// How far the face index has got is not a question of who is asking either, and
 				// this copy is made after it was answered, see issue #124.
 				.setFacesPending(album.isFacesPending())
+				// Nor whether the background recorded the folder, see issue #253.
+				.setPreparing(album.isPreparing())
 				.setParts(album.getParts());
 			if (album.getIndexPicture() != null) {
 				result.setIndexPicture(album.getIndexPicture());
@@ -6421,6 +6463,24 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 
+		Resource described = _cache.lookup(pathInfo);
+		if (!(described instanceof ImagePart)) {
+			// A file the album does not describe (yet) is no photograph here, in any of its shapes:
+			// the background has not recorded it, see issue #253, and nothing about it -- its
+			// privacy above all -- is known.
+			notFound(context, pathInfo);
+			return;
+		}
+
+		String type = context.getParameter("type");
+		if (BrokenParts.isBroken((ImagePart) described) && !jsonRequested(context) && type != null) {
+			// Nothing is made of a file that cannot be read; its original can still be taken, see
+			// issue #253.
+			errorInfo(context, HttpServletResponse.SC_NOT_FOUND,
+				brokenFile(pathInfo.getName(), ((ImagePart) described).getBroken()));
+			return;
+		}
+
 		if (jsonRequested(context)) {
 			Resource resource = _cache.lookup(pathInfo);
 			if (resource instanceof ImagePart && !Faces.maySee(_auth, caller, viewAs)) {
@@ -6436,7 +6496,6 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 
-		String type = context.getParameter("type");
 		if (makes(type)) {
 			// Somebody waits for this: the background work gives way until it is answered, see
 			// issue #236.
@@ -6449,6 +6508,14 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 		serveMade(context, pathInfo, caller, viewAs, type);
+	}
+
+	/**
+	 * The message a request for a picture of a file that cannot be read is refused with, see issue
+	 * #253.
+	 */
+	public static String brokenFile(String name, String reason) {
+		return "The file '" + name + "' cannot be read (" + reason + "): there is no picture of it.";
 	}
 
 	/**

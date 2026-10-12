@@ -53,6 +53,9 @@ public class CacheRefresh {
 	 * {@link PreviewCache#createDisplay(File)} and issue #186.</li>
 	 * <li>A playback rendition, <code>video-&lt;name&gt;.mp4</code>, and a teaser,
 	 * <code>teaser-&lt;name&gt;.mp4</code>, see {@link VideoRenditions}.</li>
+	 * <li>The record of what the files of this folder were found to be,
+	 * {@value de.haumacher.imageServer.cache.AnalysisRecord#FILE_NAME}, see issue #253: thrown away,
+	 * every file is analysed again, a broken one included.</li>
 	 * <li>The faces found in the photographs of this folder,
 	 * {@value de.haumacher.imageServer.faces.FaceCache#FILE_NAME}, and the crop of one of them,
 	 * <code>face-&lt;name&gt;-&lt;index&gt;.jpg</code>, see issue #124.</li>
@@ -79,6 +82,12 @@ public class CacheRefresh {
 			return true;
 		}
 		if (plain.equals(de.haumacher.imageServer.faces.FaceCache.FILE_NAME)) {
+			return true;
+		}
+		if (plain.equals(de.haumacher.imageServer.cache.AnalysisRecord.FILE_NAME)
+			|| de.haumacher.imageServer.cache.AnalysisRecord.isTemporary(name)) {
+			// What the photographs were found to be, see issue #253: thrown away, they are analysed
+			// again -- also the ones found broken, which a server that can read more now may read.
 			return true;
 		}
 		if (plain.startsWith(de.haumacher.imageServer.faces.FaceIndex.CROP_PREFIX)

@@ -743,7 +743,9 @@ public class TestImageServletDelete extends TestCase {
 		for (Path file : files) {
 			String relative = root.relativize(file).toString();
 			String name = file.getFileName().toString();
-			if (purged.contains(relative) || name.startsWith("index.json") || name.equals(".hashes.json")) {
+			if (purged.contains(relative) || name.startsWith("index.json") || name.equals(".hashes.json")
+				// The server's record of what the folder holds, see issue #253.
+				|| name.equals(de.haumacher.imageServer.cache.AnalysisRecord.FILE_NAME)) {
 				continue;
 			}
 			digest.update(relative.getBytes(StandardCharsets.UTF_8));

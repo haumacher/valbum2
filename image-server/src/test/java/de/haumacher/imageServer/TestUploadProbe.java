@@ -95,7 +95,8 @@ public class TestUploadProbe extends TestCase {
 		UploadResult again = upload(servlet, token, files("Pic 1.jpg", RED, "clip.mp4", CLIP));
 		assertEquals(Arrays.asList("present", "present"), states(again));
 
-		assertEquals(Arrays.asList(".hashes.json", "clip.mp4", "index.json", "old.jpg"), entries(_folder));
+		// The cache of what the folder holds is the server's, see issue #253.
+		assertEquals(Arrays.asList(".hashes.json", ".vacache", "clip.mp4", "index.json", "old.jpg"), entries(_folder));
 		assertTrue(Arrays.equals(RED, Files.readAllBytes(_folder.resolve("old.jpg"))));
 
 		// The folder's JSON never lists a sidecar. (The probe's files are not real media, so
@@ -111,7 +112,7 @@ public class TestUploadProbe extends TestCase {
 		servlet.doPut(request(FOLDER, "multipart/form-data; boundary=" + BOUNDARY,
 			multipart(files("clip.mp4", CLIP)), null, Collections.emptyMap()), anonymous.response());
 		assertEquals(HttpServletResponse.SC_UNAUTHORIZED, anonymous.status());
-		assertEquals(Arrays.asList(".hashes.json", "clip.mp4", "index.json", "old.jpg"), entries(_folder));
+		assertEquals(Arrays.asList(".hashes.json", ".vacache", "clip.mp4", "index.json", "old.jpg"), entries(_folder));
 	}
 
 	// --- Helpers. ---

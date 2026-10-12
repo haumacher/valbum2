@@ -3608,6 +3608,9 @@ class AppLocalizationsDe extends AppLocalizations {
   String get catchUpRoot => 'dem obersten Ordner';
 
   @override
+  String get catchUpStepAnalysis => 'Neue Dateien auslesen';
+
+  @override
   String get catchUpStepHash => 'Fingerabdrücke';
 
   @override
@@ -3949,4 +3952,30 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get searchWordOr => 'oder';
+
+  @override
+  String get brokenImageExplanation =>
+      'Dieses Foto kann nicht angezeigt werden: Die Datei ist beschädigt oder unvollständig.';
+
+  @override
+  String get brokenVideoExplanation =>
+      'Dieses Video kann nicht abgespielt werden: Die Datei ist beschädigt oder unvollständig.';
+
+  @override
+  String brokenFileReason(String reason) {
+    return 'Vom Server angegebener Grund: $reason';
+  }
+
+  @override
+  String brokenFileSize(String size) {
+    return 'Dateigröße: $size';
+  }
+
+  @override
+  String get albumPreparing =>
+      'Dieses Album wird gerade vorbereitet. Die Fotos werden hier angezeigt, sobald der Server sie eingelesen hat.';
+
+  @override
+  String get albumStillPreparing =>
+      'Dieses Album wird noch vorbereitet. Fotos, die der Server noch nicht gelesen hat, werden in Kürze hier angezeigt.';
 }

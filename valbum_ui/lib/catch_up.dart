@@ -168,6 +168,8 @@ class CatchUpSectionState extends State<CatchUpSection> {
 
   static String _stepName(AppLocalizations l10n, CatchUpStep step) {
     switch (step) {
+      case CatchUpStep.analysis:
+        return l10n.catchUpStepAnalysis;
       case CatchUpStep.hash:
         return l10n.catchUpStepHash;
       case CatchUpStep.previews:

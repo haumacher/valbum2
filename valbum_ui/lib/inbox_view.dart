@@ -67,6 +67,7 @@ import 'album_edit.dart';
 import 'album_model.dart';
 import 'album_view.dart';
 import 'app.dart';
+import 'broken.dart';
 import 'caller.dart';
 import 'camera_roll_view.dart';
 import 'client.dart';
@@ -1202,7 +1203,9 @@ class InboxContentState extends State<InboxContent> {
       height: height,
     );
     var marker = privacyIcon(image.privacy);
-    if (image.kind == ImageKind.image && marker == null) {
+    // A file that cannot be read is its broken tile alone (issue #253): it
+    // plays nothing, so it carries no play mark.
+    if (image.isBroken || (image.kind == ImageKind.image && marker == null)) {
       return picture;
     }
     return SizedBox(

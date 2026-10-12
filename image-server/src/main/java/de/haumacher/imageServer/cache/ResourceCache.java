@@ -3,8 +3,6 @@
  */
 package de.haumacher.imageServer.cache;
 
-import static java.nio.file.StandardWatchEventKinds.*;
-
 import com.drew.imaging.ImageProcessingException;
 import com.drew.metadata.MetadataException;
 import com.google.common.cache.CacheBuilder;
@@ -44,13 +42,6 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.nio.file.ClosedWatchServiceException;
-import java.nio.file.FileSystems;
-import java.nio.file.NoSuchFileException;
-import java.nio.file.Path;
-import java.nio.file.WatchEvent;
-import java.nio.file.WatchKey;
-import java.nio.file.WatchService;
 import java.text.DateFormat;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -58,14 +49,9 @@ import java.util.Calendar;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.GregorianCalendar;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -94,13 +80,6 @@ public class ResourceCache {
 			"(" + "\\d{4}" + ")" + SEP + "(" + "\\d{2}" + ")" + SEP + "(" + "\\d{2}" + ")");
 
 	/**
-	 * How many folders a cache watches at most, see issue #235: a watch is an operating-system
-	 * resource with a system-wide limit. A held folder beyond this is checked by its modification
-	 * stamp whenever it is opened instead, see {@link Loader#current(PathInfo)} and issue #245.
-	 */
-	public static final int MAX_FOLDERS = 1000;
-
-	/**
 	 * How many bytes of heap one part of a cached album takes, the unit the cache is weighed in
 	 * (see {@link #weight(Resource)} and issue #245).
 	 *
@@ -116,46 +95,12 @@ public class ResourceCache {
 	 */
 	public static final long BYTES_PER_PART = 1536;
 
-	/**
-	 * Who is told about folders this cache notices, see {@link FolderObserver}.
-	 */
-	private static final List<FolderObserver> OBSERVERS = new CopyOnWriteArrayList<>();
-
-	/** Whether the failure to watch a folder has been reported in this process. */
-	private static final AtomicBoolean UNWATCHED_REPORTED = new AtomicBoolean();
 
 	/**
-	 * Is told about the folders a {@link ResourceCache} notices, see issue #235.
-	 *
-	 * <p>
-	 * The cache learns about the library anyway &mdash; it loads folders and its directory watcher
-	 * reports what changed in them &mdash; and the background work of a space (hashing, see
-	 * {@link de.haumacher.imageServer.upload.HashIndex}) wants to hear of exactly that, so that a
-	 * folder copied in by hand is taken care of without a restart. Called on a request thread or on
-	 * the watcher's thread, so an observer only takes note and never works.
-	 * </p>
+	 * The caches alive in this process, which hear of every folder whose record the background
+	 * wrote, see {@link #recorded(File)}.
 	 */
-	public interface FolderObserver {
-
-		/**
-		 * The given folder was loaded or changed.
-		 *
-		 * @param tree
-		 *        Whether everything below it is new as well: a folder that appeared in a watched one
-		 *        (the folders inside it are watched by nobody yet), or a watcher that lost events.
-		 */
-		void folderNoticed(File folder, boolean tree);
-
-		/**
-		 * A watch reported that a photograph in the given folder was created or changed &mdash;
-		 * including a change of its permissions or owner only, which the watch reports as a change
-		 * as well (<code>IN_ATTRIB</code> on Linux): unlike {@link #folderNoticed(File, boolean)},
-		 * never just a folder that was loaded.
-		 */
-		default void folderChanged(File folder) {
-			folderNoticed(folder, false);
-		}
-	}
+	private static final Set<ResourceCache> LIVE = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
 	/**
 	 * Hears of a file that is left out of its album because it cannot be read, see
@@ -177,32 +122,28 @@ public class ResourceCache {
 		void refused(File folder, String reason);
 	}
 
-	/** Tells the given observer about every folder any cache notices from now on. */
-	public static void addObserver(FolderObserver observer) {
-		OBSERVERS.add(observer);
-	}
-
-	/** Stops telling the given observer. */
-	public static void removeObserver(FolderObserver observer) {
-		OBSERVERS.remove(observer);
-	}
-
-	static void notice(File folder, boolean tree) {
-		for (FolderObserver observer : OBSERVERS) {
-			try {
-				observer.folderNoticed(folder, tree);
-			} catch (RuntimeException ex) {
-				Loader.LOG.log(Level.WARNING, "An observer failed on '" + folder + "': " + ex.getMessage(), ex);
-			}
+	/**
+	 * Forgets, in every cache of this process, what is held for the given folder and for the folder
+	 * containing it: its analysis record was written (see {@link AnalysisRecord}), or a watch of
+	 * the background reported a change in it. The next request reads both again, from their
+	 * sidecars.
+	 */
+	public static void recorded(File folder) {
+		File changed = folder.toPath().toAbsolutePath().normalize().toFile();
+		File parent = changed.getParentFile();
+		for (ResourceCache cache : LIVE) {
+			cache.forget(changed, parent);
 		}
 	}
 
-	static void changed(File folder) {
-		for (FolderObserver observer : OBSERVERS) {
-			try {
-				observer.folderChanged(folder);
-			} catch (RuntimeException ex) {
-				Loader.LOG.log(Level.WARNING, "An observer failed on '" + folder + "': " + ex.getMessage(), ex);
+	private void forget(File folder, File parent) {
+		LoadingCache<PathInfo, Resource> cache = _cache;
+		for (PathInfo key : _loader.keysOf(folder)) {
+			cache.invalidate(key);
+		}
+		if (parent != null) {
+			for (PathInfo key : _loader.keysOf(parent)) {
+				cache.invalidate(key);
 			}
 		}
 	}
@@ -245,31 +186,25 @@ public class ResourceCache {
 	 *        server's zone, asked at every analysis.
 	 */
 	public ResourceCache(ImageData.Analysis analysis, ZoneId zone) throws IOException {
-		this(analysis, zone, MAX_FOLDERS, defaultBudget());
+		this(analysis, zone, defaultBudget());
 	}
 
 	/**
-	 * Creates a {@link ResourceCache} watching at most the given number of folders and holding
-	 * albums up to the given number of bytes; for the tests.
-	 *
-	 * <p>
-	 * The two bounds are separate, see issue #245: the watches are bounded for the system's sake
-	 * (issue #235), the albums for the heap's. A folder evicted from the cache loses its watch; a
-	 * folder that loses its watch for room stays held and is checked by its modification stamp
-	 * whenever it is opened, see {@link Loader#current(PathInfo)}.
-	 * </p>
+	 * Creates a {@link ResourceCache} holding albums up to the given number of bytes; for the
+	 * tests, see issue #245.
 	 */
-	ResourceCache(ImageData.Analysis analysis, ZoneId zone, int maxWatches, long budget) throws IOException {
-		_loader = new Loader(analysis, zone, maxWatches);
+	ResourceCache(ImageData.Analysis analysis, ZoneId zone, long budget) throws IOException {
+		_loader = new Loader(analysis, zone);
 		_budget = budget;
 		_cache = build(budget);
 		_loader.attach(_cache);
+		LIVE.add(this);
 	}
 
 	private LoadingCache<PathInfo, Resource> build(long budget) {
 		return CacheBuilder.newBuilder().maximumWeight(Math.max(1, budget / BYTES_PER_PART))
 			.weigher((PathInfo path, Resource resource) -> weight(resource))
-			.removalListener((RemovalNotification<PathInfo, Resource> removal) -> _loader.removed(removal.getKey(), removal.wasEvicted()))
+			.removalListener((RemovalNotification<PathInfo, Resource> removal) -> _loader.removed(removal.getKey()))
 			.build(_loader);
 	}
 
@@ -330,11 +265,6 @@ public class ResourceCache {
 		return _loader.loadCount();
 	}
 
-	/** How many folders are watched right now, for the tests. */
-	int watchCount() {
-		return _loader.watchCount();
-	}
-
 	/** How many folders are held right now, for the tests. */
 	long size() {
 		return _cache.size();
@@ -349,9 +279,31 @@ public class ResourceCache {
 		return result;
 	}
 
-	/** Processes what the watcher reported, as a request would before it is answered; for the tests. */
-	void processEvents() {
-		_loader.processEvents(_cache);
+	/**
+	 * Whether the background work of the space records the folders, see issue #253.
+	 *
+	 * <p>
+	 * With a background (a running server, see
+	 * {@link de.haumacher.imageServer.ImageServlet#startIndexing()}), a request is a pure read of
+	 * the sidecars: it never lists a folder's files and never opens a photograph; what the
+	 * background has not recorded yet is not answered. Without one &mdash; a servlet a test builds
+	 * over a fixture, an offline tool &mdash; nobody else would ever record a folder, so a request
+	 * records the folder it reads first, doing exactly the background's work for it, see
+	 * {@link AnalysisRecord#update(File, AnalysisRecord.Analyst, boolean)}.
+	 * </p>
+	 */
+	public void setBackground(boolean background) {
+		_loader.setBackground(background);
+	}
+
+	/** Whether {@link #setBackground(boolean)} said that a background records the folders. */
+	public boolean hasBackground() {
+		return _loader.hasBackground();
+	}
+
+	/** The analysis a file of this space is analysed with: its part, as the background records it. */
+	public AnalysisRecord.Analyst analyst() {
+		return _loader::analyze;
 	}
 
 	/**
@@ -385,16 +337,12 @@ public class ResourceCache {
 	}
 
 	/**
-	 * Releases the directory watcher this cache holds.
-	 *
-	 * <p>
-	 * A watcher is an operating-system resource (an <code>inotify</code> instance on Linux) and
-	 * the system grants only a limited number of them, so a cache that is dropped must give its
-	 * own back, see {@link de.haumacher.imageServer.ImageServlet#destroy()}.
-	 * </p>
+	 * Drops this cache: it no longer hears of recorded folders, see {@link #recorded(File)} and
+	 * {@link de.haumacher.imageServer.ImageServlet#destroy()}. The watches of the library are the
+	 * background's, see {@link de.haumacher.imageServer.pipeline.LibraryWatch}.
 	 */
 	public void close() throws IOException {
-		_loader.close();
+		LIVE.remove(this);
 	}
 
 	/**
@@ -417,7 +365,7 @@ public class ResourceCache {
 	 * A listing describes each of its folders from that folder's own sidecar (title, subtitle,
 	 * index picture, see {@link Loader#loadFolderInfo(File)}), so a change inside a folder is a
 	 * change of the listing above it, too. Called when the servlet has written a sidecar: the
-	 * directory watcher reports the same change, but only some time after the write, and the
+	 * background's watch reports the same change, but only some time after the write, and the
 	 * client's next request may come first.
 	 * </p>
 	 */
@@ -534,12 +482,14 @@ public class ResourceCache {
 
 	public Resource lookup(PathInfo pathInfo) {
 		LoadingCache<PathInfo, Resource> cache = _cache;
-		_loader.processEvents(cache);
 		PathInfo folder = pathInfo.toFile().isDirectory() || pathInfo.isRoot() ? pathInfo : pathInfo.parent();
+		if (!_loader.hasBackground()) {
+			// Nobody else records the folder, see #setBackground(boolean).
+			_loader.recordInline(folder.toFile(), true);
+		}
 		if (cache.getIfPresent(folder) != null && !_loader.current(folder)) {
-			// A folder nobody watches (the watch could not be registered, was lost, or was given up
-			// for room, see issue #245) and whose modification stamp moved: read again, see issue
-			// #235.
+			// A sidecar changed behind the cache's back (a hand-edited index.json, a record written
+			// in another process): read again.
 			invalidate(cache, folder);
 		} else if (_loader.placesOutdated(folder)) {
 			// A photograph of this album waits for its places, and the gazetteer may have more to
@@ -561,22 +511,12 @@ public class ResourceCache {
 				return null;
 			}
 			ImagePart image = container.getImageByName().get(pathInfo.getName());
-			if (image == null && isImage(pathInfo.toFile())) {
-				// A photograph that arrived after its album was cached, before the directory
-				// watcher reported it: the album is read again once rather than the file answered
-				// as nothing.
-				cache.invalidate(pathInfo.parent());
-				container = albumHolding(pathInfo);
-				if (container == null) {
-					return null;
-				}
-				image = container.getImageByName().get(pathInfo.getName());
-			}
 			if (image == null) {
 				// The raw companion of a photograph is that photograph, and is answered with its
 				// rights, its privacy and its rating, see issue #191.
 				image = RawPairs.partOf(container, pathInfo.getName());
 			}
+			// A file the background has not recorded yet is nothing yet, see issue #253.
 			return image;
 		}
 	}
@@ -586,10 +526,10 @@ public class ResourceCache {
 	 *
 	 * <p>
 	 * A folder read while it held no photograph is cached as a listing; the first media file that
-	 * arrives in it afterwards turns it into an album, which the directory watcher may not have
-	 * reported yet when that file is asked for (a video copied into an empty folder and served at
-	 * once). The folder is read again once then; a folder that still holds no media answers
-	 * <code>null</code> rather than a cast that fails.
+	 * the background records in it afterwards turns it into an album, which the cache may not have
+	 * heard of yet when that file is asked for. The folder is read again once then (a pure read of
+	 * its sidecars); a folder that still holds no media answers <code>null</code> rather than a
+	 * cast that fails.
 	 * </p>
 	 */
 	private AlbumInfo albumHolding(PathInfo pathInfo) {
@@ -609,57 +549,23 @@ public class ResourceCache {
 
 		private static final Logger LOG = Logger.getLogger(ResourceCache.class.getName());
 
-		private final WatchService _watcher;
-
-		/**
-		 * The folder each watch is on; with {@link #_byPath}, {@link #_stamps} and
-		 * {@link #_orphans} guarded by this loader, see issue #235.
-		 */
-		private final Map<WatchKey, PathInfo> _byKey = new HashMap<>();
-
-		/**
-		 * The watch on each watched folder, in the order the watches were made: the oldest watch of
-		 * a held folder is the one given up when more folders are held than watched, see
-		 * {@link #trim()} and issue #245.
-		 */
-		private final Map<PathInfo, WatchKey> _byPath = new LinkedHashMap<>();
-
 		/** How many folders were read from disk, for the tests. */
 		private final AtomicLong _loads = new AtomicLong();
 
 		/**
-		 * The modification stamp of each held folder when it was loaded: what tells a folder that
-		 * could not be watched has changed, see {@link #current(PathInfo)}.
+		 * The stamp of the sidecars of each held folder when it was loaded: what tells that one
+		 * changed behind the cache's back, see {@link #current(PathInfo)}.
 		 */
-		private final Map<PathInfo, Long> _stamps = new HashMap<>();
+		private final Map<PathInfo, String> _stamps = new java.util.concurrent.ConcurrentHashMap<>();
 
-		/**
-		 * Folders whose watch is kept although they left the cache, oldest first.
-		 *
-		 * <p>
-		 * A folder dropped because it changed (its watch reported something, or the servlet wrote
-		 * its sidecar) is read again with the next request; until then its watch stays, so that a
-		 * copy going on in it, or a new folder appearing in it, is still noticed. Counted against the
-		 * limit of watches and released oldest first, see {@link #_maxWatches}. A folder the cache
-		 * evicts for room loses its watch at once.
-		 * </p>
-		 */
-		private final Set<PathInfo> _orphans = new LinkedHashSet<>();
-
-		/**
-		 * How many folders are watched at most, see {@link ResourceCache#MAX_FOLDERS}; independent
-		 * of how many the cache holds (issue #245).
-		 */
-		private final int _maxWatches;
-
-		/** The cache this loader fills, for the watcher's thread. */
+		/** The cache this loader fills. */
 		private volatile LoadingCache<PathInfo, Resource> _cache;
 
-		/** Serialises the handling of watch events between the watcher's thread and requests. */
-		private final Object _events = new Object();
-
-		/** The thread waiting for watch events, started with the first watch. */
-		private Thread _pump;
+		/**
+		 * The keys loaded, by the absolute path of their folder: what {@link ResourceCache#recorded(File)}
+		 * finds the folder by without looking at every key.
+		 */
+		private final Map<String, Set<PathInfo>> _keys = new java.util.concurrent.ConcurrentHashMap<>();
 
 		/** What is taken over out of a photograph that is analysed here, see issue #129. */
 		private final ImageData.Analysis _analysis;
@@ -676,14 +582,11 @@ public class ResourceCache {
 		 */
 		private final Map<PathInfo, Long> _placesPending = new java.util.concurrent.ConcurrentHashMap<>();
 
-		/** Who hears of a file left out of its album, see {@link #skipped(File, File, Exception)}. */
+		/** Who hears of a file found unreadable by a request's own recording, see #recordInline. */
 		private volatile Refusals _refusals = Refusals.NONE;
 
-		/**
-		 * The files left out of their albums, by absolute path, with the state (modification time
-		 * and length) they were said in, see {@link #skipped(File, File, Exception)}.
-		 */
-		private final Map<String, String> _skipped = new java.util.concurrent.ConcurrentHashMap<>();
+		/** See {@link ResourceCache#setBackground(boolean)}. */
+		private volatile boolean _background;
 
 		void setPlaces(de.haumacher.imageServer.places.Places places) {
 			_places = places;
@@ -694,35 +597,79 @@ public class ResourceCache {
 			_refusals = refusals == null ? Refusals.NONE : refusals;
 		}
 
-		/**
-		 * Says that the given file of the given album was left out because it cannot be read, see
-		 * issue #252: in the log and to the {@link Refusals}, once per state of the file.
-		 *
-		 * <p>
-		 * The album of such a file is read again whenever it changes or drops out of the cache, and
-		 * the file is tried again each time (it is never stored, so that a later build that can read
-		 * it does). The same file in the same state is said once; afterwards only at
-		 * {@link Level#FINE}.
-		 * </p>
-		 */
-		void skipped(File dir, File file, Exception ex) {
-			String stamp = file.lastModified() + "/" + file.length();
-			String before = _skipped.put(file.getAbsolutePath(), stamp);
-			if (stamp.equals(before)) {
-				LOG.log(Level.FINE, "Still cannot read '" + file + "': " + ex.getMessage(), ex);
-				return;
-			}
-			LOG.log(Level.WARNING, "Cannot read '" + file + "', left out of its album: " + ex.getMessage(), ex);
-			try {
-				_refusals.refused(dir, file.getName() + ": " + reason(ex));
-			} catch (RuntimeException failure) {
-				LOG.log(Level.WARNING, "Cannot report '" + file + "': " + failure.getMessage(), failure);
-			}
+		void setBackground(boolean background) {
+			_background = background;
 		}
 
-		private static String reason(Exception ex) {
-			String message = ex.getMessage();
-			return message == null || message.isEmpty() ? ex.getClass().getSimpleName() : message;
+		boolean hasBackground() {
+			return _background;
+		}
+
+		/** The part the given file is analysed into, as {@link AnalysisRecord} records it. */
+		ImagePart analyze(File file) throws ImageProcessingException, IOException, MetadataException {
+			return ImageData.analyze(null, file, _analysis, zone());
+		}
+
+		/**
+		 * Records the given folder in the calling thread, where no background does, see
+		 * {@link ResourceCache#setBackground(boolean)}: the background's own work, see
+		 * {@link AnalysisRecord#update(File, AnalysisRecord.Analyst, boolean)}. A file found
+		 * unreadable is said to the {@link Refusals} once per state of the file.
+		 *
+		 * @param children
+		 *        Whether the folders in it are recorded as well where it is a folder of folders: their
+		 *        tiles are described from their records.
+		 */
+		void recordInline(File dir, boolean children) {
+			if (!dir.isDirectory()) {
+				return;
+			}
+			try {
+				AnalysisRecord.Result result = AnalysisRecord.update(dir, this::analyze, true);
+				for (String failure : result.getFresh()) {
+					try {
+						_refusals.refused(dir, failure);
+					} catch (RuntimeException ex) {
+						LOG.log(Level.WARNING, "Cannot report '" + failure + "': " + ex.getMessage(), ex);
+					}
+				}
+			} catch (IOException | RuntimeException ex) {
+				LOG.log(Level.WARNING, "Cannot record the folder '" + dir + "': " + ex.getMessage(), ex);
+				return;
+			}
+			if (!children) {
+				return;
+			}
+			try {
+				FolderResource sidecar = loadDirIndex(dir);
+				if (sidecar instanceof AlbumInfo) {
+					return;
+				}
+				if (sidecar == null) {
+					AnalysisRecord record = AnalysisRecord.read(dir);
+					if (record != null && !record.isEmpty()) {
+						return;
+					}
+				}
+			} catch (RuntimeException ex) {
+				// A broken sidecar: the request says so.
+				return;
+			}
+			File[] folders = dir.listFiles(DIRECTORIES);
+			if (folders == null) {
+				return;
+			}
+			for (File folder : folders) {
+				FolderResource sidecar;
+				try {
+					sidecar = loadDirIndex(folder);
+				} catch (RuntimeException ex) {
+					sidecar = null;
+				}
+				if (!(sidecar instanceof AlbumInfo)) {
+					recordInline(folder, false);
+				}
+			}
 		}
 
 		de.haumacher.imageServer.places.Places places() {
@@ -742,165 +689,55 @@ public class ResourceCache {
 		/**
 		 * Creates a {@link ResourceCache.Loader}.
 		 */
-		public Loader(ImageData.Analysis analysis, ZoneId zone, int maxWatches) throws IOException {
+		public Loader(ImageData.Analysis analysis, ZoneId zone) {
 			_analysis = analysis == null ? ImageData.Analysis.NONE : analysis;
 			_zone = zone;
-			_maxWatches = maxWatches;
-			_watcher = FileSystems.getDefault().newWatchService();
 		}
 
 		void attach(LoadingCache<PathInfo, Resource> cache) {
 			_cache = cache;
 		}
 
-		synchronized int watchCount() {
-			return _byPath.size();
-		}
-
-		/**
-		 * Watches the given folder, before it is read, so that no change after the read is missed.
-		 */
-		private void watch(PathInfo path, File dir) {
-			synchronized (this) {
-				_stamps.put(path, dir.lastModified());
-				_orphans.remove(path);
-				try {
-					WatchKey key = dir.toPath().register(_watcher, ENTRY_CREATE, ENTRY_DELETE, ENTRY_MODIFY);
-					PathInfo before = _byKey.put(key, path);
-					if (before != null && !before.equals(path)) {
-						// The same directory under another name (a link): one watch, the latest name.
-						_byPath.remove(before);
-					}
-					// The newest watch last, see #trim().
-					_byPath.remove(path);
-					_byPath.put(path, key);
-					trim();
-					startPump();
-				} catch (ClosedWatchServiceException ex) {
-					// The cache is closed; nothing more is watched.
-				} catch (NoSuchFileException ex) {
-					// Gone meanwhile; the read says so.
-				} catch (IOException ex) {
-					unwatch(path);
-					_stamps.put(path, dir.lastModified());
-					reportUnwatched(dir, ex);
-				}
-			}
-		}
-
-		private static void reportUnwatched(File dir, IOException ex) {
-			if (UNWATCHED_REPORTED.compareAndSet(false, true)) {
-				LOG.log(Level.WARNING, "Cannot watch the folder '" + dir + "' for changes: " + ex.getMessage()
-					+ ". The system's limit of directory watches is probably reached"
-					+ " (Linux: raise fs.inotify.max_user_watches). A folder that cannot be watched is checked"
-					+ " by its modification time whenever it is opened instead. Further folders that cannot be"
-					+ " watched are logged at FINE only.");
-			} else {
-				LOG.log(Level.FINE, "Cannot watch the folder '" + dir + "' for changes: " + ex.getMessage());
-			}
-		}
-
-		/**
-		 * Releases watches while more are held than allowed: first those of folders that left the
-		 * cache, then the oldest of folders still held.
-		 *
-		 * <p>
-		 * A held folder that loses its watch stays held, see issue #245: its modification stamp,
-		 * taken when it was read ({@link #_stamps}), is what tells it changed from now on, see
-		 * {@link #current(PathInfo)}.
-		 * </p>
-		 */
-		private void trim() {
-			java.util.Iterator<PathInfo> oldest = _orphans.iterator();
-			while (_byPath.size() > _maxWatches && oldest.hasNext()) {
-				PathInfo orphan = oldest.next();
-				oldest.remove();
-				cancel(orphan);
-			}
-			java.util.Iterator<Map.Entry<PathInfo, WatchKey>> held = _byPath.entrySet().iterator();
-			while (_byPath.size() > _maxWatches && held.hasNext()) {
-				WatchKey key = held.next().getValue();
-				held.remove();
-				_byKey.remove(key);
-				key.cancel();
-			}
-		}
-
-		/** Forgets the watch of the given folder and cancels it. */
-		private void unwatch(PathInfo path) {
-			_orphans.remove(path);
-			_stamps.remove(path);
-			cancel(path);
-		}
-
-		private void cancel(PathInfo path) {
-			WatchKey key = _byPath.remove(path);
-			if (key != null) {
-				_byKey.remove(key);
-				key.cancel();
-			}
-		}
-
-		/**
-		 * The cache dropped the given folder: its watch goes with it when it was evicted for room,
-		 * and stays a while when it was dropped for a change, see {@link #_orphans} and issue #235.
-		 */
-		synchronized void removed(PathInfo path, boolean evicted) {
+		/** The cache dropped the given folder. */
+		void removed(PathInfo path) {
 			_placesPending.remove(path);
-			WatchKey key = _byPath.get(path);
-			if (!evicted && key != null && key.isValid()) {
-				_orphans.add(path);
-				trim();
-			} else {
-				unwatch(path);
+			_stamps.remove(path);
+			Set<PathInfo> keys = _keys.get(keyOf(path.toFile()));
+			if (keys != null) {
+				keys.remove(path);
 			}
+		}
+
+		private static String keyOf(File folder) {
+			return folder.toPath().toAbsolutePath().normalize().toString();
+		}
+
+		/** The keys loaded for the given folder. */
+		List<PathInfo> keysOf(File folder) {
+			Set<PathInfo> keys = _keys.get(keyOf(folder));
+			return keys == null ? java.util.Collections.emptyList() : new ArrayList<>(keys);
 		}
 
 		/**
 		 * Whether what is held for the given folder can still be trusted without reading it again:
-		 * its watch is alive, or its modification stamp is the one it was loaded with.
+		 * none of the files it was read from changed since. The background tells the cache of every
+		 * record it writes (see {@link ResourceCache#recorded(File)}) and the servlet of every
+		 * sidecar it writes; this catches what neither said, a hand-edited <code>index.json</code>
+		 * above all.
 		 */
-		synchronized boolean current(PathInfo path) {
-			WatchKey key = _byPath.get(path);
-			if (key != null && key.isValid() && !_orphans.contains(path)) {
-				return true;
-			}
-			Long stamp = _stamps.get(path);
-			return stamp != null && stamp.longValue() == path.toFile().lastModified();
+		boolean current(PathInfo path) {
+			String stamp = _stamps.get(path);
+			return stamp != null && stamp.equals(stamp(path.toFile()));
 		}
 
 		/**
-		 * Starts the thread that waits for watch events, so that a change is noticed when it happens
-		 * and not only with the next request, see issue #235.
+		 * The stamp of what a folder is read from: the folder itself (an entry added or removed),
+		 * its <code>index.json</code>, its analysis record and its hash sidecar (who contributed
+		 * what, see issue #53).
 		 */
-		private void startPump() {
-			if (_pump != null) {
-				return;
-			}
-			_pump = new Thread(this::pump, "resource-watch");
-			_pump.setDaemon(true);
-			_pump.start();
-		}
-
-		private void pump() {
-			while (true) {
-				WatchKey key;
-				try {
-					key = _watcher.take();
-				} catch (ClosedWatchServiceException | InterruptedException ex) {
-					return;
-				}
-				LoadingCache<PathInfo, Resource> cache = _cache;
-				try {
-					synchronized (_events) {
-						handle(cache, key);
-					}
-				} catch (ClosedWatchServiceException ex) {
-					return;
-				} catch (RuntimeException ex) {
-					LOG.log(Level.WARNING, "Cannot process a change of the library: " + ex.getMessage(), ex);
-				}
-			}
+		private static String stamp(File dir) {
+			return Stamps.of(dir) + "|" + Stamps.of(new File(dir, "index.json")) + "|" + AnalysisRecord.stamp(dir)
+				+ "|" + Stamps.of(new File(dir, de.haumacher.imageServer.upload.HashCache.FILE_NAME));
 		}
 
 		/** See {@link ResourceCache#zone()}. */
@@ -923,134 +760,65 @@ public class ResourceCache {
 			}
 		}
 
-		/** Releases the directory watcher, see {@link ResourceCache#close()}. */
-		void close() throws IOException {
-			_watcher.close();
-		}
-
-		public void processEvents(LoadingCache<PathInfo, Resource> cache) {
-			synchronized (_events) {
-				while (true) {
-					WatchKey key;
-					try {
-						key = _watcher.poll();
-					} catch (ClosedWatchServiceException ex) {
-						return;
-					}
-					if (key == null) {
-						break;
-					}
-					handle(cache, key);
-				}
-			}
-		}
-
 		/**
-		 * Handles what one watch reported: the folder is read again with the next request, its watch
-		 * stays, and whoever does background work for the library hears of new photographs and new
-		 * folders, see {@link FolderObserver}.
+		 * Reads a folder from its sidecars, see issue #253: its <code>index.json</code> and its
+		 * {@link AnalysisRecord}. Nothing is listed but the folders of a folder of folders, no
+		 * photograph is opened, nothing is written and nobody is told: a pure read.
 		 */
-		private void handle(LoadingCache<PathInfo, Resource> cache, WatchKey key) {
-			PathInfo path;
-			synchronized (this) {
-				path = _byKey.get(key);
-			}
-			List<WatchEvent<?>> events = key.pollEvents();
-			if (path == null) {
-				key.cancel();
-				return;
-			}
-			File dir = path.toFile();
-			boolean changed = false;
-			for (WatchEvent<?> event : events) {
-				if (event.kind() == OVERFLOW) {
-					notice(dir, true);
-					continue;
-				}
-				File child = new File(dir, ((Path) event.context()).toString());
-				if (event.kind() == ENTRY_DELETE || LibraryFiles.isIgnored(child)) {
-					continue;
-				}
-				if (event.kind() == ENTRY_CREATE && child.isDirectory()) {
-					// Nobody watches inside a new folder yet: all of it is new.
-					notice(child, true);
-				} else if (!changed && ACCEPTED.contains(Util.suffix(child.getName()))) {
-					changed = true;
-					changed(dir);
-				}
-			}
-
-			// The listing above describes this folder from its contents, see
-			// ResourceCache#invalidate(PathInfo). The watch stays, see #_orphans.
-			invalidate(cache, path);
-			synchronized (this) {
-				if (!key.reset() && path.equals(_byKey.get(key))) {
-					// The folder is gone.
-					unwatch(path);
-				}
-			}
-		}
-
 		private Resource loadDir(PathInfo path) {
 			File dir = path.toFile();
 
-			if (dir.isDirectory()) {
-				watch(path, dir);
-			}
+			// Taken before anything is read: a change while reading reads the folder again.
+			_stamps.put(path, stamp(dir));
+			_keys.computeIfAbsent(keyOf(dir), x -> java.util.concurrent.ConcurrentHashMap.newKeySet()).add(path);
 
 			FolderResource resource = loadDirIndex(dir);
-
-			File[] images = dir.listFiles(IMAGES);
-			if (images == null) {
-				return ErrorInfo.create().setMessage("Cannot list folder.");
+			if (resource instanceof ListingInfo) {
+				return loadListing(path, (ListingInfo) resource);
 			}
 
-			if (resource instanceof AlbumInfo || images.length > 0
-				// The inbox is an album however empty it is, see issue #226.
-				|| (resource == null && Inboxes.isInbox(dir))) {
-				AlbumInfo album = resource == null ? createGenericAlbumInfo(path) : (AlbumInfo) resource;
-
-				if (album.getKind() == AlbumKind.COLLECTION || album.getKind() == AlbumKind.SEARCH) {
-					// A collection holds references and no files, see issue #221: its parts are
-					// what its sidecar says, never reconciled with the folder, and a file somebody
-					// put there by hand is no part of it. A saved search (issue #227) holds no
-					// parts at all: they are found whenever it is asked.
-					UpdateTransient.updateTransient(album);
-					album.setEffectiveDate(AlbumDate.ofAlbum(album, path.getName()).millis());
-					return album;
-				}
-
-				loadAlbum(album, dir, images, _analysis, zone());
-
-				// Derived on every read and never stored, see AlbumDate#clearDerived(FolderResource).
+			AlbumInfo album = (AlbumInfo) resource;
+			if (album != null && (album.getKind() == AlbumKind.COLLECTION || album.getKind() == AlbumKind.SEARCH)) {
+				// A collection holds references and no files, see issue #221: its parts are
+				// what its sidecar says, never reconciled with the folder, and a file somebody
+				// put there by hand is no part of it. A saved search (issue #227) holds no
+				// parts at all: they are found whenever it is asked.
+				UpdateTransient.updateTransient(album);
 				album.setEffectiveDate(AlbumDate.ofAlbum(album, path.getName()).millis());
-
-				// Who uploaded which photo, from the hash sidecar beside them, see issue #53.
-				Contributors.derive(album, dir);
-
-				// Where each photo was taken, from the gazetteer, see issue #234. The epoch is taken
-				// before the lookups, so that a file arriving during them reads the album again.
-				de.haumacher.imageServer.places.Places places = _places;
-				if (places != null) {
-					long epoch = places.epoch();
-					if (de.haumacher.imageServer.places.PhotoPlaces.derive(album, places)) {
-						_placesPending.put(path, Long.valueOf(epoch));
-					} else {
-						_placesPending.remove(path);
-					}
-				}
-
-				if (images.length > 0) {
-					// A folder that was copied in by hand is hashed when it is first looked at, see
-					// issue #235.
-					notice(dir, false);
-				}
 				return album;
-			} else {
-				ListingInfo listing = resource == null ? createGenericListingInfo(path) : (ListingInfo) resource;
-
-				return loadListing(path, listing);
 			}
+
+			AnalysisRecord record = AnalysisRecord.read(dir);
+			if (album == null) {
+				if (record != null && record.isEmpty() && !Inboxes.isInbox(dir)) {
+					// The background found no photograph here: a folder of folders.
+					return loadListing(path, createGenericListingInfo(path));
+				}
+				// Holding photographs, the inbox (an album however empty, see issue #226), or not
+				// recorded yet: an album, being prepared in the last case.
+				album = createGenericAlbumInfo(path);
+			}
+
+			loadAlbum(album, dir, record);
+
+			// Derived on every read and never stored, see AlbumDate#clearDerived(FolderResource).
+			album.setEffectiveDate(AlbumDate.ofAlbum(album, path.getName()).millis());
+
+			// Who uploaded which photo, from the hash sidecar beside them, see issue #53.
+			Contributors.derive(album, dir);
+
+			// Where each photo was taken, from the gazetteer, see issue #234. The epoch is taken
+			// before the lookups, so that a file arriving during them reads the album again.
+			de.haumacher.imageServer.places.Places places = _places;
+			if (places != null) {
+				long epoch = places.epoch();
+				if (de.haumacher.imageServer.places.PhotoPlaces.derive(album, places)) {
+					_placesPending.put(path, Long.valueOf(epoch));
+				} else {
+					_placesPending.remove(path);
+				}
+			}
+			return album;
 		}
 
 		private static FolderResource loadDirIndex(File dir) {
@@ -1211,8 +979,7 @@ public class ResourceCache {
 
 		/**
 		 * The tile of a folder that could not be described: its name as its title, as for a folder
-		 * without a sidecar, its kind by the files it holds, and nothing that would have to be read
-		 * out of a file.
+		 * without a sidecar, and nothing that would have to be read out of a file.
 		 */
 		private static FolderInfo nameOnly(File folder) {
 			String folderName = folder.getName();
@@ -1220,9 +987,9 @@ public class ResourceCache {
 			folderInfo.setName(folderName);
 			try {
 				folderInfo.setEffectiveDate(AlbumDate.ofFolder(null, folderName).millis());
-				File[] images = folder.listFiles(IMAGES);
-				folderInfo.setKind(images != null && images.length > 0 ? FolderKind.ALBUM : FolderKind.FOLDER);
-				titleFromName(folderInfo, folderName, null);
+				AnalysisRecord record = AnalysisRecord.read(folder);
+				folderInfo.setKind(record != null && record.isEmpty() ? FolderKind.FOLDER : FolderKind.ALBUM);
+				titleFromName(folderInfo, folderName, 0L);
 			} catch (RuntimeException ex) {
 				LOG.log(Level.WARNING, "Cannot read even the name of the folder '" + folder + "': "
 					+ ex.getMessage(), ex);
@@ -1285,61 +1052,52 @@ public class ResourceCache {
 				}
 			}
 
-			if (folderInfo.getIndexPicture() == null) {
-				File[] images = folder.listFiles(IMAGES);
-				// The very rule Loader#loadDir(PathInfo) answers this folder by when it is opened:
-				// without a sidecar, a folder holding images is an album and an empty one — or one
-				// holding only further folders — is a folder of folders. See issue #133.
-				folderInfo.setKind(images != null && images.length > 0 ? FolderKind.ALBUM : FolderKind.FOLDER);
-				File indexPicture;
-				ImageData imageData;
-				if (images != null && images.length > 0) {
-					indexPicture = images[0];
+			// No sidecar: what the background recorded of the folder, and never a photograph opened,
+			// see issue #253. A folder not recorded yet is a tile by its name; one holding no
+			// photograph is a folder of folders, as Loader#loadDir(PathInfo) answers it.
+			AnalysisRecord record = AnalysisRecord.read(folder);
+			if (record == null) {
+				return nameOnly(folder);
+			}
+			folderInfo.setKind(record.isEmpty() ? FolderKind.FOLDER : FolderKind.ALBUM);
+			ImagePart picture = null;
+			for (AnalysisRecord.Entry entry : record.entries()) {
+				if (entry.isAnalysed() && entry.getPart().getWidth() > 0 && entry.getPart().getHeight() > 0) {
+					picture = entry.getPart();
+					break;
+				}
+			}
+			if (picture != null) {
+				double width = picture.getWidth();
+				double height = picture.getHeight();
 
-					double scale;
-					try {
-						imageData = ImageData.analyze(null, indexPicture);
-
-						double width = imageData.getWidth();
-						double height = imageData.getHeight();
-
-						scale = width / height;
-						double ty;
-						if (scale < 1.0) {
-							scale = 1.0 / scale;
-							ty = (height - width) / height * 150;
-						} else {
-							ty = 0.0;
-						}
-
-						ThumbnailInfo thumbnail = ThumbnailInfo.create().setImage(indexPicture.getName()).setScale(scale);
-						thumbnail.setTy(ty);
-						// A folder without a sidecar carries no stored rotation: the frame this
-						// crop was measured in is the one the server's own rendition has, which is
-						// the file upright (ImageData applies the EXIF orientation to the
-						// dimensions above). See ThumbnailInfo#getOrientation() and issue #115.
-						thumbnail.setOrientation(Orientation.IDENTITY);
-						folderInfo.setIndexPicture(thumbnail);
-					} catch (ImageProcessingException
-							| MetadataException | IOException ex) {
-						LOG.log(Level.WARNING, "Cannot analyze index picture: " + indexPicture, ex);
-						imageData = null;
-					}
+				double scale = width / height;
+				double ty;
+				if (scale < 1.0) {
+					scale = 1.0 / scale;
+					ty = (height - width) / height * 150;
 				} else {
-					indexPicture = null;
-					imageData = null;
+					ty = 0.0;
 				}
 
-				titleFromName(folderInfo, folderName, imageData);
+				ThumbnailInfo thumbnail = ThumbnailInfo.create().setImage(picture.getName()).setScale(scale);
+				thumbnail.setTy(ty);
+				// A folder without a sidecar carries no stored rotation: the frame this crop was
+				// measured in is the one the server's own rendition has, which is the file upright
+				// (the analysis applies the EXIF orientation to the dimensions above). See
+				// ThumbnailInfo#getOrientation() and issue #115.
+				thumbnail.setOrientation(Orientation.IDENTITY);
+				folderInfo.setIndexPicture(thumbnail);
 			}
+			titleFromName(folderInfo, folderName, picture == null ? 0L : picture.getDate());
 			return folderInfo;
 		}
 
 		/**
 		 * The title and subtitle of the tile of a folder without a sidecar: the name, a date in it
-		 * as the subtitle, else the date of the given picture, if any.
+		 * as the subtitle, else the given date of its picture, if any (<code>0</code> for none).
 		 */
-		private static void titleFromName(FolderInfo folderInfo, String folderName, ImageData imageData) {
+		private static void titleFromName(FolderInfo folderInfo, String folderName, long imageDate) {
 			Matcher matcher = DATE_PATTERN.matcher(folderName);
 			if (matcher.find()) {
 				int year = Integer.parseInt(matcher.group(1));
@@ -1349,12 +1107,9 @@ public class ResourceCache {
 				folderInfo.setSubTitle(dateString(year, month, day));
 				folderName = removeMatch(folderName, matcher);
 			} else {
-				if (imageData != null) {
-					long imageDate = imageData.getDate();
-					if (imageDate > 0L) {
-						Date date = new Date(imageDate);
-						folderInfo.setSubTitle(formatDate(date));
-					}
+				if (imageDate > 0L) {
+					Date date = new Date(imageDate);
+					folderInfo.setSubTitle(formatDate(date));
 				}
 			}
 			folderInfo.setTitle(fromTechnicalName(folderName));
@@ -1422,60 +1177,106 @@ public class ResourceCache {
 			return Character.toUpperCase(expanded.charAt(0)) + expanded.substring(1);
 		}
 
-		private AlbumInfo loadAlbum(AlbumInfo album, File dir, File[] files, ImageData.Analysis analysis,
-				ZoneId zone) {
+		/**
+		 * Completes the given album from the given record of its folder, see issue #253.
+		 *
+		 * <p>
+		 * The sidecar's parts are the truth for the files it lists; a file the sidecar does not list
+		 * is added with the part the background analysed, or as a broken part where it cannot be
+		 * read; a part whose file the record no longer holds is left out. A folder the background has
+		 * not recorded yet is answered with what its sidecar says, and as being prepared; so is one
+		 * holding a file only seen, not analysed yet.
+		 * </p>
+		 */
+		private static AlbumInfo loadAlbum(AlbumInfo album, File dir, AnalysisRecord record) {
 			// Update early to be able to match new images against existing image.
 			UpdateTransient.updateTransient(album);
 
-			// The files that cannot be read, with why: left out of the album and out of its sidecar,
-			// so that a later build that can read one analyses it afresh, see issue #252.
-			Map<File, Exception> unreadable = new java.util.LinkedHashMap<>();
+			if (record == null) {
+				album.setPreparing(true);
+				return album;
+			}
+
+			File[] files = new File[record.entries().size()];
+			int index = 0;
+			for (AnalysisRecord.Entry entry : record.entries()) {
+				files[index++] = new File(dir, entry.getName());
+			}
 
 			// A raw and the JPEG of its name are one photograph, see issue #191: what the sidecar
-			// says about them is made true to the files before anything new is analysed.
+			// says about them is made true to the files before anything new is added. A JPEG that
+			// takes over the part of its raw brings what the background analysed.
 			RawPairs.Plan pairs = RawPairs.reconcile(album, files, file -> {
-				try {
-					return ImageData.analyze(album, file, analysis, zone);
-				} catch (IOException | ImageProcessingException | MetadataException | RuntimeException ex) {
-					unreadable.put(file, ex);
-					return null;
-				}
+				AnalysisRecord.Entry entry = record.get(file.getName());
+				return entry != null && entry.isAnalysed() ? entry.getPart() : null;
 			});
 
-			List<ImageData> newImages = new ArrayList<>();
-			for (File file : files) {
-				String name = file.getName();
+			// A part whose file is gone, as far as the background knows: left out.
+			boolean dropped = false;
+			for (ImagePart image : images(album)) {
+				if (record.get(image.getName()) == null) {
+					MoveService.detach(album, image);
+					dropped = true;
+				}
+			}
+			if (dropped) {
+				UpdateTransient.updateTransient(album);
+			}
 
-				ImagePart existing = album.getImageByName().get(name);
-				if (existing != null || pairs.skips(name)) {
-					// Already known, or the companion of a photograph.
+			List<ImagePart> newImages = new ArrayList<>();
+			boolean pending = false;
+			for (AnalysisRecord.Entry entry : record.entries()) {
+				String name = entry.getName();
+				ImagePart stored = album.getImageByName().get(name);
+				if (stored != null) {
+					if (BrokenParts.hasNoPicture(stored)) {
+						// Stored while its file was broken, see BrokenParts#clear(AlbumInfo).
+						if (entry.isBroken()) {
+							stored.setBroken(entry.getFailure());
+							stored.setFileSize(entry.getSize());
+						} else if (entry.isAnalysed()) {
+							BrokenParts.adopt(stored, entry.getPart());
+						} else {
+							pending = true;
+						}
+					}
 					continue;
 				}
-
-				ImageData image;
-				try {
-					// Only a file the sidecar does not list gets here, which is what makes the
-					// face import of issue #129 run exactly once per photograph.
-					image = ImageData.analyze(album, file, analysis, zone);
-				} catch (IOException | ImageProcessingException | MetadataException ex) {
-					unreadable.put(file, ex);
+				if (pairs.skips(name)) {
+					// The companion of a photograph.
 					continue;
 				}
-				image.setRaw(pairs.rawFor(name));
-
-				newImages.add(image);
+				if (entry.isAnalysed()) {
+					ImagePart image = entry.getPart();
+					image.setRaw(pairs.rawFor(name));
+					newImages.add(image);
+				} else if (entry.isBroken()) {
+					newImages.add(entry.brokenPart());
+				} else {
+					// Seen, not analysed yet.
+					pending = true;
+				}
 			}
 
 			// What came through a share link is described so that the link shows it, see #214.
 			Contributors.applyLinkLimits(newImages, dir);
 
 			AlbumUtil.insertSorted(album, newImages);
-
-			for (Map.Entry<File, Exception> entry : unreadable.entrySet()) {
-				skipped(dir, entry.getKey(), entry.getValue());
-			}
-
+			album.setPreparing(pending);
 			return album;
+		}
+
+		/** Every photograph of the given album, the members of a group one by one. */
+		private static List<ImagePart> images(AlbumInfo album) {
+			List<ImagePart> result = new ArrayList<>();
+			for (AlbumPart part : album.getParts()) {
+				if (part instanceof ImagePart) {
+					result.add((ImagePart) part);
+				} else if (part instanceof ImageGroup) {
+					result.addAll(((ImageGroup) part).getImages());
+				}
+			}
+			return result;
 		}
 
 		static AlbumInfo createGenericAlbumInfo(PathInfo pathInfo) {

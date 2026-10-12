@@ -44,6 +44,7 @@ const List<String> convertedFiles = [
   "lib/album_view.dart",
   "lib/app.dart",
   "lib/attribution.dart",
+  "lib/broken.dart",
   "lib/background.dart",
   "lib/background_workmanager.dart",
   "lib/browser_upload.dart",

@@ -22,9 +22,10 @@ import junit.framework.TestCase;
  * Test case for the memory bound of {@link ResourceCache}, see issue #245.
  *
  * <p>
- * The albums held are weighed by their parts against a budget in bytes, separately from the
- * bound of the directory watches (issue #235): a search over a library larger than the watches
- * reads each album from disk once, as long as the budget holds them all.
+ * The albums held are weighed by their parts against a budget in bytes: a search over a large
+ * library reads each album from disk once, as long as the budget holds them all. (The cache watches
+ * nothing since issue #253; the watches are the background's, see
+ * {@link de.haumacher.imageServer.pipeline.LibraryWatch}.)
  * </p>
  */
 @SuppressWarnings("javadoc")
@@ -63,7 +64,7 @@ public class TestResourceCacheMemory extends TestCase {
 		for (int a = 0; a < albums; a++) {
 			paths.add(path(album("Album " + a, photos, true)));
 		}
-		ResourceCache cache = cache(ResourceCache.MAX_FOLDERS, Long.MAX_VALUE / 2);
+		ResourceCache cache = cache(Long.MAX_VALUE / 2);
 		// Everything the first read touches (classes, interned names) is there before measuring.
 		cache.lookup(path(album("Warm-up", photos, true)));
 
@@ -84,30 +85,28 @@ public class TestResourceCacheMemory extends TestCase {
 	}
 
 	/**
-	 * A library of more albums than are watched, all of which the budget holds: a search reads
+	 * A library all of whose albums the budget holds: a search reads
 	 * each album from disk once, and the second search reads none.
 	 */
 	public void testALibraryTheBudgetHoldsIsReadOnce() throws Exception {
 		int albums = 1500;
 		library(albums);
-		ResourceCache cache = cache(ResourceCache.MAX_FOLDERS, albums * 3L * ResourceCache.BYTES_PER_PART * 2);
+		ResourceCache cache = cache(albums * 3L * ResourceCache.BYTES_PER_PART * 2);
 
 		List<String> first = search(cache);
 		long loads = cache.loadCount();
 		assertEquals(albums * 3, first.size());
 		assertEquals("Each album read once.", albums, loads);
-		assertEquals("All albums held, beyond the watches.", albums, cache.size());
-		assertTrue("Watches stay bounded: " + cache.watchCount(), cache.watchCount() <= ResourceCache.MAX_FOLDERS);
+		assertEquals("All albums held.", albums, cache.size());
 
 		List<String> second = search(cache);
 		assertEquals(first, second);
 		assertEquals("Nothing read again.", loads, cache.loadCount());
 
-		// The first album gave up its watch for room, and stays correct by its stamp.
+		// A photograph added to a held album is answered: the cache has no background here and
+		// records the folder it is asked for, see issue #253.
 		File oldest = new File(_root.toFile(), "Year 0/Album 0");
-		TestResourceCacheWatches.photo(new File(oldest, "added.jpg"), 3);
-		assertTrue(oldest.setLastModified(oldest.lastModified() + 5000));
-		cache.processEvents();
+		TestResourceCacheFreshness.photo(new File(oldest, "added.jpg"), 3);
 		assertEquals(4, ((AlbumInfo) cache.lookup(path(oldest))).getParts().size());
 		assertEquals(albums * 3 + 1, search(cache).size());
 	}
@@ -117,14 +116,13 @@ public class TestResourceCacheMemory extends TestCase {
 		int albums = 1500;
 		library(albums);
 		long budget = 300 * 3L * ResourceCache.BYTES_PER_PART;
-		ResourceCache cache = cache(ResourceCache.MAX_FOLDERS, budget);
+		ResourceCache cache = cache(budget);
 
 		List<String> first = search(cache);
 		long loads = cache.loadCount();
 		assertEquals(albums * 3, first.size());
 		assertTrue("Within the budget: " + cache.weight(), cache.weight() * ResourceCache.BYTES_PER_PART <= budget);
 		assertTrue("Not all held: " + cache.size(), cache.size() < albums);
-		assertTrue("Every held folder watched at most: " + cache.watchCount(), cache.watchCount() <= cache.size());
 
 		List<String> second = search(cache);
 		assertEquals(first, second);
@@ -137,7 +135,7 @@ public class TestResourceCacheMemory extends TestCase {
 	 * stays cached.
 	 */
 	public void testProbeAnAlbumHeavierThanTheBudgetIsStillAnswered() throws Exception {
-		ResourceCache cache = cache(10, 300L * ResourceCache.BYTES_PER_PART);
+		ResourceCache cache = cache(300L * ResourceCache.BYTES_PER_PART);
 		File big = album("big", 800, false);
 		File small = album("small", 5, false);
 		for (int round = 0; round < 3; round++) {
@@ -152,7 +150,7 @@ public class TestResourceCacheMemory extends TestCase {
 	}
 
 	public void testTheWeightOfAFolder() throws Exception {
-		ResourceCache cache = cache(10, Long.MAX_VALUE / 2);
+		ResourceCache cache = cache(Long.MAX_VALUE / 2);
 		AlbumInfo album = (AlbumInfo) cache.lookup(path(album("Seven", 7, false)));
 		assertEquals(7, ResourceCache.weight(album));
 		assertEquals(1, ResourceCache.weight(AlbumInfo.create()));
@@ -163,7 +161,7 @@ public class TestResourceCacheMemory extends TestCase {
 	}
 
 	public void testTheBudgetCanBeSetAfterwards() throws Exception {
-		ResourceCache cache = cache(10, Long.MAX_VALUE / 2);
+		ResourceCache cache = cache(Long.MAX_VALUE / 2);
 		for (int n = 0; n < 4; n++) {
 			cache.lookup(path(album("A" + n, 2, false)));
 		}
@@ -192,8 +190,8 @@ public class TestResourceCacheMemory extends TestCase {
 		}
 	}
 
-	private ResourceCache cache(int watches, long budget) throws Exception {
-		ResourceCache cache = new ResourceCache(ImageData.Analysis.NONE, null, watches, budget);
+	private ResourceCache cache(long budget) throws Exception {
+		ResourceCache cache = new ResourceCache(ImageData.Analysis.NONE, null, budget);
 		_caches.add(cache);
 		return cache;
 	}

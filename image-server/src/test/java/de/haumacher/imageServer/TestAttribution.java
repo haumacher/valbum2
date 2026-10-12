@@ -407,7 +407,10 @@ public class TestAttribution extends ShareTestCase {
 	private static TreeSet<String> fileNames(Path root) throws Exception {
 		TreeSet<String> result = new TreeSet<>();
 		try (Stream<Path> walk = Files.walk(root)) {
-			walk.filter(Files::isRegularFile).forEach(file -> {
+			// The server's record of what a folder holds (issue #253) is its cache, as a preview is.
+			walk.filter(Files::isRegularFile)
+				.filter(file -> !file.getFileName().toString().equals(de.haumacher.imageServer.cache.AnalysisRecord.FILE_NAME))
+				.forEach(file -> {
 				String name = root.relativize(file).toString().replace(File.separatorChar, '/');
 				result.add(name.replaceAll("index\\.json\\.\\d+$", "index.json~"));
 			});

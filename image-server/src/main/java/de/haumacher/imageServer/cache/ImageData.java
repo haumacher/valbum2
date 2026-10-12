@@ -56,6 +56,18 @@ import java.util.regex.Pattern;
 public class ImageData extends ImagePart {
 
 	private static final Logger LOG = Logger.getLogger(ImageData.class.getName());
+
+	/** How many files were analysed in this process, see {@link #analyses()}. */
+	private static final java.util.concurrent.atomic.AtomicLong ANALYSES = new java.util.concurrent.atomic.AtomicLong();
+
+	/**
+	 * How many files were analysed in this process so far, every call of
+	 * {@link #analyze(AlbumInfo, File, Analysis, ZoneId)} counted: what a test counts to tell that a
+	 * request opened no photograph, see issue #253.
+	 */
+	public static long analyses() {
+		return ANALYSES.get();
+	}
 	private String _contentType;
 	private File _file;
 
@@ -179,6 +191,7 @@ public class ImageData extends ImagePart {
 	 */
 	public static ImageData analyze(AlbumInfo album, File file, Analysis more, ZoneId zone)
 			throws ImageProcessingException, IOException, MetadataException {
+		ANALYSES.incrementAndGet();
 		try {
 			return analyzeFile(album, file, more, zone);
 		} catch (RuntimeException ex) {

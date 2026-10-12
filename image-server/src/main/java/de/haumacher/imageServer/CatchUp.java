@@ -3,6 +3,7 @@
  */
 package de.haumacher.imageServer;
 
+import de.haumacher.imageServer.cache.AnalysisRecord;
 import de.haumacher.imageServer.cache.ResourceCache;
 import de.haumacher.imageServer.faces.FaceIndex;
 import de.haumacher.imageServer.pipeline.Background;
@@ -115,6 +116,8 @@ public final class CatchUp {
 			return CatchUpStep.IDLE;
 		}
 		switch (name) {
+			case de.haumacher.imageServer.cache.AnalysisStep.NAME:
+				return CatchUpStep.ANALYSIS;
 			case de.haumacher.imageServer.upload.HashIndex.STEP:
 				return CatchUpStep.HASH;
 			case PREVIEWS:
@@ -215,6 +218,8 @@ public final class CatchUp {
 			}
 			FolderResource sidecar = ResourceCache.sidecar(folder);
 			AlbumInfo album = sidecar instanceof AlbumInfo ? (AlbumInfo) sidecar : null;
+			// A file that cannot be read gets no preview: it is shown as broken, see issue #253.
+			Set<String> broken = AnalysisRecord.broken(folder);
 			Set<String> pairedBases = new HashSet<>();
 			for (File file : files) {
 				if (RawPairs.isCompanionType(file.getName())) {
@@ -227,6 +232,9 @@ public final class CatchUp {
 						return Outcome.WAITING;
 					}
 					if (RawFile.isRaw(file) && pairedBases.contains(RawPairs.base(file.getName()))) {
+						continue;
+					}
+					if (broken.contains(file.getName())) {
 						continue;
 					}
 					report(folder, file, make(file, PreviewCache.previewFile(file),
@@ -379,8 +387,10 @@ public final class CatchUp {
 		public List<String> units(File folder) {
 			List<String> teasers = new ArrayList<>();
 			List<String> playback = new ArrayList<>();
+			// A video that cannot be read is never transcoded: it is shown as broken, see issue #253.
+			Set<String> broken = AnalysisRecord.broken(folder);
 			for (File file : images(folder)) {
-				if (VideoRenditions.isVideo(file)) {
+				if (VideoRenditions.isVideo(file) && !broken.contains(file.getName())) {
 					teasers.add(VideoRenditions.Kind.TEASER.parameter() + SEPARATOR + file.getName());
 					playback.add(VideoRenditions.Kind.PLAYBACK.parameter() + SEPARATOR + file.getName());
 				}

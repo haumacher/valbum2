@@ -90,7 +90,9 @@ public class TestCacheRefreshProbe extends TestCase {
 	public void testTheActionIsAPost() throws Exception {
 		_server.seedCache(TestCacheRefresh.ALBUM);
 		File cacheDir = new File(new File(_server._base.toFile(), TestCacheRefresh.ALBUM), PreviewCache.CACHE_DIRECTORY_NAME);
-		int filesBefore = cacheDir.listFiles().length;
+		// The record of what the folder holds (issue #253) is written by the first read, whichever.
+		java.io.FileFilter cached = file -> !file.getName().equals(de.haumacher.imageServer.cache.AnalysisRecord.FILE_NAME);
+		int filesBefore = cacheDir.listFiles(cached).length;
 
 		FakeResponse response = new FakeResponse();
 		Map<String, String> parameters = new java.util.HashMap<>();
@@ -101,7 +103,7 @@ public class TestCacheRefreshProbe extends TestCase {
 			TestImageServletPut.request("/" + TestCacheRefresh.ALBUM + "/", null, new byte[0], headers, parameters),
 			response.response());
 		assertTrue("A GET never deletes: status " + response.status(), response.status() != HttpServletResponse.SC_NO_CONTENT);
-		assertEquals("Nothing was deleted by a GET.", filesBefore, cacheDir.listFiles().length);
+		assertEquals("Nothing was deleted by a GET.", filesBefore, cacheDir.listFiles(cached).length);
 	}
 
 }

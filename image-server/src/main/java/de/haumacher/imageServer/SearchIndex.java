@@ -71,7 +71,7 @@ public final class SearchIndex implements FolderPipeline.Step {
 	 * Tells the index of the space the given folder lies in that its sidecar was just written, see
 	 * the class comment. A folder outside every served space is ignored.
 	 */
-	static void sidecarWritten(File folder) {
+	public static void sidecarWritten(File folder) {
 		for (SearchIndex index : INSTANCES) {
 			String path = index.relative(folder);
 			if (path != null) {
@@ -286,6 +286,8 @@ public final class SearchIndex implements FolderPipeline.Step {
 			return new Folder(folderStamp, sidecarStamp, null, NO_PHOTOS, NO_CHILDREN, -1);
 		}
 		List<ImagePart> images = PhotoSearch.images(album);
+		// A file that cannot be read is no photograph to find, see issue #253.
+		images.removeIf(de.haumacher.imageServer.cache.BrokenParts::isBroken);
 		Photo[] photos = new Photo[images.size()];
 		boolean waiting = false;
 		for (int n = 0; n < photos.length; n++) {

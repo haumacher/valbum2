@@ -33,6 +33,9 @@ public class AlbumInfo extends FolderResource {
 	/** @see #isFacesPending() */
 	private static final String FACES_PENDING__PROP = "facesPending";
 
+	/** @see #isPreparing() */
+	private static final String PREPARING__PROP = "preparing";
+
 	/** @see #getIndexPicture() */
 	private static final String INDEX_PICTURE__PROP = "indexPicture";
 
@@ -59,6 +62,8 @@ public class AlbumInfo extends FolderResource {
 	private long _effectiveDate = 0L;
 
 	private boolean _facesPending = false;
+
+	private boolean _preparing = false;
 
 	private de.haumacher.imageServer.shared.model.ThumbnailInfo _indexPicture = null;
 
@@ -249,6 +254,38 @@ public class AlbumInfo extends FolderResource {
 	/** Internal setter for {@link #isFacesPending()} without chain call utility. */
 	protected final void internalSetFacesPending(boolean value) {
 		_facesPending = value;
+	}
+
+	/**
+	 * Whether the background work of the space has not recorded this folder yet, see issue #253.
+	 *
+	 * <p>
+	 * A request never lists a folder nor opens a photograph: it answers what the background
+	 * recorded of the folder (its analysis record beside the previews) and what the album's own
+	 * <code>index.json</code> says. A folder the background has not reached yet is answered with
+	 * the parts its <code>index.json</code> lists (an album an older build wrote), or empty, and
+	 * this flag: the app says that the album is being prepared and asks again a moment later.
+	 * </p>
+	 *
+	 * <p>
+	 * Derived on every read and never stored, exactly like {@link #getEffectiveDate()}.
+	 * </p>
+	 */
+	public final boolean isPreparing() {
+		return _preparing;
+	}
+
+	/**
+	 * @see #isPreparing()
+	 */
+	public de.haumacher.imageServer.shared.model.AlbumInfo setPreparing(boolean value) {
+		internalSetPreparing(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #isPreparing()} without chain call utility. */
+	protected final void internalSetPreparing(boolean value) {
+		_preparing = value;
 	}
 
 	/**
@@ -525,6 +562,8 @@ public class AlbumInfo extends FolderResource {
 		out.value(getEffectiveDate());
 		out.name(FACES_PENDING__PROP);
 		out.value(isFacesPending());
+		out.name(PREPARING__PROP);
+		out.value(isPreparing());
 		if (hasIndexPicture()) {
 			out.name(INDEX_PICTURE__PROP);
 			getIndexPicture().writeTo(out);
@@ -554,6 +593,7 @@ public class AlbumInfo extends FolderResource {
 			case DATE__PROP: setDate(in.nextLong()); break;
 			case EFFECTIVE_DATE__PROP: setEffectiveDate(in.nextLong()); break;
 			case FACES_PENDING__PROP: setFacesPending(in.nextBoolean()); break;
+			case PREPARING__PROP: setPreparing(in.nextBoolean()); break;
 			case INDEX_PICTURE__PROP: setIndexPicture(de.haumacher.imageServer.shared.model.ThumbnailInfo.readThumbnailInfo(in)); break;
 			case STARRED__PROP: setStarred(in.nextBoolean()); break;
 			case QUERY__PROP: setQuery(de.haumacher.imageServer.shared.model.SearchQuery.readSearchQuery(in)); break;

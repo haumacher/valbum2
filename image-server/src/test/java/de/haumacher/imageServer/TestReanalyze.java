@@ -114,6 +114,9 @@ public class TestReanalyze extends ShareTestCase {
 		Path sidecar = _base.resolve(TRIP).resolve("index.json");
 		byte[] before = Files.readAllBytes(sidecar);
 		long stamp = Files.getLastModifiedTime(sidecar).toMillis();
+		// The first read records what the folder holds in the server's cache (issue #253), before
+		// anything is compared.
+		assertEquals(200, get("/" + TRIP + "/", "json", SharingFixture.ALICE).status());
 		List<String> entries = entries(_base.resolve(TRIP));
 
 		ReanalyzeResult result = reanalyze("/" + TRIP + "/", SharingFixture.ALICE);

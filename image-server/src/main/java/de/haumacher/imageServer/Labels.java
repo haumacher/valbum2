@@ -168,7 +168,8 @@ public final class Labels {
 			.setPlaceCaption(album.getPlaceCaption())
 			.setDate(album.getDate())
 			.setEffectiveDate(album.getEffectiveDate())
-			.setFacesPending(album.isFacesPending());
+			.setFacesPending(album.isFacesPending())
+			.setPreparing(album.isPreparing());
 		if (album.getIndexPicture() != null) {
 			result.setIndexPicture(album.getIndexPicture());
 		}

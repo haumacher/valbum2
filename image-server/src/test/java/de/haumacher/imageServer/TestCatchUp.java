@@ -314,7 +314,7 @@ public class TestCatchUp extends TestCase {
 			}
 			String name = path.substring(path.lastIndexOf('/') + 1);
 			assertTrue("Nothing but the server's sidecars beside a photo: " + path,
-				path.contains("/" + PreviewCache.CACHE_DIRECTORY_NAME + "/")
+				("/" + path).contains("/" + PreviewCache.CACHE_DIRECTORY_NAME + "/")
 					|| name.equals(de.haumacher.imageServer.upload.HashCache.FILE_NAME));
 		}
 		assertTrue("Every original is still there.", after.containsAll(before));

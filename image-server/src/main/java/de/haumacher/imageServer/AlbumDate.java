@@ -266,6 +266,16 @@ public final class AlbumDate {
 		}
 		if (resource instanceof AlbumInfo) {
 			AlbumInfo album = (AlbumInfo) resource;
+			if (album.isPreparing()) {
+				// Whether the background has recorded the folder is a property of this read, see
+				// issue #253.
+				album.setPreparing(false);
+				changed = true;
+			}
+			// Why a file cannot be read is answered from the analysis record and never stored, see
+			// issue #253: its part keeps what was said about it (its trash rating above all), without
+			// the failure, so that the file is analysed again once it changes.
+			changed |= de.haumacher.imageServer.cache.BrokenParts.clear(album);
 			for (ImagePart image : PhotoSearch.images(album)) {
 				if (image.isPartial()) {
 					// Whether a part is the slim copy of a search answer is a property of that

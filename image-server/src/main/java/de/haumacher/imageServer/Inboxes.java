@@ -348,6 +348,8 @@ public final class Inboxes {
 			.setDate(album.getDate())
 			// An inbox has no date; it is derived as 0 and answered as it is derived.
 			.setEffectiveDate(album.getEffectiveDate())
+			// Whether the background recorded the folder is no question of who is asking, see #253.
+			.setPreparing(album.isPreparing())
 			.setParts(new ArrayList<AlbumPart>(images));
 		ThumbnailInfo indexPicture = indexPicture(album, images);
 		if (indexPicture != null) {

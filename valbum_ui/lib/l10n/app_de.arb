@@ -1003,5 +1003,12 @@
   "searchExclude": "Ausschließen",
   "searchExcluded": "Nicht: {criterion}",
   "searchWordNot": "nicht",
-  "searchWordOr": "oder"
+  "searchWordOr": "oder",
+  "brokenImageExplanation": "Dieses Foto kann nicht angezeigt werden: Die Datei ist beschädigt oder unvollständig.",
+  "brokenVideoExplanation": "Dieses Video kann nicht abgespielt werden: Die Datei ist beschädigt oder unvollständig.",
+  "brokenFileReason": "Vom Server angegebener Grund: {reason}",
+  "brokenFileSize": "Dateigröße: {size}",
+  "albumPreparing": "Dieses Album wird gerade vorbereitet. Die Fotos werden hier angezeigt, sobald der Server sie eingelesen hat.",
+  "albumStillPreparing": "Dieses Album wird noch vorbereitet. Fotos, die der Server noch nicht gelesen hat, werden in Kürze hier angezeigt.",
+  "catchUpStepAnalysis": "Neue Dateien auslesen"
 }

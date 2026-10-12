@@ -524,6 +524,22 @@ public class HashIndex {
 			return;
 		}
 
+		// What every folder holds, before anything else, see issue #253: first a cheap look at every
+		// folder, root first, so that the library is known as a whole at once; then the analysis of
+		// what is new, newest album first. A request answers nothing but what this recorded.
+		for (File folder : folders) {
+			if (Thread.currentThread().isInterrupted()) {
+				return;
+			}
+			_pipeline.discover(folder);
+		}
+		for (File folder : FolderPipeline.newestFirst(folders)) {
+			if (Thread.currentThread().isInterrupted()) {
+				return;
+			}
+			_pipeline.process(folder, FolderPipeline.Stage.RECORD);
+		}
+
 		List<File> withImages = new ArrayList<>();
 		for (File folder : folders) {
 			if (images(folder).length > 0) {

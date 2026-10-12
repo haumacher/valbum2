@@ -5553,6 +5553,12 @@ abstract class AppLocalizations {
   /// **'the top folder'**
   String get catchUpRoot;
 
+  /// Name of a background step: finding the photos and videos of a folder and reading their size, date and camera (issue #253)
+  ///
+  /// In en, this message translates to:
+  /// **'Reading new files'**
+  String get catchUpStepAnalysis;
+
   /// Name of a background step: computing the content hashes of the photos (issue #236)
   ///
   /// In en, this message translates to:
@@ -6122,6 +6128,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'or'**
   String get searchWordOr;
+
+  /// Viewer page of a photo file the server could not read (issue #253), under the file name.
+  ///
+  /// In en, this message translates to:
+  /// **'This photo cannot be shown: the file is damaged or incomplete.'**
+  String get brokenImageExplanation;
+
+  /// Viewer page of a video file the server could not read (issue #253), e.g. a recording cut off before its index; under the file name.
+  ///
+  /// In en, this message translates to:
+  /// **'This video cannot be played: the file is damaged or incomplete.'**
+  String get brokenVideoExplanation;
+
+  /// Viewer page of an unreadable file (issue #253): the server's own technical reason, shown verbatim, e.g. 'moov atom not found'.
+  ///
+  /// In en, this message translates to:
+  /// **'Reason given by the server: {reason}'**
+  String brokenFileReason(String reason);
+
+  /// Viewer page of an unreadable file (issue #253): the size of the file, e.g. 'File size: 4.0 GB'.
+  ///
+  /// In en, this message translates to:
+  /// **'File size: {size}'**
+  String brokenFileSize(String size);
+
+  /// Shown in an album the server has not processed yet and that therefore shows no photos yet (issue #253); the app asks again by itself every few seconds.
+  ///
+  /// In en, this message translates to:
+  /// **'This album is being prepared. Its photos appear here as soon as the server has read them.'**
+  String get albumPreparing;
+
+  /// Shown above the photos of an album the server has not completely processed yet (issue #253): newly added photos are still missing; the app asks again by itself every few seconds.
+  ///
+  /// In en, this message translates to:
+  /// **'This album is still being prepared. Photos the server has not read yet appear here shortly.'**
+  String get albumStillPreparing;
 }
 
 class _AppLocalizationsDelegate

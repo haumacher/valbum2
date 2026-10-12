@@ -331,7 +331,9 @@ public class TestLibraryLitter extends TestCase {
 			assertEquals(MoveService.notAnEntry(outcome.getName()), outcome.getMessage());
 		}
 		assertEquals("Nothing moved.", before, fingerprint(_base.resolve(ALBUM)));
-		assertEquals(Collections.emptyList(), Arrays.asList(_base.resolve("Other").toFile().list()));
+		// Nothing but the server's record of what the folder holds, see issue #253.
+		assertEquals(Collections.emptyList(), Arrays.asList(_base.resolve("Other").toFile()
+			.list((dir, name) -> !name.equals(PreviewCache.CACHE_DIRECTORY_NAME))));
 	}
 
 	public void testAMoveOfPhotosLeavesTheLitterWhereItIs() throws Exception {
@@ -601,12 +603,17 @@ public class TestLibraryLitter extends TestCase {
 		return buffer.toByteArray();
 	}
 
-	/** A fingerprint of every file below the given path: its name, and its bytes. */
+	/**
+	 * A fingerprint of every file below the given path: its name, and its bytes; the server's record
+	 * of what a folder holds (issue #253), which a request records, excepted.
+	 */
 	private static String fingerprint(Path root) throws Exception {
 		MessageDigest digest = MessageDigest.getInstance("SHA-256");
 		List<Path> files = new ArrayList<>();
 		try (Stream<Path> walk = Files.walk(root)) {
-			walk.filter(Files::isRegularFile).forEach(files::add);
+			walk.filter(Files::isRegularFile)
+				.filter(file -> !file.getFileName().toString().equals(de.haumacher.imageServer.cache.AnalysisRecord.FILE_NAME))
+				.forEach(files::add);
 		}
 		files.sort(Comparator.comparing(Path::toString));
 		for (Path file : files) {

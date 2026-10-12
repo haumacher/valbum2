@@ -14,6 +14,7 @@ import 'about.dart';
 import 'album_layout.dart' show Orientations, ToImage;
 import 'app.dart';
 import 'attribution.dart';
+import 'broken.dart';
 import 'caller.dart';
 import 'client.dart';
 import 'collections.dart';
@@ -535,6 +536,10 @@ class ImageViewState extends State<ImageView>
   /// Whether the displayed part is a video and not a still image.
   bool get isVideo => part.kind != ImageKind.image;
 
+  /// Whether the displayed part is a file that cannot be read (issue #253):
+  /// it is shown as a page saying so, never decoded nor played.
+  bool get isBroken => part.isBroken;
+
   /// The URL of the displayed part on the server, without any `type` parameter.
   String get dataUrl => "${widget.baseUrl}/${part.name}";
 
@@ -720,7 +725,7 @@ class ImageViewState extends State<ImageView>
       album != null &&
       widget.editPath != null &&
       rights.mayEdit &&
-      !part.missing &&
+      part.hasPicture &&
       ShareSession.of(context) == null;
 
   /// Opens the photograph shown in the album it lies in, where it is shown
@@ -763,6 +768,7 @@ class ImageViewState extends State<ImageView>
   /// photograph lies in, which is where the server stores the decision.
   bool get mayEditPersons =>
       !isVideo &&
+      !isBroken &&
       album != null &&
       album!.kind != AlbumKind.collection &&
       album!.kind != AlbumKind.search &&
@@ -779,6 +785,7 @@ class ImageViewState extends State<ImageView>
   /// not matter: the crop is written at once either way, see [cropShown].
   bool get mayCrop =>
       !isVideo &&
+      !isBroken &&
       album != null &&
       widget.editPath != null &&
       rights.mayEdit &&
@@ -1452,7 +1459,8 @@ class ImageViewState extends State<ImageView>
         continue;
       }
       var picture = ToImage.toImage(image);
-      if (picture.kind != ImageKind.image) {
+      // Nor is a file that cannot be read (issue #253): nothing of it decodes.
+      if (picture.kind != ImageKind.image || picture.isBroken) {
         continue;
       }
       wanted[picture.name] = picture;
@@ -1620,8 +1628,23 @@ class ImageViewState extends State<ImageView>
                   // controls over them are the page's.
                   SelectionExcluded(
                     key: const Key("viewer-surface"),
-                    child: isVideo ? buildVideoViewer() : buildViewer(page),
+                    child: isBroken
+                        ? buildBrokenSurface()
+                        : isVideo
+                            ? buildVideoViewer()
+                            : buildViewer(page),
                   ),
+                  // What the page of a file that cannot be read says (issue
+                  // #253), text of the page and therefore selectable; the
+                  // surface around it pages as the picture does.
+                  if (isBroken)
+                    Positioned.fill(
+                      child: Center(
+                        child: SingleChildScrollView(
+                          child: BrokenFileInfo(part),
+                        ),
+                      ),
+                    ),
                   // The faces, in the coordinates of the page (issue #147).
                   if (editPersons)
                     Positioned.fill(
@@ -2259,6 +2282,23 @@ class ImageViewState extends State<ImageView>
       ),
     );
   }
+
+  /// The surface of a file that cannot be read (issue #253), in place of the
+  /// picture: nothing is decoded and no player is started, but a swipe pages
+  /// and leaves as it does over a video, and a long press opens the
+  /// description. What the page says is drawn above it, see [build].
+  Widget buildBrokenSurface() => GestureDetector(
+        key: const Key("broken-viewer-surface"),
+        behavior: HitTestBehavior.opaque,
+        onLongPress: editDescription,
+        onScaleStart: (details) {},
+        onScaleEnd: (details) {
+          if (details.pointerCount <= 1) {
+            onSwipe(details);
+          }
+        },
+        child: const SizedBox.expand(),
+      );
 
   /// Moves the fitted image with the finger, along one axis only (issue #61).
   ///

@@ -45,6 +45,13 @@ public enum CatchUpStep implements de.haumacher.msgbuf.data.ProtocolEnum {
 	 */
 	OTHER("OTHER"),
 
+	/**
+	 * Finding out what the files of a folder are: which photographs and videos it holds, their
+	 * sizes and dates, and which cannot be read, see issue #253. An album is answered from what
+	 * this step recorded.
+	 */
+	ANALYSIS("ANALYSIS"),
+
 	;
 
 	private final String _protocolName;
@@ -75,6 +82,7 @@ public enum CatchUpStep implements de.haumacher.msgbuf.data.ProtocolEnum {
 			case "PLACES": return PLACES;
 			case "VIDEOS": return VIDEOS;
 			case "OTHER": return OTHER;
+			case "ANALYSIS": return ANALYSIS;
 		}
 		return IDLE;
 	}
@@ -100,6 +108,7 @@ public enum CatchUpStep implements de.haumacher.msgbuf.data.ProtocolEnum {
 			case PLACES: out.value(6); break;
 			case VIDEOS: out.value(7); break;
 			case OTHER: out.value(8); break;
+			case ANALYSIS: out.value(9); break;
 			default: out.value(0);
 		}
 	}
@@ -115,6 +124,7 @@ public enum CatchUpStep implements de.haumacher.msgbuf.data.ProtocolEnum {
 			case 6: return PLACES;
 			case 7: return VIDEOS;
 			case 8: return OTHER;
+			case 9: return ANALYSIS;
 			default: return IDLE;
 		}
 	}

@@ -16,6 +16,7 @@ import 'dart:math';
 import 'package:flutter/material.dart' hide Orientation;
 
 import 'album_edit.dart';
+import 'broken.dart';
 import 'client.dart';
 import 'crop.dart';
 import 'resource.dart';
@@ -104,6 +105,9 @@ Widget orientedThumbnail(
 /// rendition ([croppedImageUrl]) and measured by the size of the region, so
 /// the tile shows exactly the region, upright, at the aspect the album laid
 /// it out at — every tile of the app that shows a part goes through here.
+///
+/// A file that cannot be read (issue #253) has no rendition: it is drawn as
+/// its [brokenTile], and nothing is asked of the server.
 Widget orientedImageThumbnail(
   VAlbumClient client,
   String imageUrl,
@@ -112,6 +116,9 @@ Widget orientedImageThumbnail(
   required double width,
   required double height,
 }) {
+  if (image.isBroken) {
+    return KeyedSubtree(key: key, child: brokenTile(image, width, height));
+  }
   var size = renditionSize(image);
   return orientedThumbnail(
     client,

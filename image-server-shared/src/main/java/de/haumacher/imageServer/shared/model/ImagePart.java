@@ -84,6 +84,12 @@ public class ImagePart extends AbstractImage {
 	/** @see #isPartial() */
 	private static final String PARTIAL__PROP = "partial";
 
+	/** @see #getBroken() */
+	private static final String BROKEN__PROP = "broken";
+
+	/** @see #getFileSize() */
+	private static final String FILE_SIZE__PROP = "fileSize";
+
 	private de.haumacher.imageServer.shared.model.ImageKind _kind = de.haumacher.imageServer.shared.model.ImageKind.IMAGE;
 
 	private String _name = "";
@@ -131,6 +137,10 @@ public class ImagePart extends AbstractImage {
 	private de.haumacher.imageServer.shared.model.PlaceCaption _placeCaption = de.haumacher.imageServer.shared.model.PlaceCaption.UNSET;
 
 	private boolean _partial = false;
+
+	private String _broken = "";
+
+	private long _fileSize = 0L;
 
 	/**
 	 * Creates a {@link ImagePart} instance.
@@ -945,6 +955,64 @@ public class ImagePart extends AbstractImage {
 		_partial = value;
 	}
 
+	/**
+	 * Why this file cannot be read, see issue #253; the empty string for every file that can.
+	 *
+	 * <p>
+	 * A file with the extension of a photograph or a video that the background could not analyse
+	 * (a recording cut off before its index, a truncated download) is not left out of its album:
+	 * it is answered as a <em>broken</em> part, which carries its {@link #getName()}, its {@link #getKind()}
+	 * as its extension says it, its {@link #getFileSize()} and this reason, and nothing that would have
+	 * to be read out of the file &mdash; no size in pixels, no date of its own (the file's
+	 * modification time stands in), no position. The app shows it as a tile with a broken-picture
+	 * icon and its name; its original can be downloaded and deleted, and nothing ever decodes it.
+	 * It is left out of a search, of the places, the faces, the duplicates and the covers.
+	 * </p>
+	 *
+	 * <p>
+	 * Derived on every read from the analysis record of the folder, and <b>never stored</b> in the
+	 * <code>index.json</code>: the record keys a failure by the file's size and modification time,
+	 * so a file that is repaired or replaced is analysed again and becomes an ordinary part.
+	 * </p>
+	 */
+	public final String getBroken() {
+		return _broken;
+	}
+
+	/**
+	 * @see #getBroken()
+	 */
+	public de.haumacher.imageServer.shared.model.ImagePart setBroken(String value) {
+		internalSetBroken(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getBroken()} without chain call utility. */
+	protected final void internalSetBroken(String value) {
+		_broken = value;
+	}
+
+	/**
+	 * The size of the file in bytes, answered for a {@link #getBroken()} part only, see issue #253; the
+	 * viewer says it. Derived and never stored.
+	 */
+	public final long getFileSize() {
+		return _fileSize;
+	}
+
+	/**
+	 * @see #getFileSize()
+	 */
+	public de.haumacher.imageServer.shared.model.ImagePart setFileSize(long value) {
+		internalSetFileSize(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getFileSize()} without chain call utility. */
+	protected final void internalSetFileSize(long value) {
+		_fileSize = value;
+	}
+
 	@Override
 	public de.haumacher.imageServer.shared.model.ImagePart setPrevious(de.haumacher.imageServer.shared.model.AbstractImage value) {
 		internalSetPrevious(value);
@@ -1056,6 +1124,10 @@ public class ImagePart extends AbstractImage {
 		getPlaceCaption().writeTo(out);
 		out.name(PARTIAL__PROP);
 		out.value(isPartial());
+		out.name(BROKEN__PROP);
+		out.value(getBroken());
+		out.name(FILE_SIZE__PROP);
+		out.value(getFileSize());
 	}
 
 	@Override
@@ -1105,6 +1177,8 @@ public class ImagePart extends AbstractImage {
 			case PLACES__PROP: setPlaces(de.haumacher.imageServer.shared.model.PlaceInfo.readPlaceInfo(in)); break;
 			case PLACE_CAPTION__PROP: setPlaceCaption(de.haumacher.imageServer.shared.model.PlaceCaption.readPlaceCaption(in)); break;
 			case PARTIAL__PROP: setPartial(in.nextBoolean()); break;
+			case BROKEN__PROP: setBroken(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case FILE_SIZE__PROP: setFileSize(in.nextLong()); break;
 			default: super.readField(in, field);
 		}
 	}

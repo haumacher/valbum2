@@ -84,9 +84,13 @@ public class TestUnreadableFileProbe extends TestCase {
 		assertEquals("", result.getOutcomes().get(0).getMessage());
 
 		AlbumInfo target = album(get(servlet, "/2025/B/", "json", owner));
-		assertEquals(Arrays.asList("y.jpg", "x.jpg"), names(target));
+		// Since issue #253 the cut-off recording is a broken part of its album, not left out; it is
+		// dated by its file's time, as y.jpg is, so the two may stand either way round.
+		List<String> names = names(target);
+		assertTrue(names.toString(), names.remove("20250903_185939.mp4"));
+		assertEquals(Arrays.asList("y.jpg", "x.jpg"), names);
 		String sidecar = new String(Files.readAllBytes(_base.resolve("2025/B/index.json")), StandardCharsets.UTF_8);
-		assertFalse(sidecar, sidecar.contains("20250903_185939"));
+		assertFalse("Why it cannot be read is never stored: " + sidecar, sidecar.contains("moov"));
 
 		FakeResponse listing = get(servlet, "/2025/", "json", owner);
 		assertEquals(listing.body(), HttpServletResponse.SC_OK, listing.status());

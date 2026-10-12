@@ -3557,6 +3557,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get catchUpRoot => 'the top folder';
 
   @override
+  String get catchUpStepAnalysis => 'Reading new files';
+
+  @override
   String get catchUpStepHash => 'Fingerprints';
 
   @override
@@ -3897,4 +3900,30 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get searchWordOr => 'or';
+
+  @override
+  String get brokenImageExplanation =>
+      'This photo cannot be shown: the file is damaged or incomplete.';
+
+  @override
+  String get brokenVideoExplanation =>
+      'This video cannot be played: the file is damaged or incomplete.';
+
+  @override
+  String brokenFileReason(String reason) {
+    return 'Reason given by the server: $reason';
+  }
+
+  @override
+  String brokenFileSize(String size) {
+    return 'File size: $size';
+  }
+
+  @override
+  String get albumPreparing =>
+      'This album is being prepared. Its photos appear here as soon as the server has read them.';
+
+  @override
+  String get albumStillPreparing =>
+      'This album is still being prepared. Photos the server has not read yet appear here shortly.';
 }

@@ -53,17 +53,20 @@ public class TestImageServletPreview extends TestCase {
 		super.tearDown();
 	}
 
-	/** A file that is named like a JPEG but holds no image data at all. */
-	public void testBrokenImageAnswersServerError() throws Exception {
+	/**
+	 * A file that is named like a JPEG but holds no image data at all: recorded as broken (issue
+	 * #253), nothing is made of it, and the refusal says why.
+	 */
+	public void testBrokenImageAnswersNotFound() throws Exception {
 		Files.write(new File(_base.toFile(), "broken.jpg").toPath(),
 			"This is not a JPEG.".getBytes(StandardCharsets.UTF_8));
 
 		FakeResponse response = thumbnail("/broken.jpg");
 
-		assertEquals(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, response.status());
+		assertEquals(HttpServletResponse.SC_NOT_FOUND, response.status());
 		String body = response.body();
 		assertTrue(body, body.contains("ErrorInfo"));
-		assertTrue(body, body.contains(ImageServlet.PREVIEW_FAILED));
+		assertTrue(body, body.contains("'broken.jpg' cannot be read"));
 		assertEquals("no-store", response.header("Cache-Control"));
 	}
 

@@ -141,7 +141,9 @@ public class PrivacyFilter {
 			.setPlaceCaption(album.getPlaceCaption())
 			// Hiding an image does not change when the album happened.
 			.setDate(album.getDate())
-			.setEffectiveDate(album.getEffectiveDate());
+			.setEffectiveDate(album.getEffectiveDate())
+			// Nor whether the background recorded the folder, see issue #253.
+			.setPreparing(album.isPreparing());
 
 		Set<String> visibleNames = new HashSet<>();
 		boolean hidden = false;
@@ -278,7 +280,8 @@ public class PrivacyFilter {
 	static ImagePart firstImage(AlbumInfo album) {
 		for (AlbumPart part : album.getParts()) {
 			ImagePart image = shownImage(part);
-			if (image != null) {
+			if (image != null && !de.haumacher.imageServer.cache.BrokenParts.isBroken(image)) {
+				// A file that cannot be read has no picture to be a cover with, see issue #253.
 				return image;
 			}
 		}
@@ -305,7 +308,9 @@ public class PrivacyFilter {
 		ImagePart best = null;
 		for (AlbumPart part : parts) {
 			ImagePart image = shownImage(part);
-			if (image != null && image.getRating() > Ratings.MIN
+			// A file that cannot be read has no picture to be a cover with, see issue #253.
+			if (image != null && !de.haumacher.imageServer.cache.BrokenParts.isBroken(image)
+				&& image.getRating() > Ratings.MIN
 				&& (best == null || image.getRating() > best.getRating())) {
 				best = image;
 			}

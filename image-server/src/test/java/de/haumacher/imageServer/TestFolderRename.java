@@ -11,6 +11,7 @@ import de.haumacher.imageServer.auth.Roles;
 import de.haumacher.imageServer.auth.UserStore;
 import de.haumacher.imageServer.auth.UserStore.Device;
 import de.haumacher.imageServer.auth.UserStore.User;
+import de.haumacher.imageServer.cache.AnalysisRecord;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.CreateResult;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
@@ -329,12 +330,13 @@ public class TestFolderRename extends TestCase {
 	public void testNothingButTheRenameTouchesTheOriginals() throws Exception {
 		album("A/Trip", "Trip", 0L);
 		write("A/Trip/notes.txt", "notes".getBytes(StandardCharsets.UTF_8));
-		String before = fingerprint(_base.resolve("A/Trip"), "index.json");
+		// The sidecar and the server's record of what the folder holds (issue #253) excepted.
+		String before = fingerprint(_base.resolve("A/Trip"), "index.json", AnalysisRecord.FILE_NAME);
 
 		put("/A/Trip/", album("Journey", day(2002, 3, 4)));
 
 		assertEquals("Every byte of the album survived the rename, name for name.",
-			before, fingerprint(_base.resolve("A/2002-03-04 Journey"), "index.json"));
+			before, fingerprint(_base.resolve("A/2002-03-04 Journey"), "index.json", AnalysisRecord.FILE_NAME));
 	}
 
 	// --- Helpers. ---

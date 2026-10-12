@@ -178,8 +178,9 @@ public class TestImageServletUpload extends TestCase {
 	public void testTheFolderHoldsNothingButTheImagesAndTheSidecars() throws Exception {
 		upload(_servlet, "/", files("a.jpg", RED, "b.jpg", BLUE));
 
-		assertEquals("The hash index of issue #118 is the space's own business and lies in '.valbum'.",
-			Arrays.asList(".hashes.json", ".upload", ".valbum", "a.jpg", "b.jpg"), entries(_base));
+		assertEquals("The hash index of issue #118 is the space's own business and lies in '.valbum'; "
+			+ "what the upload found the files to be is recorded in the cache, see issue #253.",
+			Arrays.asList(".hashes.json", ".upload", ".vacache", ".valbum", "a.jpg", "b.jpg"), entries(_base));
 		assertEquals("The upload repository must be emptied.", Collections.emptyList(),
 			entries(_base.resolve(".upload")));
 	}

@@ -166,12 +166,25 @@ public class TestVideoRenditions extends TestCase {
 	}
 
 	/**
-	 * A file FFmpeg cannot read is answered <code>202</code> once and <code>500</code> afterwards:
-	 * the failure is remembered, so the machine does not try it again for every request.
+	 * A video the analysis found readable whose file FFmpeg cannot read is answered <code>202</code>
+	 * once and <code>500</code> afterwards: the failure is remembered, so the machine does not try it
+	 * again for every request.
+	 *
+	 * <p>
+	 * Since issue #253 a file that cannot even be analysed is a broken part, of which nothing is
+	 * made at all (see {@link #testABrokenVideoHasNoRendition()}); so the file is recorded as the
+	 * readable video it was, and spoiled afterwards behind the record's back, its size and time kept.
+	 * </p>
 	 */
 	public void testUnreadableVideoFails() throws Exception {
-		File broken = new File(_album, "broken.mp4");
-		Files.write(broken.toPath(), "This is not a video.".getBytes(StandardCharsets.UTF_8));
+		File broken = copyFixture("broken.mp4");
+		assertEquals(HttpServletResponse.SC_OK, get(broken, "json").status());
+		long size = broken.length();
+		long modified = broken.lastModified();
+		byte[] spoiled = new byte[(int) size];
+		java.util.Arrays.fill(spoiled, (byte) 'x');
+		Files.write(broken.toPath(), spoiled);
+		assertTrue(broken.setLastModified(modified));
 
 		FakeResponse pending = get(broken, "video");
 		assertEquals(HttpServletResponse.SC_ACCEPTED, pending.status());
@@ -189,6 +202,17 @@ public class TestVideoRenditions extends TestCase {
 		assertFalse("A failure must not leave a rendition behind.",
 			VideoRenditions.file(broken, VideoRenditions.Kind.PLAYBACK).exists());
 		assertNoTempFiles();
+	}
+
+	/** A video that cannot be read is a broken part: nothing is made of it, and nothing is tried. */
+	public void testABrokenVideoHasNoRendition() throws Exception {
+		File broken = new File(_album, "cut.mp4");
+		Files.write(broken.toPath(), "This is not a video.".getBytes(StandardCharsets.UTF_8));
+
+		FakeResponse refused = get(broken, "video");
+		assertEquals(HttpServletResponse.SC_NOT_FOUND, refused.status());
+		assertTrue(refused.body(), refused.body().contains("'cut.mp4' cannot be read"));
+		assertFalse(VideoRenditions.file(broken, VideoRenditions.Kind.PLAYBACK).exists());
 	}
 
 	/** A rendition is looking, so it is refused exactly as the thumbnail is. */

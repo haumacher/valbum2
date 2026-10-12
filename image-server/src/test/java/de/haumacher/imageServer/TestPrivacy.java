@@ -392,8 +392,11 @@ public class TestPrivacy extends TestCase {
 	 * {@link AuthMode#WRITES}.
 	 */
 	private void library() throws IOException {
-		album(TRIP, TRIP_JSON, "a.jpg", "c.jpg");
-		album("Secret", SECRET_JSON);
+		// Every part with its file: a part whose file is gone leaves the album once the server
+		// notices, see issue #253.
+		album(TRIP, TRIP_JSON, "a.jpg", "b.jpg", "c.jpg", "g-private.jpg", "g-low.jpg", "g-best.jpg", "h1.jpg",
+			"h2.jpg", "p.jpg", "t1.jpg", "t2.jpg");
+		album("Secret", SECRET_JSON, "s1.jpg", "s2.jpg");
 		album("Old", OLD_JSON, "old.jpg");
 	}
 
