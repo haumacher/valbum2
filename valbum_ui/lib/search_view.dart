@@ -4,10 +4,13 @@
 /// A level on the folder it searches (`/<folder>/.search/`, see
 /// [SearchRoute]), reached from the search icon of a folder's app bar — the
 /// start page's searches the space — or of an album's controls, which
-/// searches the folder the album lies in (issue #243), and offered to the
-/// members of the space alone. What was chosen and what was found live with
-/// the router ([SearchSession]), so a photograph opened from the results and
-/// closed again finds the search as it was left. The criteria travel in the
+/// searches the album alone (issues #243, #249), and offered to the members
+/// of the space alone. Where it looks is the first chip of the criteria, "In:
+/// <album>", whose removal searches the whole library for the same criteria.
+/// The criteria scroll away with the results, one page on a phone (issue
+/// #248). What was chosen and what was found live with the router
+/// ([SearchSession]), so a photograph opened from the results and closed
+/// again finds the search as it was left. The criteria travel in the
 /// location as well (`?q=`, issue #243), so that a reload or a bookmark shows
 /// the same search; a change of them replaces the location rather than adding
 /// a step to the history, see `VAlbumRouterDelegate.searchChanged`.
@@ -332,13 +335,20 @@ class SearchViewState extends State<SearchView> {
         children: [
           if (!selecting)
             OfflineBanner(onRetry: () => session.run(client, path)),
-          if (!selecting)
-            FutureBuilder<SearchOptions>(
-              future: session.options,
-              builder: (context, snapshot) =>
-                  criteriaBar(snapshot.data ?? SearchOptions()),
+          // The criteria scroll away with what was found, one page from
+          // the chips down to the last photograph (issue #248): on a phone
+          // they would otherwise take most of the screen.
+          Expanded(
+            child: results(
+              selecting
+                  ? null
+                  : FutureBuilder<SearchOptions>(
+                      future: session.options,
+                      builder: (context, snapshot) =>
+                          criteriaBar(snapshot.data ?? SearchOptions()),
+                    ),
             ),
-          Expanded(child: results()),
+          ),
         ],
       ),
     );
@@ -372,6 +382,7 @@ class SearchViewState extends State<SearchView> {
         runSpacing: 6,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
+          ..._scopeChip(),
           ActionChip(
             key: const Key("search-any-of"),
             avatar: Icon(
@@ -577,10 +588,10 @@ class SearchViewState extends State<SearchView> {
                   tooltip: l10n.searchExclude,
                   onPressed: criteria.has(SearchKind.text)
                       ? () => _choose(
-                          session.criteria
-                              .copyWith(text: _text.text)
-                              .toggled(SearchKind.text),
-                        )
+                            session.criteria
+                                .copyWith(text: _text.text)
+                                .toggled(SearchKind.text),
+                          )
                       : null,
                 ),
                 hintText: l10n.searchText,
@@ -596,35 +607,92 @@ class SearchViewState extends State<SearchView> {
     );
   }
 
+  /// The chip naming where the search looks (issue #249): the album or the
+  /// folder it was opened from, "In: <title>"; nothing at the root, which is
+  /// the whole library. Its delete button widens the search to the whole
+  /// library, see [widen] — not while a saved search is edited, which looks
+  /// below the folder it lies in.
+  List<Widget> _scopeChip() {
+    if (path.isEmpty) {
+      return const [];
+    }
+    var editing = session.edited != null;
+    return [
+      FutureBuilder<Resource?>(
+        // The level beneath has asked for it already: no request of its own.
+        future: widget.albumState.navigator.delegate.resourceAt(path),
+        builder: (context, snapshot) {
+          var scope = snapshot.data;
+          var title = switch (scope) {
+            AlbumInfo(:var title) || ListingInfo(:var title) => title,
+            _ => "",
+          };
+          return InputChip(
+            key: const Key("search-scope"),
+            avatar: Icon(
+              scope is AlbumInfo
+                  ? Icons.photo_album_outlined
+                  : Icons.folder_outlined,
+              size: 18,
+            ),
+            label: Text(
+              _l10n.searchScope(title.isEmpty ? path.last : title),
+            ),
+            onDeleted: editing ? null : widen,
+            deleteButtonTooltipMessage: _l10n.searchEverywhere,
+          );
+        },
+      ),
+    ];
+  }
+
+  /// Searches the whole library for the criteria chosen here (issue #249):
+  /// the search view of the root, a step of the history of its own, so that
+  /// the way back returns to the search of the album.
+  void widen() {
+    var navigator = widget.albumState.navigator;
+    var wide = navigator.delegate.searchSession(const []);
+    if (wide.edited != null) {
+      wide.endEdit();
+    }
+    var query = session.addressQuery;
+    if (query == null) {
+      // Nothing chosen here: nothing chosen there either, whatever the
+      // search of the library held before.
+      wide.choose(const SearchCriteria(), client, const []);
+    }
+    navigator.go(SearchRoute(const [], query: query));
+  }
+
   /// How many photographs the search found, once its result is in; nothing
   /// before, and nothing for a result of none, which the results say in a
   /// sentence of their own.
   Widget _count() => FutureBuilder<AlbumInfo>(
-    future: session.result,
-    builder: (context, snapshot) {
-      var count = 0;
-      for (var part in snapshot.data?.parts ?? const <AlbumPart>[]) {
-        count += part is ImageGroup
-            ? part.images.length
-            : (part is ImagePart ? 1 : 0);
-      }
-      if (count == 0) {
-        return const SizedBox.shrink();
-      }
-      return Text(
-        _l10n.searchCount(count),
-        key: const Key("search-count"),
-        style: const TextStyle(color: Colors.white70),
+        future: session.result,
+        builder: (context, snapshot) {
+          var count = 0;
+          for (var part in snapshot.data?.parts ?? const <AlbumPart>[]) {
+            count += part is ImageGroup
+                ? part.images.length
+                : (part is ImagePart ? 1 : 0);
+          }
+          if (count == 0) {
+            return const SizedBox.shrink();
+          }
+          return Text(
+            _l10n.searchCount(count),
+            key: const Key("search-count"),
+            style: const TextStyle(color: Colors.white70),
+          );
+        },
       );
-    },
-  );
 
   /// The rows of a kind of several values: the included ones, then the
   /// excluded ones, each with whether it is excluded.
   static Iterable<(T, bool)> _rows<T>(List<T> included, List<T> excluded) => [
-    for (var value in included) (value, false),
-    for (var value in excluded) (value, true),
-  ];
+        for (var value in included) (value, false),
+        for (var value in excluded) (value, true),
+      ];
 
   /// The chip of [value] of a kind of several values (a person, a place, a
   /// label): "Not: …" where [excluded] (issue #242), turned the other way by
@@ -638,26 +706,27 @@ class SearchViewState extends State<SearchView> {
     required List<T> included,
     required List<T> excludedValues,
     required void Function(List<T> included, List<T> excluded) choose,
-  }) => _excludable(
-    onToggle: () => excluded
-        ? choose(
-            [...included, value],
-            [...excludedValues]..remove(value),
-          )
-        : choose(
+  }) =>
+      _excludable(
+        onToggle: () => excluded
+            ? choose(
+                [...included, value],
+                [...excludedValues]..remove(value),
+              )
+            : choose(
+                [...included]..remove(value),
+                [...excludedValues, value],
+              ),
+        child: InputChip(
+          key: Key(excluded ? "$key-excluded" : key),
+          avatar: Icon(icon, size: 18),
+          label: Text(excluded ? _l10n.searchExcluded(name) : name),
+          onDeleted: () => choose(
             [...included]..remove(value),
-            [...excludedValues, value],
+            [...excludedValues]..remove(value),
           ),
-    child: InputChip(
-      key: Key(excluded ? "$key-excluded" : key),
-      avatar: Icon(icon, size: 18),
-      label: Text(excluded ? _l10n.searchExcluded(name) : name),
-      onDeleted: () => choose(
-        [...included]..remove(value),
-        [...excludedValues]..remove(value),
-      ),
-    ),
-  );
+        ),
+      );
 
   /// The chip of the row of [kind], chosen: "Not: …" where it is excluded
   /// (issue #242), turned the other way by a long press or a secondary click.
@@ -687,18 +756,20 @@ class SearchViewState extends State<SearchView> {
   static Widget _excludable({
     required VoidCallback onToggle,
     required Widget child,
-  }) => SelectionExcluded(
-    child: _excludableTile(onToggle: onToggle, child: child),
-  );
+  }) =>
+      SelectionExcluded(
+        child: _excludableTile(onToggle: onToggle, child: child),
+      );
 
   static Widget _excludableTile({
     required VoidCallback onToggle,
     required Widget child,
-  }) => GestureDetector(
-    onLongPress: onToggle,
-    onSecondaryTap: onToggle,
-    child: child,
-  );
+  }) =>
+      GestureDetector(
+        onLongPress: onToggle,
+        onSecondaryTap: onToggle,
+        child: child,
+      );
 
   Widget _dateChip({
     required String key,
@@ -743,11 +814,11 @@ class SearchViewState extends State<SearchView> {
   static String dayLabel(DateTime day) => albumFolderName(day, "").trim();
 
   static Map<int, String> _ratingNames(AppLocalizations l10n) => {
-    -1: l10n.ratingPoor,
-    0: l10n.ratingUnrated,
-    1: l10n.ratingGood,
-    2: l10n.ratingVeryGood,
-  };
+        -1: l10n.ratingPoor,
+        0: l10n.ratingUnrated,
+        1: l10n.ratingGood,
+        2: l10n.ratingVeryGood,
+      };
 
   Future<void> choosePersons(SearchOptions options) async {
     var chosen = await _chooseMany<String>(
@@ -842,11 +913,12 @@ class SearchViewState extends State<SearchView> {
     SearchCriteria criteria,
     SearchKind kind,
     bool exclude,
-  ) => criteria.copyWith(
-    excluded: exclude
-        ? {...criteria.excluded, kind}
-        : ({...criteria.excluded}..remove(kind)),
-  );
+  ) =>
+      criteria.copyWith(
+        excluded: exclude
+            ? {...criteria.excluded, kind}
+            : ({...criteria.excluded}..remove(kind)),
+      );
 
   static const int _noRating = -99;
 
@@ -901,47 +973,65 @@ class SearchViewState extends State<SearchView> {
     required Map<T, String> choices,
     required List<T> chosen,
     required List<T> excluded,
-  }) => showAppDialog<({List<T> included, List<T> excluded})>(
-    context: context,
-    builder: (context) => _ChooseManyDialog<T>(
-      title: title,
-      choices: choices,
-      chosen: chosen,
-      excluded: excluded,
-    ),
-  );
+  }) =>
+      showAppDialog<({List<T> included, List<T> excluded})>(
+        context: context,
+        builder: (context) => _ChooseManyDialog<T>(
+          title: title,
+          choices: choices,
+          chosen: chosen,
+          excluded: excluded,
+        ),
+      );
 
   // --- The results. ---
 
-  Widget results() {
+  /// What was found below [criteria], which scroll away with it (issue
+  /// #248); `null` while the select mode hides the criteria.
+  ///
+  /// A new result is a new page, which starts at its top: the criteria are
+  /// in view again whenever one of them changed.
+  Widget results(Widget? criteria) {
     var l10n = _l10n;
     var result = session.result;
     if (result == null) {
       // A location naming what this screen cannot show (issue #243).
       if (session.unreadable != null) {
-        return _sentence(
-          l10n.searchCannotEdit,
-          const Key("search-cannot-edit"),
+        return _page(
+          criteria,
+          _sentence(l10n.searchCannotEdit, const Key("search-cannot-edit")),
         );
       }
-      return _sentence(l10n.searchChooseHint, const Key("search-hint"));
+      return _page(
+        criteria,
+        _sentence(l10n.searchChooseHint, const Key("search-hint")),
+      );
     }
     return FutureBuilder<AlbumInfo>(
       future: result,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           var error = snapshot.error;
-          return _sentence(
-            error is VAlbumException ? error.message : "$error",
-            const Key("search-error"),
+          return _page(
+            criteria,
+            _sentence(
+              error is VAlbumException ? error.message : "$error",
+              const Key("search-error"),
+            ),
           );
         }
         var album = snapshot.data;
         if (album == null) {
-          return const Center(child: CircularProgressIndicator());
+          return _page(
+            criteria,
+            const Center(child: CircularProgressIndicator()),
+          );
         }
         if (!album.parts.any((part) => part is AbstractImage)) {
-          return _sentence(l10n.searchNothingFound, const Key("search-empty"));
+          return _page(
+            criteria,
+            _sentence(l10n.searchNothingFound, const Key("search-empty")),
+          );
         }
         return AlbumContent(
           widget.albumState,
@@ -954,22 +1044,33 @@ class SearchViewState extends State<SearchView> {
           onSelectModeChanged: _selectModeChanged,
           downloadSelected: downloadFound,
           collectSelected: collectFound,
+          header: criteria,
         );
       },
     );
   }
 
+  /// One scrolling page of [criteria] and, below them, [content] filling
+  /// what is left of the screen (issue #248).
+  static Widget _page(Widget? criteria, Widget content) => CustomScrollView(
+        key: const Key("search-page"),
+        slivers: [
+          if (criteria != null) SliverToBoxAdapter(child: criteria),
+          SliverFillRemaining(hasScrollBody: false, child: content),
+        ],
+      );
+
   static Widget _sentence(String text, Key key) => Center(
-    child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Text(
-        text,
-        key: key,
-        textAlign: TextAlign.center,
-        style: const TextStyle(color: Colors.white70, fontSize: 16),
-      ),
-    ),
-  );
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            text,
+            key: key,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Colors.white70, fontSize: 16),
+          ),
+        ),
+      );
 
   /// The names of the photographs found, `null` while nothing was found yet.
   Future<List<String>> _foundNames() async {
@@ -1038,7 +1139,6 @@ class SearchViewState extends State<SearchView> {
         delegate: widget.albumState.navigator.delegate,
       );
 
-
   /// Saves the search as a view, see issue #227: a folder chosen with the
   /// move picker's folder choice, a title proposed from what was chosen, an
   /// album of [AlbumKind.search] created there with the query and nothing
@@ -1050,6 +1150,11 @@ class SearchViewState extends State<SearchView> {
     var l10n = _l10n;
     var messenger = ScaffoldMessenger.of(context);
     var options = await session.options?.catchError((_) => SearchOptions());
+    // A saved search lies in a folder and looks below it: from the search of
+    // an album (issue #249) the picker opens at the folder the album lies in.
+    var scope = await widget.albumState.navigator.delegate
+        .resourceAt(path)
+        .catchError((_) => null);
     if (!mounted) {
       return;
     }
@@ -1059,7 +1164,7 @@ class SearchViewState extends State<SearchView> {
         key: const Key("save-as-view-picker"),
         client: client,
         title: l10n.saveAsView,
-        initialPath: path,
+        initialPath: scope is AlbumInfo ? searchScopeOf(path) : path,
         confirmLabel: (_) => l10n.saveAsViewHere,
         targetIsAlbum: false,
       ),
@@ -1387,8 +1492,7 @@ class _ExcludableChoiceDialogState<T>
 }
 
 /// The name of [key] in the search view (issue #244).
-String searchGroupName(AppLocalizations l10n, SearchGroup key) =>
-    switch (key) {
+String searchGroupName(AppLocalizations l10n, SearchGroup key) => switch (key) {
       SearchGroup.album => l10n.searchGroupByAlbum,
       SearchGroup.year => l10n.searchGroupByYear,
       SearchGroup.month => l10n.searchGroupByMonth,

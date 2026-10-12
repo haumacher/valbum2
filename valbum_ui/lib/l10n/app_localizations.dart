@@ -6105,6 +6105,18 @@ abstract class AppLocalizations {
   /// **'Any of these'**
   String get searchAnyOf;
 
+  /// Chip at the start of the criteria of the search view (issue #249): the search looks only in this album or folder, the one it was opened from, e.g. "In: Summer trip". German: "In: {scope}"
+  ///
+  /// In en, this message translates to:
+  /// **'In: {scope}'**
+  String searchScope(String scope);
+
+  /// Tooltip of the button removing the "In: …" chip of the search view (issue #249): the same search then looks in every album. German: "In der ganzen Bibliothek suchen"
+  ///
+  /// In en, this message translates to:
+  /// **'Search the whole library'**
+  String get searchEverywhere;
+
   /// Switch and tooltip of the search view (issue #242) that turns a criterion into its opposite: the photos found must not match it ("without Philipp"). German: "Ausschließen"
   ///
   /// In en, this message translates to:

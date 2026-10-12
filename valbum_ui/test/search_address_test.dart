@@ -1,8 +1,8 @@
 /// The last two items of issue #243: the search from inside an album, and
 /// the criteria of the search view in the location.
 ///
-/// An album offers the search of the folder it lies in, under the rule of a
-/// folder's app bar and never inside a link. The criteria chosen travel in
+/// An album offers its own search (issue #249), under the rule of a folder's
+/// app bar and never inside a link. The criteria chosen travel in
 /// the location as `?q=<stored query>`: a change of them replaces the
 /// location rather than adding a step to the history, a location carrying
 /// them runs the search at once (a reload, a bookmark), and one this screen
@@ -82,16 +82,14 @@ SearchCriteria? criteriaOf(http.Request request) =>
 SearchCriteria? criteriaInLocation(VAlbumRouterDelegate delegate) {
   var route = delegate.currentConfiguration as SearchRoute;
   var query = route.query;
-  return query == null
-      ? null
-      : SearchCriteria.fromAddress(query);
+  return query == null ? null : SearchCriteria.fromAddress(query);
 }
 
 void main() {
   var l10n = l10nOf();
 
   group('the search from an album', () {
-    testWidgets('searches the folder the album lies in', (tester) async {
+    testWidgets('searches the album alone', (tester) async {
       var space = AlbumSpace();
       var delegate = await pumpRoute(
           tester, space, const ListingOrAlbumRoute(["2024", "Zoo"]));
@@ -106,7 +104,8 @@ void main() {
       await tester.tap(button);
       await settle(tester);
 
-      expect(delegate.route, const SearchRoute(["2024"]));
+      expect(delegate.route, const SearchRoute(["2024", "Zoo"]),
+          reason: "The search is scoped to the album (issue #249).");
       expect(find.byKey(const Key("search-hint")), findsOneWidget);
     });
 
@@ -119,8 +118,8 @@ void main() {
       await tester.tap(find.byKey(const Key("open-search")));
       await settle(tester);
 
-      expect(delegate.route, const SearchRoute([]),
-          reason: "An album at the top searches the whole space.");
+      expect(delegate.route, const SearchRoute(["2020 Trip"]),
+          reason: "An album at the top searches itself (issue #249).");
     });
 
     testWidgets('fits beside the menu on a phone', (tester) async {
@@ -149,8 +148,7 @@ void main() {
 
   group('the criteria in the location', () {
     test('travel in the query and are read back as they were', () {
-      var route =
-          SearchRoute(const ["2024", "Zoo"], query: rich.toAddress());
+      var route = SearchRoute(const ["2024", "Zoo"], query: rich.toAddress());
       var uri = routeToUri(route, basePath: "/valbum/");
       expect(uri.path, "/valbum/2024/Zoo/.search/");
       expect(uri.queryParameters, contains(searchQueryParameter));
@@ -229,7 +227,8 @@ void main() {
         expect(delegate.route, const SearchRoute([]));
         expect(criteriaInLocation(delegate), rich);
         expect(find.byKey(const Key("search-person-p1")), findsOneWidget);
-        expect(find.byKey(const Key("search-person-p2-excluded")), findsOneWidget);
+        expect(
+            find.byKey(const Key("search-person-p2-excluded")), findsOneWidget);
         expect(find.text(l10n.searchAnyOf), findsOneWidget);
         expect(find.byType(AlbumContent), findsOneWidget,
             reason: "What was found is shown.");
@@ -240,8 +239,8 @@ void main() {
         (tester) async {
       var criteria = const SearchCriteria(text: "beach");
       var space = Space();
-      await pumpRoute(tester, space,
-          SearchRoute(const [], query: criteria.toAddress()));
+      await pumpRoute(
+          tester, space, SearchRoute(const [], query: criteria.toAddress()));
 
       expect(find.widgetWithText(TextField, "beach"), findsOneWidget);
       expect(criteriaOf(space.posts("search").single), criteria);
@@ -254,17 +253,18 @@ void main() {
       await chooseAnne(tester);
       expect(space.posts("search"), hasLength(1));
 
-      await delegate.setNewRoutePath(
-          SearchRoute(const [], query: rich.toAddress()));
+      await delegate
+          .setNewRoutePath(SearchRoute(const [], query: rich.toAddress()));
       await settle(tester);
 
       expect(space.posts("search"), hasLength(2));
       expect(criteriaOf(space.posts("search").last), rich);
-      expect(find.byKey(const Key("search-person-p2-excluded")), findsOneWidget);
+      expect(
+          find.byKey(const Key("search-person-p2-excluded")), findsOneWidget);
 
       // The same criteria again ask nothing.
-      await delegate.setNewRoutePath(
-          SearchRoute(const [], query: rich.toAddress()));
+      await delegate
+          .setNewRoutePath(SearchRoute(const [], query: rich.toAddress()));
       await settle(tester);
       expect(space.posts("search"), hasLength(2));
     });

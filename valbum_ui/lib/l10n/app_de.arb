@@ -909,6 +909,7 @@
   "catchUpNoFailure": "Es ist nichts fehlgeschlagen.",
   "catchUpFailure": "Letzter Fehler in {folder}: {failure}",
   "catchUpRoot": "dem obersten Ordner",
+  "catchUpStepAnalysis": "Neue Dateien auslesen",
   "catchUpStepHash": "Fingerabdrücke",
   "catchUpStepPreviews": "Vorschauen",
   "catchUpStepCover": "Albumcover",
@@ -1010,5 +1011,6 @@
   "brokenFileSize": "Dateigröße: {size}",
   "albumPreparing": "Dieses Album wird gerade vorbereitet. Die Fotos werden hier angezeigt, sobald der Server sie eingelesen hat.",
   "albumStillPreparing": "Dieses Album wird noch vorbereitet. Fotos, die der Server noch nicht gelesen hat, werden in Kürze hier angezeigt.",
-  "catchUpStepAnalysis": "Neue Dateien auslesen"
+  "searchScope": "In: {scope}",
+  "searchEverywhere": "In der gesamten Bibliothek suchen"
 }

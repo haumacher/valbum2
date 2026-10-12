@@ -213,6 +213,29 @@ public class TestSavedSearch extends ShareTestCase {
 			get("/Trips/2021 Lake/old.jpg", "tn", SharingFixture.ALICE).status());
 	}
 
+	/**
+	 * The search opened from an album asks the album itself (issue #249): its photographs alone,
+	 * named by their own file name, each as the caller is answered it in the album.
+	 */
+	public void testTheScopeOfAnAlbumIsTheAlbumAlone() throws Exception {
+		SearchQuery query = and(person(_anne), person(_philipp));
+		String album = "/" + LAKE + "/";
+		AlbumInfo found = album(search(album, query, SharingFixture.ALICE));
+		assertEquals("Named below the album, nothing of another album.",
+			Arrays.asList("old.jpg", "anne_philipp.jpg", "private_ap.jpg"), names(found));
+		assertEquals(LAKE + "/old.jpg", image(found, "old.jpg").getRef().getPath());
+		assertEquals("Carol may not see the private photo of the album either.",
+			Arrays.asList("old.jpg", "anne_philipp.jpg"), names(album(search(album, query, SharingFixture.CAROL))));
+		assertEquals("The garden is another album.", Arrays.asList("both.jpg"),
+			search("/" + GARDEN + "/", query));
+
+		SearchOptions options = SearchOptions.readSearchOptions(
+			reader(body(get(album, ImageServlet.SEARCH_OPTIONS_TYPE, SharingFixture.ALICE))));
+		List<String> labels = new ArrayList<>();
+		options.getLabels().forEach(label -> labels.add(label.getName()));
+		assertEquals("The options are the album's own.", Arrays.asList("Holiday"), labels);
+	}
+
 	public void testASavedSearchAtTheRootAndInAFolder() throws Exception {
 		createSearch("/AP", and(person(_anne), person(_philipp)));
 		createSearch("/Family/AP", and(person(_anne), person(_philipp)));

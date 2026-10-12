@@ -195,6 +195,12 @@ class AlbumContent extends StatefulWidget {
   /// #243); `null` in an album.
   final Future<void> Function(List<String> names)? collectSelected;
 
+  /// Shown above the photographs and scrolled away with them, below the
+  /// title row the floating controls stand in: the criteria of the search
+  /// view, which would otherwise take a phone's screen (issue #248); `null`
+  /// in an album.
+  final Widget? header;
+
   const AlbumContent(
     this.albumState,
     this.album,
@@ -204,6 +210,7 @@ class AlbumContent extends StatefulWidget {
     this.onSelectModeChanged,
     this.downloadSelected,
     this.collectSelected,
+    this.header,
   });
 
   @override
@@ -219,8 +226,16 @@ class AlbumContentState extends State<AlbumContent>
   /// It lives with the router, not with this widget, so that a trip into an
   /// image or into the alternatives of a group and back finds the album still
   /// being edited, see [AlbumEditSession].
+  ///
+  /// The results of the search view have a session of their own: the search
+  /// of an album (issue #249) stands on the album's path, and what is selected
+  /// among the results is no selection of the album beneath.
   AlbumEditSession get session =>
-      widget.albumState.navigator.delegate.editSession(widget.albumState.path);
+      widget.albumState.navigator.delegate.editSession(
+        isSearchView
+            ? [...widget.albumState.path, searchSegment]
+            : widget.albumState.path,
+      );
 
   /// Whether the album is being edited *and* shown as its owner.
   ///
@@ -2299,18 +2314,19 @@ class AlbumContentState extends State<AlbumContent>
         ...albumMenu(context),
       ];
 
-  /// Whether the search of the folder this album lies in is offered (issue
-  /// #243): under the rule of a folder's app bar — to a member of the space
-  /// or an editor, never inside a link — and not on a saved search, which is
-  /// a search of its own, nor on the results of the search view.
+  /// Whether the search of this album is offered (issue #243): under the
+  /// rule of a folder's app bar — to a member of the space or an editor,
+  /// never inside a link — and not on a saved search, which is a search of
+  /// its own, nor on the results of the search view.
   bool get maySearch =>
       share == null &&
       !isSearchView &&
       !isSearch(widget.album) &&
       (_permission.named || rights.mayEdit);
 
-  /// The search of the folder this album lies in, so that it looks across
-  /// the album's siblings, see [maySearch].
+  /// The search of this album, see [maySearch]: it finds the album's own
+  /// photographs alone (issue #249), and the search view offers to widen it
+  /// to the whole library.
   List<Widget> searchAction() => [
         if (maySearch)
           IconButton(
@@ -2318,7 +2334,7 @@ class AlbumContentState extends State<AlbumContent>
             icon: const Icon(Icons.search),
             tooltip: _l10n.searchAction,
             onPressed: () => widget.albumState.navigator
-                .go(SearchRoute(searchScopeOf(widget.albumState.path))),
+                .go(SearchRoute(widget.albumState.path)),
           ),
       ];
 
@@ -3078,6 +3094,12 @@ class AlbumContentState extends State<AlbumContent>
         result.add(SliverToBoxAdapter(child: chips));
       }
     }
+    // What the page above puts over the photographs, scrolling with them —
+    // the criteria of the search view (issue #248).
+    var header = widget.header;
+    if (header != null) {
+      result.add(SliverToBoxAdapter(child: header));
+    }
     // An album the server has not read yet says so (issue #253): an empty
     // page would look like an empty album, and one missing its newest photos
     // like an album without them. It is asked for again meanwhile, see
@@ -3568,6 +3590,40 @@ class ContentWidgetBuilder implements layouter.ContentVisitor<Widget, RowBox> {
   }
 }
 
+/// The room between the caption tooltip of a tile and the tile's edges, see
+/// [tileCaptionPosition].
+const double tileCaptionInset = 4;
+
+/// The width the caption tooltip of a narrow tile may take beyond the tile,
+/// so that it is not wrapped into a column of single words.
+const double tileCaptionMinWidth = 160;
+
+/// Where the caption tooltip of a tile is shown (issue #247): inside the
+/// tile, on its bottom edge with [tileCaptionInset] to spare, centred on it —
+/// not below the tile's middle, where a tooltip goes by default and covers
+/// what the picture shows. A caption taller than the tile starts at its top,
+/// and the overlay keeps it all: a tile cut off by the screen's edge shows it
+/// at that edge.
+Offset tileCaptionPosition(TooltipPositionContext context) {
+  var tile = Rect.fromCenter(
+    center: context.target,
+    width: context.targetSize.width,
+    height: context.targetSize.height,
+  );
+  var size = context.tooltipSize;
+  var x = tile.center.dx - size.width / 2;
+  var y = max(
+    tile.top + tileCaptionInset,
+    tile.bottom - tileCaptionInset - size.height,
+  );
+  var overlay = context.overlaySize;
+  if (overlay.isFinite) {
+    x = x.clamp(0.0, max(0.0, overlay.width - size.width));
+    y = y.clamp(0.0, max(0.0, overlay.height - size.height));
+  }
+  return Offset(x, y);
+}
+
 class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
   final AlbumContentState state;
   final double width, height;
@@ -3663,6 +3719,10 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
   /// would take that gesture, so it is [TooltipTriggerMode.manual]. Here,
   /// where the viewing and the editing tile both build their picture, so that
   /// both behave alike.
+  ///
+  /// It is shown inside the tile on its bottom edge (issue #247), see
+  /// [tileCaptionPosition], no wider than the tile where the tile leaves room
+  /// for a few words a line.
   Widget imageThumbnail(ImagePart image) {
     var thumbnail = _imageThumbnail(image);
     var caption = captionOf(image, state.widget.album);
@@ -3674,6 +3734,10 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
       message: caption.text,
       triggerMode: TooltipTriggerMode.manual,
       waitDuration: const Duration(milliseconds: 500),
+      constraints: BoxConstraints(
+        maxWidth: max(width - 2 * tileCaptionInset, tileCaptionMinWidth),
+      ),
+      positionDelegate: tileCaptionPosition,
       child: thumbnail,
     );
   }

@@ -3888,6 +3888,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get searchAnyOf => 'Any of these';
 
   @override
+  String searchScope(String scope) {
+    return 'In: $scope';
+  }
+
+  @override
+  String get searchEverywhere => 'Search the whole library';
+
+  @override
   String get searchExclude => 'Exclude';
 
   @override
