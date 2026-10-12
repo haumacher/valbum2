@@ -3,7 +3,6 @@
 /// its title; widening keeps the criteria, and the browser's Back returns to the album.
 library;
 
-import 'package:flutter/material.dart' hide Orientation;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:valbum_ui/main.dart';
