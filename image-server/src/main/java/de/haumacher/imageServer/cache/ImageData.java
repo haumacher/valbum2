@@ -171,8 +171,25 @@ public class ImageData extends ImagePart {
 	 *        {@link de.haumacher.imageServer.auth.SpaceStore.Config#getZone()}: where a photograph
 	 *        says neither its offset nor a GPS time, its wall clock is read in this zone, and so is
 	 *        a date in a file name (issue #183).
+	 * @throws ImageProcessingException
+	 *         Where the file is of no format read here, or its metadata cannot be read for whatever
+	 *         reason &mdash; also where a reader fails unexpectedly: this method throws no
+	 *         {@link RuntimeException} for a file it cannot read, so the compiler makes every caller
+	 *         decide what one unreadable file means, see issue #252.
 	 */
 	public static ImageData analyze(AlbumInfo album, File file, Analysis more, ZoneId zone)
+			throws ImageProcessingException, IOException, MetadataException {
+		try {
+			return analyzeFile(album, file, more, zone);
+		} catch (RuntimeException ex) {
+			// One file that cannot be read never fails more than itself (issue #252): whatever a
+			// reader of the file stumbles over is said as the checked failure every caller already
+			// handles by skipping the file.
+			throw new ImageProcessingException("Cannot read '" + file.getName() + "': " + ex, ex);
+		}
+	}
+
+	private static ImageData analyzeFile(AlbumInfo album, File file, Analysis more, ZoneId zone)
 			throws ImageProcessingException, IOException, MetadataException {
 		ImageData result = new ImageData(album, file, file.getName());
 
@@ -186,7 +203,54 @@ public class ImageData extends ImagePart {
 		if (VideoProbe.handles(file.getName())) {
 			return analyzeProbed(result, file, zone == null ? ZoneId.systemDefault() : zone);
 		}
+		if (de.haumacher.imageServer.PreviewCache.isVideoName(file.getName())) {
+			try {
+				return analyzeRead(result, file, more, zone);
+			} catch (ImageProcessingException | IOException | MetadataException | RuntimeException ex) {
+				return probeInstead(album, file, zone == null ? ZoneId.systemDefault() : zone, ex);
+			}
+		}
+		return analyzeRead(result, file, more, zone);
+	}
 
+	/**
+	 * Reads a video metadata-extractor could not read through FFmpeg after all, see issue #252.
+	 *
+	 * <p>
+	 * metadata-extractor gives up on an mp4 over 4 GiB, whose <code>mdat</code> says its size in a
+	 * 64-bit <code>largesize</code> header (&quot;Box size too large&quot;), and so finds no video
+	 * track in it &mdash; a phone records such a file in a few minutes. FFmpeg reads it, at the cost
+	 * of opening the container, so it is asked only where metadata-extractor failed, and the video
+	 * is described as one of {@link VideoProbe#EXTENSIONS} is, see
+	 * {@link #analyzeProbed(ImageData, File, ZoneId)}: its size and rotation, and its date from the
+	 * container's <code>creation_time</code>, then its name, then its modification time.
+	 * </p>
+	 *
+	 * @param failure
+	 *        Why metadata-extractor could not read it; thrown, with FFmpeg's reason, if FFmpeg
+	 *        cannot read it either.
+	 */
+	private static ImageData probeInstead(AlbumInfo album, File file, ZoneId zone, Exception failure)
+			throws ImageProcessingException {
+		try {
+			ImageData result = analyzeProbed(new ImageData(album, file, file.getName()), file, zone);
+			if ("mov".equals(de.haumacher.util.servlet.Util.suffix(file.getName()))) {
+				// As metadata-extractor would have said it, see #readMetadata(File).
+				result.setKind(ImageKind.QUICKTIME);
+			}
+			LOG.info("Read '" + file + "' through FFmpeg, metadata-extractor cannot: " + failure.getMessage());
+			return result;
+		} catch (IOException | RuntimeException ex) {
+			ImageProcessingException unreadable = new ImageProcessingException(
+				failure.getMessage() + " (FFmpeg: " + ex.getMessage() + ")", failure);
+			unreadable.addSuppressed(ex);
+			throw unreadable;
+		}
+	}
+
+	/** Reads a file of a format metadata-extractor reads: a JPEG, PNG, WebP, GIF, MOV or MP4. */
+	private static ImageData analyzeRead(ImageData result, File file, Analysis more, ZoneId zone)
+			throws ImageProcessingException, IOException, MetadataException {
 		Metadata metadata = readMetadata(file);
 		result.setDate(result.date(metadata, file, zone == null ? ZoneId.systemDefault() : zone).getTime());
 		result.setCamera(camera(metadata));
@@ -270,7 +334,7 @@ public class ImageData extends ImagePart {
 						mp4VideoDirectory.getInt(Mp4VideoDirectory.TAG_HEIGHT));
 					return result;
 				} catch (MetadataException ex) {
-					throw new IllegalArgumentException("Cannot get MP4 meta data: " + file);
+					throw new ImageProcessingException("Cannot get MP4 meta data: " + file, ex);
 				}
 			}
 		}
@@ -286,7 +350,7 @@ public class ImageData extends ImagePart {
 			}
 		}
 
-		throw new IllegalArgumentException("Neither JPG, PNG, WebP, GIF, MOV, nor MP4 file: " + file);
+		throw new ImageProcessingException("Neither JPG, PNG, WebP, GIF, MOV, nor MP4 file: " + file);
 	}
 
 	/** The EXIF orientation code the given metadata say, <code>1</code> where they say none. */

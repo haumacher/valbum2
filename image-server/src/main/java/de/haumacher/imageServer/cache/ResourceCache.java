@@ -157,6 +157,26 @@ public class ResourceCache {
 		}
 	}
 
+	/**
+	 * Hears of a file that is left out of its album because it cannot be read, see
+	 * {@link ResourceCache#setRefusals(Refusals)} and issue #252.
+	 */
+	public interface Refusals {
+
+		/** Hears nothing. */
+		Refusals NONE = (folder, reason) -> {
+			// The log says it.
+		};
+
+		/**
+		 * The given folder holds a file that was left out of it.
+		 *
+		 * @param reason
+		 *        The file's name and why it cannot be read, <code>"name: reason"</code>.
+		 */
+		void refused(File folder, String reason);
+	}
+
 	/** Tells the given observer about every folder any cache notices from now on. */
 	public static void addObserver(FolderObserver observer) {
 		OBSERVERS.add(observer);
@@ -341,6 +361,14 @@ public class ResourceCache {
 	public void setPlaces(de.haumacher.imageServer.places.Places places) {
 		_loader.setPlaces(places);
 		_cache.invalidateAll();
+	}
+
+	/**
+	 * Who hears of a file that is left out of its album because it cannot be read, see issue #252;
+	 * <code>null</code> (the default) for nobody but the log.
+	 */
+	public void setRefusals(Refusals refusals) {
+		_loader.setRefusals(refusals);
 	}
 
 	/** The gazetteer the places come from, <code>null</code> for none. */
@@ -648,9 +676,53 @@ public class ResourceCache {
 		 */
 		private final Map<PathInfo, Long> _placesPending = new java.util.concurrent.ConcurrentHashMap<>();
 
+		/** Who hears of a file left out of its album, see {@link #skipped(File, File, Exception)}. */
+		private volatile Refusals _refusals = Refusals.NONE;
+
+		/**
+		 * The files left out of their albums, by absolute path, with the state (modification time
+		 * and length) they were said in, see {@link #skipped(File, File, Exception)}.
+		 */
+		private final Map<String, String> _skipped = new java.util.concurrent.ConcurrentHashMap<>();
+
 		void setPlaces(de.haumacher.imageServer.places.Places places) {
 			_places = places;
 			_placesPending.clear();
+		}
+
+		void setRefusals(Refusals refusals) {
+			_refusals = refusals == null ? Refusals.NONE : refusals;
+		}
+
+		/**
+		 * Says that the given file of the given album was left out because it cannot be read, see
+		 * issue #252: in the log and to the {@link Refusals}, once per state of the file.
+		 *
+		 * <p>
+		 * The album of such a file is read again whenever it changes or drops out of the cache, and
+		 * the file is tried again each time (it is never stored, so that a later build that can read
+		 * it does). The same file in the same state is said once; afterwards only at
+		 * {@link Level#FINE}.
+		 * </p>
+		 */
+		void skipped(File dir, File file, Exception ex) {
+			String stamp = file.lastModified() + "/" + file.length();
+			String before = _skipped.put(file.getAbsolutePath(), stamp);
+			if (stamp.equals(before)) {
+				LOG.log(Level.FINE, "Still cannot read '" + file + "': " + ex.getMessage(), ex);
+				return;
+			}
+			LOG.log(Level.WARNING, "Cannot read '" + file + "', left out of its album: " + ex.getMessage(), ex);
+			try {
+				_refusals.refused(dir, file.getName() + ": " + reason(ex));
+			} catch (RuntimeException failure) {
+				LOG.log(Level.WARNING, "Cannot report '" + file + "': " + failure.getMessage(), failure);
+			}
+		}
+
+		private static String reason(Exception ex) {
+			String message = ex.getMessage();
+			return message == null || message.isEmpty() ? ex.getClass().getSimpleName() : message;
 		}
 
 		de.haumacher.imageServer.places.Places places() {
@@ -1118,7 +1190,48 @@ public class ResourceCache {
 			return listing;
 		}
 
-		private static FolderInfo loadFolderInfo(File folder) {
+		/**
+		 * The tile of the given folder in the listing above it.
+		 *
+		 * <p>
+		 * One broken folder never fails the listing it stands in (issue #252): where the tile
+		 * cannot be built for whatever reason, the folder is shown all the same, by its name, see
+		 * {@link #nameOnly(File)}.
+		 * </p>
+		 */
+		static FolderInfo loadFolderInfo(File folder) {
+			try {
+				return describeFolder(folder);
+			} catch (RuntimeException ex) {
+				LOG.log(Level.WARNING, "Cannot describe the folder '" + folder + "', shown by its name: "
+					+ ex.getMessage(), ex);
+				return nameOnly(folder);
+			}
+		}
+
+		/**
+		 * The tile of a folder that could not be described: its name as its title, as for a folder
+		 * without a sidecar, its kind by the files it holds, and nothing that would have to be read
+		 * out of a file.
+		 */
+		private static FolderInfo nameOnly(File folder) {
+			String folderName = folder.getName();
+			FolderInfo folderInfo = FolderInfo.create();
+			folderInfo.setName(folderName);
+			try {
+				folderInfo.setEffectiveDate(AlbumDate.ofFolder(null, folderName).millis());
+				File[] images = folder.listFiles(IMAGES);
+				folderInfo.setKind(images != null && images.length > 0 ? FolderKind.ALBUM : FolderKind.FOLDER);
+				titleFromName(folderInfo, folderName, null);
+			} catch (RuntimeException ex) {
+				LOG.log(Level.WARNING, "Cannot read even the name of the folder '" + folder + "': "
+					+ ex.getMessage(), ex);
+				folderInfo.setTitle(folderName);
+			}
+			return folderInfo;
+		}
+
+		private static FolderInfo describeFolder(File folder) {
 			String folderName = folder.getName();
 
 			FolderInfo folderInfo = FolderInfo.create();
@@ -1217,26 +1330,34 @@ public class ResourceCache {
 					imageData = null;
 				}
 
-				Matcher matcher = DATE_PATTERN.matcher(folderName);
-				if (matcher.find()) {
-					int year = Integer.parseInt(matcher.group(1));
-					int month = Integer.parseInt(matcher.group(2));
-					int day = Integer.parseInt(matcher.group(3));
-
-					folderInfo.setSubTitle(dateString(year, month, day));
-					folderName = removeMatch(folderName, matcher);
-				} else {
-					if (imageData != null) {
-						long imageDate = imageData.getDate();
-						if (imageDate > 0L) {
-							Date date = new Date(imageDate);
-							folderInfo.setSubTitle(formatDate(date));
-						}
-					}
-				}
-				folderInfo.setTitle(fromTechnicalName(folderName));
+				titleFromName(folderInfo, folderName, imageData);
 			}
 			return folderInfo;
+		}
+
+		/**
+		 * The title and subtitle of the tile of a folder without a sidecar: the name, a date in it
+		 * as the subtitle, else the date of the given picture, if any.
+		 */
+		private static void titleFromName(FolderInfo folderInfo, String folderName, ImageData imageData) {
+			Matcher matcher = DATE_PATTERN.matcher(folderName);
+			if (matcher.find()) {
+				int year = Integer.parseInt(matcher.group(1));
+				int month = Integer.parseInt(matcher.group(2));
+				int day = Integer.parseInt(matcher.group(3));
+
+				folderInfo.setSubTitle(dateString(year, month, day));
+				folderName = removeMatch(folderName, matcher);
+			} else {
+				if (imageData != null) {
+					long imageDate = imageData.getDate();
+					if (imageDate > 0L) {
+						Date date = new Date(imageDate);
+						folderInfo.setSubTitle(formatDate(date));
+					}
+				}
+			}
+			folderInfo.setTitle(fromTechnicalName(folderName));
 		}
 
 		/**
@@ -1301,10 +1422,14 @@ public class ResourceCache {
 			return Character.toUpperCase(expanded.charAt(0)) + expanded.substring(1);
 		}
 
-		private static AlbumInfo loadAlbum(AlbumInfo album, File dir, File[] files, ImageData.Analysis analysis,
+		private AlbumInfo loadAlbum(AlbumInfo album, File dir, File[] files, ImageData.Analysis analysis,
 				ZoneId zone) {
 			// Update early to be able to match new images against existing image.
 			UpdateTransient.updateTransient(album);
+
+			// The files that cannot be read, with why: left out of the album and out of its sidecar,
+			// so that a later build that can read one analyses it afresh, see issue #252.
+			Map<File, Exception> unreadable = new java.util.LinkedHashMap<>();
 
 			// A raw and the JPEG of its name are one photograph, see issue #191: what the sidecar
 			// says about them is made true to the files before anything new is analysed.
@@ -1312,7 +1437,7 @@ public class ResourceCache {
 				try {
 					return ImageData.analyze(album, file, analysis, zone);
 				} catch (IOException | ImageProcessingException | MetadataException | RuntimeException ex) {
-					LOG.log(Level.WARNING, "Cannot access '" + file + "': " + ex.getMessage(), ex);
+					unreadable.put(file, ex);
 					return null;
 				}
 			});
@@ -1333,7 +1458,7 @@ public class ResourceCache {
 					// face import of issue #129 run exactly once per photograph.
 					image = ImageData.analyze(album, file, analysis, zone);
 				} catch (IOException | ImageProcessingException | MetadataException ex) {
-					LOG.log(Level.WARNING, "Cannot access '" + file + "': " + ex.getMessage(), ex);
+					unreadable.put(file, ex);
 					continue;
 				}
 				image.setRaw(pairs.rawFor(name));
@@ -1345,6 +1470,10 @@ public class ResourceCache {
 			Contributors.applyLinkLimits(newImages, dir);
 
 			AlbumUtil.insertSorted(album, newImages);
+
+			for (Map.Entry<File, Exception> entry : unreadable.entrySet()) {
+				skipped(dir, entry.getKey(), entry.getValue());
+			}
 
 			return album;
 		}

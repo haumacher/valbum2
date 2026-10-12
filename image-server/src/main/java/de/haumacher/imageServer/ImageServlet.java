@@ -878,6 +878,9 @@ public class ImageServlet extends HttpServlet {
 		_privacy = new PrivacyFilter(_cache);
 		_auth = auth;
 		_index = new HashIndex(_basePath);
+		// A file left out of its album because it cannot be read is named in the status of the
+		// background work, see issue #252.
+		_cache.setRefusals((folder, reason) -> _index.pipeline().reportFailure(folder, reason));
 		_collections = new PhotoCollections(_basePath, _index);
 		_faces = new FaceIndex(_basePath, facesEnabled);
 		_reanalysis = new Reanalysis(_cache, _space.isEmpty() ? basePath.getName() : _space);
