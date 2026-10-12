@@ -145,6 +145,16 @@ public class ResourceCache {
 		 *        (the folders inside it are watched by nobody yet), or a watcher that lost events.
 		 */
 		void folderNoticed(File folder, boolean tree);
+
+		/**
+		 * A watch reported that a photograph in the given folder was created or changed &mdash;
+		 * including a change of its permissions or owner only, which the watch reports as a change
+		 * as well (<code>IN_ATTRIB</code> on Linux): unlike {@link #folderNoticed(File, boolean)},
+		 * never just a folder that was loaded.
+		 */
+		default void folderChanged(File folder) {
+			folderNoticed(folder, false);
+		}
 	}
 
 	/** Tells the given observer about every folder any cache notices from now on. */
@@ -161,6 +171,16 @@ public class ResourceCache {
 		for (FolderObserver observer : OBSERVERS) {
 			try {
 				observer.folderNoticed(folder, tree);
+			} catch (RuntimeException ex) {
+				Loader.LOG.log(Level.WARNING, "An observer failed on '" + folder + "': " + ex.getMessage(), ex);
+			}
+		}
+	}
+
+	static void changed(File folder) {
+		for (FolderObserver observer : OBSERVERS) {
+			try {
+				observer.folderChanged(folder);
 			} catch (RuntimeException ex) {
 				Loader.LOG.log(Level.WARNING, "An observer failed on '" + folder + "': " + ex.getMessage(), ex);
 			}
@@ -884,7 +904,7 @@ public class ResourceCache {
 					notice(child, true);
 				} else if (!changed && ACCEPTED.contains(Util.suffix(child.getName()))) {
 					changed = true;
-					notice(dir, false);
+					changed(dir);
 				}
 			}
 

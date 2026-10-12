@@ -35,6 +35,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -44,6 +45,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.LongSupplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -114,9 +116,22 @@ import java.util.logging.Logger;
  * <p>
  * A step that {@link Step#trustsRecord() trusts} that record is skipped for a folder whose
  * fingerprint is unchanged; hashing does not, its own check against the sidecar is as cheap and is
- * the truth. A step that failed, or could not store its result because the folder is not writable
- * ({@link ReadOnlyFolders}), is not run again for that folder in this process until its fingerprint
- * changes: retried later, never in a loop.
+ * the truth. A step that could not store its result because the folder is not writable
+ * ({@link ReadOnlyFolders}) is not run again for that folder in this process until its fingerprint
+ * changes. A step that failed is not run again until its fingerprint changes or a back-off is over
+ * (issue #251): a permission fixed with <code>chmod</code> changes no fingerprint, and must not wait
+ * for a restart. The back-off starts at {@link #RETRY_MILLIS} and doubles with every failure in a row
+ * up to {@link #MAX_RETRY_MILLIS}, so a folder that stays unreadable costs one attempt an hour; a
+ * repeated failure is logged quietly. A watch reporting a change in the folder (also of permissions
+ * only, see {@link ResourceCache.FolderObserver#folderChanged(File)}) ends the back-off at once.
+ * </p>
+ *
+ * <p>
+ * The {@link Status#getFailure() failure} the status shows describes the present: the most recent
+ * one that is still outstanding. A failure is outstanding until the step that reported it does its
+ * work again on the folder it ran on (or redoes the same unit) without reporting it again, or the
+ * folder is gone; a success elsewhere clears nothing, and a folder that waits for its back-off still
+ * counts as failed. At most {@link #MAX_OUTSTANDING} are remembered, the most recent.
  * </p>
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
@@ -192,6 +207,12 @@ public class FolderPipeline {
 		 */
 		AGAIN
 	}
+
+	/** How long a step that failed waits before it is run again on unchanged contents, at first. */
+	public static final long RETRY_MILLIS = 2 * 60_000;
+
+	/** How long a step that keeps failing waits at most, see {@link #RETRY_MILLIS}. */
+	public static final long MAX_RETRY_MILLIS = 60 * 60_000;
 
 	/** How long the units wait after one was put aside, see {@link Outcome#AGAIN}. */
 	public static final long AGAIN_MILLIS = 1000;
@@ -328,12 +349,12 @@ public class FolderPipeline {
 			return _videos;
 		}
 
-		/** Why the last step that failed failed, <code>null</code> if none did. */
+		/** Why the most recent failure that is still outstanding failed, <code>null</code> if none is. */
 		public String getFailure() {
 			return _failure;
 		}
 
-		/** Where the last step that failed failed, relative to the space root. */
+		/** Where that failure is, relative to the space root. */
 		public String getFailureFolder() {
 			return _failureFolder;
 		}
@@ -360,6 +381,82 @@ public class FolderPipeline {
 		}
 	}
 
+	/**
+	 * Why a step is not run again on a folder while its fingerprint is the given one, see
+	 * {@link FolderPipeline#_skipped}.
+	 */
+	private static final class Skip {
+
+		final String _fingerprint;
+
+		final Outcome _outcome;
+
+		/** How many times in a row the step failed here, see {@link FolderPipeline#retryDelay(int)}. */
+		final int _count;
+
+		/** The failures, to tell a repeated one, which is logged quietly. */
+		final Set<String> _reasons;
+
+		/** From when a {@link Outcome#FAILED} step is run again. */
+		volatile long _retryAt;
+
+		/** Whether the folder was noticed again for the retry already. */
+		volatile boolean _retrying;
+
+		Skip(String fingerprint, Outcome outcome, int count, Set<String> reasons, long retryAt) {
+			_fingerprint = fingerprint;
+			_outcome = outcome;
+			_count = count;
+			_reasons = reasons;
+			_retryAt = retryAt;
+		}
+
+		/** Whether the step is still not to run on the given contents at the given time. */
+		boolean holds(String fingerprint, long now) {
+			return _fingerprint.equals(fingerprint) && (_outcome != Outcome.FAILED || now < _retryAt);
+		}
+	}
+
+	/** A failure that is still outstanding, see {@link FolderPipeline#_outstanding}. */
+	private static final class Failure {
+
+		/** Where it failed, relative to the space root, as the status says it. */
+		final String _folder;
+
+		final String _reason;
+
+		/** The step that ran, <code>null</code> if none did. */
+		final String _step;
+
+		/** The folder the step ran on, <code>null</code> if none ran. */
+		final String _origin;
+
+		/** The unit of a {@link UnitStep} that failed, <code>null</code> for a step of a whole folder. */
+		final String _unit;
+
+		/** When it was reported, in the order of all failures. */
+		final long _seq;
+
+		Failure(String folder, String reason, String step, String origin, String unit, long seq) {
+			_folder = folder;
+			_reason = reason;
+			_step = step;
+			_origin = origin;
+			_unit = unit;
+			_seq = seq;
+		}
+
+		/** The same failure reported again replaces the one before. */
+		String key() {
+			return _step + "\u0000" + _origin + "\u0000" + _unit + "\u0000" + _folder + "\u0000" + _reason;
+		}
+
+		/** Whether it was reported by the given step on the given folder (and unit). */
+		boolean of(String step, String origin, String unit) {
+			return step.equals(_step) && origin.equals(_origin) && Objects.equals(unit, _unit);
+		}
+	}
+
 	/** The units of one {@link UnitStep} waiting to run in one folder. */
 	private static final class Units {
 
@@ -376,6 +473,9 @@ public class FolderPipeline {
 		boolean _failed;
 
 		boolean _unwritable;
+
+		/** Why units failed in this pass, see {@link Skip#_reasons}. */
+		final Set<String> _reasons = new LinkedHashSet<>();
 
 		Units(File folder, String path, String fingerprint, UnitStep step, Deque<String> units) {
 			_folder = folder;
@@ -417,10 +517,17 @@ public class FolderPipeline {
 	private final Map<String, Record> _records = new LinkedHashMap<>();
 
 	/**
-	 * Folders and steps not to run again while the fingerprint is the given one, by step + "\n" +
-	 * path, as the fingerprint, a space and the {@link Outcome} that put it here.
+	 * Folders and steps not to run again while the fingerprint is the given one (a failed one: until
+	 * its back-off is over), by step + "\n" + path.
 	 */
-	private final Map<String, String> _skipped = new ConcurrentHashMap<>();
+	private final Map<String, Skip> _skipped = new ConcurrentHashMap<>();
+
+	private volatile long _retryMillis = RETRY_MILLIS;
+
+	private volatile long _maxRetryMillis = MAX_RETRY_MILLIS;
+
+	/** The clock of the back-off, see {@link #RETRY_MILLIS}. */
+	private volatile LongSupplier _clock = System::currentTimeMillis;
 
 	/** Guarded by this. */
 	private final Map<String, Pending> _pending = new LinkedHashMap<>();
@@ -457,11 +564,37 @@ public class FolderPipeline {
 
 	private volatile String _currentFolder;
 
-	private volatile String _failure;
+	/**
+	 * How many outstanding failures are remembered at most, see {@link #_outstanding}: a library with
+	 * thousands of broken files keeps the most recent ones, and the oldest are forgotten.
+	 */
+	public static final int MAX_OUTSTANDING = 1000;
 
-	private volatile String _failureFolder;
+	/**
+	 * The failures that are still true as far as is known, the most recent last, see
+	 * {@link Status#getFailure()}; by {@link Failure#key()}. Guarded by this.
+	 */
+	private final Map<String, Failure> _outstanding = new LinkedHashMap<>() {
+		@Override
+		protected boolean removeEldestEntry(Map.Entry<String, Failure> eldest) {
+			return size() > MAX_OUTSTANDING;
+		}
+	};
 
-	private final ResourceCache.FolderObserver _observer = this::notice;
+	/** How many failures were reported, the sequence of {@link Failure#_seq}; guarded by this. */
+	private long _failures;
+
+	private final ResourceCache.FolderObserver _observer = new ResourceCache.FolderObserver() {
+		@Override
+		public void folderNoticed(File folder, boolean tree) {
+			notice(folder, tree);
+		}
+
+		@Override
+		public void folderChanged(File folder) {
+			changed(folder);
+		}
+	};
 
 	/**
 	 * Creates the pipeline of the given space and reads its progress file; nothing runs until
@@ -503,6 +636,29 @@ public class FolderPipeline {
 	/** Sets the quiet period, for the tests. */
 	public void setQuietMillis(long millis) {
 		_quietMillis = millis;
+	}
+
+	/**
+	 * Sets how long a step that failed waits first and at most before it runs again, see
+	 * {@link #RETRY_MILLIS}; for the tests.
+	 */
+	public void setRetryMillis(long first, long max) {
+		_retryMillis = first;
+		_maxRetryMillis = max;
+	}
+
+	/** Replaces the clock of the back-off, see {@link #RETRY_MILLIS}; for the tests. */
+	void setClock(LongSupplier clock) {
+		_clock = clock;
+	}
+
+	/** How long a step waits after the given number of failures in a row. */
+	long retryDelay(int count) {
+		long result = Math.max(1, _retryMillis);
+		for (int n = 1; n < count && result < _maxRetryMillis; n++) {
+			result *= 2;
+		}
+		return Math.min(result, _maxRetryMillis);
 	}
 
 	/** The file the progress is recorded in. */
@@ -771,9 +927,58 @@ public class FolderPipeline {
 			}
 		}
 		_seen = now;
+		if (!baseline) {
+			retryDue();
+		}
 		synchronized (this) {
 			persist(false);
 		}
+	}
+
+	/**
+	 * Notices the folders with a step whose back-off after a failure is over, see
+	 * {@link #RETRY_MILLIS}; each once per back-off. Called by the sweep.
+	 */
+	void retryDue() {
+		long now = _clock.getAsLong();
+		Set<String> paths = new LinkedHashSet<>();
+		for (Map.Entry<String, Skip> entry : _skipped.entrySet()) {
+			Skip skip = entry.getValue();
+			if (skip._outcome == Outcome.FAILED && !skip._retrying && now >= skip._retryAt) {
+				skip._retrying = true;
+				paths.add(pathOf(entry.getKey()));
+			}
+		}
+		for (String path : paths) {
+			LOG.fine("Retrying the background work of '" + path + "' after a failure.");
+			notice(path.isEmpty() ? _root.toFile() : _root.resolve(path).toFile(), false);
+		}
+	}
+
+	/** The folder path of a key of {@link #_skipped} or {@link #_unitQueue}. */
+	private static String pathOf(String key) {
+		return key.substring(key.indexOf('\n') + 1);
+	}
+
+	/**
+	 * Ends the back-off of the steps that failed on the given folder, and notices it: a watch saw a
+	 * photograph in it change, maybe just its permissions, see
+	 * {@link ResourceCache.FolderObserver#folderChanged(File)}.
+	 */
+	public void changed(File folder) {
+		String path = relative(folder);
+		if (path == null) {
+			return;
+		}
+		long now = _clock.getAsLong();
+		for (Map.Entry<String, Skip> entry : _skipped.entrySet()) {
+			Skip skip = entry.getValue();
+			if (skip._outcome == Outcome.FAILED && pathOf(entry.getKey()).equals(path)) {
+				skip._retryAt = Math.min(skip._retryAt, now);
+				skip._retrying = true;
+			}
+		}
+		notice(folder, false);
 	}
 
 	private static String parentOf(String path) {
@@ -794,11 +999,9 @@ public class FolderPipeline {
 		_known.remove(path);
 		_settled.remove(path);
 		_unitQueue.values().removeIf(work -> work._path.equals(path));
-		_skipped.keySet().removeIf(key -> key.endsWith("\n" + path));
-		if (path.equals(_failureFolder)) {
-			_failure = null;
-			_failureFolder = null;
-		}
+		_skipped.keySet().removeIf(key -> pathOf(key).equals(path));
+		_outstanding.values()
+			.removeIf(failure -> path.equals(failure._folder) || path.equals(failure._origin));
 	}
 
 	// --- Noticing. ---
@@ -970,28 +1173,27 @@ public class FolderPipeline {
 				continue;
 			}
 			String skipKey = name + "\n" + path;
-			String skipped = _skipped.get(skipKey);
-			if (skipped != null && skipped.startsWith(fingerprint)) {
-				// Failed or not storable for exactly these contents in this process already.
+			Skip skipped = _skipped.get(skipKey);
+			if (skipped != null && skipped.holds(fingerprint, _clock.getAsLong())) {
+				// Failed (a moment ago) or not storable for exactly these contents in this process
+				// already.
 				done.remove(name);
-				if (skipped.endsWith(Outcome.FAILED.name())) {
+				if (skipped._outcome == Outcome.FAILED) {
 					stopped = true;
 					break;
 				}
 				continue;
 			}
 			Outcome outcome;
-			boolean threw = false;
+			Exception problem = null;
+			long failures = failures();
 			_currentStep = name;
 			_currentFolder = path;
 			try {
 				outcome = step.run(folder);
 			} catch (IOException | RuntimeException ex) {
-				LOG.log(Level.WARNING, "Step '" + name + "' failed on '" + folder.getAbsolutePath() + "': "
-					+ ex.getMessage(), ex);
 				outcome = Outcome.FAILED;
-				threw = true;
-				failed(path, name + ": " + (ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage()));
+				problem = ex;
 			} finally {
 				_currentStep = null;
 				_currentFolder = null;
@@ -999,6 +1201,7 @@ public class FolderPipeline {
 			if (outcome == Outcome.DONE) {
 				_skipped.remove(skipKey);
 				done.add(name);
+				succeeded(path, name, null, failures);
 				continue;
 			}
 			if (outcome == Outcome.WAITING || outcome == Outcome.AGAIN) {
@@ -1006,14 +1209,24 @@ public class FolderPipeline {
 				done.remove(name);
 				continue;
 			}
-			_skipped.put(skipKey, fingerprint + " " + outcome.name());
 			done.remove(name);
 			if (outcome == Outcome.UNWRITABLE) {
+				_skipped.put(skipKey, new Skip(fingerprint, outcome, 0, Collections.emptySet(), Long.MAX_VALUE));
+				// The step did its work: what it failed for before is no more; that it cannot store it
+				// is said by ReadOnlyFolders.
+				succeeded(path, name, null, failures);
 				ReadOnlyFolders.report(folder, "the results of '" + name + "'");
 				continue;
 			}
-			if (!threw) {
-				failed(path, name + ": " + "failed");
+			String reason = name + ": " + (problem == null ? "failed"
+				: problem.getMessage() == null ? problem.getClass().getSimpleName() : problem.getMessage());
+			Skip skip = failedSkip(skipKey, fingerprint, Collections.singleton(reason));
+			_skipped.put(skipKey, skip);
+			failed(path, reason, name, path, null);
+			if (problem != null) {
+				LOG.log(repeated(skipped, reason) ? Level.FINE : Level.WARNING, "Step '" + name + "' failed on '"
+					+ folder.getAbsolutePath() + "' (tried again in " + minutes(skip) + "): " + problem.getMessage(),
+					problem);
 			}
 			stopped = true;
 			break;
@@ -1048,13 +1261,62 @@ public class FolderPipeline {
 	 */
 	public void reportFailure(File folder, String reason) {
 		String path = relative(folder);
-		failed(path == null ? folder.getAbsolutePath() : path, reason);
+		failed(path == null ? folder.getAbsolutePath() : path, reason, _currentStep, _currentFolder, null);
 	}
 
-	/** Remembers the last failure, for the status. */
-	private void failed(String path, String reason) {
-		_failure = reason;
-		_failureFolder = path;
+	/**
+	 * Remembers a failure as outstanding, the most recent one, for the status.
+	 *
+	 * @param step
+	 *        The step that ran, <code>null</code> if none did.
+	 * @param origin
+	 *        The folder it ran on, which may be another than the given path (a cover is made for the
+	 *        folders above).
+	 * @param unit
+	 *        The unit of a {@link UnitStep} that failed, <code>null</code> for a whole folder.
+	 */
+	private synchronized void failed(String path, String reason, String step, String origin, String unit) {
+		if (unit != null) {
+			// A unit has one outcome: the one before is replaced.
+			_outstanding.values().removeIf(failure -> failure.of(step, origin, unit));
+		}
+		Failure failure = new Failure(path, reason, step, origin, unit, ++_failures);
+		_outstanding.remove(failure.key());
+		_outstanding.put(failure.key(), failure);
+	}
+
+	/** How many failures were reported so far, see {@link #succeeded}. */
+	private synchronized long failures() {
+		return _failures;
+	}
+
+	/**
+	 * The given step did its work on the given folder (or unit): what it reported there before the
+	 * given count was taken is no more. What it reported in this run stands, it is the present.
+	 */
+	private synchronized void succeeded(String origin, String step, String unit, long failures) {
+		_outstanding.values().removeIf(failure -> failure._seq <= failures && failure.of(step, origin, unit));
+	}
+
+	/**
+	 * The record of a step that just failed on the given contents: it is run again after a back-off
+	 * that grows with every failure in a row, see {@link #RETRY_MILLIS}.
+	 */
+	private Skip failedSkip(String key, String fingerprint, Set<String> reasons) {
+		Skip before = _skipped.get(key);
+		int count = before != null && before._outcome == Outcome.FAILED ? before._count + 1 : 1;
+		return new Skip(fingerprint, Outcome.FAILED, count, reasons, _clock.getAsLong() + retryDelay(count));
+	}
+
+	/** Whether the given failure is the one the step failed for last time; logged quietly then. */
+	private static boolean repeated(Skip before, String reason) {
+		return before != null && before._outcome == Outcome.FAILED && before._reasons.contains(reason);
+	}
+
+	/** The back-off of the given record, for the log. */
+	private String minutes(Skip skip) {
+		long millis = Math.max(0, skip._retryAt - _clock.getAsLong());
+		return millis >= 60_000 ? (millis / 60_000) + " min" : (millis / 1000) + " s";
 	}
 
 	/**
@@ -1072,8 +1334,8 @@ public class FolderPipeline {
 			if (step.trustsRecord() && done.contains(name)) {
 				continue;
 			}
-			String skipped = _skipped.get(name + "\n" + path);
-			if (skipped != null && skipped.startsWith(fingerprint)) {
+			Skip skipped = _skipped.get(name + "\n" + path);
+			if (skipped != null && skipped.holds(fingerprint, _clock.getAsLong())) {
 				continue;
 			}
 			UnitStep unitStep = (UnitStep) step;
@@ -1292,16 +1554,14 @@ public class FolderPipeline {
 		}
 		String name = work._step.name();
 		Outcome outcome;
-		String reason = null;
+		Exception problem = null;
 		_currentStep = name;
 		_currentFolder = work._path;
 		try {
 			outcome = work._step.runUnit(work._folder, unit);
 		} catch (IOException | RuntimeException ex) {
-			LOG.log(Level.WARNING, "Step '" + name + "' failed on '" + unit + "' in '"
-				+ work._folder.getAbsolutePath() + "': " + ex.getMessage(), ex);
 			outcome = Outcome.FAILED;
-			reason = ex.getMessage();
+			problem = ex;
 		} finally {
 			_currentStep = null;
 			_currentFolder = null;
@@ -1325,11 +1585,21 @@ public class FolderPipeline {
 						record._units.computeIfAbsent(name, x -> new LinkedHashSet<>()).add(unit);
 						_dirty = true;
 					}
+					succeeded(work._path, name, unit, Long.MAX_VALUE);
 					break;
-				case FAILED:
+				case FAILED: {
 					work._failed = true;
-					failed(work._path, name + ": " + work._step.itemOf(unit) + (reason == null ? "" : ": " + reason));
+					String reason = name + ": " + work._step.itemOf(unit)
+						+ (problem == null || problem.getMessage() == null ? "" : ": " + problem.getMessage());
+					work._reasons.add(reason);
+					failed(work._path, reason, name, work._path, unit);
+					if (problem != null) {
+						LOG.log(repeated(_skipped.get(key), reason) ? Level.FINE : Level.WARNING, "Step '" + name
+							+ "' failed on '" + unit + "' in '" + work._folder.getAbsolutePath() + "': "
+							+ problem.getMessage(), problem);
+					}
 					break;
+				}
 				case UNWRITABLE:
 					work._unwritable = true;
 					work._units.clear();
@@ -1343,8 +1613,9 @@ public class FolderPipeline {
 			if (work._units.isEmpty()) {
 				_unitQueue.remove(key, work);
 				if (work._failed || work._unwritable) {
-					_skipped.put(key, work._fingerprint + " "
-						+ (work._unwritable ? Outcome.UNWRITABLE : Outcome.FAILED).name());
+					_skipped.put(key, work._unwritable
+						? new Skip(work._fingerprint, Outcome.UNWRITABLE, 0, Collections.emptySet(), Long.MAX_VALUE)
+						: failedSkip(key, work._fingerprint, work._reasons));
 				} else if (current && complete(record, work)) {
 					record._done.add(name);
 					record._units.remove(name);
@@ -1379,8 +1650,17 @@ public class FolderPipeline {
 				videos.add(work._path + "/" + work._step.itemOf(unit));
 			}
 		}
-		return new Status(done, _known.size(), _currentStep, _currentFolder, videos.size(), _failure,
-			_failureFolder);
+		Failure last = null;
+		for (Failure failure : _outstanding.values()) {
+			last = failure;
+		}
+		return new Status(done, _known.size(), _currentStep, _currentFolder, videos.size(),
+			last == null ? null : last._reason, last == null ? null : last._folder);
+	}
+
+	/** How many failures are outstanding, see {@link #MAX_OUTSTANDING}; for the tests. */
+	synchronized int outstanding() {
+		return _outstanding.size();
 	}
 
 	/** Whether the given step is recorded as done for the given folder as it is now. */
@@ -1408,7 +1688,7 @@ public class FolderPipeline {
 		if (path != null && _records.remove(path) != null) {
 			_dirty = true;
 		}
-		_skipped.keySet().removeIf(key -> key.endsWith("\n" + path));
+		_skipped.keySet().removeIf(key -> pathOf(key).equals(path));
 	}
 
 	/**

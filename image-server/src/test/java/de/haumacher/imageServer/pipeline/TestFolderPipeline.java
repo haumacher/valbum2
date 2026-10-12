@@ -16,7 +16,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.LongSupplier;
 import java.util.stream.Stream;
 import junit.framework.TestCase;
 
@@ -66,6 +68,8 @@ public class TestFolderPipeline extends TestCase {
 	@Override
 	protected void setUp() throws Exception {
 		super.setUp();
+		// A request another test made a moment ago must not make a sweep give way here.
+		Background.setQuietMillis(0);
 		_root = Files.createTempDirectory("valbum-pipeline");
 		_album = new File(_root.toFile(), "2020/Trip");
 		assertTrue(_album.mkdirs());
@@ -74,6 +78,7 @@ public class TestFolderPipeline extends TestCase {
 
 	@Override
 	protected void tearDown() throws Exception {
+		Background.setQuietMillis(Background.QUIET_MILLIS);
 		try (Stream<Path> files = Files.walk(_root)) {
 			files.sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
 		}
@@ -194,7 +199,7 @@ public class TestFolderPipeline extends TestCase {
 	}
 
 	/** A step of the videos that records its units and answers what it is told to. */
-	private static final class Units implements FolderPipeline.UnitStep {
+	private static class Units implements FolderPipeline.UnitStep {
 
 		final List<String> _log;
 
@@ -360,6 +365,344 @@ public class TestFolderPipeline extends TestCase {
 		} catch (IllegalArgumentException ex) {
 			assertTrue(ex.getMessage(), ex.getMessage().contains("videos"));
 		}
+	}
+
+	/** A step that reads every photograph of a folder, as hashing does. */
+	private static final class Reading implements FolderPipeline.Step {
+
+		final AtomicInteger _runs = new AtomicInteger();
+
+		@Override
+		public String name() {
+			return "read";
+		}
+
+		@Override
+		public boolean trustsRecord() {
+			return false;
+		}
+
+		@Override
+		public FolderPipeline.Outcome run(File folder) throws IOException {
+			if (folder.getName().equals("Trip")) {
+				_runs.incrementAndGet();
+			}
+			File[] files = folder.listFiles(f -> f.isFile() && f.getName().endsWith(".jpg"));
+			Arrays.sort(files);
+			for (File file : files) {
+				Files.readAllBytes(file.toPath());
+			}
+			return FolderPipeline.Outcome.DONE;
+		}
+	}
+
+	/**
+	 * A {@link Counting} step that works on the album only: a started pipeline also works on the
+	 * folders a sweep finds changed, the root among them when the progress file is first written.
+	 */
+	private Counting onAlbum(String name) {
+		return new Counting(name, false) {
+			@Override
+			public FolderPipeline.Outcome run(File folder) throws IOException {
+				return folder.equals(_album) ? super.run(folder) : FolderPipeline.Outcome.DONE;
+			}
+		};
+	}
+
+	/** A clock the test moves. */
+	private static final class Clock implements LongSupplier {
+
+		volatile long _now = 1_000_000;
+
+		@Override
+		public long getAsLong() {
+			return _now;
+		}
+	}
+
+	/** Whether this process can make a file unreadable for itself: not as root, who reads everything. */
+	private static boolean canLock(File file) {
+		assertTrue(file.setReadable(false));
+		boolean result = !file.canRead();
+		assertTrue(file.setReadable(true));
+		return result;
+	}
+
+	public void testAFolderThatCouldNotBeReadIsRetriedAfterItsBackOffAndTheFailureCleared() throws Exception {
+		File locked = new File(_album, "a.jpg");
+		if (!canLock(locked)) {
+			// Running as root: there is no unreadable file.
+			return;
+		}
+		Clock clock = new Clock();
+		FolderPipeline pipeline = new FolderPipeline(_root, "test");
+		pipeline.setClock(clock);
+		pipeline.setRetryMillis(10_000, 80_000);
+		pipeline.setQuietMillis(20);
+		pipeline.setSweepMillis(20);
+		Reading step = new Reading();
+		Counting behind = onAlbum("behind");
+		pipeline.addStep(step);
+		pipeline.addStep(behind);
+		assertTrue(locked.setReadable(false));
+		pipeline.start();
+		try {
+			pipeline.process(_album);
+			assertEquals(1, step._runs.get());
+			assertEquals(0, behind._runs.get());
+			FolderPipeline.Status status = pipeline.status();
+			assertEquals("2020/Trip", status.getFailureFolder());
+			assertTrue(status.getFailure(), status.getFailure().startsWith("read: "));
+
+			// The permissions are fixed: no file name, size or time changes.
+			assertTrue(locked.setReadable(true));
+			Thread.sleep(200);
+			assertTrue(pipeline.awaitIdle(30_000));
+			assertEquals("Not before the back-off is over.", 1, step._runs.get());
+
+			clock._now += 10_000;
+			long end = System.currentTimeMillis() + 30_000;
+			while (behind._runs.get() == 0 && System.currentTimeMillis() < end) {
+				Thread.sleep(20);
+			}
+			assertTrue(pipeline.awaitIdle(30_000));
+			assertEquals("Retried by itself, once.", 2, step._runs.get());
+			assertEquals("And what builds on it runs.", 1, behind._runs.get());
+			status = pipeline.status();
+			assertNull("The failure is no more: " + status.getFailure(), status.getFailure());
+			assertNull(status.getFailureFolder());
+		} finally {
+			locked.setReadable(true);
+			pipeline.shutdown();
+		}
+	}
+
+	public void testAFolderThatKeepsFailingWaitsLongerAndLonger() throws Exception {
+		Clock clock = new Clock();
+		FolderPipeline pipeline = new FolderPipeline(_root, "test");
+		pipeline.setClock(clock);
+		pipeline.setRetryMillis(1000, 4000);
+		Counting step = new Counting("failing", false);
+		step._outcome = FolderPipeline.Outcome.FAILED;
+		pipeline.addStep(step);
+
+		pipeline.process(_album);
+		assertEquals(1, step._runs.get());
+
+		// Back-offs of 1, 2, 4 and (capped) 4 seconds.
+		long[] waits = { 1000, 2000, 4000, 4000 };
+		for (int n = 0; n < waits.length; n++) {
+			clock._now += waits[n] - 1;
+			pipeline.process(_album);
+			assertEquals("Not before the back-off of " + waits[n] + " ms.", n + 1, step._runs.get());
+			clock._now += 1;
+			pipeline.process(_album);
+			assertEquals("After the back-off of " + waits[n] + " ms.", n + 2, step._runs.get());
+			pipeline.process(_album);
+			assertEquals("Once.", n + 2, step._runs.get());
+		}
+
+		// Succeeding ends the series: the next failure waits the first back-off again.
+		step._outcome = FolderPipeline.Outcome.DONE;
+		clock._now += 4000;
+		pipeline.process(_album);
+		assertEquals(6, step._runs.get());
+		assertNull(pipeline.status().getFailure());
+		step._outcome = FolderPipeline.Outcome.FAILED;
+		pipeline.process(_album);
+		assertEquals(7, step._runs.get());
+		clock._now += 1000;
+		pipeline.process(_album);
+		assertEquals(8, step._runs.get());
+	}
+
+	public void testTheSweepRetriesAFailedFolderOnceItsBackOffIsOver() throws Exception {
+		Clock clock = new Clock();
+		FolderPipeline pipeline = new FolderPipeline(_root, "test");
+		pipeline.setClock(clock);
+		pipeline.setRetryMillis(1000, 1000);
+		pipeline.setQuietMillis(20);
+		pipeline.setSweepMillis(20);
+		Counting step = onAlbum("failing");
+		step._outcome = FolderPipeline.Outcome.FAILED;
+		pipeline.addStep(step);
+		pipeline.start();
+		try {
+			pipeline.process(_album);
+			// Many sweeps: none retries before the back-off.
+			Thread.sleep(300);
+			assertTrue(pipeline.awaitIdle(30_000));
+			assertEquals(1, step._runs.get());
+			for (int n = 2; n <= 4; n++) {
+				clock._now += 1000;
+				long end = System.currentTimeMillis() + 30_000;
+				while (step._runs.get() < n && System.currentTimeMillis() < end) {
+					Thread.sleep(20);
+				}
+				Thread.sleep(200);
+				assertTrue(pipeline.awaitIdle(30_000));
+				assertEquals("One retry per back-off, no loop.", n, step._runs.get());
+			}
+		} finally {
+			pipeline.shutdown();
+		}
+	}
+
+	public void testAChangeAWatchReportsEndsTheBackOff() throws Exception {
+		Clock clock = new Clock();
+		FolderPipeline pipeline = new FolderPipeline(_root, "test");
+		pipeline.setClock(clock);
+		pipeline.setQuietMillis(20);
+		Counting step = onAlbum("failing");
+		step._outcome = FolderPipeline.Outcome.FAILED;
+		pipeline.addStep(step);
+		pipeline.start();
+		try {
+			pipeline.process(_album);
+			pipeline.notice(_album, false);
+			assertTrue(pipeline.awaitIdle(30_000));
+			assertEquals("Being looked at again is no reason to retry.", 1, step._runs.get());
+
+			step._outcome = FolderPipeline.Outcome.DONE;
+			pipeline.changed(_album);
+			assertTrue(pipeline.awaitIdle(30_000));
+			assertEquals("A change (chmod) is.", 2, step._runs.get());
+			assertNull(pipeline.status().getFailure());
+		} finally {
+			pipeline.shutdown();
+		}
+	}
+
+	public void testAFailureIsNotClearedBySuccessElsewhereOrByAnotherStep() throws Exception {
+		File other = new File(_root.toFile(), "2021/Other");
+		assertTrue(other.mkdirs());
+		Files.write(new File(other, "o.jpg").toPath(), new byte[] { 1 });
+		FolderPipeline pipeline = new FolderPipeline(_root, "test");
+		Counting first = new Counting("first", false) {
+			@Override
+			public FolderPipeline.Outcome run(File folder) throws IOException {
+				_runs.incrementAndGet();
+				if (folder.equals(_album)) {
+					throw new IOException("Permission denied");
+				}
+				return FolderPipeline.Outcome.DONE;
+			}
+		};
+		pipeline.addStep(first);
+		pipeline.process(_album);
+		assertEquals("first: Permission denied", pipeline.status().getFailure());
+
+		pipeline.process(other);
+		assertEquals("A success in another folder clears nothing.", "first: Permission denied",
+			pipeline.status().getFailure());
+		assertEquals("2020/Trip", pipeline.status().getFailureFolder());
+
+		// A failure reported by a later step, for another folder (as the cover does for the folders
+		// above), stands until that step does its work on the folder it ran on.
+		FolderPipeline second = new FolderPipeline(_root, "test");
+		AtomicInteger broken = new AtomicInteger(1);
+		second.addStep(new Counting("hash", false));
+		second.addStep(new Counting("cover", false) {
+			@Override
+			public FolderPipeline.Outcome run(File folder) {
+				if (folder.equals(_album) && broken.get() > 0) {
+					second.reportFailure(_album.getParentFile(), "cover: a.jpg: broken");
+				}
+				return FolderPipeline.Outcome.DONE;
+			}
+		});
+		second.process(_album);
+		assertEquals("cover: a.jpg: broken", second.status().getFailure());
+		assertEquals("2020", second.status().getFailureFolder());
+		second.process(other);
+		assertEquals("cover: a.jpg: broken", second.status().getFailure());
+		second.process(_album);
+		assertEquals("Failed again: stands.", "cover: a.jpg: broken", second.status().getFailure());
+		broken.set(0);
+		second.process(_album);
+		assertNull("Done without failing: gone.", second.status().getFailure());
+	}
+
+	public void testWhatAFinishedStepReportedStaysUntilItIsReportedNoMore() throws Exception {
+		File other = new File(_root.toFile(), "2021/Other");
+		assertTrue(other.mkdirs());
+		Set<String> broken = Collections.synchronizedSet(new HashSet<>(Arrays.asList("x.jpg", "y.jpg")));
+		FolderPipeline pipeline = new FolderPipeline(_root, "test");
+		pipeline.addStep(new Counting("previews", false) {
+			@Override
+			public FolderPipeline.Outcome run(File folder) {
+				if (folder.equals(_album)) {
+					for (String name : new TreeSet<>(broken)) {
+						pipeline.reportFailure(folder, "previews: " + name + ": broken");
+					}
+				}
+				return FolderPipeline.Outcome.DONE;
+			}
+		});
+		pipeline.process(_album);
+		assertEquals("previews: y.jpg: broken", pipeline.status().getFailure());
+
+		// Another folder failing later is shown; when it is fixed, the album's failure is again.
+		pipeline.reportFailure(other, "elsewhere: broken");
+		assertEquals("2021/Other", pipeline.status().getFailureFolder());
+		pipeline.gone("2021/Other");
+		assertEquals("Gone with its folder.", "previews: y.jpg: broken", pipeline.status().getFailure());
+
+		// y.jpg is fixed, x.jpg is not: the step finishes again, reporting only x.jpg.
+		broken.remove("y.jpg");
+		pipeline.process(_album);
+		assertEquals("previews: x.jpg: broken", pipeline.status().getFailure());
+		assertEquals("2020/Trip", pipeline.status().getFailureFolder());
+
+		broken.clear();
+		pipeline.process(_album);
+		assertNull("Nothing is outstanding.", pipeline.status().getFailure());
+
+		broken.add("x.jpg");
+		pipeline.process(_album);
+		pipeline.gone("2020/Trip");
+		assertNull("A folder that is gone fails no more.", pipeline.status().getFailure());
+	}
+
+	public void testOnlyTheMostRecentOutstandingFailuresAreRemembered() throws Exception {
+		FolderPipeline pipeline = new FolderPipeline(_root, "test");
+		for (int n = 0; n < FolderPipeline.MAX_OUTSTANDING + 500; n++) {
+			pipeline.reportFailure(_album, "broken " + n);
+		}
+		assertEquals("broken " + (FolderPipeline.MAX_OUTSTANDING + 499), pipeline.status().getFailure());
+		assertEquals(FolderPipeline.MAX_OUTSTANDING, pipeline.outstanding());
+	}
+
+	public void testARedoneUnitClearsItsFailureAfterTheBackOff() throws Exception {
+		Clock clock = new Clock();
+		List<String> log = new ArrayList<>();
+		FolderPipeline pipeline = new FolderPipeline(_root, "test");
+		pipeline.setClock(clock);
+		pipeline.setRetryMillis(1000, 1000);
+		Set<String> failing = new HashSet<>(Arrays.asList("video:Trip"));
+		pipeline.addStep(new Units(log) {
+			@Override
+			public FolderPipeline.Outcome runUnit(File folder, String unit) {
+				FolderPipeline.Outcome result = super.runUnit(folder, unit);
+				return failing.contains(unit) ? FolderPipeline.Outcome.FAILED : result;
+			}
+		});
+		pipeline.process(_album);
+		pipeline.drain();
+		assertEquals(Arrays.asList("teaser:Trip", "video:Trip"), log);
+		assertEquals("videos: Trip", pipeline.status().getFailure());
+
+		pipeline.process(_album);
+		pipeline.drain();
+		assertEquals("Not before the back-off.", 2, log.size());
+
+		failing.clear();
+		clock._now += 1000;
+		pipeline.process(_album);
+		pipeline.drain();
+		assertEquals("Only the unit that failed.", Arrays.asList("teaser:Trip", "video:Trip", "video:Trip"), log);
+		assertNull(pipeline.status().getFailure());
+		assertTrue(pipeline.isDone(_album, "videos"));
 	}
 
 	private void photo(String name) throws IOException {

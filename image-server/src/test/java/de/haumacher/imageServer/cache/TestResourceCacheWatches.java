@@ -247,6 +247,40 @@ public class TestResourceCacheWatches extends TestCase {
 		assertTrue("A loaded album is noticed: " + noticed, noticed.contains(folder));
 	}
 
+	/**
+	 * A permission fixed with <code>chmod</code> is a change a watch reports (issue #251): the
+	 * background work retries a folder that failed for it at once.
+	 */
+	public void testAChangeOfPermissionsIsReportedAsAChange() throws Exception {
+		ResourceCache cache = cache(10);
+		File folder = album("locked", 1);
+		File photo = new File(folder, "p0.jpg");
+		List<File> changed = new CopyOnWriteArrayList<>();
+		CountDownLatch seen = new CountDownLatch(1);
+		ResourceCache.FolderObserver observer = new ResourceCache.FolderObserver() {
+			@Override
+			public void folderNoticed(File dir, boolean tree) {
+				// Loading is no change.
+			}
+
+			@Override
+			public void folderChanged(File dir) {
+				changed.add(dir);
+				seen.countDown();
+			}
+		};
+		ResourceCache.addObserver(observer);
+		try {
+			assertTrue(cache.lookup(path(folder)) instanceof AlbumInfo);
+			assertTrue("Loading is no change: " + changed, changed.isEmpty());
+			assertTrue(photo.setReadable(false, false) && photo.setReadable(true, false));
+			assertTrue("A change of permissions is reported.", seen.await(20, TimeUnit.SECONDS));
+			assertEquals(folder, changed.get(0));
+		} finally {
+			ResourceCache.removeObserver(observer);
+		}
+	}
+
 	// --- Helpers. ---
 
 	private ResourceCache cache(int watches) throws Exception {
