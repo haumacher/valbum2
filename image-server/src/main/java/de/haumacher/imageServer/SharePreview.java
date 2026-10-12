@@ -171,7 +171,19 @@ public class SharePreview implements ResourceServlet.PageDecorator, ResourceServ
 		File preview;
 		try {
 			// A cropped photograph is shown cut on its card as in its tile, see issue #212.
-			preview = PreviewCache.createPreview(image, region(target, shown, image));
+			double[] region = region(target, shown, image);
+			ImageServlet data = _data.apply(space.getSegment());
+			if (data != null && data.cache().hasBackground()) {
+				// As the background made it, or not there yet: a request never makes a preview, see
+				// issue #256.
+				preview = PreviewCache.previewTarget(image, region, false);
+				if (!PreviewCache.present(preview)) {
+					refuse(response, HttpServletResponse.SC_ACCEPTED, ImageServlet.PREVIEW_PENDING);
+					return true;
+				}
+			} else {
+				preview = PreviewCache.createPreview(image, region);
+			}
 		} catch (PreviewException ex) {
 			LOG.log(Level.WARNING, "Cannot build the cover of " + link + ": " + ex.getMessage(), ex.getCause());
 			refuse(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, COVER_FAILED);

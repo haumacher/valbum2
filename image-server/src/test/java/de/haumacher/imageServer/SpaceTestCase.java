@@ -154,6 +154,13 @@ public abstract class SpaceTestCase extends TestCase {
 		return response;
 	}
 
+	/** A <code>GET</code> with the given parameters. */
+	protected FakeResponse getWithParameters(String pathInfo, String token, Map<String, String> parameters) throws Exception {
+		FakeResponse response = new FakeResponse();
+		servlet().doGet(request(pathInfo, null, "", token, parameters), response.response());
+		return response;
+	}
+
 	protected FakeResponse put(String pathInfo, String body, String token) throws Exception {
 		FakeResponse response = new FakeResponse();
 		servlet().doPut(request(pathInfo, "application/json", body, token, Collections.emptyMap()),

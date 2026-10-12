@@ -315,6 +315,13 @@ public class ImageServlet extends HttpServlet {
 	public static final String RENDITION_PENDING = "This video is being prepared; please try again shortly.";
 
 	/**
+	 * The message a request for a preview, a display rendition or a face crop the background has not
+	 * made yet is answered with, <code>202 Accepted</code> like {@link #RENDITION_PENDING}: a
+	 * request never makes one, see issue #256.
+	 */
+	public static final String PREVIEW_PENDING = "This picture is being prepared; please reload shortly.";
+
+	/**
 	 * The message a request for a face crop that this caller is answered no faces of is refused
 	 * with, see issue #124.
 	 *
@@ -6324,6 +6331,10 @@ public class ImageServlet extends HttpServlet {
 		// And the record of what the folder holds, which a move or a delete changed, see issue #253.
 		AnalysisRecord.sidecarWritten(directory);
 
+		// And the background, which makes what an edit asks for (a cut preview, a face crop), see
+		// issue #256.
+		de.haumacher.imageServer.pipeline.FolderPipeline.edited(directory);
+
 		LOG.info("Stored folder resource: " + indexFile.getAbsolutePath());
 	}
 
@@ -6600,8 +6611,10 @@ public class ImageServlet extends HttpServlet {
 	 * Whether a request of the given type may make something a person waits for: a thumbnail, a
 	 * display rendition, a face crop, a video rendition.
 	 */
-	private static boolean makes(String type) {
-		return "tn".equals(type) || DISPLAY_TYPE.equals(type) || FACE_TYPE.equals(type)
+	private boolean makes(String type) {
+		// With a background, a preview, a display rendition and a face crop are served as it made
+		// them, never made here, see issue #256.
+		return (!_cache.hasBackground() && ("tn".equals(type) || DISPLAY_TYPE.equals(type) || FACE_TYPE.equals(type)))
 			|| VideoRenditions.Kind.PLAYBACK.parameter().equals(type)
 			|| VideoRenditions.Kind.TEASER.parameter().equals(type);
 	}
@@ -6626,9 +6639,20 @@ public class ImageServlet extends HttpServlet {
 			}
 			File data;
 			try {
-				// The large preview of a starred tile is made like the preview, only larger (#241).
-				data = large ? PreviewCache.createLargePreview(pathInfo.toFile(), region)
-					: PreviewCache.createPreview(pathInfo.toFile(), region);
+				if (_cache.hasBackground()) {
+					// Served as the background made it, or not there yet: a request never makes a
+					// preview and never looks at the original, see issue #256.
+					data = PreviewCache.previewTarget(pathInfo.toFile(), region, large);
+					if (!PreviewCache.present(data)) {
+						notMadeYet(context, data, failure -> previewFailed(pathInfo.toFile(), failure));
+						return;
+					}
+				} else {
+					// Nobody else makes it, see ResourceCache#setBackground(boolean). The large preview
+					// of a starred tile is made like the preview, only larger (#241).
+					data = large ? PreviewCache.createLargePreview(pathInfo.toFile(), region)
+						: PreviewCache.createPreview(pathInfo.toFile(), region);
+				}
 			} catch (PreviewException ex) {
 				LOG.log(Level.WARNING, ex.getMessage(), ex.getCause());
 				errorInfo(context, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, previewFailed(pathInfo.toFile(), ex));
@@ -6676,23 +6700,54 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 		File data;
-		try {
-			data = PreviewCache.createDisplay(file);
-		} catch (PreviewException ex) {
-			LOG.log(Level.WARNING, ex.getMessage(), ex.getCause());
-			if (ex.getCause() instanceof NoEmbeddedPreviewException
-				|| ex.getCause() instanceof PictureTooLargeException) {
-				// Which raw carries no preview (issue #191); which picture, how much it needs and
-				// what to do (issues #207, #193).
-				errorInfo(context, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, ex.getCause().getMessage());
+		if (_cache.hasBackground()) {
+			// As the background made it, or not there yet, see issue #256.
+			data = PreviewCache.displayFile(file);
+			if (!PreviewCache.present(data)) {
+				notMadeYet(context, data, failure -> displayFailed(file, failure));
 				return;
 			}
-			String unavailable = CodedPictures.unavailability(file.getName());
-			errorInfo(context, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
-				unavailable != null ? unavailable : DISPLAY_FAILED);
-			return;
+		} else {
+			try {
+				data = PreviewCache.createDisplay(file);
+			} catch (PreviewException ex) {
+				LOG.log(Level.WARNING, ex.getMessage(), ex.getCause());
+				errorInfo(context, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, displayFailed(file, ex));
+				return;
+			}
 		}
 		serveData(context, data, "image/jpeg");
+	}
+
+	/**
+	 * The message a display rendition that cannot be made is answered with: which raw carries no
+	 * preview (issue #191); which picture, how much it needs and what to do (issues #207, #193); why
+	 * a server cannot decode a coded picture; else {@link #DISPLAY_FAILED}.
+	 */
+	static String displayFailed(File file, PreviewException failure) {
+		if (failure.getCause() instanceof NoEmbeddedPreviewException
+			|| failure.getCause() instanceof PictureTooLargeException) {
+			return failure.getCause().getMessage();
+		}
+		String unavailable = CodedPictures.unavailability(file.getName());
+		return unavailable != null ? unavailable : DISPLAY_FAILED;
+	}
+
+	/**
+	 * Answers a request for a generated file the background has not made (yet), see issue #256:
+	 * <code>202 Accepted</code> with {@link #PREVIEW_PENDING}, the convention of a video rendition
+	 * that is not there yet (issue #74) &mdash; or, where the background tried and failed, that
+	 * failure, because coming back would not help.
+	 */
+	private void notMadeYet(Context context, File generated,
+			java.util.function.Function<PreviewException, String> message) throws IOException {
+		PreviewException failure = PreviewCache.failure(generated);
+		if (failure != null) {
+			errorInfo(context, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, message.apply(failure));
+			return;
+		}
+		context.response().setHeader("Retry-After", RETRY_AFTER_SECONDS);
+		errorInfo(context, HttpServletResponse.SC_ACCEPTED, PREVIEW_PENDING);
 	}
 
 	/**
@@ -8629,7 +8684,13 @@ public class ImageServlet extends HttpServlet {
 		Resource described = _cache.lookup(pathInfo);
 		List<FaceTag> tags = described instanceof ImagePart ? ((ImagePart) described).getTags()
 			: Collections.<FaceTag> emptyList();
-		FaceIndex.Crop crop = _faces.crop(pathInfo.toFile(), index, tags);
+		// Cut by the background where there is one, never here, see issue #256.
+		FaceIndex.Crop crop = _faces.crop(pathInfo.toFile(), index, tags, !_cache.hasBackground());
+		if (crop.isPending()) {
+			context.response().setHeader("Retry-After", RETRY_AFTER_SECONDS);
+			errorInfo(context, HttpServletResponse.SC_ACCEPTED, PREVIEW_PENDING);
+			return;
+		}
 		if (crop.getFile() == null) {
 			LOG.warning("Refusing the face " + index + " of '" + context.request().getPathInfo()
 				+ "': " + crop.getReason());

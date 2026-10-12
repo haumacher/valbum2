@@ -268,7 +268,10 @@ public class TestCatchUp extends TestCase {
 			File original = _base.resolve(photo).toFile();
 			File preview = PreviewCache.previewFile(original);
 			assertTrue("Every photo has its preview: " + photo, preview.isFile());
-			assertTrue("And its record: " + photo, PreviewCache.recordOf(preview).isFile());
+			assertFalse("No record of its original, see issue #256: " + photo,
+				new File(preview.getPath() + PreviewCache.SOURCE_SUFFIX).exists());
+			assertTrue("The crop of its face, which a request never cuts (#256): " + photo,
+				de.haumacher.imageServer.faces.FaceIndex.cropFile(original, 0).isFile());
 			String album = photo.substring(0, photo.lastIndexOf('/'));
 			assertEquals("The detector looked at every photo once: " + photo, 1,
 				_detector._seen.get(album.substring(album.lastIndexOf('/') + 1) + "/" + preview.getName()).get());
@@ -304,7 +307,8 @@ public class TestCatchUp extends TestCase {
 		for (VideoRenditions.Kind kind : VideoRenditions.Kind.values()) {
 			File rendition = VideoRenditions.file(video, kind);
 			assertTrue("The video's " + kind + " rendition.", rendition.isFile() && rendition.length() > 0);
-			assertTrue("Recorded against its original.", PreviewCache.recordOf(rendition).isFile());
+			assertFalse("No record of its original, see issue #256.",
+				new File(rendition.getPath() + PreviewCache.SOURCE_SUFFIX).exists());
 		}
 
 		Set<String> after = userFiles();

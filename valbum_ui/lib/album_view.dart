@@ -170,10 +170,6 @@ enum LeaveEdit {
   stay,
 }
 
-/// How often an album the server is still preparing is asked again, see
-/// [AlbumInfo.preparing] and issue #253.
-const Duration albumPreparingInterval = Duration(seconds: 5);
-
 class AlbumContent extends StatefulWidget {
   final VAlbumState albumState;
   final AlbumInfo album;
@@ -386,7 +382,6 @@ class AlbumContentState extends State<AlbumContent>
     // [confirmLeave] and [VAlbumRouterDelegate.leaveAlbum] (issue #99).
     widget.albumState.navigator.delegate
         .registerLeaveGuard(widget.albumState.path, _leaveGuard);
-    _schedulePreparingPoll();
   }
 
   @override
@@ -402,42 +397,7 @@ class AlbumContentState extends State<AlbumContent>
       _layoutOrientation.clear();
       selection.clear();
       lastClicked = null;
-      _schedulePreparingPoll();
     }
-  }
-
-  /// Asks the server again while it is still preparing the album, see
-  /// [AlbumInfo.preparing] (issue #253).
-  Timer? _preparingPoll;
-
-  /// Starts (or stops) asking for the album again every
-  /// [albumPreparingInterval] while the server says it is being prepared, so
-  /// that its photos appear when the background work has read them.
-  ///
-  /// The fetch is the ordinary reload of the album, the one the face editor's
-  /// poll uses as well ([PersonsContentState]). It is skipped while it would
-  /// get in somebody's way: in the edit mode and the select mode, whose
-  /// selection a re-read album takes away, in a "view as" preview, offline,
-  /// and while a page above — the viewer — is shown, which a re-read album
-  /// would rebuild under the fingers.
-  void _schedulePreparingPoll() {
-    _preparingPoll?.cancel();
-    _preparingPoll = null;
-    if (!widget.album.preparing) {
-      return;
-    }
-    _preparingPoll = Timer.periodic(albumPreparingInterval, (_) {
-      if (!mounted ||
-          editMode ||
-          selectMode ||
-          previewing ||
-          OfflineScope.isOffline(context) ||
-          !(ModalRoute.of(context)?.isCurrent ?? true)) {
-        return;
-      }
-      widget.albumState.navigator.delegate.forget(widget.albumState.path);
-      widget.albumState.reload();
-    });
   }
 
   /// Lays the album out anew, after a part changed its aspect behind the
@@ -609,7 +569,6 @@ class AlbumContentState extends State<AlbumContent>
 
   @override
   void dispose() {
-    _preparingPoll?.cancel();
     widget.albumState.navigator.delegate
         .unregisterLeaveGuard(widget.albumState.path, _leaveGuard);
     _dragScroller.dispose();
@@ -3102,8 +3061,8 @@ class AlbumContentState extends State<AlbumContent>
     }
     // An album the server has not read yet says so (issue #253): an empty
     // page would look like an empty album, and one missing its newest photos
-    // like an album without them. It is asked for again meanwhile, see
-    // [_schedulePreparingPoll].
+    // like an album without them. Nothing asks again by itself: a reload
+    // shows what the server has read since.
     if (self.preparing) {
       var empty = !self.parts.any((part) => part is AbstractImage);
       result.add(SliverToBoxAdapter(child: preparingNotice(empty: empty)));
@@ -3193,8 +3152,8 @@ class AlbumContentState extends State<AlbumContent>
         mainAxisSize: MainAxisSize.min,
         children: [
           if (empty) ...[
-            // A still icon and not a spinner: the album is asked for again
-            // every few seconds, nothing on this page is running.
+            // A still icon and not a spinner: nothing on this page is
+            // running; a reload shows what the server has read since.
             const Icon(Icons.hourglass_empty, size: 32, color: Colors.white70),
             const SizedBox(height: 16),
           ],

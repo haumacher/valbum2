@@ -44,7 +44,8 @@ import java.util.logging.Logger;
  * cropped photograph, and the display rendition of a HEIC, AVIF, JPEG XL or raw picture;</li>
  * <li>{@link Cover}: the picture of the album's tile in the listing, and of the tile of every folder
  * above it, and the large preview of a starred tile's picture (issue #241);</li>
- * <li>faces, where the space has them on ({@link FaceIndex#step()});</li>
+ * <li>faces, where the space has them on ({@link FaceIndex#step()}), and the crop of every face an
+ * album answers ({@link FaceIndex#cropStep()}, issue #256);</li>
  * <li>places ({@link de.haumacher.imageServer.places.PlacesStep}), installed by
  * {@link ImageServlet#setPlaces};</li>
  * <li>{@link Videos}: the teaser and the playback rendition of every video, one unit each, behind
@@ -52,8 +53,11 @@ import java.util.logging.Logger;
  * </ol>
  *
  * <p>
- * Every step does nothing where its work is current: a preview and a rendition are judged by the
- * record of their original (issue #235), exactly as a request judges them. Nothing is written
+ * Every step does nothing where its work is there: a request never makes a preview, it serves the
+ * one the background made or answers "not there yet" (issue #256), so every kind of generated file a
+ * request may ask for is made here. Whether a generated file still describes its original is
+ * decided before these steps, by the analysis ({@link AnalysisRecord}): it drops everything made
+ * of an original whose size or modification time changed, and these steps make it again. Nothing is written
  * beside a photograph but into <code>.vacache</code>. Every unit that decodes a picture waits for
  * requests and runs alone, see {@link Background}.
  * </p>
@@ -90,6 +94,8 @@ public final class CatchUp {
 		pipeline.addStep(new Cover(pipeline, root));
 		if (faces.isEnabled()) {
 			pipeline.addStep(faces.step());
+			// The crop of every answered face, which a request never cuts, see issue #256.
+			pipeline.addStep(faces.cropStep());
 		}
 		if (places != null) {
 			pipeline.addStep(places);
@@ -125,6 +131,7 @@ public final class CatchUp {
 			case COVER:
 				return CatchUpStep.COVER;
 			case FaceIndex.STEP:
+			case FaceIndex.CROP_STEP:
 				return CatchUpStep.FACES;
 			case de.haumacher.imageServer.places.PlacesStep.NAME:
 				return CatchUpStep.PLACES;
@@ -148,7 +155,7 @@ public final class CatchUp {
 	 * @return The reason it could not be made, <code>null</code> when it is there.
 	 */
 	static String make(File original, File target, PreviewMaker maker) throws InterruptedException {
-		if (PreviewCache.upToDate(original, target)) {
+		if (PreviewCache.present(target)) {
 			return null;
 		}
 		try {
@@ -208,7 +215,17 @@ public final class CatchUp {
 		}
 
 		@Override
+		public boolean trustsRecord() {
+			// A preview a request asks for that is not there is made by nobody else (issue #256): the
+			// crop of a photograph is the author's choice in a sidecar, which changes no fingerprint,
+			// and a preview thrown away by hand must come back. The check is a stat per file.
+			return false;
+		}
+
+		@Override
 		public Outcome run(File folder) {
+			// The records of the originals of issue #235 are litter since issue #256.
+			PreviewCache.dropLeftoverRecords(folder);
 			File[] files = images(folder);
 			if (files.length == 0) {
 				return Outcome.DONE;
@@ -416,7 +433,7 @@ public final class CatchUp {
 			if (!video.isFile()) {
 				return Outcome.DONE;
 			}
-			if (PreviewCache.upToDate(video, VideoRenditions.file(video, kind))) {
+			if (PreviewCache.present(VideoRenditions.file(video, kind))) {
 				return Outcome.DONE;
 			}
 			if (VideoRenditions.unavailability() != null) {

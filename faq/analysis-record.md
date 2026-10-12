@@ -18,3 +18,10 @@ recorded answers `AlbumInfo.preparing`.
   Stage.RECORD)` (see `TestBackgroundRecord`).
 - A test that fingerprints "everything the server wrote" must expect `.vacache/analysis.json`;
   `?action=refresh-cache` deletes it, so the folder is analysed again (a broken file included).
+- Generated files follow the same rule (#256): with a background a request for a preview, a cut or
+  large preview, a display copy, a video poster or a face crop serves the file or answers `202`
+  and decodes nothing (`PreviewCache.made()` counts). Freshness is the analysis's: an original whose
+  size or mtime differs from its entry (or that is gone) has everything made of it dropped
+  (`PreviewCache.drop`), and the steps of `CatchUp` make it again. No `*.source` record is written;
+  one an older build left is litter the previews step removes. A servlet without a background makes
+  them on the request, as it records folders on the request.

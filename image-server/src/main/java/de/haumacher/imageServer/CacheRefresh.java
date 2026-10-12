@@ -62,8 +62,8 @@ public class CacheRefresh {
 	 * <li>Anything of those under its {@value PreviewCache#TMP_SUFFIX} name — a leftover of a
 	 * server that was killed between writing and moving.</li>
 	 * <li>The record of the original any of those was made from, under its name and
-	 * {@value PreviewCache#SOURCE_SUFFIX}, see {@link PreviewCache#recordOf(File)} and issue
-	 * #235.</li>
+	 * {@value PreviewCache#SOURCE_SUFFIX}, which the builds of issue #235 wrote and none writes since
+	 * issue #256: litter, see {@link PreviewCache#dropLeftoverRecords(File)}.</li>
 	 * </ul>
 	 *
 	 * <p>
@@ -154,6 +154,8 @@ public class CacheRefresh {
 				LOG.log(Level.WARNING, "Cannot delete the cached file '" + file.getAbsolutePath() + "'.");
 			}
 		}
+		// What failed is tried again, see issue #256.
+		PreviewCache.forgetFailures(folder);
 		LOG.info("Threw away " + removed + " generated files of '" + folder.getAbsolutePath() + "'.");
 		return removed;
 	}

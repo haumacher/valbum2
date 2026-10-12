@@ -3,6 +3,8 @@
  */
 package de.haumacher.imageServer;
 
+import de.haumacher.imageServer.cache.AnalysisRecord;
+import de.haumacher.imageServer.shared.model.ImagePart;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -12,8 +14,10 @@ import java.util.stream.Stream;
 import junit.framework.TestCase;
 
 /**
- * Test case for the record of the original a video rendition was made from, see issues #235 and
- * #236: the freshness flaw #235 left open for videos.
+ * Test case for the freshness of a video rendition, see issues #235, #236 and #256: a rendition
+ * made of a half-copied video is made again after <code>cp -p</code> restored the original's older
+ * stamp, because the background finds the original changed against its record and drops what was
+ * made of it; nothing is recorded beside the rendition.
  */
 @SuppressWarnings("javadoc")
 public class TestVideoSource extends TestCase {
@@ -52,9 +56,11 @@ public class TestVideoSource extends TestCase {
 		// The copy is still going on: what is there is another, smaller video.
 		test.de.haumacher.valbum.GenerateTestAlbum.recordTinyVideo(video);
 		long copying = video.lastModified();
+		record(video);
 		for (VideoRenditions.Kind kind : VideoRenditions.Kind.values()) {
 			assertEquals(VideoRenditions.State.READY, _videos.make(video, kind).getState());
-			assertTrue(PreviewCache.recordOf(VideoRenditions.file(video, kind)).isFile());
+			assertFalse("No record of the original, see issue #256.",
+				new File(VideoRenditions.file(video, kind).getPath() + PreviewCache.SOURCE_SUFFIX).exists());
 		}
 		File playback = VideoRenditions.file(video, VideoRenditions.Kind.PLAYBACK);
 
@@ -62,7 +68,11 @@ public class TestVideoSource extends TestCase {
 		Files.copy(FIXTURE.toPath(), video.toPath(), StandardCopyOption.REPLACE_EXISTING);
 		assertTrue(video.setLastModified(copying - 3_600_000));
 		assertTrue("Older than the renditions: the old rule would keep them.", video.lastModified() < playback.lastModified());
+		assertEquals("A request alone does not look at the original.", VideoRenditions.State.READY,
+			_videos.lookup(video, VideoRenditions.Kind.PLAYBACK).getState());
 
+		// The background's analysis finds the change against its record.
+		record(video);
 		for (VideoRenditions.Kind kind : VideoRenditions.Kind.values()) {
 			assertEquals("Stale: " + kind, VideoRenditions.State.PENDING, _videos.lookup(video, kind).getState());
 		}
@@ -70,24 +80,25 @@ public class TestVideoSource extends TestCase {
 		for (VideoRenditions.Kind kind : VideoRenditions.Kind.values()) {
 			assertEquals("Made again: " + kind, VideoRenditions.State.READY, _videos.lookup(video, kind).getState());
 		}
-		long[] source = PreviewCache.readRecord(PreviewCache.recordOf(playback));
-		assertEquals("Made of the whole video now.", video.length(), source[0]);
-		assertEquals(video.lastModified(), source[1]);
 	}
 
-	public void testARenditionWithoutARecordIsJudgedByTheOldRule() throws Exception {
+	public void testARenditionOfAnEarlierBuildIsKept() throws Exception {
 		File video = new File(_dir.toFile(), "old.mp4");
 		Files.copy(FIXTURE.toPath(), video.toPath());
 		File rendition = VideoRenditions.file(video, VideoRenditions.Kind.TEASER);
 		assertTrue(rendition.getParentFile().mkdirs());
 		Files.write(rendition.toPath(), new byte[] { 1, 2, 3 });
-		assertTrue(video.setLastModified(rendition.lastModified() - 60_000));
-
-		assertTrue("Made by an earlier build, not older than its original: kept, nothing transcoded for an upgrade.",
-			VideoRenditions.upToDate(video, rendition));
-
 		assertTrue(video.setLastModified(rendition.lastModified() + 60_000));
-		assertFalse("The original newer: made again.", VideoRenditions.upToDate(video, rendition));
+
+		assertTrue("There: kept, nothing transcoded for an upgrade, whatever the original's stamp.",
+			VideoRenditions.upToDate(video, rendition));
+		record(video);
+		assertTrue("The first analysis takes it as current.", rendition.isFile());
+	}
+
+	/** What the background's analysis does for the folder of the given video. */
+	private static void record(File video) throws Exception {
+		AnalysisRecord.update(video.getParentFile(), file -> ImagePart.create().setName(file.getName()), true);
 	}
 
 	public void testAnUnchangedVideoKeepsItsRendition() throws Exception {

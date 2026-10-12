@@ -30,11 +30,16 @@ class FakeImageHttp {
   /// Which URLs are answered with a `500`.
   static bool Function(Uri url)? failing;
 
+  /// Which URLs are answered with a `202` and an `ErrorInfo`: the server has
+  /// not made the picture yet (issue #256).
+  static bool Function(Uri url)? notReady;
+
   /// Back to "every picture is a 1x1 PNG, and nobody is counting".
   static void reset() {
     requested = null;
     pending = null;
     failing = null;
+    notReady = null;
   }
 }
 
@@ -46,15 +51,22 @@ class FakeImageHttp {
 /// way, which is the state the viewer has to fill with the thumbnail instead
 /// of an empty box. A URL [failing] answers `true` for is answered with a
 /// `500`: the server could not deliver it, which is the one failure the
-/// viewer still reports (issue #95).
+/// viewer still reports (issue #95). A URL [notReady] answers `true` for is
+/// answered `202 Accepted` with an `ErrorInfo`, as the server answers a
+/// picture its background has not made yet (issue #256) — no failure, the
+/// placeholder or the thumbnail beneath stands in until a reload. The
+/// predicates are read at every request, so a test may change its mind
+/// (the background made it) by changing what they answer.
 void fakeImageRequests({
   List<String>? requested,
   bool Function(Uri url)? pending,
   bool Function(Uri url)? failing,
+  bool Function(Uri url)? notReady,
 }) {
   FakeImageHttp.requested = requested;
   FakeImageHttp.pending = pending;
   FakeImageHttp.failing = failing;
+  FakeImageHttp.notReady = notReady;
   addTearDown(FakeImageHttp.reset);
 }
 
@@ -84,7 +96,9 @@ class _FakeHttpClient implements HttpClient {
       FakeImageHttp.pending?.call(url) ?? false,
       (FakeImageHttp.failing?.call(url) ?? false)
           ? HttpStatus.internalServerError
-          : null,
+          : (FakeImageHttp.notReady?.call(url) ?? false)
+              ? HttpStatus.accepted
+              : null,
     );
   }
 
@@ -125,8 +139,11 @@ class _FakeHttpClientResponse implements HttpClientResponse {
   @override
   int get statusCode => status ?? HttpStatus.ok;
 
+  /// What is sent: the 1x1 PNG, or the `ErrorInfo` of a `202`.
+  Uint8List get _body => status == HttpStatus.accepted ? _notReadyBody : transparentPixelPng;
+
   @override
-  int get contentLength => transparentPixelPng.length;
+  int get contentLength => _body.length;
 
   @override
   HttpClientResponseCompressionState get compressionState =>
@@ -142,7 +159,12 @@ class _FakeHttpClientResponse implements HttpClientResponse {
   bool get persistentConnection => false;
 
   @override
-  String get reasonPhrase => "OK";
+  String get reasonPhrase => status == HttpStatus.accepted ? "Accepted" : "OK";
+
+  /// What `NetworkImage` does with an answer other than `200` before it
+  /// throws its `NetworkImageLoadException`.
+  @override
+  Future<E> drain<E>([E? futureValue]) => Future<E>.value(futureValue as E);
 
   @override
   StreamSubscription<List<int>> listen(
@@ -151,7 +173,7 @@ class _FakeHttpClientResponse implements HttpClientResponse {
     void Function()? onDone,
     bool? cancelOnError,
   }) =>
-      Stream<List<int>>.value(transparentPixelPng).listen(
+      Stream<List<int>>.value(_body).listen(
         onData,
         onError: onError,
         onDone: onDone,
@@ -161,6 +183,12 @@ class _FakeHttpClientResponse implements HttpClientResponse {
   @override
   dynamic noSuchMethod(Invocation invocation) => null;
 }
+
+/// The answer of a picture the server has not made yet, see
+/// [FakeImageHttp.notReady].
+final Uint8List _notReadyBody = Uint8List.fromList(utf8.encode(
+    '["ErrorInfo", {"message": "This picture is being prepared; please '
+    'reload shortly."}]'));
 
 class _FakeHttpHeaders implements HttpHeaders {
   @override

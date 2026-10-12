@@ -708,6 +708,7 @@ public class FolderPipeline {
 		});
 		_watch = new LibraryWatch(_root, this, _name, _maxWatches);
 		_watch.start();
+		STARTED.add(this);
 		// The first look at the folders, before anything else runs: what changes from now on is
 		// what the next sweep finds.
 		_executor.execute(() -> sweep(true));
@@ -729,8 +730,24 @@ public class FolderPipeline {
 		_executor.execute(work);
 	}
 
+	/** The pipelines started in this process, see {@link #edited(File)}. */
+	private static final java.util.List<FolderPipeline> STARTED = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+	/**
+	 * Notices the given folder in the pipeline of the space it lies in: the server wrote its
+	 * sidecar, see issue #256. A crop, a star, a picture chosen, a face tagged change which
+	 * generated files a request asks for without changing a photograph; the background makes them,
+	 * and a request never does. Cheap and safe on a request thread, see {@link #notice(File, boolean)}.
+	 */
+	public static void edited(File folder) {
+		for (FolderPipeline pipeline : STARTED) {
+			pipeline.notice(folder, false);
+		}
+	}
+
 	/** Stops the thread; what is done is written. */
 	public void shutdown() {
+		STARTED.remove(this);
 		ScheduledExecutorService executor;
 		LibraryWatch watch;
 		synchronized (this) {

@@ -11,6 +11,7 @@ import 'package:jsontool/jsontool.dart';
 import 'diagnostics.dart';
 import 'l10n/app_localizations.dart';
 import 'locales.dart';
+import 'not_ready.dart';
 import 'offline.dart';
 import 'platform.dart';
 import 'resource.dart';
@@ -1123,6 +1124,11 @@ class VAlbumClient {
       }
       return entry.bytes;
     }
+    if (response.statusCode == notReadyStatus) {
+      // Not made yet by the server's background (issue #256): no failure,
+      // nothing to log, and nothing the offline store could stand in for.
+      throw ImageNotReady(url);
+    }
     if (response.statusCode != 200) {
       throw failure(
         response.statusCode,
@@ -1408,6 +1414,11 @@ class VAlbumClient {
         rethrow;
       }
       return entry.bytes;
+    }
+    if (response.statusCode == notReadyStatus) {
+      // Not made yet by the server's background (issue #256): no failure,
+      // nothing to log, and nothing the offline store could stand in for.
+      throw ImageNotReady(url);
     }
     if (response.statusCode != 200) {
       throw failure(

@@ -229,19 +229,12 @@ public class VideoRenditions {
 	}
 
 	/**
-	 * Whether the rendition is there and still describes the original.
-	 *
-	 * <p>
-	 * The very rule of the poster frame, see {@link PreviewCache#upToDate(File, File)} and issue
-	 * #235: fresh exactly while the original has the size and the modification stamp recorded
-	 * beside the rendition when it was made, so that a rendition made of a half-copied file is made
-	 * again after <code>cp -p</code> restored the original's older stamp (issue #236). A rendition
-	 * made before records were kept is judged by the old rule (the original not newer than it), and
-	 * nothing is transcoded again for an upgrade.
-	 * </p>
+	 * Whether the rendition is there, see {@link PreviewCache#present(File)} and issue #256: whether
+	 * it still describes its original is the background's business, which drops it when it finds
+	 * the original changed. The original is not looked at.
 	 */
 	static boolean upToDate(File video, File rendition) {
-		return PreviewCache.upToDate(video, rendition);
+		return PreviewCache.present(rendition);
 	}
 
 	/**
@@ -547,10 +540,6 @@ public class VideoRenditions {
 			cacheDir.mkdirs();
 		}
 		File tmp = new File(cacheDir, rendition.getName() + PreviewCache.TMP_SUFFIX);
-		// The original as it is before it is read: if it changes while it is read (a copy still
-		// going on), the record no longer matches and the rendition is made again, see upToDate.
-		String source = PreviewCache.record(file);
-		File record = PreviewCache.recordOf(rendition);
 		try {
 			List<String> command = command(file, tmp, kind);
 			LOG.info("Transcoding the " + kind.parameter() + " rendition of '" + file.getName() + "'"
@@ -563,14 +552,7 @@ public class VideoRenditions {
 			if (!tmp.exists() || tmp.length() == 0) {
 				throw new IOException("FFmpeg produced no output.");
 			}
-			// No moment with the new rendition and the old record: the old one goes first.
-			Files.deleteIfExists(record.toPath());
 			moveIntoPlace(tmp, rendition);
-			try {
-				Files.write(record.toPath(), source.getBytes(StandardCharsets.UTF_8));
-			} catch (IOException ex) {
-				LOG.log(Level.WARNING, "Cannot record the original of '" + rendition + "': " + ex.getMessage());
-			}
 			LOG.info("The " + kind.parameter() + " rendition of '" + file.getName() + "' is ready: "
 				+ rendition.length() + " bytes.");
 		} finally {

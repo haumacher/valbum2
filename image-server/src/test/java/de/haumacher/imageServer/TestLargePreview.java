@@ -122,9 +122,7 @@ public class TestLargePreview extends TestCase {
 		assertEquals("preview-wide.jpg-large.jpg", file.getName());
 		assertEquals("Beside the preview.", PreviewCache.previewFile(photo).getParentFile(), file.getParentFile());
 		assertTrue("Both are there.", file.isFile() && PreviewCache.previewFile(photo).isFile());
-		assertTrue("With the record of its original.", PreviewCache.recordOf(file).isFile());
-		assertEquals(PreviewCache.record(photo),
-			new String(Files.readAllBytes(PreviewCache.recordOf(file).toPath()), StandardCharsets.UTF_8));
+		assertFalse("No record of its original, see issue #256.", source(file).exists());
 	}
 
 	public void testAPortraitPhotoIsTwiceAsHigh() throws Exception {
@@ -193,7 +191,7 @@ public class TestLargePreview extends TestCase {
 		assertEquals(1200, picture(thumbnail("wide.jpg", "large", null, null)).getHeight());
 		File whole = PreviewCache.largePreviewFile(photo, null);
 		assertTrue(whole.isFile());
-		assertTrue("A record beside it.", PreviewCache.recordOf(whole).isFile());
+		assertFalse("No record beside it, see issue #256.", source(whole).exists());
 
 		// The photograph is rewritten smaller, its stamp moved on.
 		long stamp = photo.lastModified();
@@ -231,7 +229,7 @@ public class TestLargePreview extends TestCase {
 		File file = PreviewCache.largePreviewFile(photo, new double[] { 0.5, 0, 0.5, 0.5 });
 		assertTrue(file.getName(), file.getName().startsWith("preview-wide.jpg-large-c"));
 		assertTrue(file.isFile());
-		assertTrue(PreviewCache.recordOf(file).isFile());
+		assertFalse(source(file).exists());
 	}
 
 	public void testAnUnknownSizeIsRefusedWithASentence() throws Exception {
@@ -281,7 +279,10 @@ public class TestLargePreview extends TestCase {
 
 		List<File> generated = DeleteService.generatedOf(photo.getParentFile(), "wide.jpg");
 		assertTrue(generated.toString(), generated.contains(PreviewCache.largePreviewFile(photo, null)));
-		assertTrue(generated.toString(), generated.contains(PreviewCache.recordOf(PreviewCache.largePreviewFile(photo, null))));
+		File leftover = source(PreviewCache.largePreviewFile(photo, null));
+		Files.write(leftover.toPath(), new byte[] { 1 });
+		generated = DeleteService.generatedOf(photo.getParentFile(), "wide.jpg");
+		assertTrue("A record an earlier build left: " + generated, generated.contains(leftover));
 		assertTrue(generated.toString(),
 			generated.contains(PreviewCache.largePreviewFile(photo, new double[] { 0.5, 0, 0.5, 0.5 })));
 		assertFalse("Another photograph's is not touched.", generated.contains(other));
@@ -319,7 +320,7 @@ public class TestLargePreview extends TestCase {
 
 		File large = PreviewCache.largePreviewFile(starred, null);
 		assertTrue("The starred tile's picture is made large.", large.isFile());
-		assertTrue("With its record.", PreviewCache.recordOf(large).isFile());
+		assertFalse("No record, see issue #256.", source(large).exists());
 		assertEquals(1200, ImageIO.read(large).getHeight());
 		de.haumacher.imageServer.shared.model.Crop crop =
 			de.haumacher.imageServer.cache.ResourceCache.tilePicture(_base.resolve(CROPPED).toFile()).getCrop();
@@ -444,5 +445,10 @@ public class TestLargePreview extends TestCase {
 		assertTrue("Expected " + expected + " at " + x + "," + y + ", found " + actual,
 			Math.abs(expected.getRed() - actual.getRed()) < 40 && Math.abs(expected.getGreen() - actual.getGreen()) < 40
 				&& Math.abs(expected.getBlue() - actual.getBlue()) < 40);
+	}
+
+	/** Where a build of issue #235 wrote the record of the original of the given generated file. */
+	private static File source(File generated) {
+		return new File(generated.getParentFile(), generated.getName() + PreviewCache.SOURCE_SUFFIX);
 	}
 }

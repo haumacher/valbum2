@@ -40,6 +40,7 @@ import 'selectable.dart';
 import 'share_session.dart';
 import 'thumbnails.dart';
 import 'video_view.dart';
+import 'not_ready.dart';
 
 /// The velocity (in pixels per second) a drag must reach to count as a swipe.
 const double _swipeVelocity = 400;
@@ -2106,7 +2107,13 @@ class ImageViewState extends State<ImageView>
       // right — the viewer asks for nothing this caller may not have, see
       // [viewerPicture] — so it is a failure, and failures speak once.
       errorBuilder: (context, error, stackTrace) {
-        _reportFailure(error);
+        if (isImageNotReady(error)) {
+          // Not made yet by the server (issue #256): no failure; the
+          // thumbnail beneath shows through, and a reload asks again.
+          rememberNotReady(picture);
+        } else {
+          _reportFailure(error);
+        }
         return const SizedBox.expand();
       },
     );

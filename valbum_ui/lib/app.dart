@@ -55,6 +55,7 @@ import 'upload_target_view.dart';
 import 'urls.dart';
 import 'wakelock.dart';
 import 'page_insets.dart';
+import 'not_ready.dart';
 
 typedef Action = void Function(BuildContext context);
 
@@ -3143,7 +3144,11 @@ class VAlbumState extends State<VAlbumView>
   }
 
   /// Re-fetches the displayed resource from the server.
+  ///
+  /// The pictures the server had not made yet are asked for again too: the
+  /// app never asks again by itself (issue #256).
   void reload() {
+    forgetNotReadyImages();
     if (route is SearchRoute) {
       // The search view asks the server again, see issue #227.
       navigator.delegate.searchSession(path).run(client, path);

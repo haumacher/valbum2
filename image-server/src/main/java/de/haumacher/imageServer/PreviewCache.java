@@ -230,8 +230,11 @@ public class PreviewCache {
 	public static final String TMP_SUFFIX = ".tmp";
 
 	/**
-	 * What the record of the original a generated file was made from is named after, behind the
-	 * generated file's own name, see {@link #upToDate(File, File)} and issue #235.
+	 * What the record of the original a generated file was made from was named after, behind the
+	 * generated file's own name, by the builds of issue #235. No build writes one since issue #256:
+	 * the freshness of a generated file is the background's, see {@link #drop(File)}. One left
+	 * behind is litter, removed by {@link #dropLeftoverRecords(File)} when the background works on
+	 * its folder.
 	 */
 	public static final String SOURCE_SUFFIX = ".source";
 
@@ -356,7 +359,13 @@ public class PreviewCache {
 	}
 
 	/**
-	 * Lookup or creates the preview data for the given image or video file.
+	 * Looks up or makes the preview of the given image or video file.
+	 *
+	 * <p>
+	 * What the background does, see {@link CatchUp}; a request of a server with a background never
+	 * makes one, it asks {@link #previewTarget(File, double[], boolean)} and {@link #present(File)}
+	 * (issue #256). A preview that is there is taken as it is.
+	 * </p>
 	 */
 	public static File createPreview(File file) throws PreviewException {
 		String fileName = file.getName();
@@ -364,7 +373,7 @@ public class PreviewCache {
 		String imageType = imageType(suffix);
 
 		File previewCache = previewFile(file);
-		if (!upToDate(file, previewCache)) {
+		if (!present(previewCache)) {
 			if (!SUPPORTED_EXTENSIONS.contains(suffix)) {
 				throw new PreviewException("Unsupported format: " + fileName);
 			}
@@ -415,7 +424,8 @@ public class PreviewCache {
 	 * <p>
 	 * Cached beside the whole preview under a name carrying the region
 	 * ({@link #croppedPreviewFile(File, double[])}), made under the same permits, written to
-	 * {@value #TMP_SUFFIX} and moved into place, stale under the same rule. A video has none.
+	 * {@value #TMP_SUFFIX} and moved into place, dropped by the same rule (see {@link #drop(File)}). A
+	 * video has none.
 	 * </p>
 	 *
 	 * @param region
@@ -432,7 +442,7 @@ public class PreviewCache {
 			throw new PreviewException("No cut preview of '" + fileName + "'.");
 		}
 		File previewCache = croppedPreviewFile(file, region);
-		if (!upToDate(file, previewCache)) {
+		if (!present(previewCache)) {
 			generate(file, previewCache, tmp -> {
 				try {
 					createCroppedPreview(file, region, tmp, imageType(suffix), 1);
@@ -472,8 +482,8 @@ public class PreviewCache {
 	 * {@link #createPreview(File, double[])} &mdash; the same orientation, the same cut, never
 	 * larger than the picture or the region &mdash; with the {@link #previewBox(int, int) box}
 	 * {@value #LARGE_FACTOR} times as high and as wide. Cached under its own name
-	 * ({@link #largePreviewFile(File, double[])}) beside the preview, with a record of its original,
-	 * under the same permits and stale by the same rule.
+	 * ({@link #largePreviewFile(File, double[])}) beside the preview, under the same permits and
+	 * dropped by the same rule.
 	 * </p>
 	 *
 	 * <p>
@@ -498,7 +508,7 @@ public class PreviewCache {
 		}
 		String imageType = imageType(suffix);
 		File previewCache = largePreviewFile(file, region);
-		if (!upToDate(file, previewCache)) {
+		if (!present(previewCache)) {
 			if (region == null) {
 				generate(file, previewCache, tmp -> makePreview(file, tmp, suffix, imageType, LARGE_FACTOR));
 			} else {
@@ -588,12 +598,12 @@ public class PreviewCache {
 	 *
 	 * <p>
 	 * A JPEG of the photograph upright, at most {@value #DISPLAY_LONG_SIDE} pixels on its long side
-	 * and never scaled up, made on the first request and kept in
+	 * and never scaled up, made by the background (issue #256) and kept in
 	 * {@value #CACHE_DIRECTORY_NAME} as <code>display-&lt;name&gt;.jpg</code>: what the viewer shows
 	 * in place of an original that Chrome, Firefox and the app's own decoder cannot read. It is
 	 * made exactly as a preview is — under one of the {@link #permits}, the second request waiting
-	 * for the first, written to {@value #TMP_SUFFIX} and moved into place — and goes stale like one
-	 * (the original newer, {@link #LAST_UPDATE}); <code>?action=refresh-cache</code> and the purge
+	 * for the first, written to {@value #TMP_SUFFIX} and moved into place — and is dropped like one
+	 * when its original changes ({@link #drop(File)}); <code>?action=refresh-cache</code> and the purge
 	 * throw it away with the preview, see {@link CacheRefresh#isGenerated(String)}.
 	 * </p>
 	 */
@@ -602,7 +612,7 @@ public class PreviewCache {
 			throw new PreviewException("No display rendition for '" + file.getName() + "'.");
 		}
 		File display = displayFile(file);
-		if (!upToDate(file, display)) {
+		if (!present(display)) {
 			generate(file, display, tmp -> {
 				if (RawFile.isRaw(file)) {
 					createRawDisplay(file, tmp);
@@ -721,88 +731,138 @@ public class PreviewCache {
 	}
 
 	/**
-	 * Whether the cached preview is there and still describes the given original.
+	 * Whether the given generated file is there to be served, see issue #256.
 	 *
 	 * <p>
-	 * A preview from before the last change of the generator is stale, see {@link #LAST_UPDATE}.
-	 * The temporary file a generation writes is never mistaken for a preview: it is named
-	 * {@value #TMP_SUFFIX} behind the preview's own name and nothing ever looks it up.
-	 * </p>
-	 *
-	 * <p>
-	 * Beyond that, a preview is fresh exactly while the original has the size and the modification
-	 * stamp it had when the preview was made, as recorded beside it ({@link #recordOf(File)}, issue
-	 * #235). "The original is not newer than the preview" is not enough: a preview made while the
-	 * original was still being copied would stay for ever once <code>cp -p</code> or
-	 * <code>rsync -t</code> set the original's old stamp at the end of the copy. A preview made
-	 * before the record existed has none and is judged by that old rule, unchanged: nothing is
-	 * regenerated for an upgrade (on a large library that would be hours of work), and such a
-	 * preview gets its record the next time it is made, e.g. after
-	 * <code>?action=refresh-cache</code>.
+	 * A look at the generated file alone: neither the original nor any record of it is read. Whether
+	 * the file still describes its original is the background's business &mdash; when it finds an
+	 * original changed (its size or its modification time no longer the ones of
+	 * {@link de.haumacher.imageServer.cache.AnalysisRecord}, compared for equality, which also
+	 * catches <code>cp -p</code> setting an old stamp), it {@link #drop(File) drops} everything made
+	 * of it and makes it again. A file from before the last change of the generator
+	 * ({@link #LAST_UPDATE}) counts as missing. The temporary file a generation writes is never
+	 * mistaken for a generated file: it is named {@value #TMP_SUFFIX} behind the file's own name and
+	 * nothing ever looks it up.
 	 * </p>
 	 */
-	static boolean upToDate(File file, File previewCache) {
-		if (!previewCache.exists()) {
-			return false;
-		}
-		long previewTime = previewCache.lastModified();
-		if (previewTime < LAST_UPDATE) {
-			return false;
-		}
-		File record = recordOf(previewCache);
-		if (!record.exists()) {
-			// Made before records were kept, see above.
-			return file.lastModified() <= previewTime;
-		}
-		long[] source = readRecord(record);
-		return source != null && source[0] == file.length() && source[1] == file.lastModified();
+	public static boolean present(File generated) {
+		return generated.isFile() && generated.lastModified() >= LAST_UPDATE;
 	}
 
 	/**
-	 * Where the record of the original the given generated file was made from lies, see
-	 * {@link #upToDate(File, File)}.
+	 * Why the background could not make the given generated file, <code>null</code> where it did not
+	 * fail (or did not try yet), see {@link #FAILURES}.
 	 */
-	public static File recordOf(File generated) {
-		return new File(generated.getParentFile(), generated.getName() + SOURCE_SUFFIX);
-	}
-
-	/** The record of the given original as it is now: <code>{"size":..,"modified":..}</code>. */
-	static String record(File source) {
-		return record(source.length(), source.lastModified());
-	}
-
-	static String record(long size, long modified) {
-		return "{\"size\":" + size + ",\"modified\":" + modified + "}";
+	public static PreviewException failure(File generated) {
+		return FAILURES.get(generated.getAbsolutePath());
 	}
 
 	/**
-	 * The size and modification stamp the given record names, <code>null</code> if it cannot be
-	 * read: then the preview counts as stale and is made again.
+	 * What the generation of a file failed with in this process, by the absolute path of the file it
+	 * was to make: a request for it is answered the failure instead of "not there yet" (issue #256),
+	 * so the app does not wait for what will not come. Kept in memory only: a restart tries again.
 	 */
-	static long[] readRecord(File record) {
-		String text;
-		try {
-			text = new String(Files.readAllBytes(record.toPath()), java.nio.charset.StandardCharsets.UTF_8);
-		} catch (IOException ex) {
-			return null;
-		}
-		java.util.regex.Matcher size = RECORD_SIZE.matcher(text);
-		java.util.regex.Matcher modified = RECORD_MODIFIED.matcher(text);
-		if (!size.find() || !modified.find()) {
-			return null;
-		}
-		try {
-			return new long[] { Long.parseLong(size.group(1)), Long.parseLong(modified.group(1)) };
-		} catch (NumberFormatException ex) {
-			return null;
-		}
+	private static final ConcurrentHashMap<String, PreviewException> FAILURES = new ConcurrentHashMap<>();
+
+	/** How many generated files were made in this process, see {@link #made()}. */
+	private static final java.util.concurrent.atomic.AtomicLong MADE = new java.util.concurrent.atomic.AtomicLong();
+
+	/**
+	 * How many generated files were made (an original read for it) in this process: what a test
+	 * counts to tell that a request decoded nothing, see issue #256.
+	 */
+	public static long made() {
+		return MADE.get();
 	}
 
-	private static final java.util.regex.Pattern RECORD_SIZE =
-		java.util.regex.Pattern.compile("\"size\"\\s*:\\s*(-?\\d+)");
+	/** Counts one generated file made outside of {@link #generate}, a face crop, see {@link #made()}. */
+	public static void countMade() {
+		MADE.incrementAndGet();
+	}
 
-	private static final java.util.regex.Pattern RECORD_MODIFIED =
-		java.util.regex.Pattern.compile("\"modified\"\\s*:\\s*(-?\\d+)");
+	/**
+	 * Throws away every file generated from the given original, see issue #256: the background found
+	 * it changed. What is gone is made again by the background's next steps; a request meanwhile is
+	 * answered "not there yet".
+	 *
+	 * @return How many files were deleted.
+	 */
+	public static int drop(File original) {
+		int dropped = 0;
+		for (File generated : DeleteService.generatedOf(original.getParentFile(), original.getName())) {
+			FAILURES.remove(generated.getAbsolutePath());
+			if (generated.delete()) {
+				dropped++;
+			} else {
+				LOG.log(Level.WARNING, "Cannot delete the stale file '" + generated.getAbsolutePath() + "'.");
+			}
+		}
+		String prefix = CacheRefresh.cacheDir(original.getParentFile()).getAbsolutePath() + File.separator;
+		FAILURES.keySet().removeIf(key -> key.startsWith(prefix + PREVIEW_PREFIX + original.getName())
+			|| key.startsWith(prefix + DISPLAY_PREFIX + original.getName()));
+		return dropped;
+	}
+
+	/** Forgets every failure of a generated file of the given folder, see {@link CacheRefresh#refresh(File)}. */
+	static void forgetFailures(File folder) {
+		String prefix = CacheRefresh.cacheDir(folder).getAbsolutePath() + File.separator;
+		FAILURES.keySet().removeIf(key -> key.startsWith(prefix));
+	}
+
+	/**
+	 * Removes the records of the originals that the builds of issue #235 wrote beside every generated
+	 * file ({@value #SOURCE_SUFFIX}), from the given folder's cache directory, see issue #256.
+	 *
+	 * <p>
+	 * Litter since no build reads or writes them: removed by the background when it works on the
+	 * folder (its previews step), which every folder passes at the first start after the upgrade.
+	 * The generated files themselves stay and are taken as current; nothing is made again for the
+	 * upgrade.
+	 * </p>
+	 *
+	 * @return How many were removed.
+	 */
+	public static int dropLeftoverRecords(File folder) {
+		File[] files = CacheRefresh.cacheDir(folder).listFiles(
+			(dir, name) -> name.endsWith(SOURCE_SUFFIX) && CacheRefresh.isGenerated(name));
+		if (files == null) {
+			return 0;
+		}
+		int removed = 0;
+		for (File file : files) {
+			if (file.isFile() && file.delete()) {
+				removed++;
+			}
+		}
+		return removed;
+	}
+
+	/**
+	 * Where the preview a request asks for lies, see issue #256: the {@link #previewFile(File) preview}
+	 * of the original, its {@link #croppedPreviewFile(File, double[]) cut} one for a region, or the
+	 * {@link #largePreviewFile(File, double[]) large} one, as {@link #createPreview(File, double[])}
+	 * and {@link #createLargePreview(File, double[])} make them. Nothing is made, nothing is read.
+	 *
+	 * @throws PreviewException
+	 *         Where there is no such preview at all: a format of no preview, a cut preview of a video.
+	 */
+	public static File previewTarget(File file, double[] region, boolean large) throws PreviewException {
+		String fileName = file.getName();
+		String suffix = Util.suffix(fileName);
+		if (!SUPPORTED_EXTENSIONS.contains(suffix)) {
+			throw new PreviewException("Unsupported format: " + fileName);
+		}
+		if (VIDEO_EXTENSIONS.contains(suffix)) {
+			if (region != null) {
+				throw new PreviewException("No cut preview of '" + fileName + "'.");
+			}
+			return previewFile(file);
+		}
+		if (large) {
+			return largePreviewFile(file, region);
+		}
+		return region == null ? previewFile(file) : croppedPreviewFile(file, region);
+	}
 
 	/**
 	 * Generates the preview, or waits for the generation somebody else has already started.
@@ -817,8 +877,13 @@ public class PreviewCache {
 		}
 		try {
 			build(file, previewCache, maker);
+			FAILURES.remove(key);
 			mine.complete(null);
-		} catch (PreviewException | RuntimeException | Error ex) {
+		} catch (PreviewException ex) {
+			FAILURES.put(key, ex);
+			mine.completeExceptionally(ex);
+			throw ex;
+		} catch (RuntimeException | Error ex) {
 			mine.completeExceptionally(ex);
 			throw ex;
 		} finally {
@@ -876,7 +941,7 @@ public class PreviewCache {
 		hook.permitAcquired(file);
 		try {
 			// The generation may have been waited out; nothing is built twice.
-			if (upToDate(file, previewCache)) {
+			if (present(previewCache)) {
 				return;
 			}
 
@@ -885,27 +950,15 @@ public class PreviewCache {
 				cacheDir.mkdirs();
 			}
 			File tmp = new File(cacheDir, previewCache.getName() + TMP_SUFFIX);
-			// The original as it is before it is read: if it changes while it is read (a copy still
-			// going on), the record no longer matches and the preview is made again, see upToDate.
-			String source = record(file);
-			File record = recordOf(previewCache);
 			hook.generationStarted(file);
+			MADE.incrementAndGet();
 			try {
 				maker.make(tmp);
-				// No moment with the new preview and the old record: the old one goes first.
-				Files.deleteIfExists(record.toPath());
 				try {
 					moveIntoPlace(tmp, previewCache);
 				} catch (IOException ex) {
 					throw new PreviewException("Cannot store the preview of '" + fileName + "'.", ex);
 				}
-				try {
-					Files.write(record.toPath(), source.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-				} catch (IOException ex) {
-					LOG.log(Level.WARNING, "Cannot record the original of '" + previewCache + "': " + ex.getMessage());
-				}
-			} catch (IOException ex) {
-				throw new PreviewException("Cannot replace the record of '" + previewCache + "'.", ex);
 			} finally {
 				// Nothing half-written is left behind; after the move there is nothing to delete.
 				tmp.delete();

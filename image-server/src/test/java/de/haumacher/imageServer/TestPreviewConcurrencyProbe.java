@@ -76,7 +76,7 @@ public class TestPreviewConcurrencyProbe extends TestCase {
 		assertColor(b, Color.BLUE);
 	}
 
-	/** A stale preview is regenerated once for every concurrent request, and shows the new content. */
+	/** A dropped preview is made once for every concurrent request, and shows the new content. */
 	public void testStalePreviewRegeneratedOnce() throws Exception {
 		File folder = new File(_dir.toFile(), "stale");
 		File file = write(folder, "y.jpg", Color.RED);
@@ -84,9 +84,10 @@ public class TestPreviewConcurrencyProbe extends TestCase {
 		assertColor(file, Color.RED);
 		assertEquals(1, _started.get());
 
-		// The original changed after its preview was made: the preview is dated before it.
+		// The original changed after its preview was made, and the background dropped what was made
+		// of it, see issue #256.
 		write(folder, "y.jpg", Color.GREEN);
-		assertTrue(preview.setLastModified(file.lastModified() - 5000));
+		assertEquals(1, PreviewCache.drop(file));
 
 		List<Throwable> failures = concurrently(8, i -> PreviewCache.createPreview(file));
 
@@ -111,9 +112,9 @@ public class TestPreviewConcurrencyProbe extends TestCase {
 		assertEquals("preview-z.jpg", preview.getName());
 		assertFalse("The leftover must be gone.", leftover.exists());
 		assertColor(file, Color.BLUE);
-		// The preview and the record of the original it was made from, see issue #235.
+		// No record of the original beside it since issue #256.
 		assertEquals("Nothing but the preview in the cache directory.",
-			new java.util.TreeSet<>(java.util.Arrays.asList("preview-z.jpg", "preview-z.jpg" + PreviewCache.SOURCE_SUFFIX)),
+			new java.util.TreeSet<>(java.util.Arrays.asList("preview-z.jpg")),
 			new java.util.TreeSet<>(java.util.Arrays.asList(cacheDir.list())));
 	}
 

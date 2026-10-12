@@ -1,7 +1,7 @@
 /// Tests of issue #253 in the app: a file the server could not read is shown
 /// as a square broken tile and a page of its own in the viewer, never asked a
 /// rendition of nor decoded; an album the server has not read yet says that it
-/// is being prepared and is asked for again until it is.
+/// is being prepared, and is asked for again when the user reloads it (#256).
 library;
 
 import 'package:flutter/material.dart' hide Orientation;
@@ -246,8 +246,16 @@ void main() {
   });
 
   group("an album being prepared", () {
-    testWidgets("says so, and shows its photos once the server has read them",
-        (tester) async {
+    /// The reload of the album's menu, the one way it is asked for again.
+    Future<void> reload(WidgetTester tester) async {
+      await tester.tap(find.byIcon(Icons.more_vert).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(testL10n.reload).last);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets("says so, asks nothing by itself, and shows its photos after "
+        "a reload", (tester) async {
       var server = Server(album(const [], preparing: true));
       await withFakeImageHttp(() async {
         await tester.pumpWidget(VAlbumApp(client: server.client));
@@ -257,32 +265,24 @@ void main() {
       expect(find.text(testL10n.albumPreparing), findsOneWidget);
       var fetches = server.albumFetches;
 
-      // Still being prepared: asked again, and still saying so.
+      // Nothing asks again by itself (issue #256), however long it takes.
       await withFakeImageHttp(() async {
-        await tester.pump(albumPreparingInterval);
+        await tester.pump(const Duration(minutes: 5));
         await tester.pumpAndSettle();
       });
-      expect(server.albumFetches, fetches + 1);
+      expect(server.albumFetches, fetches);
       expect(find.byKey(const Key("album-preparing")), findsOneWidget);
 
-      // The background has read the folder.
+      // The background has read the folder; the user reloads.
       server.answer = album([readable, brokenPhoto]);
       await withFakeImageHttp(() async {
-        await tester.pump(albumPreparingInterval);
-        await tester.pumpAndSettle();
+        await reload(tester);
       });
-      expect(server.albumFetches, fetches + 2);
+      expect(server.albumFetches, fetches + 1);
       expect(find.byKey(const Key("album-preparing")), findsNothing);
       expect(find.byKey(const Key("album-still-preparing")), findsNothing);
       expect(find.byType(Image), findsOneWidget);
       expect(find.byKey(const ValueKey("broken-tile-bad.jpg")), findsOneWidget);
-
-      // Prepared: nobody asks any more.
-      await withFakeImageHttp(() async {
-        await tester.pump(albumPreparingInterval * 3);
-        await tester.pumpAndSettle();
-      });
-      expect(server.albumFetches, fetches + 2);
     });
 
     testWidgets("with photos of an older build shows them and a note",
@@ -293,43 +293,16 @@ void main() {
         await tester.pumpAndSettle();
       });
       expect(find.byKey(const Key("album-still-preparing")), findsOneWidget);
+      expect(find.text(testL10n.albumStillPreparing), findsOneWidget);
       expect(find.byKey(const Key("album-preparing")), findsNothing);
       expect(find.byType(Image), findsOneWidget);
 
       server.answer = album([readable, brokenPhoto]);
       await withFakeImageHttp(() async {
-        await tester.pump(albumPreparingInterval);
-        await tester.pumpAndSettle();
+        await reload(tester);
       });
       expect(find.byKey(const Key("album-still-preparing")), findsNothing);
       expect(find.byKey(const ValueKey("broken-tile-bad.jpg")), findsOneWidget);
-    });
-
-    testWidgets("is not asked for again while the viewer is open above it",
-        (tester) async {
-      var server = Server(album([readable], preparing: true));
-      await withFakeImageHttp(() async {
-        await tester.pumpWidget(VAlbumApp(client: server.client));
-        await tester.pumpAndSettle();
-        await tester.tap(find.byType(Image).first);
-        await tester.pumpAndSettle();
-      });
-      var fetches = server.albumFetches;
-      await withFakeImageHttp(() async {
-        await tester.pump(albumPreparingInterval * 2);
-        await tester.pumpAndSettle();
-      });
-      expect(server.albumFetches, fetches);
-
-      // Back in the album the asking resumes, and ends with the preparation.
-      server.answer = album([readable]);
-      await withFakeImageHttp(() async {
-        await tester.tap(find.byIcon(Icons.arrow_back));
-        await tester.pumpAndSettle();
-        await tester.pump(albumPreparingInterval);
-        await tester.pumpAndSettle();
-      });
-      expect(find.byKey(const Key("album-still-preparing")), findsNothing);
     });
   });
 }

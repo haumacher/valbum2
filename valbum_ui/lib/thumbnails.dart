@@ -15,6 +15,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import 'client.dart';
+import 'not_ready.dart';
 
 /// The thumbnail of the image at [imageUrl], fetched through [client].
 @immutable
@@ -66,6 +67,11 @@ class ThumbnailImage extends ImageProvider<ThumbnailImage> {
         thumbnailBytesKey(client, imageUrl, large: large),
         () => client.thumbnailBytes(imageUrl, large: large),
       );
+    } on ImageNotReady {
+      // Not made yet (issue #256): the failed stream stays cached, so that a
+      // tile built again asks nothing; a reload asks again.
+      rememberNotReady(this);
+      rethrow;
     } catch (error) {
       // The stream must be told, or the image widget waits forever.
       PaintingBinding.instance.imageCache.evict(this);
@@ -296,6 +302,10 @@ class FaceImage extends ImageProvider<FaceImage> {
     Uint8List bytes;
     try {
       bytes = await client.faceBytes(imageUrl, index);
+    } on ImageNotReady {
+      // Not cut yet (issue #256), see [ThumbnailImage].
+      rememberNotReady(this);
+      rethrow;
     } catch (error) {
       // The stream must be told, or the image widget waits forever.
       PaintingBinding.instance.imageCache.evict(this);
@@ -630,8 +640,30 @@ class _ThumbnailState extends State<_Thumbnail> {
     (ImageInfo image, bool synchronous) => image.dispose(),
     // Errors are reported by the [Image] widget; a listener without an error
     // handler would let a failed thumbnail throw out of the stream.
-    onError: (Object error, StackTrace? stack) {},
+    onError: (Object error, StackTrace? stack) {
+      if (isImageNotReady(error)) {
+        _notReady = true;
+        // The tile's own key, which a reload evicts (issue #256).
+        var held = _heldImage;
+        if (held != null) {
+          rememberNotReady(held);
+        }
+      }
+    },
   );
+
+  /// The provider of [_held].
+  ImageProvider? _heldImage;
+
+  /// Whether the server answered this tile's picture "not made yet" (issue
+  /// #256): it shows the placeholder, and asks again only once a reload has
+  /// thrown the answer away, see [forgetNotReadyImages].
+  bool _notReady = false;
+
+  /// Counts the times the [Image] is built afresh: after a reload a tile
+  /// answered "not made yet" has a new stream, which an [Image] of the same
+  /// provider would never resolve.
+  int _attempt = 0;
 
   /// Whether this tile asks for the large preview, see [wantsLargeThumbnail]
   /// and issue #241.
@@ -686,8 +718,14 @@ class _ThumbnailState extends State<_Thumbnail> {
     var target = _provider(context, large);
     var stream = target.resolve(configuration);
     if (stream.key != _held?.key) {
+      if (_notReady) {
+        // Asked again after a reload (issue #256): a new [Image] resolves it.
+        _notReady = false;
+        _attempt++;
+      }
       _held?.removeListener(_listener);
       _held = stream..addListener(_listener);
+      _heldImage = target;
     }
 
     ImageProvider? standIn;
@@ -752,6 +790,7 @@ class _ThumbnailState extends State<_Thumbnail> {
 
   @override
   Widget build(BuildContext context) => Image(
+        key: ValueKey<int>(_attempt),
         image: _image,
         width: widget.width,
         height: widget.height,
@@ -761,6 +800,23 @@ class _ThumbnailState extends State<_Thumbnail> {
         // has. Another image is never shown in its place, see [_pictured].
         gaplessPlayback: _pictured,
         frameBuilder: _placeheld,
+        errorBuilder: _failed,
+      );
+
+  /// The tile whose picture could not be had.
+  ///
+  /// One the server has not made yet (issue #256) is the placeholder of a
+  /// picture on its way — neutral, no error icon — and stays so until a
+  /// reload. Any other failure is an empty box, as it always was outside a
+  /// debug build.
+  Widget _failed(BuildContext context, Object error, StackTrace? stack) =>
+      SizedBox(
+        key: isImageNotReady(error) ? const Key("thumbnail-not-ready") : null,
+        width: widget.width,
+        height: widget.height,
+        child: isImageNotReady(error)
+            ? const ColoredBox(color: thumbnailPlaceholderColor)
+            : null,
       );
 
   /// The tile while its bytes are on their way, see

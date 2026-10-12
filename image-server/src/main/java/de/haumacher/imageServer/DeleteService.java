@@ -441,8 +441,9 @@ public class DeleteService {
 	 * previews of its crops (<code>preview-&lt;name&gt;-c&lt;12 hex&gt;.&lt;type&gt;</code>, issue #212),
 	 * its large previews (<code>preview-&lt;name&gt;-large.&lt;type&gt;</code> and
 	 * <code>preview-&lt;name&gt;-large-c&lt;12 hex&gt;.&lt;type&gt;</code>, issue #241),
-	 * each also under its {@value PreviewCache#TMP_SUFFIX} name and with its
-	 * {@value PreviewCache#SOURCE_SUFFIX} record (issue #235). A file of another photograph whose
+	 * each also under its {@value PreviewCache#TMP_SUFFIX} name and with the
+	 * {@value PreviewCache#SOURCE_SUFFIX} record a build of issue #235 may have left beside it (none
+	 * is written since issue #256). A file of another photograph whose
 	 * name merely begins with this one's is never matched.
 	 * </p>
 	 */
@@ -471,7 +472,7 @@ public class DeleteService {
 			if (!file.isFile() || Files.isSymbolicLink(file.toPath()) || !CacheRefresh.isGenerated(fileName)) {
 				continue;
 			}
-			// The temporary name and the record of the original count as the file, see issue #235.
+			// The temporary name and a leftover record of the original count as the file, see issue #256.
 			String plain = CacheRefresh.plain(fileName);
 			if (exact.contains(plain)
 				|| (plain.startsWith(cropPrefix) && CROP_KEY.matcher(plain.substring(cropPrefix.length())).matches())

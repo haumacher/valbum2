@@ -201,9 +201,7 @@ public class TestImageServletTrash extends TestCase {
 			// What the folder holds, see issue #253: the record stays, without the purged file.
 			".vacache/" + AnalysisRecord.FILE_NAME,
 			".vacache/face-a.jpg-1.jpg-f0123456789ab.jpg",
-			".vacache/face-b.jpg-f0123456789ab.jpg", ".vacache/faces.json", ".vacache/preview-b.jpg",
-			// The record of the original b.jpg's preview was made from stays with it, see issue #235.
-			".vacache/preview-b.jpg" + PreviewCache.SOURCE_SUFFIX),
+			".vacache/face-b.jpg-f0123456789ab.jpg", ".vacache/faces.json", ".vacache/preview-b.jpg"),
 			cacheFiles("Trip"));
 		assertTrue(_base.resolve("Trip/b.jpg").toFile().isFile());
 		assertFalse("The hash entry is gone.", read(_base.resolve("Trip/.hashes.json")).contains("\"a.jpg\""));

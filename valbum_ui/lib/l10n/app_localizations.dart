@@ -6165,16 +6165,16 @@ abstract class AppLocalizations {
   /// **'File size: {size}'**
   String brokenFileSize(String size);
 
-  /// Shown in an album the server has not processed yet and that therefore shows no photos yet (issue #253); the app asks again by itself every few seconds.
+  /// Shown in an album the server has not processed yet and that therefore shows no photos yet (issue #253); nothing is asked again by itself: a reload shows what the server has read since (issue #256).
   ///
   /// In en, this message translates to:
-  /// **'This album is being prepared. Its photos appear here as soon as the server has read them.'**
+  /// **'This album is being prepared. Reload it later to see the photos the server has read by then.'**
   String get albumPreparing;
 
-  /// Shown above the photos of an album the server has not completely processed yet (issue #253): newly added photos are still missing; the app asks again by itself every few seconds.
+  /// Shown above the photos of an album the server has not completely processed yet (issue #253): newly added photos are still missing; nothing is asked again by itself, a reload shows them (issue #256).
   ///
   /// In en, this message translates to:
-  /// **'This album is still being prepared. Photos the server has not read yet appear here shortly.'**
+  /// **'This album is still being prepared. Reload it later to see the photos the server has not read yet.'**
   String get albumStillPreparing;
 }
 

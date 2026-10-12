@@ -549,11 +549,21 @@ public final class AnalysisRecord {
 				LOG.log(Level.WARNING, "Cannot read '" + file + "', shown as a broken file: " + reason, ex);
 			}
 		}
-		if (before != null && !changed) {
+		if (before != null) {
 			for (String name : before._entries.keySet()) {
 				if (!entries.containsKey(name)) {
 					changed = true;
-					break;
+					if (!Thread.currentThread().isInterrupted()) {
+						// Gone: what was made of it would otherwise be served for a new file of its name.
+						PreviewCache.drop(new File(folder, name));
+					}
+				}
+			}
+			for (Entry entry : entries.values()) {
+				Entry old = before.get(entry.getName());
+				if (old != null && !old.matches(entry._size, entry._modified)) {
+					// Changed: what was made of the file before describes another one, see issue #256.
+					PreviewCache.drop(new File(folder, entry.getName()));
 				}
 			}
 		}
@@ -602,6 +612,10 @@ public final class AnalysisRecord {
 				if (old != null && old.matches(size, modified) && (old.isAnalysed() || old.isBroken())) {
 					continue;
 				}
+				if (old != null && !old.matches(size, modified)) {
+					// Replaced: what was made of the file before describes another one, see issue #256.
+					PreviewCache.drop(file);
+				}
 				if (listed.contains(name)) {
 					entries.put(name, new Entry(name, size, modified, null, null, 0));
 					continue;
@@ -646,6 +660,8 @@ public final class AnalysisRecord {
 					Map<String, Entry> entries = new TreeMap<>(source._entries);
 					entry = entries.remove(name);
 					if (entry != null) {
+						// Made of a file that is no more here, see issue #256.
+						PreviewCache.drop(new File(sourceFolder, name));
 						store(sourceFolder, new AnalysisRecord(entries));
 						announce(sourceFolder);
 					}

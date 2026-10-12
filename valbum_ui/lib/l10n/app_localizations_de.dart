@@ -3981,9 +3981,9 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get albumPreparing =>
-      'Dieses Album wird gerade vorbereitet. Die Fotos werden hier angezeigt, sobald der Server sie eingelesen hat.';
+      'Dieses Album wird gerade vorbereitet. Laden Sie es später neu, um die Fotos zu sehen, die der Server bis dahin eingelesen hat.';
 
   @override
   String get albumStillPreparing =>
-      'Dieses Album wird noch vorbereitet. Fotos, die der Server noch nicht gelesen hat, werden in Kürze hier angezeigt.';
+      'Dieses Album wird noch vorbereitet. Laden Sie es später neu, um die Fotos zu sehen, die der Server noch nicht eingelesen hat.';
 }

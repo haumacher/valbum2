@@ -1717,9 +1717,24 @@ public class FaceIndex {
 
 		private final String _reason;
 
+		private final boolean _pending;
+
 		Crop(File file, String reason) {
+			this(file, reason, false);
+		}
+
+		Crop(File file, String reason, boolean pending) {
 			_file = file;
 			_reason = reason;
+			_pending = pending;
+		}
+
+		/**
+		 * Whether the crop is not cut yet and the background will cut it, see issue #256: a request
+		 * is answered "not there yet".
+		 */
+		public boolean isPending() {
+			return _pending;
 		}
 
 		/** The JPEG to serve, <code>null</code> when there is none. */
@@ -1768,6 +1783,16 @@ public class FaceIndex {
 	 *        What the album stores about this photograph, see {@link ImagePart#getTags()}.
 	 */
 	public Crop crop(File image, int index, List<FaceTag> tags) {
+		return crop(image, index, tags, true);
+	}
+
+	/**
+	 * {@link #crop(File, int, List)}, cutting a crop that is not there only where <code>make</code>
+	 * says so: a request of a server with a background never cuts one, it is answered the crop the
+	 * background cut ({@link #cropStep()}) or {@link Crop#isPending() not there yet}, see issue #256.
+	 * Neither looks at the original: the name of a crop says which contents and which box it shows.
+	 */
+	public Crop crop(File image, int index, List<FaceTag> tags, boolean make) {
 		if (!isEnabled()) {
 			return new Crop(null, "This library does not look for faces.");
 		}
@@ -1788,39 +1813,129 @@ public class FaceIndex {
 		FaceCache.Face face = new FaceCache.Face(answered.getX(), answered.getY(), answered.getW(),
 			answered.getH(), 0, null);
 		File target = cropFile(image, hash, face);
-		if (fresh(target, image, folder)) {
+		if (PreviewCache.present(target)) {
 			return new Crop(target, null);
 		}
+		String failed = _cropFailed.get(target.getAbsolutePath());
+		if (failed != null) {
+			return new Crop(null, failed);
+		}
+		if (!make) {
+			return new Crop(null, "The face is not cut out yet.", true);
+		}
+		return cut(image, face, target);
+	}
+
+	/** Cuts the given face out of the given photograph into the given crop file. */
+	private Crop cut(File image, FaceCache.Face face, File target) {
 		try {
 			write(image, face, target);
+			_cropFailed.remove(target.getAbsolutePath());
 			return new Crop(target, null);
 		} catch (IOException | PreviewException | RuntimeException ex) {
 			LOG.log(Level.WARNING, "Cannot cut the face out of '" + image.getAbsolutePath() + "': "
 				+ ex.getMessage(), ex);
-			return new Crop(null, "The face could not be cut out of this image.");
+			String reason = "The face could not be cut out of this image.";
+			_cropFailed.put(target.getAbsolutePath(), reason);
+			return new Crop(null, reason);
 		}
 	}
 
 	/**
-	 * Whether the given cached crop may still be served, see issue #141.
+	 * The crops that could not be cut in this process, by the absolute path of the crop: a request
+	 * is answered the failure rather than "not there yet", see issue #256.
+	 */
+	private final ConcurrentHashMap<String, String> _cropFailed = new ConcurrentHashMap<>();
+
+	/** The name of {@link #cropStep()} in the record of the pipeline. */
+	public static final String CROP_STEP = "face-crops";
+
+	/**
+	 * Cutting the crop of every face an album answers, as a step of the space's background work
+	 * behind the detection, see issue #256: a request never cuts one.
 	 *
 	 * <p>
-	 * Its name already says which face it was cut for, so what is left to ask is whether anything it
-	 * was cut <em>from</em> has moved on: the photograph itself, the preview rule
-	 * ({@link PreviewCache#lastUpdate()}) — and the album's {@link FaceCache}, which is rewritten
-	 * exactly when the faces of this album change. The last one is belt and braces for a library
-	 * whose crops were cut under the naming of issue #124: those crops carry an index and are never
-	 * addressed again, but a crop that happens to be spelled like one of ours would be, and a
-	 * re-described album must never serve anything older than its own detections.
+	 * Not trusting the record: which faces are answered is also the author's tags in the sidecar,
+	 * which change no fingerprint; what is cut already costs a stat.
 	 * </p>
 	 */
-	private static boolean fresh(File target, File image, File folder) {
-		if (!target.isFile()) {
-			return false;
+	public de.haumacher.imageServer.pipeline.FolderPipeline.Step cropStep() {
+		return new de.haumacher.imageServer.pipeline.FolderPipeline.Step() {
+			@Override
+			public String name() {
+				return CROP_STEP;
+			}
+
+			@Override
+			public boolean trustsRecord() {
+				return false;
+			}
+
+			@Override
+			public de.haumacher.imageServer.pipeline.FolderPipeline.Outcome run(File folder) {
+				if (!isEnabled()) {
+					return de.haumacher.imageServer.pipeline.FolderPipeline.Outcome.DONE;
+				}
+				try {
+					return cutAll(folder);
+				} catch (InterruptedException ex) {
+					Thread.currentThread().interrupt();
+					return de.haumacher.imageServer.pipeline.FolderPipeline.Outcome.WAITING;
+				}
+			}
+		};
+	}
+
+	/** Cuts every answered face of the given album that is not cut yet, see {@link #cropStep()}. */
+	de.haumacher.imageServer.pipeline.FolderPipeline.Outcome cutAll(File folder) throws InterruptedException {
+		File faceFile = FaceCache.file(folder);
+		de.haumacher.imageServer.shared.model.FolderResource sidecar = ResourceCache.sidecar(folder);
+		AlbumInfo album = sidecar instanceof AlbumInfo ? (AlbumInfo) sidecar : null;
+		if (!faceFile.isFile() && (album == null || !FaceIndex.tagged(album))) {
+			return de.haumacher.imageServer.pipeline.FolderPipeline.Outcome.DONE;
 		}
-		long written = target.lastModified();
-		return written >= image.lastModified() && written >= PreviewCache.lastUpdate()
-			&& written >= FaceCache.file(folder).lastModified();
+		Map<String, String> hashByName = new HashCache(folder).storedHashByName();
+		if (hashByName.isEmpty()) {
+			return de.haumacher.imageServer.pipeline.FolderPipeline.Outcome.DONE;
+		}
+		java.util.Set<String> broken = de.haumacher.imageServer.cache.AnalysisRecord.broken(folder);
+		FaceCache cache = new FaceCache(folder);
+		boolean unwritable = !writable(folder);
+		for (Map.Entry<String, String> entry : new java.util.TreeMap<>(hashByName).entrySet()) {
+			if (Thread.currentThread().isInterrupted() || _stopped) {
+				return de.haumacher.imageServer.pipeline.FolderPipeline.Outcome.WAITING;
+			}
+			File image = new File(folder, entry.getKey());
+			if (broken.contains(image.getName()) || !image.isFile() || !isPhotograph(image)) {
+				continue;
+			}
+			ImagePart part = album == null ? null : de.haumacher.imageServer.Crops.findImage(album, image.getName());
+			List<FaceTag> tags = part == null ? Collections.<FaceTag> emptyList() : part.getTags();
+			List<FaceCache.Face> faces = cache.facesOf(entry.getValue());
+			if (faces.isEmpty() && tags.isEmpty()) {
+				continue;
+			}
+			for (FaceInfo answered : FaceTags.answer(infos(faces), tags, null).getFaces()) {
+				FaceCache.Face face = new FaceCache.Face(answered.getX(), answered.getY(), answered.getW(),
+					answered.getH(), 0, null);
+				File target = cropFile(image, entry.getValue(), face);
+				if (PreviewCache.present(target) || _cropFailed.containsKey(target.getAbsolutePath())) {
+					continue;
+				}
+				if (unwritable) {
+					return de.haumacher.imageServer.pipeline.FolderPipeline.Outcome.UNWRITABLE;
+				}
+				try {
+					de.haumacher.imageServer.pipeline.Background.decode(() -> cut(image, face, target));
+				} catch (InterruptedException ex) {
+					throw ex;
+				} catch (Exception ex) {
+					LOG.log(Level.WARNING, "Cannot cut a face out of '" + image.getAbsolutePath() + "': "
+						+ ex.getMessage(), ex);
+				}
+			}
+		}
+		return de.haumacher.imageServer.pipeline.FolderPipeline.Outcome.DONE;
 	}
 
 	/**
@@ -1981,6 +2096,7 @@ public class FaceIndex {
 	}
 
 	private void write(File image, FaceCache.Face face, File target) throws IOException, PreviewException {
+		PreviewCache.countMade();
 		Orientation exif = exifOrientation(image);
 		BufferedImage crop = fromOriginal(image, face, exif);
 		if (crop == null) {
@@ -2146,6 +2262,8 @@ public class FaceIndex {
 	 */
 	public int forget(File folder) {
 		_recognition.forget(folder);
+		String cacheDir = CacheRefresh.cacheDir(folder).getAbsolutePath() + File.separator;
+		_cropFailed.keySet().removeIf(key -> key.startsWith(cacheDir));
 		String prefix = folder.getAbsolutePath() + File.separator;
 		int forgotten = 0;
 		for (String key : new ArrayList<>(_failed.keySet())) {
