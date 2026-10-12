@@ -17,6 +17,7 @@ import com.drew.metadata.mp4.Mp4Directory;
 import com.drew.metadata.mp4.media.Mp4VideoDirectory;
 import de.haumacher.imageServer.cache.ImageData;
 import de.haumacher.imageServer.cache.ResourceCache;
+import de.haumacher.imageServer.cache.VideoProbe;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.AlbumPart;
 import de.haumacher.imageServer.shared.model.FolderResource;
@@ -672,6 +673,44 @@ final class RecordingIndex {
 		try (InputStream in = new CountingStream(file, reads)) {
 			metadata = quickTime ? QuickTimeMetadataReader.readMetadata(in) : Mp4MetadataReader.readMetadata(in);
 		}
+		Head result = videoHead(metadata, quickTime);
+		if (result.getProblem() != null) {
+			// metadata-extractor gives up on a movie over 4 GiB whose moov lies behind its media
+			// data ("Box size too large"); FFmpeg reads it, as the analysis does, see issue #255.
+			Head probed = probedHead(file);
+			if (probed != null) {
+				return probed;
+			}
+		}
+		return result;
+	}
+
+	/**
+	 * The head of the given video as FFmpeg reads it, see {@link VideoProbe}; <code>null</code>
+	 * where FFmpeg cannot read it either.
+	 *
+	 * <p>
+	 * Keyed exactly as {@link #videoHead(Metadata, boolean)} keys it: the duration of the
+	 * <code>mvhd</code> to the millisecond and the size of the stored raster, before any rotation.
+	 * What FFmpeg reads is not counted in the {@link Reads}: it opens the file itself.
+	 * </p>
+	 */
+	static Head probedHead(Path file) {
+		VideoProbe probe;
+		try {
+			probe = VideoProbe.probe(file.toFile());
+		} catch (IOException | RuntimeException ex) {
+			return null;
+		}
+		if (probe.getDurationMillis() < 0) {
+			return Head.problem("its duration cannot be read");
+		}
+		return new Head(Set.of(Key.video(probe.getDurationMillis(), probe.getRawWidth(), probe.getRawHeight())),
+			null, null);
+	}
+
+	/** The head of a video as metadata-extractor read it. */
+	private static Head videoHead(Metadata metadata, boolean quickTime) {
 		Directory container;
 		Directory video;
 		int widthTag;

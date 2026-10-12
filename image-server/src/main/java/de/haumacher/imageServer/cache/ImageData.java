@@ -446,6 +446,30 @@ public class ImageData extends ImagePart {
 	}
 
 	/**
+	 * The rotation of the given mp4 or QuickTime video in degrees, as {@link #rotation(Metadata)}
+	 * reads it; read through FFmpeg where metadata-extractor finds no video track in it, exactly
+	 * where the analysis reads its size through FFmpeg, see
+	 * {@link #probeInstead(AlbumInfo, File, ZoneId, Exception)} and issue #255: a portrait video
+	 * over 4 GiB has a turned poster, as its tile is turned.
+	 *
+	 * @throws IOException
+	 *         If neither metadata-extractor nor FFmpeg can read the file.
+	 */
+	public static int videoRotation(File file) throws IOException {
+		Metadata metadata;
+		try {
+			metadata = readMetadata(file);
+		} catch (ImageProcessingException | IOException | RuntimeException ex) {
+			metadata = null;
+		}
+		if (metadata != null && (metadata.getFirstDirectoryOfType(Mp4VideoDirectory.class) != null
+			|| metadata.getFirstDirectoryOfType(QuickTimeVideoDirectory.class) != null)) {
+			return rotation(metadata);
+		}
+		return VideoProbe.probe(file).getRotation();
+	}
+
+	/**
 	 * The rotation of a video in degrees, <code>0</code>, <code>90</code>, <code>180</code> or
 	 * <code>270</code>, as the matrix of its container says it; <code>0</code> for anything else.
 	 */

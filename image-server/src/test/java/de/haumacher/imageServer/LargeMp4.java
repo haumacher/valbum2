@@ -56,6 +56,23 @@ public final class LargeMp4 {
 		} finally {
 			tiny.delete();
 		}
+		return keptSparse(target);
+	}
+
+	/**
+	 * Writes the given small video grown past 4 GiB into the given file, as {@link #write(File)}
+	 * grows the tiny one: an mp4 or a QuickTime movie of 32-bit boxes and chunk offsets, its
+	 * <code>mdat</code> before its <code>moov</code> (a portrait one for issue #255).
+	 *
+	 * @return See {@link #write(File)}.
+	 */
+	public static boolean write(File source, File target) throws Exception {
+		write(Files.readAllBytes(source.toPath()), target);
+		return keptSparse(target);
+	}
+
+	/** Whether the given file was written as a sparse file; deleted where it was not. */
+	private static boolean keptSparse(File target) {
 		long used = diskUsageKiB(target);
 		if (used < 0 || used > 64 * 1024) {
 			target.delete();

@@ -1282,8 +1282,9 @@ public class PreviewCache {
 
 		// The rotation of an mp4 and of a QuickTime movie alike (issue #189): a portrait iPhone
 		// video is stored on its side and turned by the matrix of its track. A container only
-		// FFmpeg reads says it in its display matrix (issue #192).
-		int rotation = probe != null ? probe.getRotation() : ImageData.rotation(ImageData.readMetadata(file));
+		// FFmpeg reads says it in its display matrix (issue #192), and so does a movie over 4 GiB
+		// metadata-extractor cannot read (issue #255).
+		int rotation = probe != null ? probe.getRotation() : ImageData.videoRotation(file);
 		if (rotation != 0) {
 			int rawWidth = image.getWidth();
 			int rawHeight = image.getHeight();

@@ -19,6 +19,7 @@ import static org.bytedeco.ffmpeg.global.avformat.avformat_close_input;
 import static org.bytedeco.ffmpeg.global.avformat.avformat_find_stream_info;
 import static org.bytedeco.ffmpeg.global.avformat.avformat_open_input;
 import static org.bytedeco.ffmpeg.global.avutil.AVMEDIA_TYPE_VIDEO;
+import static org.bytedeco.ffmpeg.global.avutil.AV_NOPTS_VALUE;
 import static org.bytedeco.ffmpeg.global.avutil.av_dict_get;
 import static org.bytedeco.ffmpeg.global.avutil.av_display_rotation_get;
 
@@ -102,8 +103,10 @@ public final class VideoProbe {
 
 	private final Date _mdpmDate;
 
+	private final long _durationMillis;
+
 	private VideoProbe(int rawWidth, int rawHeight, int width, int height, int rotation, boolean interlaced,
-			String creationTime, String date, Date mdpmDate) {
+			String creationTime, String date, Date mdpmDate, long durationMillis) {
 		_rawWidth = rawWidth;
 		_rawHeight = rawHeight;
 		_width = width;
@@ -113,6 +116,7 @@ public final class VideoProbe {
 		_creationTime = creationTime;
 		_date = date;
 		_mdpmDate = mdpmDate;
+		_durationMillis = durationMillis;
 	}
 
 	/** Whether a file of the given name is read through FFmpeg, by its extension in any case. */
@@ -151,6 +155,19 @@ public final class VideoProbe {
 	 */
 	public int getRotation() {
 		return _rotation;
+	}
+
+	/**
+	 * The duration of the movie in milliseconds, <code>-1</code> where the container says none.
+	 *
+	 * <p>
+	 * The duration of the container as FFmpeg reads it: for an mp4 or a QuickTime movie the one of
+	 * its <code>mvhd</code>, the very number metadata-extractor reads there (issue #255), rounded to
+	 * the microsecond by FFmpeg and cut to the millisecond here.
+	 * </p>
+	 */
+	public long getDurationMillis() {
+		return _durationMillis;
 	}
 
 	/** Whether the video stream says it is interlaced (a field order other than progressive). */
@@ -256,10 +273,14 @@ public final class VideoProbe {
 			String creationTime = tag(context.metadata(), stream.metadata(), "creation_time");
 			String date = tag(context.metadata(), stream.metadata(), "date");
 
+			// Read before the packets are: in microseconds (AV_TIME_BASE).
+			long duration = context.duration();
+			long durationMillis = duration == AV_NOPTS_VALUE || duration < 0 ? -1 : duration / 1000;
+
 			Date mdpm = codec.codec_id() == AV_CODEC_ID_H264 ? mdpmDate(context, index) : null;
 
 			return new VideoProbe(rawWidth, rawHeight, quarter ? rawHeight : shownWidth,
-				quarter ? shownWidth : rawHeight, rotation, interlaced, creationTime, date, mdpm);
+				quarter ? shownWidth : rawHeight, rotation, interlaced, creationTime, date, mdpm, durationMillis);
 		} finally {
 			avformat_close_input(context);
 		}
