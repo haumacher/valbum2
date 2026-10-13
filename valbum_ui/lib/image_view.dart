@@ -2869,6 +2869,8 @@ class ImageViewState extends State<ImageView>
       // An album created in the picker is dated by the photo that goes into
       // it, see issue #114.
       albumDate: newAlbumDay([part]),
+      // The photo shown covers an album made for it, see issue #273.
+      cover: part.name,
       onMoved: () {
         // The photo is no longer in this album, so the viewer showing it has
         // nothing left to show: back to the album, which is fetched again.

@@ -33,6 +33,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -337,6 +338,27 @@ public class MoveService {
 	 *         If the request as a whole is impossible.
 	 */
 	public MoveResult move(PathInfo source, PathInfo target, List<String> names) throws MoveRefused, IOException {
+		return move(source, target, names, null);
+	}
+
+	/**
+	 * Moves the named entries of the source folder into the target folder and makes the given one
+	 * of them the target's cover, see issue #273.
+	 *
+	 * <p>
+	 * The cover hint is applied after the last entry was dealt with and before the target's
+	 * sidecar is written, so the move and the cover are one step and one sidecar write. It names
+	 * the photograph as it is named in the source folder and is followed to wherever it landed,
+	 * see {@link #coverHinted(AlbumInfo, String, Map)}; a target that has a cover of its own keeps
+	 * it.
+	 * </p>
+	 *
+	 * @param coverHint
+	 *        The name of the entry to cover the target with, <code>null</code> or empty for none.
+	 * @see #move(PathInfo, PathInfo, List)
+	 */
+	public MoveResult move(PathInfo source, PathInfo target, List<String> names, String coverHint)
+			throws MoveRefused, IOException {
 		File sourceFolder = source.toFile();
 		File targetFolder = target.toFile();
 		if (!sourceFolder.isDirectory()) {
@@ -381,6 +403,10 @@ public class MoveService {
 		Set<AlbumPart> heldBefore = Collections.newSetFromMap(new IdentityHashMap<>());
 		heldBefore.addAll(targetAlbum.getParts());
 
+		// Where every photograph of the request ended up, by its name in the source folder: the
+		// name it landed under, or the name of the copy the target already held, see issue #273.
+		Map<String, String> landedAs = new HashMap<>();
+
 		MoveResult result = MoveResult.create();
 		HashCache sourceHashes = new HashCache(sourceFolder);
 		HashCache targetHashes = new HashCache(targetFolder);
@@ -407,12 +433,12 @@ public class MoveService {
 						result.addOutcome(moveFolder(entry));
 					} else if (entry._group != null) {
 						result.addOutcome(moveGroup(entry, entries, sourceAlbum, targetAlbum, sourceFolder,
-							targetFolder, targetHashes, sourceHashes, space));
+							targetFolder, targetHashes, sourceHashes, space, landedAs));
 						sourceChanged = true;
 						targetChanged = true;
 					} else {
 						result.addOutcome(moveImage(entry, sourceAlbum, targetAlbum, sourceFolder, targetFolder,
-							targetHashes, sourceHashes, space));
+							targetHashes, sourceHashes, space, landedAs));
 						sourceChanged = true;
 						targetChanged = true;
 					}
@@ -435,6 +461,7 @@ public class MoveService {
 					sourceHashes.flush();
 				}
 				if (targetChanged) {
+					coverHinted(targetAlbum, coverHint, landedAs);
 					coverLanded(targetAlbum, heldBefore);
 					UpdateTransient.updateTransient(targetAlbum);
 					ImageServlet.storeSidecar(targetFolder, json(targetAlbum));
@@ -785,10 +812,12 @@ public class MoveService {
 	 * see {@link #insertByDate(AlbumInfo, AlbumPart)}.
 	 */
 	private MoveOutcome moveImage(Entry entry, AlbumInfo sourceAlbum, AlbumInfo targetAlbum, File sourceFolder,
-			File targetFolder, HashCache targetHashes, HashCache sourceHashes, Path space) throws IOException {
+			File targetFolder, HashCache targetHashes, HashCache sourceHashes, Path space,
+			Map<String, String> landedAs) throws IOException {
 		ImagePart image = entry._image;
 		File raw = RawPairs.companion(sourceFolder, image);
 		Landing landing = landFile(image.getName(), sourceFolder, targetFolder, targetHashes, sourceHashes, space);
+		landedAs.put(image.getName(), landing.name());
 
 		detach(sourceAlbum, image);
 		carryRaw(image, raw, landing, targetAlbum, targetFolder, targetHashes, sourceHashes, space);
@@ -843,8 +872,8 @@ public class MoveService {
 	 * album.
 	 */
 	private MoveOutcome moveGroup(Entry entry, List<Entry> entries, AlbumInfo sourceAlbum, AlbumInfo targetAlbum,
-			File sourceFolder, File targetFolder, HashCache targetHashes, HashCache sourceHashes, Path space)
-			throws IOException {
+			File sourceFolder, File targetFolder, HashCache targetHashes, HashCache sourceHashes, Path space,
+			Map<String, String> landedAs) throws IOException {
 		ImageGroup group = entry._group;
 		ImagePart head = representative(group);
 		List<ImagePart> members = new ArrayList<>(group.getImages());
@@ -856,6 +885,7 @@ public class MoveService {
 			String asked = member.getName();
 			File raw = RawPairs.companion(sourceFolder, member);
 			Landing landing = landFile(asked, sourceFolder, targetFolder, targetHashes, sourceHashes, space);
+			landedAs.put(asked, landing.name());
 			carryRaw(member, raw, landing, targetAlbum, targetFolder, targetHashes, sourceHashes, space);
 			if (landing._existing != null) {
 				setAside++;
@@ -1006,6 +1036,11 @@ public class MoveService {
 		Landing(String newName, String existing) {
 			_newName = newName;
 			_existing = existing;
+		}
+
+		/** The name the file's contents have in the target folder now, whether it landed or not. */
+		String name() {
+			return _existing != null ? _existing : _newName;
 		}
 	}
 
@@ -1161,6 +1196,53 @@ public class MoveService {
 		if (best != null) {
 			album.setIndexPicture(PrivacyFilter.thumbnail(best));
 		}
+	}
+
+	/**
+	 * Covers an album that has just received images with the photograph the move was asked for,
+	 * see issue #273.
+	 *
+	 * <p>
+	 * The hint names the photograph as it was named in the source folder; the cover names it as it
+	 * is named in the album now: under the name it landed with after a collision, or — where it
+	 * was set aside because the album already held the identical file — under the name of that
+	 * copy. It is framed by {@link PrivacyFilter#thumbnail(ImagePart)}, the frame of issue #115
+	 * measured on the picture as it is shown, its crop applied (#212); the crop's region itself is
+	 * derived on every read and never stored, see {@link Crops#withRegion(AlbumInfo,
+	 * ThumbnailInfo)}.
+	 * </p>
+	 *
+	 * <p>
+	 * Nothing happens where the album already has a live cover (a choice is never overridden), the
+	 * hint names nothing that reached the album, or the photograph could stand for no album at all
+	 * (trashed or unreadable, see {@link PrivacyFilter#bestImage(Iterable)}); the album is then
+	 * covered by the rule of {@link #coverLanded(AlbumInfo, Set)}.
+	 * </p>
+	 *
+	 * @param coverHint
+	 *        The source name of the photograph to cover the album with, <code>null</code> or empty
+	 *        for none.
+	 * @param landedAs
+	 *        Where every photograph of the request ended up, by its name in the source folder.
+	 */
+	private static void coverHinted(AlbumInfo album, String coverHint, Map<String, String> landedAs) {
+		if (coverHint == null || coverHint.isEmpty()) {
+			return;
+		}
+		String landed = landedAs.get(coverHint);
+		if (landed == null) {
+			return;
+		}
+		ThumbnailInfo indexPicture = album.getIndexPicture();
+		UpdateTransient.updateTransient(album);
+		if (indexPicture != null && album.getImageByName().containsKey(indexPicture.getImage())) {
+			return;
+		}
+		ImagePart image = album.getImageByName().get(landed);
+		if (image == null || PrivacyFilter.bestImage(Collections.singletonList(image)) == null) {
+			return;
+		}
+		album.setIndexPicture(PrivacyFilter.thumbnail(image));
 	}
 
 	/** The image an {@link ImageGroup} is shown by, <code>null</code> if it has none. */

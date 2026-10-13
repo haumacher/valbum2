@@ -2160,7 +2160,9 @@ public class ImageServlet extends HttpServlet {
 
 		MoveResult result;
 		try {
-			result = moveService.move(source, target, names);
+			// The photograph the move was opened on covers an album created for it, see issue #273.
+			MoveName cover = moveRequest.getCover();
+			result = moveService.move(source, target, names, cover == null ? null : cover.getName());
 		} catch (MoveRefused ex) {
 			LOG.warning("Refusing to move from '" + context.request().getPathInfo() + "': " + ex.getMessage());
 			errorInfo(context, ex.getStatus(), ex.getMessage());

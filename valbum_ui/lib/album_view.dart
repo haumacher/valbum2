@@ -1941,7 +1941,10 @@ class AlbumContentState extends State<AlbumContent>
   /// Refused on an album with unsaved changes: the album is fetched again
   /// after the move, and that would throw the edits away — the same rule the
   /// "view as" preview follows, see [setViewAs].
-  Future<void> moveSelection() async {
+  ///
+  /// [cover] is the photo a tile's context menu was opened on, see
+  /// `moveWithPicker` and issue #273.
+  Future<void> moveSelection({String? cover}) async {
     if (dirty) {
       showMessage(_l10n.saveOrDiscardFirst);
       return;
@@ -1966,6 +1969,7 @@ class AlbumContentState extends State<AlbumContent>
       // An album created in the picker is dated by the photos that go into
       // it, see issue #114.
       albumDate: newAlbumDay(selected),
+      cover: cover,
       onMoved: () {
         if (!mounted) {
           return;
@@ -4283,7 +4287,8 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
         if (album.mayMoveSelection)
           PopupMenuItem<void Function()>(
             key: const Key("tile-context-move"),
-            value: album.moveSelection,
+            // The photo under the pointer covers an album made for it (#273).
+            value: () => album.moveSelection(cover: image.name),
             child: Text(_l10n.moveSubjectTo(
                 ImageSubject(album.selection.length).asked(_l10n))),
           ),

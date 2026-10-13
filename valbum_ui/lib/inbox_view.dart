@@ -712,7 +712,10 @@ class InboxContentState extends State<InboxContent>
   /// earliest day of the selection — which on this screen is the day whose
   /// heading was tapped, and which is exactly the album that is about to be
   /// made out of it.
-  Future<void> moveSelection() async {
+  ///
+  /// [cover] is the photo a tile's context menu was opened on, see
+  /// `moveWithPicker` and issue #273.
+  Future<void> moveSelection({String? cover}) async {
     var chosen = selected;
     if (chosen.isEmpty) {
       showMessage(inboxNothingSelected(_l10n));
@@ -726,6 +729,7 @@ class InboxContentState extends State<InboxContent>
       subject: ImageSubject(chosen.length),
       delegate: widget.albumState.navigator.delegate,
       albumDate: newAlbumDay(chosen),
+      cover: cover,
       onMoved: () {
         if (!mounted) {
           return;
@@ -1460,7 +1464,8 @@ class InboxTileState extends State<InboxTile> {
         if (inbox.mayTakeOut) ...[
           PopupMenuItem<VoidCallback>(
             key: const Key("inbox-context-move"),
-            value: inbox.moveSelection,
+            // The photo under the pointer covers an album made for it (#273).
+            value: () => inbox.moveSelection(cover: image.name),
             child: Text(inboxMoveLabel(_l10n, count)),
           ),
           PopupMenuItem<VoidCallback>(

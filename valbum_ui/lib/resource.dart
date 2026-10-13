@@ -5676,10 +5676,30 @@ class MoveRequest extends _JsonObject {
 	///  </p>
 	List<MoveName> names;
 
+	///  The photograph to make the target's cover, see issue #273: one of the {@link #names}, as it
+	///  is named in the addressed folder; absent for none.
+	/// 
+	///  <p>
+	///  The app sends it only for a move opened from the context menu of that photograph into an
+	///  album the folder picker has just created for it. The server applies it in the same step as
+	///  the move, under the name the photograph landed with (or, where it was set aside because the
+	///  target already held the identical file, the name of that copy), and only where the target
+	///  has no cover of its own: a chosen cover is never overridden. A hint naming nothing that
+	///  landed is ignored, and the target is covered as any album that receives images is.
+	///  </p>
+	/// 
+	///  <p>
+	///  A message rather than a plain string so that it is absent from a request that has none: a
+	///  message field is written only where it is set, a string field always. Only a move reads it;
+	///  the collect, delete and zip requests that share this message never set it.
+	///  </p>
+	MoveName? cover;
+
 	/// Creates a MoveRequest.
 	MoveRequest({
 			this.target = "", 
 			this.names = const [], 
+			this.cover, 
 	});
 
 	/// Parses a MoveRequest from a string source.
@@ -5717,6 +5737,10 @@ class MoveRequest extends _JsonObject {
 				}
 				break;
 			}
+			case "cover": {
+				cover = json.tryNull() ? null : MoveName.read(json);
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -5734,6 +5758,12 @@ class MoveRequest extends _JsonObject {
 			_element.writeContent(json);
 		}
 		json.endArray();
+
+		var _cover = cover;
+		if (_cover != null) {
+			json.addKey("cover");
+			_cover.writeContent(json);
+		}
 	}
 
 }

@@ -28,9 +28,14 @@ public class MoveRequest extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getNames() */
 	private static final String NAMES__PROP = "names";
 
+	/** @see #getCover() */
+	private static final String COVER__PROP = "cover";
+
 	private String _target = "";
 
 	private final java.util.List<de.haumacher.imageServer.shared.model.MoveName> _names = new java.util.ArrayList<>();
+
+	private de.haumacher.imageServer.shared.model.MoveName _cover = null;
 
 	/**
 	 * Creates a {@link MoveRequest} instance.
@@ -119,6 +124,49 @@ public class MoveRequest extends de.haumacher.msgbuf.data.AbstractDataObject {
 		_names.remove(value);
 	}
 
+	/**
+	 * The photograph to make the target's cover, see issue #273: one of the {@link #getNames()}, as it
+	 * is named in the addressed folder; absent for none.
+	 *
+	 * <p>
+	 * The app sends it only for a move opened from the context menu of that photograph into an
+	 * album the folder picker has just created for it. The server applies it in the same step as
+	 * the move, under the name the photograph landed with (or, where it was set aside because the
+	 * target already held the identical file, the name of that copy), and only where the target
+	 * has no cover of its own: a chosen cover is never overridden. A hint naming nothing that
+	 * landed is ignored, and the target is covered as any album that receives images is.
+	 * </p>
+	 *
+	 * <p>
+	 * A message rather than a plain string so that it is absent from a request that has none: a
+	 * message field is written only where it is set, a string field always. Only a move reads it;
+	 * the collect, delete and zip requests that share this message never set it.
+	 * </p>
+	 */
+	public final de.haumacher.imageServer.shared.model.MoveName getCover() {
+		return _cover;
+	}
+
+	/**
+	 * @see #getCover()
+	 */
+	public de.haumacher.imageServer.shared.model.MoveRequest setCover(de.haumacher.imageServer.shared.model.MoveName value) {
+		internalSetCover(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getCover()} without chain call utility. */
+	protected final void internalSetCover(de.haumacher.imageServer.shared.model.MoveName value) {
+		_cover = value;
+	}
+
+	/**
+	 * Checks, whether {@link #getCover()} has a value.
+	 */
+	public final boolean hasCover() {
+		return _cover != null;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.MoveRequest readMoveRequest(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.MoveRequest result = new de.haumacher.imageServer.shared.model.MoveRequest();
@@ -142,6 +190,10 @@ public class MoveRequest extends de.haumacher.msgbuf.data.AbstractDataObject {
 			x.writeTo(out);
 		}
 		out.endArray();
+		if (hasCover()) {
+			out.name(COVER__PROP);
+			getCover().writeTo(out);
+		}
 	}
 
 	@Override
@@ -156,6 +208,7 @@ public class MoveRequest extends de.haumacher.msgbuf.data.AbstractDataObject {
 				in.endArray();
 			}
 			break;
+			case COVER__PROP: setCover(de.haumacher.imageServer.shared.model.MoveName.readMoveName(in)); break;
 			default: super.readField(in, field);
 		}
 	}

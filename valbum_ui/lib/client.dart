@@ -1869,15 +1869,20 @@ class VAlbumClient {
   /// whole request — an unpaired device, a target outside the space — is the
   /// server speaking and is thrown as a [VAlbumException] carrying its
   /// message, like every other refused write.
+  ///
+  /// [cover] names one of [names] that is to become the target's cover where
+  /// the target has none, see issue #273; `null` sends no such hint.
   Future<MoveResult> move(
     List<String> path,
     String target,
-    List<String> names,
-  ) async {
+    List<String> names, {
+    String? cover,
+  }) async {
     var url = "${folderUrl(path)}?action=move";
     var request = MoveRequest(
       target: target,
       names: [for (var name in names) MoveName(name: name)],
+      cover: cover == null ? null : MoveName(name: cover),
     );
     var body = StringBuffer();
     request.writeContent(jsonStringWriter(body));

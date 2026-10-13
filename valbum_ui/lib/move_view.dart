@@ -111,6 +111,13 @@ String targetPath(List<String> target) => target.join("/");
 /// and the images are then moved into the path the server answered for it,
 /// which is not necessarily the path it was asked for: a placement rule of
 /// the folder above files it into its year folder, see issue #48.
+///
+/// [cover] is the photograph the move was opened on from its context menu,
+/// `null` for a move of the selection bar (no photo under the pointer). It is
+/// sent to the server only when the picker created the target album in this
+/// very dialog, and the server then makes that photograph the new album's
+/// cover, see issue #273 — a move into an album that already existed leaves
+/// its cover alone.
 Future<void> moveWithPicker({
   required BuildContext context,
   required VAlbumClient client,
@@ -120,6 +127,7 @@ Future<void> moveWithPicker({
   required VAlbumRouterDelegate? delegate,
   required VoidCallback onMoved,
   DateTime? albumDate,
+  String? cover,
 }) async {
   if (refuseWhileOffline(context)) {
     return;
@@ -179,7 +187,14 @@ Future<void> moveWithPicker({
 
   MoveResult result;
   try {
-    result = await client.move(source, targetPath(target), names);
+    result = await client.move(
+      source,
+      targetPath(target),
+      names,
+      // Only an album made for this move is covered by the photo it was
+      // opened on, see issue #273.
+      cover: created ? cover : null,
+    );
   } catch (error) {
     // The server's own reason, as every other refused write shows it — and,
     // where the album was created a moment ago, the plain fact that it is
