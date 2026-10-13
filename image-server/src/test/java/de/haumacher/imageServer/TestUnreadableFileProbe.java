@@ -30,6 +30,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -85,10 +86,13 @@ public class TestUnreadableFileProbe extends TestCase {
 
 		AlbumInfo target = album(get(servlet, "/2025/B/", "json", owner));
 		// Since issue #253 the cut-off recording is a broken part of its album, not left out; it is
-		// dated by its file's time, as y.jpg is, so the two may stand either way round.
+		// dated by its file's time, as y.jpg is, so the two may stand either way round. So may x.jpg
+		// and y.jpg, both dated by the time their files were written: a moved photograph lands by
+		// its date since issue #262.
 		List<String> names = names(target);
 		assertTrue(names.toString(), names.remove("20250903_185939.mp4"));
-		assertEquals(Arrays.asList("y.jpg", "x.jpg"), names);
+		Collections.sort(names);
+		assertEquals(Arrays.asList("x.jpg", "y.jpg"), names);
 		String sidecar = new String(Files.readAllBytes(_base.resolve("2025/B/index.json")), StandardCharsets.UTF_8);
 		assertFalse("Why it cannot be read is never stored: " + sidecar, sidecar.contains("moov"));
 

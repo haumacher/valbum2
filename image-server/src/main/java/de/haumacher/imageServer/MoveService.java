@@ -10,6 +10,7 @@ import de.haumacher.imageServer.cache.ResourceCache;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.AlbumPart;
 import de.haumacher.imageServer.shared.model.FolderResource;
+import de.haumacher.imageServer.shared.model.Heading;
 import de.haumacher.imageServer.shared.model.ImageGroup;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.ListingInfo;
@@ -54,7 +55,8 @@ import java.util.logging.Logger;
  * <p>
  * Everything the album knows about a moved image travels with it: its {@link ImagePart} leaves the
  * source <code>index.json</code> with rating, privacy level, comment, orientation and dimensions
- * intact and is appended to the target's, and its entry in the {@link HashCache} — the content
+ * intact and takes its place by date in the target's, see {@link #insertByDate(AlbumInfo, AlbumPart)}
+ * and issue #262, and its entry in the {@link HashCache} — the content
  * hash and who contributed the photo, see issue #53 — moves from the one folder's sidecar to the
  * other's. A whole folder moves by one rename, so its sidecars ride along by nature. Previews are derived data: whatever {@link PreviewCache}
  * holds for the old path is abandoned, never moved.
@@ -778,7 +780,10 @@ public class MoveService {
 	}
 
 
-	/** Moves a single image out of the source album and appends it to the target album. */
+	/**
+	 * Moves a single image out of the source album and inserts it by its date into the target album,
+	 * see {@link #insertByDate(AlbumInfo, AlbumPart)}.
+	 */
 	private MoveOutcome moveImage(Entry entry, AlbumInfo sourceAlbum, AlbumInfo targetAlbum, File sourceFolder,
 			File targetFolder, HashCache targetHashes, HashCache sourceHashes, Path space) throws IOException {
 		ImagePart image = entry._image;
@@ -793,7 +798,7 @@ public class MoveService {
 
 		image.setName(landing._newName);
 		image.setGroup(null);
-		targetAlbum.addPart(image);
+		insertByDate(targetAlbum, image);
 		return outcome(entry._name, landing._newName, "");
 	}
 
@@ -885,16 +890,108 @@ public class MoveService {
 		if (moved.size() > 1) {
 			group.setImages(moved);
 			group.setRepresentative(Math.max(0, moved.indexOf(head)));
-			targetAlbum.addPart(group);
+			insertByDate(targetAlbum, group);
 		} else if (moved.size() == 1) {
 			// A group of one is not a group.
 			ImagePart single = moved.get(0);
 			single.setGroup(null);
-			targetAlbum.addPart(single);
+			insertByDate(targetAlbum, single);
 		}
 
 		String message = setAside == 0 ? "" : membersSetAside(setAside);
 		return outcome(entry._name, headName == null ? "" : headName, message);
+	}
+
+	/**
+	 * Inserts a part that has just been moved into the given album at its date, see issue #262.
+	 *
+	 * <p>
+	 * The album's order is the author's, possibly arranged by hand and divided by {@link Heading}s,
+	 * and it is never resorted: only the new part takes a place in it. That place is directly after
+	 * the last photograph (or group, dated by its representative) whose date is at or before the
+	 * part's own, so that a photograph of the evening of day 1 lands before the heading "Day 2", not
+	 * behind it. Equal dates keep what is there first; since the parts of one request are inserted
+	 * in the order asked, each behind the ones inserted before it, those keep the order asked too.
+	 * </p>
+	 *
+	 * <p>
+	 * A part earlier than every dated photograph goes before the first photograph of the album, that
+	 * is behind the headings that lead the album, which are the title of what follows. A part
+	 * without a date, an album that holds no dated photograph at all (nothing to place it against,
+	 * an empty album included) and an album with nothing but headings take it at the end, as every
+	 * move did before.
+	 * </p>
+	 *
+	 * <p>
+	 * "The last one at or before" is a sensible meaning in an album sorted by hand, too, where the
+	 * dates do not rise along the order: the part lands behind the point the author's sequence last
+	 * reached its time, so it never splits a stretch the author placed after something later than
+	 * it, and in an album sorted by date — the common case, and the one the analysis derives for a
+	 * folder without a sidecar — it is exactly the sorted place. An undated photograph of the album
+	 * is passed over, since it says nothing about where the time is.
+	 * </p>
+	 *
+	 * @param album
+	 *        The album to insert into.
+	 * @param part
+	 *        The {@link ImagePart} or {@link ImageGroup} to insert; it must not be a part of the
+	 *        album yet.
+	 */
+	static void insertByDate(AlbumInfo album, AlbumPart part) {
+		List<AlbumPart> parts = album.getParts();
+		long date = dateOf(part);
+		if (date == 0) {
+			parts.add(part);
+			return;
+		}
+
+		int firstImage = -1;
+		boolean anyDated = false;
+		for (int n = 0, cnt = parts.size(); n < cnt; n++) {
+			AlbumPart existing = parts.get(n);
+			if (existing instanceof Heading) {
+				continue;
+			}
+			if (firstImage < 0) {
+				firstImage = n;
+			}
+			long existingDate = dateOf(existing);
+			if (existingDate != 0) {
+				anyDated = true;
+			}
+		}
+		if (!anyDated) {
+			parts.add(part);
+			return;
+		}
+
+		for (int n = parts.size() - 1; n >= 0; n--) {
+			AlbumPart existing = parts.get(n);
+			if (existing instanceof Heading) {
+				continue;
+			}
+			long existingDate = dateOf(existing);
+			if (existingDate != 0 && existingDate <= date) {
+				parts.add(n + 1, part);
+				return;
+			}
+		}
+		parts.add(firstImage, part);
+	}
+
+	/**
+	 * The date the given part is placed by, see {@link #insertByDate(AlbumInfo, AlbumPart)}:
+	 * <code>0</code> for none, a group dated by its representative, a heading by nothing.
+	 */
+	private static long dateOf(AlbumPart part) {
+		if (part instanceof ImagePart) {
+			return ((ImagePart) part).getDate();
+		}
+		if (part instanceof ImageGroup) {
+			ImagePart head = representative((ImageGroup) part);
+			return head == null ? 0 : head.getDate();
+		}
+		return 0;
 	}
 
 	/** Where a single file ended up, see {@link MoveService#landFile}. */

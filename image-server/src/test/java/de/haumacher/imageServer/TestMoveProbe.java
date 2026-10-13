@@ -186,9 +186,9 @@ public class TestMoveProbe extends TestCase {
 	}
 
 	/**
-	 * Among equally rated photographs the cover is the first of them in the order they land in,
-	 * which is the order the request named them in — "the first best-rated image from the
-	 * selection" (the author, #153).
+	 * Among equally rated photographs the cover is the first of them in the order they land in —
+	 * "the first best-rated image from the selection" (the author, #153). Since issue #262 they land
+	 * by their dates, whatever order the request named them in.
 	 */
 	public void testEquallyRatedPhotographsAreChosenByTheOrderTheyLandIn() throws Exception {
 		write("A/later.jpg", jpeg(6, 4, Color.RED));
@@ -206,9 +206,9 @@ public class TestMoveProbe extends TestCase {
 		AlbumInfo target = stored("B");
 		List<String> landed = new ArrayList<>(names(target));
 		landed.remove("y.jpg");
-		assertEquals("They land in the order the request named them.", Arrays.asList("later.jpg", "earlier.jpg"),
-			landed);
-		assertEquals("The cover is the first of the landed.", "later.jpg", target.getIndexPicture().getImage());
+		assertEquals("They land in the order of their dates, see issue #262.",
+			Arrays.asList("earlier.jpg", "later.jpg"), landed);
+		assertEquals("The cover is the first of the landed.", "earlier.jpg", target.getIndexPicture().getImage());
 	}
 
 	/**
