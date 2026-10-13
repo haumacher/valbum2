@@ -790,7 +790,11 @@ class PersonsContentState extends State<PersonsContent>
     if (toggles || ranges) {
       _forgetClick();
     } else {
-      var now = DateTime.now();
+      // The gesture system's clock rather than [DateTime.now] (issue #281):
+      // the same wall time in the app, but the one a widget test advances
+      // with its fake clock, so two clicks the test makes back to back stay a
+      // double click however long a loaded machine takes between them.
+      var now = GestureBinding.instance.samplingClock.now();
       var again = _lastClickKey == face.key &&
           now.difference(_lastClickAt) < kDoubleTapTimeout;
       _lastClickKey = again ? null : face.key;

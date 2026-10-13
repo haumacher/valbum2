@@ -347,6 +347,19 @@ void main() {
       // And the selection is what it was: showing a picture decides nothing.
       expect(selectionOf(tester), {"q.jpg#0"});
     });
+
+    testWidgets("a second click after the double-click time only selects",
+        (tester) async {
+      await pumpSixFaces(tester);
+
+      await clickFace(tester, "q.jpg#0");
+      // The test's clock, which the editor reads (issue #281).
+      await tester.pump(kDoubleTapTimeout);
+
+      await clickFace(tester, "q.jpg#0");
+      expect(find.byKey(const Key("persons-photo")), findsNothing);
+      expect(selectionOf(tester), {"q.jpg#0"});
+    });
   });
 
   group("a finger in the face editor", () {
