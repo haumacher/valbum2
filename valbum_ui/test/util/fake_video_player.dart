@@ -67,6 +67,15 @@ class FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   @override
   Stream<VideoEvent> videoEventsFor(int playerId) => _streams[playerId]!.stream;
 
+  /// The id of the player created last, `-1` before the first.
+  int get lastPlayerId => _nextPlayerId - 1;
+
+  /// Reports that the player [playerId] has played to its end, as a platform
+  /// does; nothing where that player is already gone.
+  void complete(int playerId) {
+    _streams[playerId]?.add(VideoEvent(eventType: VideoEventType.completed));
+  }
+
   @override
   Future<void> dispose(int playerId) async {
     calls.add("dispose");
@@ -102,4 +111,3 @@ class FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   Widget buildViewWithOptions(VideoViewOptions options) =>
       const SizedBox.expand(key: Key("fake-video-surface"));
 }
-

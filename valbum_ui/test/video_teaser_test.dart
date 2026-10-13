@@ -3,8 +3,8 @@
 /// or there is no pointer at all.
 ///
 /// A teaser is a nicety. Everything here is about it staying one: it plays
-/// muted and looping while the pointer is on the tile, it is gone the moment
-/// the pointer leaves, and a teaser the server has not made yet shows nothing
+/// muted and once per pointer enter (issue #263), it is gone at its end or
+/// the moment the pointer leaves, whichever comes first, and a teaser the server has not made yet shows nothing
 /// and says nothing — and is asked about at most once more.
 library;
 
@@ -89,11 +89,30 @@ Future<TestGesture> hover(WidgetTester tester) async {
   return gesture;
 }
 
+/// The platform of [main], remembering every `setLooping` value it is given.
+class LoopRecordingPlatform extends FakeVideoPlayerPlatform {
+  final List<bool> looping = <bool>[];
+
+  @override
+  Future<void> setLooping(int playerId, bool looping) {
+    this.looping.add(looping);
+    return super.setLooping(playerId, looping);
+  }
+}
+
+/// Lets a controller's `dispose` run, which goes off the event loop (it
+/// cancels the event subscription first), which a pumped frame does not reach.
+Future<void> settle(WidgetTester tester) async {
+  await tester.pump();
+  await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+  await tester.pump();
+}
+
 void main() {
-  late FakeVideoPlayerPlatform platform;
+  late LoopRecordingPlatform platform;
 
   setUp(() {
-    platform = FakeVideoPlayerPlatform();
+    platform = LoopRecordingPlatform();
     VideoPlayerPlatform.instance = platform;
   });
 
@@ -113,10 +132,11 @@ void main() {
       platform.dataSources.single.httpHeaders,
       containsPair("Authorization", "Bearer dev-token"),
     );
-    // Muted and looping: a tile is not a place where sound starts by itself.
+    // Muted: a tile is not a place where sound starts by itself.
     expect(platform.calls, contains("setVolume"));
-    expect(platform.calls, contains("setLooping"));
     expect(platform.calls, contains("play"));
+    // And not looping (issue #263): no loop is ever asked for.
+    expect(platform.looping, isNot(contains(true)));
     expect(find.byKey(const Key("video-teaser")), findsOneWidget);
     // The poster is still there, underneath.
     expect(find.byKey(const Key("the-poster")), findsOneWidget);
@@ -132,6 +152,96 @@ void main() {
     expect(platform.calls, contains("dispose"));
     expect(find.byKey(const Key("video-teaser")), findsNothing);
     expect(find.byKey(const Key("the-poster")), findsOneWidget);
+  });
+
+  testWidgets('plays once, then the tile is the poster again (issue #263)',
+      (tester) async {
+    var probe = FakeProbe([const RenditionState(RenditionStatus.ready)]);
+    await pumpTile(tester, probe: probe);
+
+    await hover(tester);
+    expect(find.byKey(const Key("video-teaser")), findsOneWidget);
+    expect(platform.calls, isNot(contains("dispose")));
+
+    // The teaser reaches its end while the pointer still rests on the tile.
+    platform.complete(platform.lastPlayerId);
+    await settle(tester);
+
+    expect(find.byKey(const Key("video-teaser")), findsNothing);
+    expect(find.byKey(const Key("the-poster")), findsOneWidget);
+    expect(platform.calls.where((call) => call == "dispose"), hasLength(1));
+    expect(platform.looping, isNot(contains(true)));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('plays again on the next pointer enter', (tester) async {
+    var probe = FakeProbe([const RenditionState(RenditionStatus.ready)]);
+    await pumpTile(tester, probe: probe);
+
+    var gesture = await hover(tester);
+    platform.complete(platform.lastPlayerId);
+    await settle(tester);
+    expect(find.byKey(const Key("video-teaser")), findsNothing);
+
+    // Off the tile and onto it again.
+    await gesture.moveTo(const Offset(5, 5));
+    await tester.pump();
+    await gesture.moveTo(tester.getCenter(find.byKey(const Key("the-poster"))));
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+
+    expect(platform.dataSources, hasLength(2), reason: "played from the start");
+    expect(platform.calls.where((call) => call == "play"), hasLength(2));
+    expect(find.byKey(const Key("video-teaser")), findsOneWidget);
+  });
+
+  testWidgets('stops when the pointer leaves before the end', (tester) async {
+    var probe = FakeProbe([const RenditionState(RenditionStatus.ready)]);
+    await pumpTile(tester, probe: probe);
+
+    var gesture = await hover(tester);
+    expect(find.byKey(const Key("video-teaser")), findsOneWidget);
+
+    await gesture.moveTo(const Offset(5, 5));
+    await settle(tester);
+
+    expect(find.byKey(const Key("video-teaser")), findsNothing);
+    expect(platform.calls.where((call) => call == "dispose"), hasLength(1));
+
+    // An end reported by the player that is gone changes nothing.
+    platform.complete(0);
+    await settle(tester);
+    expect(platform.calls.where((call) => call == "dispose"), hasLength(1));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('an end of an earlier hover does not stop the current one',
+      (tester) async {
+    var probe = FakeProbe([const RenditionState(RenditionStatus.ready)]);
+    await pumpTile(tester, probe: probe);
+
+    var gesture = await hover(tester);
+    var first = platform.lastPlayerId;
+
+    // Leave and come back before the first teaser has been released by its
+    // player: the first player's end arrives during the second hover.
+    await gesture.moveTo(const Offset(5, 5));
+    await tester.pump();
+    await gesture.moveTo(tester.getCenter(find.byKey(const Key("the-poster"))));
+    platform.complete(first);
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+    await settle(tester);
+
+    expect(platform.lastPlayerId, isNot(first));
+    expect(
+      find.byKey(const Key("video-teaser")),
+      findsOneWidget,
+      reason: "the new play goes on",
+    );
+    expect(platform.calls.where((call) => call == "dispose"), hasLength(1));
   });
 
   testWidgets('skips a teaser the server has not made yet, silently',
