@@ -39,6 +39,7 @@ import 'listing_view.dart';
 import 'move_view.dart';
 import 'name_date.dart';
 import 'resource.dart';
+import 'return_reveal.dart';
 import 'not_ready.dart';
 import 'offline.dart';
 import 'persons_view.dart';
@@ -217,7 +218,7 @@ class AlbumContent extends StatefulWidget {
 }
 
 class AlbumContentState extends State<AlbumContent>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, ReturnReveal<AlbumContent> {
   /// The edit in progress: the mode, the selection and the click anchor.
   ///
   /// It lives with the router, not with this widget, so that a trip into an
@@ -388,7 +389,12 @@ class AlbumContentState extends State<AlbumContent>
   void didChangeDependencies() {
     super.didChangeDependencies();
     share = ShareSession.of(context);
+    // The way back from a viewer opened by its address, issue #272.
+    watchReturn();
   }
+
+  @override
+  VAlbumState get revealView => widget.albumState;
 
   @override
   void didUpdateWidget(AlbumContent oldWidget) {
@@ -3021,6 +3027,7 @@ class AlbumContentState extends State<AlbumContent>
     var result = <Widget>[];
     var images = <AbstractImage>[];
     _displayOrder.clear();
+    beginRowBlocks();
 
     if (!editMode) {
       result.add(
@@ -3135,6 +3142,8 @@ class AlbumContentState extends State<AlbumContent>
           rowExtent(rows[index], pageWidth) + topGap(index);
       result.add(
         SliverVariedExtentList(
+          // Where the way back from a viewer finds a row, see [ReturnReveal].
+          key: rowBlock(rows, extentOf, topGap),
           itemExtentBuilder: (index, dimensions) => extentOf(index),
           delegate: RowListDelegate(
             (context, index) =>

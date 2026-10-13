@@ -83,6 +83,7 @@ import 'offline.dart';
 import 'oriented_thumbnail.dart';
 import 'persons_view.dart' show browserMenu;
 import 'resource.dart';
+import 'return_reveal.dart';
 import 'rights.dart';
 import 'routes.dart' show TrashRoute;
 import 'selectable.dart';
@@ -292,7 +293,8 @@ class InboxContent extends StatefulWidget {
   State<StatefulWidget> createState() => InboxContentState();
 }
 
-class InboxContentState extends State<InboxContent> {
+class InboxContentState extends State<InboxContent>
+    with ReturnReveal<InboxContent> {
   /// The photographs currently selected, by identity.
   ///
   /// Held by the state and by nothing else: there is no edit session to keep
@@ -333,7 +335,12 @@ class InboxContentState extends State<InboxContent> {
     share = ShareSession.of(context);
     _refreshCaller =
         context.getInheritedWidgetOfExactType<CallerScope>()?.refresh;
+    // The way back from a viewer opened by its address, issue #272.
+    watchReturn();
   }
+
+  @override
+  VAlbumState get revealView => widget.albumState;
 
   @override
   void didUpdateWidget(InboxContent oldWidget) {
@@ -1078,6 +1085,7 @@ class InboxContentState extends State<InboxContent> {
   /// as the album page builds its rows since issue #111.
   List<Widget> buildSlivers(List<InboxDay> sections, double maxWidth) {
     var result = <Widget>[];
+    beginRowBlocks();
     DateTime? shownMonth;
     for (var section in sections) {
       var month = section.month;
@@ -1167,6 +1175,8 @@ class InboxContentState extends State<InboxContent> {
     double extentOf(int index) =>
         rowExtent(rows[index], pageWidth) + topGap(index);
     return SliverVariedExtentList(
+      // Where the way back from a viewer finds a row, see [ReturnReveal].
+      key: rowBlock(rows, extentOf, topGap),
       itemExtentBuilder: (index, dimensions) => extentOf(index),
       delegate: RowListDelegate(
         (context, index) =>

@@ -110,6 +110,7 @@ const List<String> convertedFiles = [
   "lib/platform_web.dart",
   "lib/recipient_chooser.dart",
   "lib/recipient_send.dart",
+  "lib/return_reveal.dart",
   "lib/rights.dart",
   "lib/routes.dart",
   "lib/search_grouping.dart",
