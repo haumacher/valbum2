@@ -13,7 +13,8 @@
 /// carried between persons. Each such surface is wrapped in a
 /// [SelectionExcluded], and a pointer that goes down on it never meets the
 /// area's own gesture recognisers — not merely its text left out, see
-/// [SelectableArea] for why that matters.
+/// [SelectableArea] for why that matters. A panel such a surface draws over
+/// itself gives its text back to the page with a [SelectionIncluded].
 ///
 /// The entry points, so that no page or dialog can forget the area:
 ///
@@ -121,7 +122,12 @@ class _SelectableAreaState extends State<SelectableArea> {
           focusNode: _focus,
           child: _AreaContent(
             key: _inner,
-            child: _OffstageGuard(child: widget.child),
+            // Selected text shows on the black pages and on the light ones
+            // alike, see [selectionHighlight].
+            child: DefaultSelectionStyle.merge(
+              selectionColor: selectionHighlight,
+              child: _OffstageGuard(child: widget.child),
+            ),
           ),
         ),
       ),
@@ -240,9 +246,94 @@ class SelectionExcluded extends StatelessWidget {
       );
 
   @override
-  Widget build(BuildContext context) =>
-      SelectionContainer.disabled(child: _ExcludedMarker(child: child));
+  Widget build(BuildContext context) => _OuterRegistrar(
+        // What a [SelectionIncluded] inside registers with: the area's
+        // registrar, or the one an exclusion around this one handed on.
+        registrar: SelectionContainer.maybeOf(context) ??
+            context
+                .dependOnInheritedWidgetOfExactType<_OuterRegistrar>()
+                ?.registrar,
+        child:
+            SelectionContainer.disabled(child: _ExcludedMarker(child: child)),
+      );
 }
+
+/// Text inside a gesture surface that is the page's all the same: it is
+/// selected with the text around the surface, and a pointer going down on it
+/// is the selection's and no gesture of the surface's (issue #280).
+///
+/// For a panel that a surface draws over itself — what the video view says
+/// while the server prepares a video, or why it cannot play one: the panel
+/// stands where the surface swipes and long-presses, but what it says is
+/// read, and copied into a bug report. A swipe or a long press on the panel
+/// selects; beside it, the surface pages and edits as before.
+///
+/// Outside a [SelectionExcluded] it adds nothing: the text is the page's
+/// anyway.
+class SelectionIncluded extends StatefulWidget {
+  final Widget child;
+
+  const SelectionIncluded({super.key, required this.child});
+
+  @override
+  State<SelectionIncluded> createState() => _SelectionIncludedState();
+}
+
+class _SelectionIncludedState extends State<SelectionIncluded> {
+  final StaticSelectionContainerDelegate _delegate =
+      StaticSelectionContainerDelegate();
+
+  @override
+  void dispose() {
+    _delegate.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var outer = context.dependOnInheritedWidgetOfExactType<_OuterRegistrar>();
+    var registrar = outer?.registrar;
+    // Inside an exclusion there is no registrar but the area's, which the
+    // exclusion handed on; the same widgets either way, see [_OffstageGuard].
+    return _IncludedMarker(
+      child: SelectionContainer(
+        registrar: SelectionContainer.maybeOf(context) ?? registrar,
+        delegate: _delegate,
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+/// The registrar around a [SelectionExcluded], for a [SelectionIncluded]
+/// inside it.
+class _OuterRegistrar extends InheritedWidget {
+  final SelectionRegistrar? registrar;
+
+  const _OuterRegistrar({required this.registrar, required super.child});
+
+  @override
+  bool updateShouldNotify(_OuterRegistrar oldWidget) =>
+      oldWidget.registrar != registrar;
+}
+
+class _IncludedMarker extends SingleChildRenderObjectWidget {
+  const _IncludedMarker({super.child});
+
+  @override
+  RenderObject createRenderObject(BuildContext context) => _RenderIncluded();
+}
+
+class _RenderIncluded extends RenderProxyBox {}
+
+/// The colour of selected text in every [SelectableArea] (issue #280).
+///
+/// The theme's — its primary at two fifths — is all but black itself on the
+/// black of the album, the listing, the inbox, the search and the viewer: a
+/// selection made there did not show, and the text seemed not selectable at
+/// all. A light blue at half strength reads on the black under white text and
+/// on the light pages and dialogs under dark text.
+const Color selectionHighlight = Color(0x8040C4FF);
 
 /// The key of a [SelectionExcluded] around a keyed child.
 class _AroundKey extends LocalKey {
@@ -310,9 +401,46 @@ class _RenderSelectionHitFilter extends RenderProxyBox {
       return false;
     }
     var content = inner.currentContext?.findRenderObject();
-    if (content is RenderBox &&
+    // The innermost mark decides: text a surface gives back to the page
+    // (issue #280) inside a surface, or the surface itself.
+    var mark = probe.path
+        .map((entry) => entry.target)
+        .where(
+            (target) => target is _RenderExcluded || target is _RenderIncluded)
+        .firstOrNull;
+    if (mark is _RenderIncluded &&
+        content is RenderBox &&
         content.attached &&
         probe.path.any((entry) => entry.target is _RenderExcluded)) {
+      // Into the text alone, and from there to the area's gesture detector:
+      // the gestures of the surface between them never see the pointer.
+      var hit = result.addWithPaintTransform(
+        transform: mark.getTransformTo(this),
+        position: position,
+        hitTest: (result, position) => mark.hitTest(result, position: position),
+      );
+      if (!hit) {
+        return false;
+      }
+      for (RenderObject? node = content.parent;
+          node != null && node != this;
+          node = node.parent) {
+        if (node is! RenderBox) {
+          continue;
+        }
+        result.addWithPaintTransform(
+          transform: node.getTransformTo(this),
+          position: position,
+          hitTest: (result, position) {
+            result.add(BoxHitTestEntry(node as RenderBox, position));
+            return true;
+          },
+        );
+      }
+      result.add(BoxHitTestEntry(this, position));
+      return true;
+    }
+    if (content is RenderBox && content.attached && mark is _RenderExcluded) {
       // Around the area's gesture detector, straight into its content.
       var hit = result.addWithPaintTransform(
         transform: content.getTransformTo(this),

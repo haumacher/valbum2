@@ -19,12 +19,16 @@ import 'package:valbum_ui/load_failure.dart';
 import 'package:valbum_ui/main.dart';
 import 'package:valbum_ui/form_dialog.dart';
 import 'package:valbum_ui/selectable.dart';
+import 'package:valbum_ui/video_view.dart' show VideoView;
+import 'package:video_player_platform_interface/video_player_platform_interface.dart';
 
 import 'catch_up_test.dart' show authOfUser, json, statusOf;
 import 'load_failure_test.dart' as failure;
 import 'move_test.dart' show tile;
+import 'place_caption_test.dart' as place;
 import 'select_mode_test.dart' show markedNames, pumpMember;
 import 'util/fake_image_http.dart';
+import 'util/fake_video_player.dart';
 import 'util/l10n.dart';
 import 'viewer_step_test.dart' as viewer;
 
@@ -465,6 +469,195 @@ void main() {
           tester, () => tester.sendKeyEvent(LogicalKeyboardKey.arrowUp));
       expect(find.byType(ImageView), findsNothing);
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('the viewer\'s caption and panels (issue #280)', () {
+    late FakeVideoPlayerPlatform platform;
+
+    setUp(() {
+      platform = FakeVideoPlayerPlatform();
+      VideoPlayerPlatform.instance = platform;
+    });
+
+    /// The album of `place_caption_test.dart` opened on the photo [name].
+    Future<void> openPhoto(WidgetTester tester, String name,
+        {String Function()? body}) async {
+      await place.pumpAlbum(tester, [], body: body);
+      await tester.tap(place.tile(name));
+      await tester.pumpAndSettle();
+      expect(viewer.shownName(tester), name);
+    }
+
+    /// The text of the caption under the picture.
+    Finder captionText() => find
+        .descendant(
+            of: find.byKey(const Key("image-caption")),
+            matching: find.byType(RichText))
+        .first;
+
+    /// An album of a described video, beside a photo.
+    String videoAlbum() =>
+        '["AlbumInfo", {"path": "2021/Trip", "title": "Trip", '
+        '"rights": [{"name": "edit"}], "parts": ['
+        '["ImagePart", {"kind": "VIDEO", "name": "clip.mp4", '
+        '"date": 1015113600000, "width": 1920, "height": 1080, '
+        '"orientation": "IDENTITY", "comment": "Down at the river"}], '
+        '["ImagePart", {"kind": "IMAGE", "name": "next.jpg", '
+        '"date": 1015113700000, "width": 2048, "height": 1536, '
+        '"orientation": "IDENTITY"}]'
+        ']}]';
+
+    testWidgets('a description is copied, in a colour that shows on black',
+        (tester) async {
+      var copied = recordClipboard(tester);
+      await withFakeImageHttp(() async {
+        await openPhoto(tester, "described.jpg");
+
+        var text = captionText();
+        expect(selectable(text), isTrue);
+        expect(areaTakesPointerAt(tester, text), isTrue);
+        await dragAndCopy(tester, text);
+        expect(copied.last, "At the lake");
+        // The theme's colour is all but black on the viewer's black.
+        expect(tester.renderObject<RenderParagraph>(text).selectionColor,
+            selectionHighlight);
+
+        // Selecting neither paged nor zoomed, and the arrows still page.
+        expect(viewer.shownName(tester), "described.jpg");
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+        await tester.pumpAndSettle();
+        expect(viewer.shownName(tester), "placed.jpg");
+      });
+    });
+
+    testWidgets('the album\'s black page shows a selection too',
+        (tester) async {
+      var copied = recordClipboard(tester);
+      await withFakeImageHttp(() async {
+        await place.pumpAlbum(tester, []);
+        var title = find.text("Trip").first;
+        var paragraph = find.descendant(
+            of: title, matching: find.byType(RichText), matchRoot: true);
+        expect(tester.renderObject<RenderParagraph>(paragraph).selectionColor,
+            selectionHighlight);
+        await dragAndCopy(tester, title);
+        expect(copied.last, "Trip");
+      });
+    });
+
+    testWidgets('a place is copied, and its map still opens', (tester) async {
+      var copied = recordClipboard(tester);
+      var urls = place.launched(tester);
+      await withFakeImageHttp(() async {
+        await openPhoto(tester, "placed.jpg");
+
+        await dragAndCopy(tester, captionText());
+        expect(copied.last, contains("Karlsruhe"));
+
+        await tester.tap(find.byKey(const Key("image-place-caption-map")));
+        await tester.pumpAndSettle();
+        expect(urls, hasLength(1));
+        expect(viewer.shownName(tester), "placed.jpg");
+      });
+    });
+
+    testWidgets('a long press on the caption selects, on the picture edits',
+        (tester) async {
+      await withFakeImageHttp(() async {
+        await openPhoto(tester, "described.jpg");
+
+        await tester.longPress(captionText());
+        await tester.pumpAndSettle();
+        expect(find.byType(TextField), findsNothing);
+        expect(find.text("Copy"), findsOneWidget);
+
+        // On the picture, the long press is the description's (issue #80).
+        await tester.longPressAt(tester.getCenter(find.byType(ImageView)));
+        await tester.pumpAndSettle();
+        expect(find.byType(TextField), findsOneWidget);
+      });
+    });
+
+    testWidgets('a tap on the picture still zooms, a swipe still pages',
+        (tester) async {
+      await withFakeImageHttp(() async {
+        await openPhoto(tester, "described.jpg");
+        var state = viewer.viewerOf(tester);
+        var tx = state.transform(tester.getSize(find.byType(ImageView)));
+        expect(tx.scale, tx.fitScale);
+
+        await tester.tapAt(tester.getCenter(find.byType(ImageView)));
+        await tester.pump(kDoubleTapTimeout);
+        await tester.pumpAndSettle();
+        expect(tx.scale, greaterThan(tx.fitScale));
+        await tester.tapAt(tester.getCenter(find.byType(ImageView)));
+        await tester.pump(kDoubleTapTimeout);
+        await tester.pumpAndSettle();
+        expect(tx.scale, tx.fitScale);
+
+        await viewer.swipe(tester, const Offset(-420, 0));
+        expect(viewer.shownName(tester), "placed.jpg");
+      });
+    });
+
+    testWidgets('the caption of a video is copied too', (tester) async {
+      var copied = recordClipboard(tester);
+      await withFakeImageHttp(() async {
+        await openPhoto(tester, "clip.mp4", body: videoAlbum);
+        expect(find.byType(VideoView), findsOneWidget);
+
+        await dragAndCopy(tester, captionText());
+        expect(copied.last, "Down at the river");
+        expect(viewer.shownName(tester), "clip.mp4");
+      });
+    });
+
+    testWidgets(
+        'what the video view says is copied, and a long press on it '
+        'selects instead of editing', (tester) async {
+      platform.failInit = true;
+      var copied = recordClipboard(tester);
+      await withFakeImageHttp(() async {
+        await openPhoto(tester, "clip.mp4", body: videoAlbum);
+        var headline = find.byKey(const Key("video-error-headline"));
+        expect(headline, findsOneWidget);
+
+        // Inside the surface, and the page's all the same.
+        expect(
+            find.ancestor(
+                of: headline, matching: find.byType(SelectionExcluded)),
+            findsOneWidget);
+        expect(areaTakesPointerAt(tester, headline), isTrue);
+        await dragAndCopy(tester, headline);
+        expect(copied.last, tester.widget<Text>(headline).data);
+        expect(viewer.shownName(tester), "clip.mp4");
+
+        await tester.longPress(headline);
+        await tester.pumpAndSettle();
+        expect(find.byType(TextField), findsNothing);
+
+        // Beside the panel the surface is the surface: no selection's, a
+        // swipe pages.
+        var surface = find.byKey(const Key("viewer-surface"));
+        var beside = tester.getTopLeft(surface) + const Offset(100, 100);
+        var result = HitTestResult();
+        tester.binding.hitTestInView(result, beside, tester.view.viewId);
+        expect(
+            result.path
+                .any((entry) => entry.target == areaDetector(tester, headline)),
+            isFalse);
+        await tester.longPressAt(beside);
+        await tester.pumpAndSettle();
+        expect(find.byType(TextField), findsOneWidget);
+        Navigator.of(tester.element(find.byType(TextField))).pop();
+        await tester.pumpAndSettle();
+
+        // A video pages on a fling, see `ImageViewState.onSwipe`.
+        await viewer.act(tester,
+            () => tester.flingFrom(beside, const Offset(-300, 0), 1500));
+        expect(viewer.shownName(tester), "next.jpg");
+      });
     });
   });
 

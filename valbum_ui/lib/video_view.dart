@@ -14,6 +14,7 @@ import 'oriented_thumbnail.dart';
 import 'platform.dart' show platformDescription;
 import 'resource.dart';
 import 'page_insets.dart';
+import 'selectable.dart';
 
 /// Asks the server whether a rendition can be played, see
 /// [VAlbumClient.renditionState].
@@ -1273,7 +1274,7 @@ class VideoViewState extends State<VideoView> {
             left: 0,
             right: 0,
             top: 0,
-            child: buildNotice(),
+            child: SelectionIncluded(child: buildNotice()),
           ),
         // The error box gets the whole slot, loosely: [Center] passes the
         // tight constraints the expanded [Stack] gave it on as a maximum, so
@@ -1281,13 +1282,13 @@ class VideoViewState extends State<VideoView> {
         // instead of overflowing it, see [buildError].
         if (failure != null)
           Center(
-            child: buildError(failure),
+            child: SelectionIncluded(child: buildError(failure)),
           ),
         // While the server is making the rendition: the poster, one line, and
         // the way past the wait, see [buildPreparing] and issue #75.
         if (failure == null && _preparing && !isPlayable)
           Center(
-            child: buildPreparing(),
+            child: SelectionIncluded(child: buildPreparing()),
           ),
       ],
     );
