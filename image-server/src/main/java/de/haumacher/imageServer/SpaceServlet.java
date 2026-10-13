@@ -172,6 +172,17 @@ public class SpaceServlet extends HttpServlet {
 	}
 
 	/**
+	 * Shares the given number of bytes of heap among the indexes of the spaces, in equal parts, see
+	 * {@link ImageServlet#setIndexMemory(long)} and issue #264.
+	 */
+	public void setIndexMemory(long bytes) {
+		long each = bytes / Math.max(1, _data.size());
+		for (ImageServlet servlet : _data.values()) {
+			servlet.setIndexMemory(each);
+		}
+	}
+
+	/**
 	 * Installs the one gazetteer of this server in every space, see issue #234: one instance, so
 	 * that a country is downloaded and held in memory once, whichever space's photos lie in it.
 	 */

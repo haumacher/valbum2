@@ -49,3 +49,4 @@ services:
       # VALBUM_GEONAMES_DIR: /photos/.geonames
       # VALBUM_GEONAMES_MEMORY: "64"
       # VALBUM_CACHE_MEMORY: "256"
+      # VALBUM_INDEX_MEMORY: "64"

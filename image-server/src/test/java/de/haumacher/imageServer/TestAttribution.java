@@ -8,13 +8,12 @@ import de.haumacher.imageServer.auth.AuthMode;
 import de.haumacher.imageServer.auth.AuthService;
 import de.haumacher.imageServer.auth.Privacy;
 import de.haumacher.imageServer.auth.Rights;
-import de.haumacher.imageServer.auth.UserStore;
+import de.haumacher.imageServer.index.SpaceIndex;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.AlbumPart;
 import de.haumacher.imageServer.shared.model.ImageGroup;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.upload.HashCache;
-import de.haumacher.imageServer.upload.HashIndex;
 import jakarta.servlet.http.HttpServletResponse;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
@@ -296,8 +295,9 @@ public class TestAttribution extends ShareTestCase {
 		uploaded.add(SharingFixture.ZOO + "/bobs.jpg");
 		uploaded.add(SharingFixture.ZOO + "/" + HashCache.FILE_NAME);
 		// Since issue #118 the space keeps a lookup of its hashes beside its users; it is derived
-		// from the sidecars and lies below '.valbum', never in an album.
-		uploaded.add(UserStore.DIRECTORY_NAME + "/" + HashIndex.FILE_NAME);
+		// from the sidecars and lies below '.valbum', never in an album: since issue #264 in the
+		// space's index, which fileNames() leaves out like the server's other caches.
+		assertTrue(Files.isDirectory(SpaceIndex.directoryOf(alice)));
 		assertEquals("An upload adds the photo, the hash sidecar and the space's index, and writes "
 			+ "nothing else.", uploaded, fileNames(alice));
 		assertUntouched(photosBefore, photoContents(alice));
@@ -315,7 +315,6 @@ public class TestAttribution extends ShareTestCase {
 		// that album is part of the same tree (issue #83).
 		takenBack.add(INBOX + "/bobs.jpg");
 		takenBack.add(INBOX + "/" + HashCache.FILE_NAME);
-		takenBack.add(UserStore.DIRECTORY_NAME + "/" + HashIndex.FILE_NAME);
 		assertEquals("The photo left the album, and nothing else was written.", takenBack, fileNames(alice));
 		Map<String, String> photosAfter = new java.util.TreeMap<>(photosBefore);
 		photosAfter.put(INBOX + "/bobs.jpg", photoContents(alice).get(INBOX + "/bobs.jpg"));
@@ -410,6 +409,8 @@ public class TestAttribution extends ShareTestCase {
 			// The server's record of what a folder holds (issue #253) is its cache, as a preview is.
 			walk.filter(Files::isRegularFile)
 				.filter(file -> !file.getFileName().toString().equals(de.haumacher.imageServer.cache.AnalysisRecord.FILE_NAME))
+				// The index of the space (issue #264) is the server's cache too.
+				.filter(file -> !file.startsWith(SpaceIndex.directoryOf(root)))
 				.forEach(file -> {
 				String name = root.relativize(file).toString().replace(File.separatorChar, '/');
 				result.add(name.replaceAll("index\\.json\\.\\d+$", "index.json~"));

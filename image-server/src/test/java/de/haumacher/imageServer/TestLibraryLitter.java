@@ -201,10 +201,11 @@ public class TestLibraryLitter extends TestCase {
 	}
 
 	/**
-	 * An index file an earlier build wrote names litter folders and litter files: both are dropped
-	 * on load, and the next write leaves them out.
+	 * An index file an earlier build wrote names litter folders and litter files: since issue #264
+	 * it is never read, so neither is an answer, and it is deleted once the index is built; what is
+	 * the library's is found by the pass.
 	 */
-	public void testAnOlderIndexFileIsCleanedOnLoad() throws Exception {
+	public void testAnOlderIndexFileIsNeverReadAndGoes() throws Exception {
 		String thumb = "cd".repeat(32);
 		String companion = "ef".repeat(32);
 		String photo = sha(ALBUM + "/" + _photos.get(0));
@@ -219,13 +220,12 @@ public class TestLibraryLitter extends TestCase {
 		try {
 			assertNull("DSM's thumbnail is still on disk, and still no answer.", index.pathOf(thumb));
 			assertNull("Neither is the Mac's companion file.", index.pathOf(companion));
-			assertEquals("What is the library's stays.", ALBUM + "/" + _photos.get(0), index.pathOf(photo));
 
-			index.flush();
-			String written = Files.readString(file, StandardCharsets.UTF_8);
-			assertFalse("The next write leaves the litter out: " + written, written.contains("@eaDir"));
-			assertFalse(written, written.contains("._P3031375.JPG"));
-			assertTrue(written, written.contains(photo));
+			index.indexNow();
+			assertNull(index.pathOf(thumb));
+			assertNull(index.pathOf(companion));
+			assertEquals("What is the library's is found.", ALBUM + "/" + _photos.get(0), index.pathOf(photo));
+			assertFalse("The older file is litter once the index is built.", Files.exists(file));
 		} finally {
 			index.shutdown();
 		}
@@ -250,13 +250,15 @@ public class TestLibraryLitter extends TestCase {
 		}
 	}
 
-	/** An interrupted pass drops nothing it did not reach: resuming is what the file is for (#118). */
+	/** An interrupted pass drops nothing it did not reach: resuming is what the index is for (#118). */
 	public void testAnInterruptedPassDropsNothing() throws Exception {
-		String kept = "12".repeat(32);
-		Path file = indexFile();
-		Files.createDirectories(file.getParent());
-		Files.writeString(file, "{\"version\":1,\"folders\":{\"" + ALBUM + "\":{\"stamp\":1,\"hashes\":{\"" + kept
-			+ "\":\"" + _photos.get(0) + "\"}}}}", StandardCharsets.UTF_8);
+		String kept = sha(ALBUM + "/" + _photos.get(0));
+		de.haumacher.imageServer.upload.HashIndex first = new de.haumacher.imageServer.upload.HashIndex(_base);
+		try {
+			first.indexNow();
+		} finally {
+			first.shutdown();
+		}
 
 		de.haumacher.imageServer.upload.HashIndex index = new de.haumacher.imageServer.upload.HashIndex(_base);
 		try {
@@ -276,7 +278,7 @@ public class TestLibraryLitter extends TestCase {
 
 	private Path indexFile() {
 		return _base.resolve(de.haumacher.imageServer.auth.UserStore.DIRECTORY_NAME)
-			.resolve(de.haumacher.imageServer.upload.HashIndex.FILE_NAME);
+			.resolve(de.haumacher.imageServer.upload.HashIndex.LEGACY_FILE_NAME);
 	}
 
 	// --- Not addressable. ---

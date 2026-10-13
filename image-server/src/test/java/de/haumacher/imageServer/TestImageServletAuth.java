@@ -234,8 +234,10 @@ public class TestImageServletAuth extends TestCase {
 
 		assertEquals("Pairing must write nothing but its own directory.",
 			Collections.singletonList(UserStore.DIRECTORY_NAME), entries(_base));
+		// Beside the space's index, which is opened when the space starts (issue #264).
 		assertEquals("The users and the codes that sign them in, and nothing else.",
-			Arrays.asList(DeviceCodeStore.FILE_NAME, UserStore.FILE_NAME),
+			Arrays.asList(DeviceCodeStore.FILE_NAME, de.haumacher.imageServer.index.SpaceIndex.DIRECTORY_NAME,
+				UserStore.FILE_NAME),
 			entries(_base.resolve(UserStore.DIRECTORY_NAME)));
 	}
 

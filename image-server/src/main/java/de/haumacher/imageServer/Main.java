@@ -398,6 +398,7 @@ public class Main {
 		}
 		System.out.println(placesReport(_environment, _basePath.toPath()));
 		System.out.println(cacheReport(_environment));
+		System.out.println(indexReport(_environment));
 		System.out.println("Spaces: " + spaces.getMode().protocolName());
 		if (spaces.getMode() == SpaceMode.MULTI && spaces.getSpaces().isEmpty()) {
 			System.out.println("  (no folder below the base folder carries .valbum/space.json; "
@@ -453,6 +454,14 @@ public class Main {
 		return "Album cache: at most " + budget / (1024 * 1024) + " MB in memory (" + ServerEnvironment.CACHE_MEMORY
 			+ "), about " + photos + " photos at " + de.haumacher.imageServer.cache.ResourceCache.BYTES_PER_PART
 			+ " bytes each, some " + photos / 100 + " albums of 100";
+	}
+
+	/** What a start-up says about the memory of the spaces' indexes, see issue #264. */
+	static String indexReport(ServerEnvironment environment) {
+		return "Index: H2 in <space>/" + UserStore.DIRECTORY_NAME + "/"
+			+ de.haumacher.imageServer.index.SpaceIndex.DIRECTORY_NAME + ", rebuilt from the albums when missing or "
+			+ "unreadable, at most " + environment.indexBudget() / (1024 * 1024) + " MB of it in memory ("
+			+ ServerEnvironment.INDEX_MEMORY + ")";
 	}
 
 	/**
@@ -640,6 +649,7 @@ public class Main {
 				spaces.single().getConfig());
 			// Before anything is read, see issue #245.
 			data.setCacheMemory(environment.cacheBudget());
+			data.setIndexMemory(environment.indexBudget());
 			data.setEmailProofs(proofs);
 			data.setOidcLogins(oidc);
 			data.setPasskeys(passkeys);
@@ -658,6 +668,7 @@ public class Main {
 			SpaceServlet front = new SpaceServlet(spaces, app);
 			// One budget for all spaces together, before anything is read, see issue #245.
 			front.setCacheMemory(environment.cacheBudget());
+			front.setIndexMemory(environment.indexBudget());
 			front.setPlaces(places);
 			// Each space indexes its own photos, and nobody else's, see issue #118.
 			front.startIndexing();

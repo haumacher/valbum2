@@ -947,6 +947,15 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	/**
+	 * Lets the index of this space take the given number of bytes of heap for its page cache, see
+	 * {@link de.haumacher.imageServer.index.SpaceIndex#setBudget(long)} and issue #264; before, a
+	 * sixteenth of the heap.
+	 */
+	public void setIndexMemory(long bytes) {
+		_index.store().setBudget(bytes);
+	}
+
+	/**
 	 * Installs the gazetteer the places of the photographs come from, see issue #234; before, no
 	 * photograph is answered any place. Adds the warm-up of the gazetteer to the background work of
 	 * the space, behind hashing ({@link PlacesStep}).
@@ -5883,6 +5892,8 @@ public class ImageServlet extends HttpServlet {
 			// A renamed folder announces nothing to the hash index; the references of a
 			// collection find its photographs there only once it is read again, see issue #221.
 			_index.treeChanged(target.toFile());
+			// And the old path holds nothing any more: its rows go in the same step, see #264.
+			_index.treeChanged(resourcePath.toFile());
 		}
 		if (sourceEdits != null) {
 			writeSources(sourceEdits, caller);

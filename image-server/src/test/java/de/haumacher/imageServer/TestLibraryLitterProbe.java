@@ -15,9 +15,9 @@ import junit.framework.TestCase;
 /**
  * Probe of issue #173 across builds: a hash index written by a server that did not know the NAS
  * litter yet holds the thumbnails of <code>@eaDir</code>. The upgraded server must not answer
- * them, neither from the loaded file before its first pass nor after it — the thumbnail is still
- * there on disk, so the "is the file still there" check of {@link HashIndex#pathOf(String)} alone
- * does not forget it.
+ * them, neither before its first pass nor after it — the thumbnail is still there on disk, so the
+ * "is the file still there" check of {@link HashIndex#pathOf(String)} alone does not forget it.
+ * Since issue #264 the file of such a build is never read and is deleted after the first pass.
  */
 @SuppressWarnings("javadoc")
 public class TestLibraryLitterProbe extends TestCase {
@@ -35,7 +35,7 @@ public class TestLibraryLitterProbe extends TestCase {
 		Files.write(litter.resolve("SYNOPHOTO_THUMB_M.jpg"), new byte[] { 1, 2, 3 });
 		Path store = _base.resolve(UserStore.DIRECTORY_NAME);
 		Files.createDirectories(store);
-		Files.writeString(store.resolve(HashIndex.FILE_NAME),
+		Files.writeString(store.resolve(HashIndex.LEGACY_FILE_NAME),
 			"{\"version\":1,\"folders\":{\"2020/Trip/@eaDir\":{\"stamp\":1,\"hashes\":{\"" + HASH
 				+ "\":\"SYNOPHOTO_THUMB_M.jpg\"}}}}",
 			StandardCharsets.UTF_8);
@@ -63,6 +63,8 @@ public class TestLibraryLitterProbe extends TestCase {
 		try {
 			index.indexNow();
 			assertNull(index.pathOf(HASH));
+			assertFalse("The file of an earlier build is litter once the index is built, see issue #264.",
+				index.getLegacyFile().exists());
 		} finally {
 			index.shutdown();
 		}

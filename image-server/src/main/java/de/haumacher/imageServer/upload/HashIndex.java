@@ -6,27 +6,23 @@ package de.haumacher.imageServer.upload;
 import de.haumacher.imageServer.LibraryFiles;
 import de.haumacher.imageServer.auth.UserStore;
 import de.haumacher.imageServer.cache.ResourceCache;
+import de.haumacher.imageServer.index.SpaceIndex;
 import de.haumacher.imageServer.pipeline.FolderPipeline;
 import de.haumacher.imageServer.shared.model.IndexProgress;
-import de.haumacher.msgbuf.json.JsonReader;
-import de.haumacher.msgbuf.json.JsonWriter;
-import de.haumacher.msgbuf.server.io.ReaderAdapter;
-import de.haumacher.msgbuf.server.io.WriterAdapter;
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
-import java.io.Reader;
-import java.io.Writer;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Deque;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -36,6 +32,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -53,30 +50,15 @@ import java.util.logging.Logger;
  * </p>
  *
  * <p>
- * <b>No database.</b> A hash is 32 bytes and a path perhaps 60, so even a library of 200 000
- * photos is some 20 MB in memory and a file of that order on disk — one {@link Map}, one exact
- * lookup, nothing to query. What is expensive here is never the index but hashing photos, which
- * is why the index holds what the sidecars already know and hashes only what nobody hashed yet.
- * </p>
- *
- * <h2>The file</h2>
- *
- * <p>
- * <code>&lt;space&gt;/{@value UserStore#DIRECTORY_NAME}/{@value #FILE_NAME}</code>:
- * </p>
- *
- * <pre>
- * {"version":1,"folders":{
- *   "":         {"stamp":1757000000000,"hashes":{"&lt;64 hex&gt;":"IMG_1.jpg"}},
- *   "2020/Trip":{"stamp":1757000001000,"hashes":{"&lt;64 hex&gt;":"IMG_2.jpg"}}}}
- * </pre>
- *
- * <p>
- * Grouped by folder rather than written as one flat hash&nbsp;&rarr;&nbsp;path map, for two
- * reasons: the folder path is written once instead of once per photo (which is most of the file),
- * and every folder carries the modification stamp of the {@value HashCache#FILE_NAME} it was read
- * from, which is what makes a start-up cheap — a folder whose sidecar has not changed is not even
- * opened. The stamp is the only invalidation rule; a stamp that does not match is simply re-read.
+ * <b>In the space's index, not in memory</b> (issue #264). The lookup lives in the H2 database of
+ * the {@link SpaceIndex} of the space, in <code>.valbum/index/</code>: a table of folders with the
+ * stamp of the sidecar each was read from, and a table of hashes per folder, found by hash. It used
+ * to be one map in memory, loaded whole from <code>.valbum/{@value #LEGACY_FILE_NAME}</code> at
+ * start-up (some 35 MB of heap for 100 000 photos); the "no database" of then was about a second
+ * truth, which this still is not: the database is a rebuildable index, deleted and built again from
+ * the sidecars whenever it is missing, unreadable or of another schema, and no part of a backup. A
+ * <code>{@value #LEGACY_FILE_NAME}</code> of an earlier build is litter, deleted after the first
+ * complete pass.
  * </p>
  *
  * <h2>The first build</h2>
@@ -92,11 +74,9 @@ import java.util.logging.Logger;
  * </p>
  *
  * <p>
- * The pass is resumable: what is done is in the file, so a server that is stopped halfway carries
- * on where it left off. The file is not rewritten after literally every folder — 20 MB times a few
- * thousand folders would be gigabytes of writes for no gain — but at most every
- * {@value #WRITE_INTERVAL_MILLIS} ms, and always at the end of the pass, after a change a request
- * caused, and at {@link #shutdown()}.
+ * The pass is resumable: every folder is committed to the index as it is read, so a server that is
+ * stopped halfway carries on where it left off. A folder whose sidecar carries the stamp the index
+ * recorded is not even opened, which is what makes a restart cheap.
  * </p>
  *
  * <h2>Staying current</h2>
@@ -104,11 +84,13 @@ import java.util.logging.Logger;
  * <p>
  * Between passes the index is kept current by the writers of a sidecar themselves: every
  * {@link HashCache#flush()} that really wrote something tells the index about its folder (see
- * {@link #sidecarWritten(File)}), which covers the upload, the move and the lazy fill of a check
- * without any of them knowing this class. What no sidecar write announces — a file deleted or a
- * folder renamed behind the index's back — is caught on the way out: {@link #pathOf(String)}
- * checks that the file it found is really there and forgets it if it is not, so the index never
- * points at a photo that is gone.
+ * {@link #sidecarWritten(File)}), which covers the upload, the move, the delete, the replacement of
+ * originals and the lazy fill of a check without any of them knowing this class — the server's own
+ * edit is in the index in the same step as in the sidecar, and a request never waits for the
+ * background to see it. What no sidecar write announces — a file deleted or a folder renamed behind
+ * the index's back — is caught on the way out: {@link #pathOf(String)} answers only a file that is
+ * really there, and the background drops the vanished file from the sidecar and the index when it
+ * next looks at its folder. A request only ever reads the index.
  * </p>
  *
  * <h2>Photos copied in while the server runs</h2>
@@ -129,22 +111,14 @@ public class HashIndex {
 
 	private static final Logger LOG = Logger.getLogger(HashIndex.class.getName());
 
-	/** The name of the index file below {@value UserStore#DIRECTORY_NAME}. */
-	public static final String FILE_NAME = "hash-index.json";
+	/**
+	 * The name of the file below {@value UserStore#DIRECTORY_NAME} an earlier build kept this index
+	 * in; deleted after the first complete pass, see issue #264.
+	 */
+	public static final String LEGACY_FILE_NAME = "hash-index.json";
 
-	/** The version this build writes. */
-	public static final int VERSION = 1;
-
-	/** How long the background pass may go on before the file is written again. */
-	static final long WRITE_INTERVAL_MILLIS = 2000;
-
-	private static final String VERSION__PROP = "version";
-
-	private static final String FOLDERS__PROP = "folders";
-
-	private static final String STAMP__PROP = "stamp";
-
-	private static final String HASHES__PROP = "hashes";
+	/** The length of a SHA-256 hash in bytes, as the index stores it. */
+	private static final int HASH_BYTES = 32;
 
 	/**
 	 * The indexes of the spaces this process serves, so that a {@link HashCache} can tell the one
@@ -170,36 +144,28 @@ public class HashIndex {
 		}
 	}
 
-	/** What is known about one folder. */
+	/** What the index recorded about one folder. */
 	private static final class Folder {
+
+		/** The row of the folder. */
+		final long _id;
 
 		/** The modification stamp of the {@value HashCache#FILE_NAME} this was read from. */
 		final long _stamp;
 
-		/** The hashes of this folder's files, by file name. */
-		final Map<String, String> _nameByHash;
-
-		Folder(long stamp, Map<String, String> nameByHash) {
+		Folder(long id, long stamp) {
+			_id = id;
 			_stamp = stamp;
-			_nameByHash = nameByHash;
 		}
 	}
 
 	private final Path _root;
 
-	private final Path _file;
+	/** Where the lookup is kept, see issue #264. */
+	private final SpaceIndex _store;
 
-	/** What is known, by folder path relative to the space root; the root itself is the empty string. */
-	private final Map<String, Folder> _folders = new LinkedHashMap<>();
-
-	/** Hash to the path of a file holding those contents, derived from {@link #_folders}. */
-	private Map<String, String> _byHash = new HashMap<>();
-
-	private boolean _lookupStale;
-
-	private boolean _dirty;
-
-	private long _written;
+	/** Whether {@link #shutdown()} closes {@link #_store}: the index opened it itself. */
+	private final boolean _ownsStore;
 
 	private int _done;
 
@@ -213,6 +179,9 @@ public class HashIndex {
 	/** How often each folder had files hashed by this index, for the tests. */
 	private final Map<String, Integer> _hashRuns = new ConcurrentHashMap<>();
 
+	/** How many times a sidecar was read into the index, for the tests. */
+	private final AtomicInteger _reads = new AtomicInteger();
+
 	private CountDownLatch _pass;
 
 	/**
@@ -223,13 +192,25 @@ public class HashIndex {
 	private Set<String> _recordedDuringPass;
 
 	/**
-	 * Loads the index of the given space; nothing is scanned and nothing is hashed until
-	 * {@link #start()} or {@link #indexNow()}.
+	 * Opens the index of the given space in its own {@link SpaceIndex}; nothing is scanned and
+	 * nothing is hashed until {@link #start()} or {@link #indexNow()}.
 	 */
 	public HashIndex(Path root) {
+		this(root, SpaceIndex.open(root), true);
+	}
+
+	/**
+	 * Creates the hash index of the given space in the given {@link SpaceIndex}, which the caller
+	 * closes after {@link #shutdown()}.
+	 */
+	public HashIndex(Path root, SpaceIndex store) {
+		this(root, store, false);
+	}
+
+	private HashIndex(Path root, SpaceIndex store, boolean ownsStore) {
 		_root = root.toAbsolutePath().normalize();
-		_file = _root.resolve(UserStore.DIRECTORY_NAME).resolve(FILE_NAME);
-		load();
+		_store = store;
+		_ownsStore = ownsStore;
 		_pipeline = new FolderPipeline(_root, "hash-index " + _root.getFileName());
 		_pipeline.addStep(new HashStep());
 		INSTANCES.add(this);
@@ -246,12 +227,25 @@ public class HashIndex {
 		return _pipeline;
 	}
 
+	/** The index of the space this lookup is kept in, see issue #264. */
+	public SpaceIndex store() {
+		return _store;
+	}
+
 	/**
 	 * How many times files of the given folder (relative to the space root) were hashed by this
 	 * index; for the tests.
 	 */
 	public int hashRuns(String folder) {
 		return _hashRuns.getOrDefault(folder, 0);
+	}
+
+	/**
+	 * How many times a {@value HashCache#FILE_NAME} was read into this index since it was opened;
+	 * for the tests: a restart over an index that is up to date reads none.
+	 */
+	public int sidecarReads() {
+		return _reads.get();
 	}
 
 	/** Hashing as a {@link FolderPipeline.Step}. */
@@ -289,9 +283,9 @@ public class HashIndex {
 		return _root;
 	}
 
-	/** The file this index is persisted in. */
-	public File getFile() {
-		return _file.toFile();
+	/** The file an earlier build kept this index in, see {@link #LEGACY_FILE_NAME}. */
+	public File getLegacyFile() {
+		return _root.resolve(UserStore.DIRECTORY_NAME).resolve(LEGACY_FILE_NAME).toFile();
 	}
 
 	/** Whether the given folder lies in the space this index answers for. */
@@ -305,36 +299,14 @@ public class HashIndex {
 	 * <p>
 	 * A bare file name for a file at the root of the space, a path with <code>/</code> as
 	 * separator below it. The file is checked to be there: an index entry whose file vanished is
-	 * forgotten and the answer looks further, so a stale entry never becomes a lie.
+	 * passed over and the answer looks further, in the order the folders became known, so a stale
+	 * entry never becomes a lie. A pure read: the background forgets what vanished.
 	 * </p>
 	 *
 	 * @return <code>null</code> if this space holds no such contents, as far as it is indexed.
 	 */
-	public synchronized String pathOf(String hash) {
-		if (hash == null || hash.isEmpty()) {
-			return null;
-		}
-		if (_lookupStale) {
-			rebuildLookup();
-		}
-		for (;;) {
-			String path = _byHash.get(hash);
-			if (path == null) {
-				return null;
-			}
-			if (Files.isRegularFile(_root.resolve(path))) {
-				return path;
-			}
-			// The file went behind the index's back (a delete, a rename). Forget it here and in
-			// the folder it was recorded in, and look whether another folder holds the contents.
-			forget(hash, path);
-			_byHash.remove(hash);
-			String other = search(hash, null);
-			if (other == null) {
-				return null;
-			}
-			_byHash.put(hash, other);
-		}
+	public String pathOf(String hash) {
+		return search(hash, null);
 	}
 
 	/**
@@ -345,10 +317,7 @@ public class HashIndex {
 	 *        The folder path relative to the space root that does not count as an answer.
 	 * @return <code>null</code> if nothing else in the space holds those contents.
 	 */
-	public synchronized String elsewhere(String hash, String folder) {
-		if (hash == null || hash.isEmpty()) {
-			return null;
-		}
+	public String elsewhere(String hash, String folder) {
 		return search(hash, folder == null ? "" : folder);
 	}
 
@@ -360,23 +329,27 @@ public class HashIndex {
 	 * A path relative to the space root per folder holding the content (one per folder: two copies
 	 * inside one folder are one entry of its sidecar's map), in the order the folders are known.
 	 * A path whose file is gone is left out, and a content left in one folder by that is left out
-	 * too. Nothing is forgotten here: this is a read, and {@link #pathOf(String)} keeps the index
-	 * clean.
+	 * too. Nothing is forgotten here: this is a read.
 	 * </p>
 	 */
-	public synchronized Map<String, List<String>> shared() {
-		Map<String, List<String>> byHash = new HashMap<>();
-		for (Map.Entry<String, Folder> entry : _folders.entrySet()) {
-			for (Map.Entry<String, String> hash : entry.getValue()._nameByHash.entrySet()) {
-				byHash.computeIfAbsent(hash.getKey(), x -> new ArrayList<>(2))
-					.add(join(entry.getKey(), hash.getValue()));
+	public Map<String, List<String>> shared() {
+		Map<String, List<String>> byHash = _store.read(connection -> {
+			Map<String, List<String>> result = new LinkedHashMap<>();
+			try (PreparedStatement statement = connection.prepareStatement(
+				"SELECT h.hash, f.path, h.name FROM hashes h JOIN folders f ON f.id = h.folder "
+					+ "WHERE h.hash IN (SELECT hash FROM hashes GROUP BY hash HAVING COUNT(*) > 1) "
+					+ "ORDER BY h.hash, f.id")) {
+				try (ResultSet rows = statement.executeQuery()) {
+					while (rows.next()) {
+						result.computeIfAbsent(hex(rows.getBytes(1)), x -> new ArrayList<>(2))
+							.add(join(rows.getString(2), rows.getString(3)));
+					}
+				}
 			}
-		}
+			return result;
+		}, Collections.emptyMap());
 		Map<String, List<String>> result = new LinkedHashMap<>();
 		for (Map.Entry<String, List<String>> entry : byHash.entrySet()) {
-			if (entry.getValue().size() < 2) {
-				continue;
-			}
 			List<String> present = new ArrayList<>(entry.getValue().size());
 			for (String path : entry.getValue()) {
 				if (Files.isRegularFile(_root.resolve(path))) {
@@ -388,11 +361,6 @@ public class HashIndex {
 			}
 		}
 		return result;
-	}
-
-	/** Whether the given folder path is the given one or lies below it. */
-	private static boolean below(String folder, String ancestor) {
-		return ancestor.isEmpty() || folder.equals(ancestor) || folder.startsWith(ancestor + "/");
 	}
 
 	/** The path of the given folder relative to the space root; the empty string for the root. */
@@ -431,7 +399,6 @@ public class HashIndex {
 		}
 		synchronized (this) {
 			read(folder, path);
-			persist(false);
 		}
 	}
 
@@ -446,14 +413,21 @@ public class HashIndex {
 		}
 		synchronized (this) {
 			// The whole subtree is read anew, so what was known about it goes first: a folder that
-			// was renamed away leaves no entry behind.
-			_folders.keySet().removeIf(known -> below(known, path));
-			_lookupStale = true;
-			_dirty = true;
+			// was renamed away leaves no entry behind. One transaction: a request never sees the tree
+			// gone before it is read again.
+			List<Sidecar> sidecars = new ArrayList<>();
 			for (File each : tree(folder)) {
-				read(each, relative(each));
+				Sidecar sidecar = sidecar(each, relative(each));
+				if (sidecar != null) {
+					sidecars.add(sidecar);
+				}
 			}
-			persist(true);
+			_store.write(connection -> {
+				deleteTree(connection, path);
+				for (Sidecar sidecar : sidecars) {
+					sidecar.apply(connection);
+				}
+			});
 		}
 	}
 
@@ -562,13 +536,12 @@ public class HashIndex {
 
 		for (File folder : withImages) {
 			if (Thread.currentThread().isInterrupted()) {
-				// The server is going down: what is done is written, and the next start carries
+				// The server is going down: what is done is committed, and the next start carries
 				// on where this left off.
 				synchronized (this) {
 					// Nothing unvisited is dropped: an interrupted pass knows nothing about the
 					// folders it did not reach, and the next one carries on with what is known.
 					_recordedDuringPass = null;
-					persist(true);
 				}
 				LOG.info("Indexing of '" + _root + "' stopped after " + _done + " folder(s).");
 				return;
@@ -578,7 +551,6 @@ public class HashIndex {
 			_pipeline.process(folder, FolderPipeline.Stage.INDEX);
 			synchronized (this) {
 				_done++;
-				persist(false);
 			}
 		}
 		synchronized (this) {
@@ -588,20 +560,21 @@ public class HashIndex {
 			// no part of the library now, see LibraryFiles and issue #173.
 			Set<String> recorded = _recordedDuringPass;
 			_recordedDuringPass = null;
-			_folders.keySet().removeIf(path -> {
-				boolean gone = (!walked.contains(path) && !recorded.contains(path))
-					|| !Files.isDirectory(_root.resolve(path));
-				if (gone) {
-					_lookupStale = true;
-					_dirty = true;
+			List<Long> gone = new ArrayList<>();
+			for (Map.Entry<String, Folder> known : folders().entrySet()) {
+				String path = known.getKey();
+				if ((!walked.contains(path) && !recorded.contains(path)) || !Files.isDirectory(_root.resolve(path))) {
+					gone.add(Long.valueOf(known.getValue()._id));
 				}
-				return gone;
-			});
+			}
+			if (!gone.isEmpty()) {
+				_store.write(connection -> deleteFolders(connection, gone));
+			}
 			_total = Math.max(_total, _done);
 			_done = _total;
 			_complete = true;
-			persist(true);
 		}
+		dropLegacyFile();
 		_pipeline.retain(walked);
 		_pipeline.flush();
 		LOG.info("Indexed " + _total + " folder(s) of '" + _root + "'.");
@@ -620,6 +593,22 @@ public class HashIndex {
 		}
 	}
 
+	/**
+	 * Deletes the file an earlier build kept the index in, once this index is built: it is litter,
+	 * see {@link #LEGACY_FILE_NAME}.
+	 */
+	private void dropLegacyFile() {
+		File legacy = getLegacyFile();
+		if (legacy.isFile()) {
+			if (legacy.delete()) {
+				LOG.info("Deleted '" + legacy + "', which the index in '" + _store.getDirectory() + "' replaces.");
+			} else {
+				LOG.warning("Cannot delete '" + legacy + "', which the index in '" + _store.getDirectory()
+					+ "' replaces; it may be deleted by hand.");
+			}
+		}
+	}
+
 	/** Brings one folder into the index, hashing what its sidecar does not know yet. */
 	private void index(File folder) throws IOException {
 		String path = relative(folder);
@@ -627,10 +616,11 @@ public class HashIndex {
 			return;
 		}
 		File sidecar = new File(folder, HashCache.FILE_NAME);
-		synchronized (this) {
-			Folder known = _folders.get(path);
-			if (known != null && sidecar.isFile() && known._stamp == sidecar.lastModified()
-				&& knowsEvery(new HashSet<>(known._nameByHash.values()), images(folder))) {
+		File[] images = images(folder);
+		Folder known = folder(path);
+		if (known != null && sidecar.isFile() && known._stamp == sidecar.lastModified()) {
+			Set<String> names = names(known._id);
+			if (knowsEvery(names, images) && present(folder, names)) {
 				// Unchanged since it was read: not even opened.
 				return;
 			}
@@ -638,9 +628,11 @@ public class HashIndex {
 
 		HashCache cache = new HashCache(folder);
 		Map<String, String> hashByName = cache.storedHashByName();
-		if (!knowsEvery(hashByName.keySet(), images(folder))) {
+		if (!knowsEvery(hashByName.keySet(), images) || !present(folder, hashByName.keySet())) {
 			// The first build of the index is where a library that was filled by other means is
-			// hashed, once; the sidecar is written, so a later pass finds it done.
+			// hashed, once; the sidecar is written, so a later pass finds it done. A file that went
+			// behind the server's back is dropped from the sidecar in the same go, so that the index
+			// forgets it, see #pathOf(String).
 			cache.refresh();
 			if (cache.hashed() > 0) {
 				_hashRuns.merge(path, 1, Integer::sum);
@@ -649,6 +641,7 @@ public class HashIndex {
 			hashByName = cache.storedHashByName();
 		}
 		synchronized (this) {
+			_reads.incrementAndGet();
 			record(path, sidecar.lastModified(), hashByName);
 		}
 	}
@@ -657,6 +650,16 @@ public class HashIndex {
 	private static boolean knowsEvery(Collection<String> names, File[] images) {
 		for (File image : images) {
 			if (!names.contains(image.getName())) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/** Whether every one of the given names of the folder is still a file there. */
+	private static boolean present(File folder, Collection<String> names) {
+		for (String name : names) {
+			if (!LibraryFiles.isIgnored(name) && !new File(folder, name).isFile()) {
 				return false;
 			}
 		}
@@ -690,88 +693,258 @@ public class HashIndex {
 		return result;
 	}
 
-	/** Stops the background pass; what is done is written. */
+	/**
+	 * Stops the background pass; what is done is committed. Closes the {@link SpaceIndex} where
+	 * this index opened it itself.
+	 */
 	public void shutdown() {
 		_pipeline.shutdown();
-		synchronized (this) {
-			persist(true);
-		}
 		INSTANCES.remove(this);
+		if (_ownsStore) {
+			synchronized (this) {
+				_store.close();
+			}
+		}
 	}
 
-	// --- The map. ---
+	/**
+	 * Nothing to do any more: every change is committed to the {@link SpaceIndex} as it is made.
+	 * Kept for the callers of the file this index was once kept in.
+	 */
+	public void flush() {
+		// Committed already.
+	}
+
+	// --- The tables. ---
 
 	/** Reads the sidecar of one folder into the index, or forgets the folder if it has none. */
 	private void read(File folder, String path) {
-		if (path == null) {
-			return;
+		Sidecar sidecar = sidecar(folder, path);
+		if (sidecar != null) {
+			_store.write(sidecar::apply);
 		}
-		File sidecar = new File(folder, HashCache.FILE_NAME);
-		if (!sidecar.isFile() && !HashCache.isInMemory(folder)) {
-			if (_folders.remove(path) != null) {
-				_lookupStale = true;
-				_dirty = true;
-			}
-			return;
+	}
+
+	/**
+	 * What the sidecar of the given folder says, to be applied to the index; <code>null</code> for a
+	 * folder outside the space.
+	 */
+	private Sidecar sidecar(File folder, String path) {
+		if (path == null) {
+			return null;
+		}
+		File file = new File(folder, HashCache.FILE_NAME);
+		if (!file.isFile() && !HashCache.isInMemory(folder)) {
+			return new Sidecar(path, 0, null);
 		}
 		HashCache cache = new HashCache(folder);
-		record(path, sidecar.lastModified(), cache.storedHashByName());
+		_reads.incrementAndGet();
+		return sidecar(path, file.lastModified(), cache.storedHashByName());
 	}
 
 	/** Puts what a folder holds into the index, replacing what was known about it. */
 	private void record(String path, long stamp, Map<String, String> hashByName) {
+		_store.write(sidecar(path, stamp, hashByName)::apply);
+	}
+
+	/** What a folder holds, as the index records it; called under this index's lock. */
+	private Sidecar sidecar(String path, long stamp, Map<String, String> hashByName) {
 		if (!LibraryFiles.isLibraryPath(path)) {
 			// No part of the library: never an answer, whatever wrote a sidecar there.
-			if (_folders.remove(path) != null) {
-				_lookupStale = true;
-				_dirty = true;
-			}
-			return;
+			return new Sidecar(path, 0, null);
 		}
 		if (_recordedDuringPass != null) {
 			_recordedDuringPass.add(path);
 		}
-		Map<String, String> nameByHash = new HashMap<>();
+		Map<String, String> nameByHash = new LinkedHashMap<>();
 		for (Map.Entry<String, String> entry : hashByName.entrySet()) {
 			if (LibraryFiles.isIgnored(entry.getKey())) {
 				// A sidecar an earlier build wrote may name a file that is no photograph now.
 				continue;
 			}
+			if (bytes(entry.getValue()) == null) {
+				// No SHA-256 at all (a sidecar written by hand, or broken): nothing to find it by.
+				continue;
+			}
 			nameByHash.putIfAbsent(entry.getValue(), entry.getKey());
 		}
-		Folder previous = _folders.put(path, new Folder(stamp, nameByHash));
-		_dirty = true;
-		if (previous != null) {
-			// What the folder held before may have been the answer for a hash it no longer holds.
-			_lookupStale = true;
-		} else if (!_lookupStale) {
-			for (Map.Entry<String, String> entry : nameByHash.entrySet()) {
-				_byHash.putIfAbsent(entry.getKey(), join(path, entry.getValue()));
+		return new Sidecar(path, stamp, nameByHash);
+	}
+
+	/** What one folder's sidecar says, read and ready to be written into the index. */
+	private static final class Sidecar {
+
+		final String _path;
+
+		final long _stamp;
+
+		/**
+		 * The name of one file per hash (well-formed, see {@link HashIndex#bytes(String)});
+		 * <code>null</code> for a folder the index forgets.
+		 */
+		final Map<String, String> _nameByHash;
+
+		Sidecar(String path, long stamp, Map<String, String> nameByHash) {
+			_path = path;
+			_stamp = stamp;
+			_nameByHash = nameByHash;
+		}
+
+		/** Writes this into the index, replacing what was known about the folder. */
+		void apply(Connection connection) throws SQLException {
+			if (_nameByHash == null) {
+				deletePath(connection, _path);
+				return;
+			}
+			long id = folderId(connection, _path, _stamp);
+			try (PreparedStatement delete = connection.prepareStatement("DELETE FROM hashes WHERE folder = ?")) {
+				delete.setLong(1, id);
+				delete.executeUpdate();
+			}
+			try (PreparedStatement insert =
+				connection.prepareStatement("INSERT INTO hashes (folder, hash, name) VALUES (?, ?, ?)")) {
+				for (Map.Entry<String, String> entry : _nameByHash.entrySet()) {
+					insert.setLong(1, id);
+					insert.setBytes(2, bytes(entry.getKey()));
+					insert.setString(3, entry.getValue());
+					insert.addBatch();
+				}
+				insert.executeBatch();
 			}
 		}
 	}
 
-	/** Forgets one hash of the folder the given path lies in. */
-	private void forget(String hash, String path) {
-		int slash = path.lastIndexOf('/');
-		String folder = slash < 0 ? "" : path.substring(0, slash);
-		Folder known = _folders.get(folder);
-		if (known != null && known._nameByHash.remove(hash) != null) {
-			_dirty = true;
+	/**
+	 * The row of the folder of the given path with the given stamp: the known one, keeping its place
+	 * in the order folders became known, else a new one at the end.
+	 */
+	private static long folderId(Connection connection, String path, long stamp) throws SQLException {
+		try (PreparedStatement select = connection.prepareStatement("SELECT id FROM folders WHERE path = ?")) {
+			select.setString(1, path);
+			try (ResultSet rows = select.executeQuery()) {
+				if (rows.next()) {
+					long id = rows.getLong(1);
+					try (PreparedStatement update =
+						connection.prepareStatement("UPDATE folders SET stamp = ? WHERE id = ?")) {
+						update.setLong(1, stamp);
+						update.setLong(2, id);
+						update.executeUpdate();
+					}
+					return id;
+				}
+			}
+		}
+		try (PreparedStatement insert = connection.prepareStatement("INSERT INTO folders (path, stamp) VALUES (?, ?)",
+			Statement.RETURN_GENERATED_KEYS)) {
+			insert.setString(1, path);
+			insert.setLong(2, stamp);
+			insert.executeUpdate();
+			try (ResultSet keys = insert.getGeneratedKeys()) {
+				keys.next();
+				return keys.getLong(1);
+			}
 		}
 	}
 
-	/** Looks through every folder for the given hash, skipping the one named. */
+	private static void deletePath(Connection connection, String path) throws SQLException {
+		try (PreparedStatement delete = connection.prepareStatement("DELETE FROM folders WHERE path = ?")) {
+			delete.setString(1, path);
+			delete.executeUpdate();
+		}
+	}
+
+	/** Forgets the folder of the given path and every folder below it. */
+	private static void deleteTree(Connection connection, String path) throws SQLException {
+		if (path.isEmpty()) {
+			try (PreparedStatement delete = connection.prepareStatement("DELETE FROM folders")) {
+				delete.executeUpdate();
+			}
+			return;
+		}
+		try (PreparedStatement delete =
+			connection.prepareStatement("DELETE FROM folders WHERE path = ? OR path LIKE ? ESCAPE '\\'")) {
+			delete.setString(1, path);
+			delete.setString(2, likeEscaped(path) + "/%");
+			delete.executeUpdate();
+		}
+	}
+
+	private static void deleteFolders(Connection connection, List<Long> ids) throws SQLException {
+		try (PreparedStatement delete = connection.prepareStatement("DELETE FROM folders WHERE id = ?")) {
+			for (Long id : ids) {
+				delete.setLong(1, id.longValue());
+				delete.addBatch();
+			}
+			delete.executeBatch();
+		}
+	}
+
+	/** The given text as the literal start of a <code>LIKE</code> pattern escaped with a backslash. */
+	private static String likeEscaped(String text) {
+		StringBuilder result = new StringBuilder(text.length() + 8);
+		for (int n = 0; n < text.length(); n++) {
+			char c = text.charAt(n);
+			if (c == '\\' || c == '%' || c == '_') {
+				result.append('\\');
+			}
+			result.append(c);
+		}
+		return result.toString();
+	}
+
+	/** What the index recorded about the folder of the given path, <code>null</code> for nothing. */
+	private Folder folder(String path) {
+		return _store.read(connection -> {
+			try (PreparedStatement select = connection.prepareStatement("SELECT id, stamp FROM folders WHERE path = ?")) {
+				select.setString(1, path);
+				try (ResultSet rows = select.executeQuery()) {
+					return rows.next() ? new Folder(rows.getLong(1), rows.getLong(2)) : null;
+				}
+			}
+		}, null);
+	}
+
+	/** The names the index recorded in the folder of the given row. */
+	private Set<String> names(long folder) {
+		return _store.read(connection -> {
+			Set<String> result = new HashSet<>();
+			try (PreparedStatement select = connection.prepareStatement("SELECT name FROM hashes WHERE folder = ?")) {
+				select.setLong(1, folder);
+				try (ResultSet rows = select.executeQuery()) {
+					while (rows.next()) {
+						result.add(rows.getString(1));
+					}
+				}
+			}
+			return result;
+		}, Collections.emptySet());
+	}
+
+	/** Every folder the index knows, by path, in the order they became known. */
+	private Map<String, Folder> folders() {
+		return _store.read(connection -> {
+			Map<String, Folder> result = new LinkedHashMap<>();
+			try (PreparedStatement select = connection.prepareStatement("SELECT path, id, stamp FROM folders ORDER BY id")) {
+				try (ResultSet rows = select.executeQuery()) {
+					while (rows.next()) {
+						result.put(rows.getString(1), new Folder(rows.getLong(2), rows.getLong(3)));
+					}
+				}
+			}
+			return result;
+		}, Collections.emptyMap());
+	}
+
+	/**
+	 * The first file holding the given hash that is really there, in the order the folders became
+	 * known, skipping the folder named.
+	 */
 	private String search(String hash, String skip) {
-		for (Map.Entry<String, Folder> entry : _folders.entrySet()) {
-			if (skip != null && entry.getKey().equals(skip)) {
+		for (String[] candidate : candidates(hash)) {
+			if (skip != null && candidate[0].equals(skip)) {
 				continue;
 			}
-			String name = entry.getValue()._nameByHash.get(hash);
-			if (name == null) {
-				continue;
-			}
-			String path = join(entry.getKey(), name);
+			String path = join(candidate[0], candidate[1]);
 			if (Files.isRegularFile(_root.resolve(path))) {
 				return path;
 			}
@@ -779,15 +952,38 @@ public class HashIndex {
 		return null;
 	}
 
-	private void rebuildLookup() {
-		Map<String, String> lookup = new HashMap<>();
-		for (Map.Entry<String, Folder> entry : _folders.entrySet()) {
-			for (Map.Entry<String, String> hash : entry.getValue()._nameByHash.entrySet()) {
-				lookup.putIfAbsent(hash.getKey(), join(entry.getKey(), hash.getValue()));
-			}
+	/**
+	 * Every path the index records for the given hash, whether its file is there or not, in the
+	 * order the folders became known; for the tests, which ask what the index holds rather than
+	 * what it answers.
+	 */
+	public List<String> recordedPaths(String hash) {
+		List<String> result = new ArrayList<>();
+		for (String[] candidate : candidates(hash)) {
+			result.add(join(candidate[0], candidate[1]));
 		}
-		_byHash = lookup;
-		_lookupStale = false;
+		return result;
+	}
+
+	/** The folder and the file name of every row of the given hash, in the order the folders became known. */
+	private List<String[]> candidates(String hash) {
+		byte[] bytes = bytes(hash);
+		if (bytes == null) {
+			return Collections.emptyList();
+		}
+		return _store.read(connection -> {
+			List<String[]> result = new ArrayList<>(2);
+			try (PreparedStatement select = connection.prepareStatement(
+				"SELECT f.path, h.name FROM hashes h JOIN folders f ON f.id = h.folder WHERE h.hash = ? ORDER BY f.id")) {
+				select.setBytes(1, bytes);
+				try (ResultSet rows = select.executeQuery()) {
+					while (rows.next()) {
+						result.add(new String[] { rows.getString(1), rows.getString(2) });
+					}
+				}
+			}
+			return result;
+		}, Collections.emptyList());
 	}
 
 	private static String join(String folder, String name) {
@@ -795,156 +991,68 @@ public class HashIndex {
 	}
 
 	/** How many contents this index knows, for the tests and the log. */
-	public synchronized int size() {
-		if (_lookupStale) {
-			rebuildLookup();
-		}
-		return _byHash.size();
-	}
-
-	// --- The file. ---
-
-	private void load() {
-		if (!Files.isRegularFile(_file)) {
-			return;
-		}
-		try (Reader reader = new InputStreamReader(Files.newInputStream(_file), StandardCharsets.UTF_8)) {
-			readIndex(new JsonReader(new ReaderAdapter(reader)));
-		} catch (IOException | RuntimeException ex) {
-			// A derived file can always be rebuilt; a broken one must never stop the server.
-			LOG.log(Level.WARNING,
-				"Rebuilding the unreadable hash index '" + _file + "': " + ex.getMessage());
-			_folders.clear();
-		}
-		_lookupStale = true;
-	}
-
-	private void readIndex(JsonReader in) throws IOException {
-		int version = 0;
-		in.beginObject();
-		while (in.hasNext()) {
-			String key = in.nextName();
-			switch (key) {
-				case VERSION__PROP:
-					version = in.nextInt();
-					break;
-				case FOLDERS__PROP:
-					in.beginObject();
-					while (in.hasNext()) {
-						String path = in.nextName();
-						readFolder(in, path);
-					}
-					in.endObject();
-					break;
-				default:
-					in.skipValue();
-					break;
+	public int size() {
+		Integer result = _store.read(connection -> {
+			try (PreparedStatement select = connection.prepareStatement("SELECT COUNT(DISTINCT hash) FROM hashes");
+					ResultSet rows = select.executeQuery()) {
+				rows.next();
+				return Integer.valueOf(rows.getInt(1));
 			}
-		}
-		in.endObject();
-		if (version > VERSION) {
-			LOG.warning("The hash index was written by a newer version (" + version + " > " + VERSION
-				+ "); every folder whose sidecar changed is read again anyway.");
-		}
+		}, Integer.valueOf(0));
+		return result.intValue();
 	}
 
-	private void readFolder(JsonReader in, String path) throws IOException {
-		long stamp = 0;
-		Map<String, String> nameByHash = new HashMap<>();
-		in.beginObject();
-		while (in.hasNext()) {
-			String key = in.nextName();
-			switch (key) {
-				case STAMP__PROP:
-					stamp = in.nextLong();
-					break;
-				case HASHES__PROP:
-					in.beginObject();
-					while (in.hasNext()) {
-						String hash = in.nextName();
-						nameByHash.put(hash, in.nextString());
-					}
-					in.endObject();
-					break;
-				default:
-					in.skipValue();
-					break;
+	/** How many folders this index knows, for the tests. */
+	public int folderCount() {
+		Integer result = _store.read(connection -> {
+			try (PreparedStatement select = connection.prepareStatement("SELECT COUNT(*) FROM folders");
+					ResultSet rows = select.executeQuery()) {
+				rows.next();
+				return Integer.valueOf(rows.getInt(1));
 			}
-		}
-		in.endObject();
-		if (!LibraryFiles.isLibraryPath(path)) {
-			// Written by a build that did not know this is no part of the library (a NAS's @eaDir,
-			// issue #173): dropped, and the next write of the file leaves it out.
-			_dirty = true;
-			return;
-		}
-		if (nameByHash.values().removeIf(LibraryFiles::isIgnored)) {
-			_dirty = true;
-		}
-		_folders.put(path, new Folder(stamp, nameByHash));
+		}, Integer.valueOf(0));
+		return result.intValue();
 	}
+
+	// --- Hashes as bytes. ---
 
 	/**
-	 * Writes the index, unless it was written a moment ago and nothing insists.
-	 *
-	 * @param now
-	 *        Whether to write whatever the clock says, see {@link #WRITE_INTERVAL_MILLIS}.
+	 * The 32 bytes of the given SHA-256 in lower-case hex, as {@link HashCache#sha256(File)} spells
+	 * it; <code>null</code> for anything else, which no file is found by.
 	 */
-	private void persist(boolean now) {
-		if (!_dirty) {
-			return;
+	static byte[] bytes(String hash) {
+		if (hash == null || hash.length() != 2 * HASH_BYTES) {
+			return null;
 		}
-		long when = System.currentTimeMillis();
-		if (!now && when - _written < WRITE_INTERVAL_MILLIS) {
-			return;
-		}
-		try {
-			store();
-			_dirty = false;
-			_written = when;
-		} catch (IOException ex) {
-			LOG.log(Level.WARNING, "Cannot write the hash index '" + _file + "': " + ex.getMessage(), ex);
-		}
-	}
-
-	/** Writes the index now, whatever the clock says. */
-	public synchronized void flush() {
-		persist(true);
-	}
-
-	private void store() throws IOException {
-		Path folder = _file.getParent();
-		Files.createDirectories(folder);
-		Path tmpFile = Files.createTempFile(folder, "hash-index", ".json");
-		try (Writer writer = new OutputStreamWriter(Files.newOutputStream(tmpFile), StandardCharsets.UTF_8)) {
-			try (JsonWriter out = new JsonWriter(new WriterAdapter(writer))) {
-				out.beginObject();
-				out.name(VERSION__PROP);
-				out.value(VERSION);
-				out.name(FOLDERS__PROP);
-				out.beginObject();
-				for (Map.Entry<String, Folder> entry : _folders.entrySet()) {
-					out.name(entry.getKey());
-					out.beginObject();
-					out.name(STAMP__PROP);
-					out.value(entry.getValue()._stamp);
-					out.name(HASHES__PROP);
-					out.beginObject();
-					for (Map.Entry<String, String> hash : entry.getValue()._nameByHash.entrySet()) {
-						out.name(hash.getKey());
-						out.value(hash.getValue());
-					}
-					out.endObject();
-					out.endObject();
-				}
-				out.endObject();
-				out.endObject();
+		byte[] result = new byte[HASH_BYTES];
+		for (int n = 0; n < HASH_BYTES; n++) {
+			int high = digit(hash.charAt(2 * n));
+			int low = digit(hash.charAt(2 * n + 1));
+			if (high < 0 || low < 0) {
+				return null;
 			}
+			result[n] = (byte) ((high << 4) | low);
 		}
-		try {
-			Files.move(tmpFile, _file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-		} catch (IOException ex) {
-			Files.move(tmpFile, _file, StandardCopyOption.REPLACE_EXISTING);
+		return result;
+	}
+
+	private static int digit(char c) {
+		if (c >= '0' && c <= '9') {
+			return c - '0';
 		}
+		if (c >= 'a' && c <= 'f') {
+			return c - 'a' + 10;
+		}
+		return -1;
+	}
+
+	/** The given hash bytes in lower-case hex. */
+	static String hex(byte[] bytes) {
+		char[] result = new char[bytes.length * 2];
+		for (int n = 0; n < bytes.length; n++) {
+			result[2 * n] = Character.forDigit((bytes[n] >> 4) & 0xF, 16);
+			result[2 * n + 1] = Character.forDigit(bytes[n] & 0xF, 16);
+		}
+		return new String(result);
 	}
 }

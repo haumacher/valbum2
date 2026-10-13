@@ -58,6 +58,9 @@ import java.util.regex.Pattern;
  * <li><code>VALBUM_CACHE_MEMORY</code>: how many megabytes of heap the albums held in memory may
  * take, all spaces together, an eighth of the heap by default, see
  * {@link de.haumacher.imageServer.cache.ResourceCache#setBudget(long)} and issue #245.</li>
+ * <li><code>VALBUM_INDEX_MEMORY</code>: how many megabytes of heap the page caches of the spaces'
+ * indexes may take, all spaces together, a sixteenth of the heap by default, see
+ * {@link de.haumacher.imageServer.index.SpaceIndex#setBudget(long)} and issue #264.</li>
  * </ul>
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
@@ -112,6 +115,12 @@ public final class ServerEnvironment {
 	 */
 	public static final String CACHE_MEMORY = "VALBUM_CACHE_MEMORY";
 
+	/**
+	 * How many megabytes of heap the indexes of the spaces may take, all spaces together; a
+	 * sixteenth of the heap by default, see issue #264.
+	 */
+	public static final String INDEX_MEMORY = "VALBUM_INDEX_MEMORY";
+
 	/** The folder below the base path the gazetteer is kept in by default. */
 	public static final String GEONAMES_DEFAULT_DIR = ".geonames";
 
@@ -123,7 +132,7 @@ public final class ServerEnvironment {
 	 * test builds a server with; a real start reads the environment, where the gazetteer is on by
 	 * default).
 	 */
-	public static final ServerEnvironment NONE = new ServerEnvironment(null, null, List.of(), false, null, 0, 0);
+	public static final ServerEnvironment NONE = new ServerEnvironment(null, null, List.of(), false, null, 0, 0, 0);
 
 	/** Thrown for a setting the server cannot run with; the message names the variable. */
 	public static final class Invalid extends Exception {
@@ -148,8 +157,10 @@ public final class ServerEnvironment {
 
 	private final long _cacheMemory;
 
+	private final long _indexMemory;
+
 	private ServerEnvironment(String publicUrl, MailSettings mail, List<OidcProvider> providers, boolean places,
-			String geonamesDir, long geonamesMemory, long cacheMemory) {
+			String geonamesDir, long geonamesMemory, long cacheMemory, long indexMemory) {
 		_publicUrl = publicUrl;
 		_mail = mail;
 		_providers = Collections.unmodifiableList(providers);
@@ -157,6 +168,7 @@ public final class ServerEnvironment {
 		_geonamesDir = geonamesDir;
 		_geonamesMemory = geonamesMemory;
 		_cacheMemory = cacheMemory;
+		_indexMemory = indexMemory;
 	}
 
 	/**
@@ -192,6 +204,22 @@ public final class ServerEnvironment {
 	 */
 	public long cacheBudget() {
 		return _cacheMemory > 0 ? _cacheMemory : de.haumacher.imageServer.cache.ResourceCache.defaultBudget();
+	}
+
+	/**
+	 * How many bytes of heap the indexes of the spaces may take, see {@link #INDEX_MEMORY}; 0 for
+	 * the default.
+	 */
+	public long getIndexMemory() {
+		return _indexMemory;
+	}
+
+	/**
+	 * How many bytes of heap the indexes of the spaces take, all spaces together: the configured
+	 * {@link #getIndexMemory()}, else {@link de.haumacher.imageServer.index.SpaceIndex#defaultBudget()}.
+	 */
+	public long indexBudget() {
+		return _indexMemory > 0 ? _indexMemory : de.haumacher.imageServer.index.SpaceIndex.defaultBudget();
 	}
 
 	/**
@@ -263,7 +291,7 @@ public final class ServerEnvironment {
 	public static ServerEnvironment read(Map<String, String> env) throws Invalid {
 		return new ServerEnvironment(publicUrl(value(env, PUBLIC_URL)), mail(env), providers(env), true,
 			geonamesDir(value(env, GEONAMES_DIR)), megabytes(GEONAMES_MEMORY, value(env, GEONAMES_MEMORY)),
-			megabytes(CACHE_MEMORY, value(env, CACHE_MEMORY)));
+			megabytes(CACHE_MEMORY, value(env, CACHE_MEMORY)), megabytes(INDEX_MEMORY, value(env, INDEX_MEMORY)));
 	}
 
 	private static String geonamesDir(String value) throws Invalid {

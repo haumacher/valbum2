@@ -73,6 +73,25 @@ public class TestServerEnvironment extends TestCase {
 		assertTrue(report, report.contains("256 MB") && report.contains(ServerEnvironment.CACHE_MEMORY));
 	}
 
+	/** The memory of the spaces' indexes, see issue #264: a sixteenth of the heap by default. */
+	public void testTheIndexMemory() throws Exception {
+		ServerEnvironment defaults = ServerEnvironment.read(Map.of());
+		assertEquals(0, defaults.getIndexMemory());
+		assertEquals(Math.max(1024 * 1024, Runtime.getRuntime().maxMemory() / 16), defaults.indexBudget());
+		ServerEnvironment configured = ServerEnvironment.read(Map.of(ServerEnvironment.INDEX_MEMORY, " 48 "));
+		assertEquals(48L * 1024 * 1024, configured.indexBudget());
+		String report = Main.indexReport(configured);
+		assertTrue(report, report.contains("48 MB") && report.contains(ServerEnvironment.INDEX_MEMORY));
+		for (String value : List.of("lots", "0", "-5")) {
+			try {
+				ServerEnvironment.read(Map.of(ServerEnvironment.INDEX_MEMORY, value));
+				fail("Accepted: " + value);
+			} catch (ServerEnvironment.Invalid ex) {
+				assertTrue(ex.getMessage(), ex.getMessage().contains(ServerEnvironment.INDEX_MEMORY));
+			}
+		}
+	}
+
 	public void testAnUnusableCacheMemoryIsRefused() {
 		for (String value : List.of("lots", "0", "-5")) {
 			try {

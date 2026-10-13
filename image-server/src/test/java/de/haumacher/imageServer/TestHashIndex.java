@@ -6,6 +6,7 @@ package de.haumacher.imageServer;
 import de.haumacher.imageServer.TestImageServletPut.FakeResponse;
 import de.haumacher.imageServer.auth.Rights;
 import de.haumacher.imageServer.auth.UserStore;
+import de.haumacher.imageServer.index.SpaceIndex;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.IndexProgress;
@@ -98,14 +99,13 @@ public class TestHashIndex extends ShareTestCase {
 
 	// --- The file. ---
 
-	public void testTheIndexFileIsWrittenAndReloadsToTheSameMap() throws Exception {
+	public void testTheIndexIsWrittenAndReloadsToTheSameMap() throws Exception {
 		index();
-		servlet().index().flush();
 
-		File file = _base.resolve(UserStore.DIRECTORY_NAME).resolve(HashIndex.FILE_NAME).toFile();
+		// Since issue #264 the index is the space's H2 database, stamped with its schema.
+		File file = SpaceIndex.directoryOf(_base).resolve(SpaceIndex.DATABASE_NAME + ".mv.db").toFile();
 		assertTrue("The index must be persisted: " + file, file.isFile());
-		String written = new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
-		assertTrue("The index must be versioned: " + written, written.contains("\"version\":1"));
+		assertTrue("The index must be stamped.", servlet().index().store().isPersistent());
 
 		HashIndex reloaded = new HashIndex(_base);
 		try {
@@ -119,7 +119,6 @@ public class TestHashIndex extends ShareTestCase {
 
 	public void testASidecarChangedAfterTheIndexWasWrittenIsReadAgain() throws Exception {
 		index();
-		servlet().index().flush();
 
 		// A sidecar rewritten behind the server's back, claiming contents nobody ever stored.
 		String invented = "b".repeat(64);
