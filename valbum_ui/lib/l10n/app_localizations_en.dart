@@ -1464,6 +1464,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get selectAllWithoutCamera => 'Select all without camera data';
 
   @override
+  String get inboxUnknownCamera => 'Unknown camera';
+
+  @override
   String get adjustRecordingTimeAction => 'Adjust recording time…';
 
   @override

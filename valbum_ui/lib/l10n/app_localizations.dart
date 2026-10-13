@@ -2492,6 +2492,12 @@ abstract class AppLocalizations {
   /// **'Select all without camera data'**
   String get selectAllWithoutCamera;
 
+  /// Filter chip of the inbox showing only the photos and videos without camera data (no EXIF make and model)
+  ///
+  /// In en, this message translates to:
+  /// **'Unknown camera'**
+  String get inboxUnknownCamera;
+
   /// Tooltip of the tool correcting the recording time of the selection
   ///
   /// In en, this message translates to:

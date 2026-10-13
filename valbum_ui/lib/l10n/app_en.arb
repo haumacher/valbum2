@@ -2396,6 +2396,11 @@
     "description": "Tooltip of the tool on an image without camera data (no EXIF make and model), adding every other image without camera data to the selection",
     "x-translated": "3ed451aa"
   },
+  "inboxUnknownCamera": "Unknown camera",
+  "@inboxUnknownCamera": {
+    "description": "Filter chip of the inbox showing only the photos and videos without camera data (no EXIF make and model)",
+    "x-translated": "e9484ab3"
+  },
   "adjustRecordingTimeAction": "Adjust recording time…",
   "@adjustRecordingTimeAction": {
     "description": "Tooltip of the tool correcting the recording time of the selection",

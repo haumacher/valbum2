@@ -112,6 +112,18 @@ abstract class SettingsStore {
 
   /// Stores where new photos of this device go.
   Future<void> saveUploadTargets(String json);
+
+  /// The camera filters of the inboxes seen on this device, as stored JSON,
+  /// or `null` (issue #278).
+  ///
+  /// A blob of its own, keyed by the address of the inbox: a view of this
+  /// device, never of the space — the inbox is shared, and what one member
+  /// filters it by is nobody else's business. A store that holds none shows
+  /// every inbox unfiltered, see `InboxCameraFilters`.
+  Future<String?> loadInboxCameraFilters();
+
+  /// Stores the camera filters of the inboxes.
+  Future<void> saveInboxCameraFilters(String json);
 }
 
 /// A [SettingsStore] keeping the value in memory only, used by tests.
@@ -137,6 +149,10 @@ class InMemorySettingsStore extends SettingsStore {
 
   /// The stored upload targets, see [SettingsStore.loadUploadTargets].
   String? uploadTargets;
+
+  /// The stored inbox camera filters, see
+  /// [SettingsStore.loadInboxCameraFilters].
+  String? inboxCameraFilters;
 
   InMemorySettingsStore([
     this.value,
@@ -195,6 +211,13 @@ class InMemorySettingsStore extends SettingsStore {
 
   @override
   Future<void> saveUploadTargets(String json) async => uploadTargets = json;
+
+  @override
+  Future<String?> loadInboxCameraFilters() async => inboxCameraFilters;
+
+  @override
+  Future<void> saveInboxCameraFilters(String json) async =>
+      inboxCameraFilters = json;
 }
 
 /// The [SettingsStore] of the app, backed by `shared_preferences`.
@@ -224,6 +247,10 @@ class PreferencesSettingsStore extends SettingsStore {
   /// The preferences key the upload targets are stored under, see
   /// [SettingsStore.loadUploadTargets].
   static const String uploadTargetsKey = "uploadTargets";
+
+  /// The preferences key the inbox camera filters are stored under, see
+  /// [SettingsStore.loadInboxCameraFilters].
+  static const String inboxCameraFiltersKey = "inboxCameraFilters";
 
   const PreferencesSettingsStore();
 
@@ -295,6 +322,15 @@ class PreferencesSettingsStore extends SettingsStore {
   @override
   Future<void> saveUploadTargets(String json) async =>
       (await SharedPreferences.getInstance()).setString(uploadTargetsKey, json);
+
+  @override
+  Future<String?> loadInboxCameraFilters() async =>
+      (await SharedPreferences.getInstance()).getString(inboxCameraFiltersKey);
+
+  @override
+  Future<void> saveInboxCameraFilters(String json) async =>
+      (await SharedPreferences.getInstance())
+          .setString(inboxCameraFiltersKey, json);
 }
 
 /// The server URL the app uses, and the way it is changed.
@@ -572,7 +608,8 @@ Future<DeviceList?> _devicesOfThisPerson(
   }
   try {
     return await clientFor(dataUrl)
-        .withToken(settings.token, userName: userName ?? settings.userName ?? "")
+        .withToken(settings.token,
+            userName: userName ?? settings.userName ?? "")
         .devices();
   } catch (_) {
     return null;

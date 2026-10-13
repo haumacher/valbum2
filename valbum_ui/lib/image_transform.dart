@@ -13,6 +13,7 @@ import 'package:flutter/widgets.dart' show Matrix4, Offset, Rect;
 
 import 'album_labels.dart' show shownByLabelFilter;
 import 'album_layout.dart' show Orientations, ToImage;
+import 'album_model.dart' show shownByCameraFilter;
 import 'crop.dart' show renditionRegion;
 import 'resource.dart';
 
@@ -486,13 +487,16 @@ Rect pictureRectOnPage(ImageTransform tx) {
 int ratingOf(AbstractImage image) => ToImage.toImage(image).rating;
 
 /// Whether the given image passes the album's rating filter — and its label
-/// filter, so that the viewer pages through what the grid shows (issue #213).
+/// filter, so that the viewer pages through what the grid shows (issue #213),
+/// and the camera filter of an inbox, so that it pages through what the
+/// inbox shows (issue #278).
 ///
 /// A photograph of a collection that is gone (issue #221) is never paged to:
 /// there is nothing to show of it.
 bool isVisible(AbstractImage image, int minRating) =>
     ratingOf(image) >= minRating &&
     shownByLabelFilter(image) &&
+    shownByCameraFilter(image) &&
     !ToImage.toImage(image).missing;
 
 /// The next image passing the rating filter, `null` if there is none.

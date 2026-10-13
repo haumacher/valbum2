@@ -362,6 +362,7 @@
   "headingSelectTooltip": "Wählt die Bilder unter dieser Überschrift aus",
   "alreadyInOrder": "Ist bereits sortiert",
   "noOtherImageFromCamera": "Es gibt kein weiteres Bild von dieser Kamera",
+  "noOtherImageWithoutCamera": "Es gibt kein weiteres Bild ohne Kameradaten",
   "nothingToAdjust": "Es gibt nichts anzupassen",
   "saveFailed": "Speichern fehlgeschlagen: {problem}",
   "discardChangesTitle": "Die Änderungen an diesem Album verwerfen?",
@@ -397,6 +398,7 @@
   "ungroupAction": "Gruppierung aufheben",
   "chooseGroupPicture": "Wählen Sie das Gruppenbild aus",
   "selectAllFromCamera": "Alle Bilder dieser Kamera auswählen",
+  "selectAllWithoutCamera": "Alle Bilder ohne Kameradaten auswählen",
   "adjustRecordingTimeAction": "Aufnahmezeit anpassen…",
   "imageProperties": "Bildeigenschaften",
   "useAsAlbumPicture": "Als Albumbild verwenden",
@@ -1035,12 +1037,11 @@
   "contactOverviewIssued": "Übersichts-Link gesendet am {day}",
   "contactOverviewOpened": "Übersichts-Link geöffnet am {day}",
   "identifyAskOverviewAgain": "Bitten Sie eine Person, die Fotos mit Ihnen geteilt hat, Ihnen Ihren eigenen Link zu dieser Übersicht zu senden.",
-  "noOtherImageWithoutCamera": "Es gibt kein weiteres Bild ohne Kameradaten",
-  "selectAllWithoutCamera": "Alle Bilder ohne Kameradaten auswählen",
   "openInAppLead": "Diese Seite kann auch in der VAlbum-App geöffnet werden.",
   "openInApp": "In der App öffnen",
   "appLinkConnectTitle": "Mit {host} verbinden?",
+  "appLinkConnectBody": "Der Link führt zum Album-Server {server}. Diese App ist mit {current} verbunden; beim Wechsel zum anderen Server wird dieses Gerät von {current} abgemeldet.",
   "appLinkConnect": "Verbinden",
   "appLinkPairingTitle": "Mit dem Album-Server verbinden",
-  "appLinkConnectBody": "Der Link führt zum Album-Server {server}. Diese App ist mit {current} verbunden; beim Wechsel zum anderen Server wird dieses Gerät von {current} abgemeldet."
+  "inboxUnknownCamera": "Unbekannte Kamera"
 }

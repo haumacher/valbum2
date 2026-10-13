@@ -5,6 +5,7 @@
 library;
 
 import 'album_edit.dart' show noMinRating;
+import 'album_layout.dart' show ToImage;
 import 'inbox_view.dart' show inboxDays;
 import 'locales.dart' show platformMessages;
 import 'resource.dart';
@@ -95,6 +96,29 @@ class AlbumInitializer {
       image.end = images.last;
     }
   }
+}
+
+final Expando<Set<String>> _cameraFilters = Expando("cameraFilter");
+
+/// The cameras the given inbox is filtered by on the screen (issue #278),
+/// empty for none: the labels of [ImagePart.camera], the empty label for the
+/// photographs without camera data.
+///
+/// Kept beside the album object like its label filter (`labelFilterOf`,
+/// issue #213): the inbox and the viewer opened from it read the same album,
+/// so paging in the viewer stays inside what the inbox shows — and, being
+/// read on every step, follows the filter as it is set at that moment.
+Set<String> cameraFilterOf(AlbumInfo? album) =>
+    (album == null ? null : _cameraFilters[album]) ?? const {};
+
+/// Filters the given album to [cameras], none showing every photograph.
+void setCameraFilter(AlbumInfo album, Set<String> cameras) =>
+    _cameraFilters[album] = cameras.isEmpty ? null : Set.unmodifiable(cameras);
+
+/// Whether the viewer shows the given image under its album's camera filter.
+bool shownByCameraFilter(AbstractImage image) {
+  var cameras = cameraFilterOf(image.owner);
+  return cameras.isEmpty || cameras.contains(ToImage.toImage(image).camera);
 }
 
 /// The name of the image file representing the given image in a listing or

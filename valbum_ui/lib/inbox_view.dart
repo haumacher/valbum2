@@ -42,6 +42,10 @@
 ///    (issue #226): it is never a tile of a listing and never chosen, it is
 ///    opened from the inbox icon of the start page, whose badge says how much
 ///    waits here;
+///  * a row of chips above the photographs filters them by camera (issue
+///    #278), one per camera found plus "Unknown camera", several of them a
+///    union, none of them everything — remembered on this device, never on
+///    the server, see [inboxCameras] and [InboxCameraFilterStorage];
 ///  * what an inbox has no use for is not there: no reorder, no drag handles,
 ///    no headings of its own, no description, no album picture, no groups, no
 ///    "view as".
@@ -54,6 +58,8 @@
 /// thumbnail, the recording-time dialog, the image properties, the move and
 /// the delete flows, the router and the viewer.
 library;
+
+import 'dart:convert';
 
 import 'package:flutter/material.dart' hide Orientation;
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
@@ -271,6 +277,151 @@ List<InboxDay> inboxDays(
 }
 
 // ---------------------------------------------------------------------------
+// The camera filter, issue #278.
+// ---------------------------------------------------------------------------
+
+/// One camera of an inbox and how many of its photographs the inbox shows.
+///
+/// [camera] is the label of [ImagePart.camera] — of a video too, which
+/// carries its container's — and the empty label stands for every photograph
+/// without camera data, the chip "Unknown camera" (the one group #274 gathers
+/// such photographs in as well, see [inSameCameraGroup]).
+class InboxCamera {
+  /// The camera label, empty for the photographs without camera data.
+  final String camera;
+
+  /// How many photographs of the inbox carry [camera].
+  final int count;
+
+  const InboxCamera(this.camera, this.count);
+
+  /// Whether this stands for the photographs without camera data.
+  bool get unknown => camera.isEmpty;
+
+  /// The key of the chip of this camera.
+  Key get chipKey => unknown
+      ? const Key("inbox-camera-unknown")
+      : Key("inbox-camera-chip-$camera");
+
+  /// What the chip of this camera reads.
+  String label(AppLocalizations l10n) =>
+      unknown ? l10n.inboxUnknownCamera : camera;
+}
+
+/// The cameras of what [days] show, the chips of the filter: the most
+/// photographs first, a tie by name, and "Unknown camera" behind the named
+/// ones of its count.
+List<InboxCamera> inboxCameras(List<InboxDay> days) {
+  var counts = <String, int>{};
+  for (var day in days) {
+    for (var image in day.images) {
+      counts[image.camera] = (counts[image.camera] ?? 0) + 1;
+    }
+  }
+  var result = [
+    for (var entry in counts.entries) InboxCamera(entry.key, entry.value),
+  ];
+  result.sort((a, b) {
+    var byCount = b.count.compareTo(a.count);
+    if (byCount != 0) {
+      return byCount;
+    }
+    if (a.unknown != b.unknown) {
+      return a.unknown ? 1 : -1;
+    }
+    return a.camera.toLowerCase().compareTo(b.camera.toLowerCase());
+  });
+  return result;
+}
+
+/// The cameras of [stored] that [cameras] offer a chip for: the filter in
+/// effect.
+///
+/// Empty — everything shown — where fewer than two cameras are found, since
+/// then there is no chip row to see or to undo a filter with, and a stored
+/// camera none of whose photographs waits here any more filters nothing: an
+/// inbox never stands empty for a filter the screen does not show.
+Set<String> activeCameras(Set<String> stored, List<InboxCamera> cameras) =>
+    cameras.length < 2
+        ? const {}
+        : {
+            for (var camera in cameras)
+              if (stored.contains(camera.camera)) camera.camera,
+          };
+
+/// [days] with only the photographs of [cameras], the days left empty
+/// dropped; all of [days] where [cameras] is empty.
+List<InboxDay> filterByCamera(List<InboxDay> days, Set<String> cameras) {
+  if (cameras.isEmpty) {
+    return days;
+  }
+  var result = <InboxDay>[];
+  for (var day in days) {
+    var images = [
+      for (var image in day.images)
+        if (cameras.contains(image.camera)) image,
+    ];
+    if (images.isNotEmpty) {
+      result.add(InboxDay(day.day, images));
+    }
+  }
+  return result;
+}
+
+/// The camera filter of an inbox, kept in the [SettingsStore] of this device
+/// (issue #278) under the inbox's address: one JSON object mapping an inbox
+/// to its cameras.
+///
+/// Never fails: a store that cannot be read — web storage refused in a
+/// private window, a blob from another version — is an inbox shown whole, and
+/// a write that fails leaves the filter in effect until the screen is left.
+extension InboxCameraFilterStorage on SettingsStore {
+  /// The cameras [inbox] was last filtered by on this device.
+  Future<Set<String>> loadInboxCameraFilter(String inbox) async {
+    try {
+      var cameras = (await _inboxCameraFilters())[inbox];
+      if (cameras is List) {
+        return {
+          for (var camera in cameras)
+            if (camera is String) camera,
+        };
+      }
+    } catch (_) {
+      // Nothing remembered.
+    }
+    return {};
+  }
+
+  /// Remembers [cameras] as the filter of [inbox], forgetting it where empty.
+  Future<void> saveInboxCameraFilter(String inbox, Set<String> cameras) async {
+    try {
+      var all = await _inboxCameraFilters();
+      if (cameras.isEmpty) {
+        all.remove(inbox);
+      } else {
+        all[inbox] = [...cameras]..sort();
+      }
+      await saveInboxCameraFilters(jsonEncode(all));
+    } catch (_) {
+      // Kept for this visit only.
+    }
+  }
+
+  Future<Map<String, dynamic>> _inboxCameraFilters() async {
+    try {
+      var json = await loadInboxCameraFilters();
+      var decoded = json == null ? null : jsonDecode(json);
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+    } catch (_) {
+      // Unreadable: started afresh.
+    }
+    return {};
+  }
+}
+
+// ---------------------------------------------------------------------------
 // The screen.
 // ---------------------------------------------------------------------------
 
@@ -307,6 +458,13 @@ class InboxContentState extends State<InboxContent>
   /// [handleTap].
   ImagePart? _anchor;
 
+  /// The cameras this inbox is filtered by as remembered on this device
+  /// (issue #278); in effect only as far as [activeCameras] lets it.
+  Set<String> _cameraFilter = {};
+
+  /// The inbox address [_cameraFilter] was loaded for, see [_loadCameraFilter].
+  String? _cameraFilterOf;
+
   /// The share link this inbox is being looked at through, always `null` in
   /// practice: the server answers `404` for an inbox to a link (issue #135),
   /// so the app never gets here. Read all the same, so that nothing this
@@ -337,6 +495,71 @@ class InboxContentState extends State<InboxContent>
         context.getInheritedWidgetOfExactType<CallerScope>()?.refresh;
     // The way back from a viewer opened by its address, issue #272.
     watchReturn();
+    _loadCameraFilter();
+  }
+
+  /// The store the camera filter is remembered in, `null` where the screen is
+  /// shown without the app around it.
+  SettingsStore? get _store =>
+      ServerSettingsScope.maybeOf(context)?.settings.store;
+
+  /// Reads the camera filter remembered for this inbox, once per address.
+  ///
+  /// Until it is read the inbox is shown whole; a chip tapped in the meantime
+  /// wins over what is read afterwards.
+  void _loadCameraFilter() {
+    var inbox = albumUrl;
+    var store = _store;
+    if (_cameraFilterOf == inbox || store == null) {
+      return;
+    }
+    _cameraFilterOf = inbox;
+    store.loadInboxCameraFilter(inbox).then((cameras) {
+      if (!mounted || _cameraFilterOf != inbox || cameras.isEmpty) {
+        return;
+      }
+      setState(() {
+        _cameraFilter = cameras;
+        _keepSelectionShown();
+      });
+    });
+  }
+
+  /// Every photograph the inbox shows, of every camera, as days.
+  List<InboxDay> get _allDays => inboxDays(album.parts);
+
+  /// The days the inbox shows: [_allDays] narrowed by the camera filter.
+  List<InboxDay> get shownDays {
+    var all = _allDays;
+    return filterByCamera(all, activeCameras(_cameraFilter, inboxCameras(all)));
+  }
+
+  /// Turns the filter by [camera] on or off, see [activeCameras] — what is in
+  /// effect plus or minus [camera], remembered on this device.
+  ///
+  /// A photograph the filter hides leaves the selection (the decision on
+  /// issue #278): the inbox is shared, and a move or a delete must never take
+  /// along a photograph — someone else's — that is no longer on the screen.
+  void toggleCamera(String camera) {
+    var cameras = inboxCameras(_allDays);
+    var next = {...activeCameras(_cameraFilter, cameras)};
+    if (!next.remove(camera)) {
+      next.add(camera);
+    }
+    setState(() {
+      _cameraFilter = next;
+      _keepSelectionShown();
+    });
+    _store?.saveInboxCameraFilter(albumUrl, next);
+  }
+
+  /// Takes out of the selection what the camera filter hides.
+  void _keepSelectionShown() {
+    var shown = Set<ImagePart>.identity()..addAll(images);
+    _selection.retainWhere(shown.contains);
+    if (_anchor != null && !shown.contains(_anchor)) {
+      _anchor = null;
+    }
   }
 
   @override
@@ -349,6 +572,7 @@ class InboxContentState extends State<InboxContent>
       _selection.clear();
       _anchor = null;
     }
+    _loadCameraFilter();
   }
 
   /// What the caller may do with this inbox, as the server answered it.
@@ -375,9 +599,12 @@ class InboxContentState extends State<InboxContent>
       (rights.mayEdit || rights.mayContribute) && share == null;
 
   /// Every photograph the inbox shows, in the order it shows them: the days
-  /// newest first, a day chronologically, the trashed left out ([inboxDays]).
+  /// newest first, a day chronologically, the trashed left out ([inboxDays]),
+  /// and only the cameras filtered by ([shownDays], issue #278) — so a
+  /// shift-click range, a camera gathered and a day selected take nothing
+  /// the screen does not show.
   List<ImagePart> get images => [
-        for (var section in inboxDays(album.parts)) ...section.images,
+        for (var section in shownDays) ...section.images,
       ];
 
   bool isSelected(ImagePart image) => _selection.contains(image);
@@ -951,7 +1178,12 @@ class InboxContentState extends State<InboxContent>
   @override
   Widget build(BuildContext context) {
     _syncBrowserMenu();
-    var sections = inboxDays(album.parts);
+    var all = _allDays;
+    var cameras = inboxCameras(all);
+    var active = activeCameras(_cameraFilter, cameras);
+    // The viewer opened from here pages through what is shown (issue #278).
+    setCameraFilter(album, active);
+    var sections = filterByCamera(all, active);
     var count = _selection.length;
     return Scaffold(
       backgroundColor: Colors.black,
@@ -1015,6 +1247,15 @@ class InboxContentState extends State<InboxContent>
                           scrollCacheExtent: const ScrollCacheExtent.viewport(
                               contextViewports),
                           slivers: [
+                            // One camera or none: nothing to filter by.
+                            if (cameras.length > 1)
+                              SliverPadding(
+                                padding: EdgeInsets.only(
+                                    left: insets.left, right: insets.right),
+                                sliver: SliverToBoxAdapter(
+                                  child: cameraChips(cameras, active),
+                                ),
+                              ),
                             SliverPadding(
                               padding: EdgeInsets.only(
                                   left: insets.left, right: insets.right),
@@ -1100,6 +1341,58 @@ class InboxContentState extends State<InboxContent>
         // What this app is, the last entry of every main menu (#187).
         aboutMenuItem(_l10n),
       ];
+
+  /// The chips of the camera filter (issue #278), each with the number of
+  /// photographs of its camera, in the style of the album's label chips
+  /// (#213); scrolling away with the photographs as those do.
+  Widget cameraChips(List<InboxCamera> cameras, Set<String> active) => Padding(
+        key: const Key("inbox-camera-chips"),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+        child: Wrap(
+          alignment: WrapAlignment.center,
+          spacing: 8,
+          runSpacing: 4,
+          children: [
+            for (var camera in cameras)
+              _cameraChip(camera, active.contains(camera.camera)),
+          ],
+        ),
+      );
+
+  Widget _cameraChip(InboxCamera camera, bool selected) => FilterChip(
+        key: camera.chipKey,
+        selected: selected,
+        showCheckmark: false,
+        // Opaque, as the album's label chip and for its reason: a translucent
+        // colour lets Material 3's light surface through the black page.
+        backgroundColor: Color.alphaBlend(Colors.white12, Colors.black),
+        selectedColor: Colors.white,
+        side: const BorderSide(color: Colors.white38),
+        avatar: camera.unknown
+            ? Icon(
+                Icons.no_photography,
+                size: 16,
+                color: selected ? Colors.black54 : Colors.white60,
+              )
+            : null,
+        label: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              camera.label(_l10n),
+              style: TextStyle(color: selected ? Colors.black : Colors.white),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              "${camera.count}",
+              style: TextStyle(
+                color: selected ? Colors.black54 : Colors.white60,
+              ),
+            ),
+          ],
+        ),
+        onSelected: (_) => toggleCamera(camera.camera),
+      );
 
   /// The inbox as the slivers of its scroll view: a month line where the
   /// month changes, a day heading, and the rows of that day between them.
