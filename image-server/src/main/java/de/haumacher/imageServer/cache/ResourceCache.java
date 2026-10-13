@@ -525,12 +525,8 @@ public class ResourceCache {
 	}
 
 	/**
-	 * The order a listing shows its entries in: the newest first, the undated behind them by name.
-	 *
-	 * <p>
-	 * Public, because a listing carrying link entries (issue #50) is ordered by the same rule: a
-	 * shared album takes its place among one's own by its date, not behind them.
-	 * </p>
+	 * The order an undated listing shows its entries in: the newest first, the undated behind them
+	 * by name, see {@link #listingOrder(AlbumDate)}.
 	 *
 	 * <p>
 	 * A folder without a date sorts by name exactly as every folder did before issue #48. The date
@@ -538,9 +534,56 @@ public class ResourceCache {
 	 * listing nothing but the sidecars it reads anyway, see {@link FolderInfo#getEffectiveDate()}.
 	 * </p>
 	 */
-	public static final Comparator<FolderInfo> BY_DATE =
-		Comparator.comparingLong((FolderInfo folder) -> folder.getEffectiveDate()).reversed()
+	public static final Comparator<FolderInfo> NEWEST_FIRST =
+		Comparator.comparing((FolderInfo folder) -> folder.getEffectiveDate() == 0L)
+			.thenComparing(Comparator.comparingLong(FolderInfo::getEffectiveDate).reversed())
 			.thenComparing(FolderInfo::getName, String.CASE_INSENSITIVE_ORDER);
+
+	/**
+	 * The order a dated listing shows its entries in: the oldest first, the undated behind them by
+	 * name, see {@link #listingOrder(AlbumDate)}.
+	 */
+	public static final Comparator<FolderInfo> OLDEST_FIRST =
+		Comparator.comparing((FolderInfo folder) -> folder.getEffectiveDate() == 0L)
+			.thenComparingLong(FolderInfo::getEffectiveDate)
+			.thenComparing(FolderInfo::getName, String.CASE_INSENSITIVE_ORDER);
+
+	/**
+	 * The order a listing shows its entries in, chosen by the listing's own date, see issue #270.
+	 *
+	 * <p>
+	 * A listing whose own folder has a date (a year folder <code>2025</code>, a month folder: the
+	 * date it sorts by in the listing above it, {@link AlbumDate#ofFolder(FolderResource, String)})
+	 * is read through its period like an album: {@link #OLDEST_FIRST oldest first}. An undated
+	 * listing (the root of a space, <code>Trips</code>) keeps {@link #NEWEST_FIRST newest first}, so
+	 * the start page opens on the latest year. Undated entries stand behind the dated ones by name in
+	 * both. The app mirrors this rule for an older server and its offline cache
+	 * (<code>sortedFolders</code> in <code>album_date.dart</code>).
+	 * </p>
+	 *
+	 * @param listingDate
+	 *        The date of the listing's own folder, {@link AlbumDate#NONE} for none.
+	 */
+	public static Comparator<FolderInfo> listingOrder(AlbumDate listingDate) {
+		return listingDate.isSet() ? OLDEST_FIRST : NEWEST_FIRST;
+	}
+
+	/**
+	 * The date of the listing at the given path, the one {@link #listingOrder(AlbumDate)} chooses by.
+	 *
+	 * <p>
+	 * The root of a space is undated whatever its folder on disk is called: it is no period of time
+	 * but the whole library, and the app, which sees it as the empty path, cannot know that name.
+	 * </p>
+	 *
+	 * @param path
+	 *        The listing's folder.
+	 * @param sidecar
+	 *        Its own <code>index.json</code>, <code>null</code> if it has none.
+	 */
+	public static AlbumDate listingDate(PathInfo path, FolderResource sidecar) {
+		return path.isRoot() ? AlbumDate.NONE : AlbumDate.ofFolder(sidecar, path.getName());
+	}
 
 	public Resource lookup(PathInfo pathInfo) {
 		LoadingCache<PathInfo, Resource> cache = _cache;
@@ -1062,7 +1105,7 @@ public class ResourceCache {
 				}
 				folders.add(loadFolderInfo(folder));
 			}
-			folders.sort(ResourceCache.BY_DATE);
+			folders.sort(listingOrder(listingDate(pathInfo, listing)));
 
 			listing.setFolders(folders);
 			return listing;

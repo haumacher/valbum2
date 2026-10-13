@@ -298,7 +298,7 @@ void main() {
 
     await tester.tap(find.byKey(const Key("search-create-collection")));
     await settle(tester);
-    await tester.tap(find.byKey(const Key("picker-folder-Best")));
+    await tapPickerRow(tester, "Best");
     await settle(tester);
     await tester.tap(find.byKey(const Key("picker-confirm")));
     await settle(tester);
@@ -325,3 +325,10 @@ void main() {
     expect(german.editSearch, isNot(l10n.editSearch));
   });
 }
+
+/// Taps the picker's row of [name] near its top edge: the picker lists the
+/// undated by name (issue #270), and Best, the third, stands at the foot of
+/// the dialog at the test size, its lower half under the dialog's buttons.
+Future<void> tapPickerRow(WidgetTester tester, String name) =>
+    tester.tapAt(tester.getTopLeft(find.byKey(Key("picker-folder-$name"))) +
+        const Offset(24, 8));

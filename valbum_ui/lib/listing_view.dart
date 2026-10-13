@@ -468,10 +468,15 @@ class ListingView extends StatelessWidget {
     double imageBorder,
     int columns,
   ) {
-    // The newest first, the undated behind them by name -- the order the
-    // server sends a listing in since issue #48, applied here as well, so
-    // that an older server and the offline cache read the same way.
-    var folders = sortedFolders(self.folders);
+    // The oldest first in a dated folder, the newest first in an undated
+    // one, the undated behind them by name -- the order the server sends a
+    // listing in (issues #48, #270), applied here as well, so that an older
+    // server and the offline cache read the same way.
+    var folders = shownFolders(
+      self.folders,
+      albumState.path,
+      linkRoot: ShareSession.of(context) != null,
+    );
     var cells =
         tileCells([for (var folder in folders) folder.starred], columns);
     return TileGrid(

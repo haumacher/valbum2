@@ -104,7 +104,8 @@ public class TestPlacementProbe extends TestCase {
 		ListingInfo year = listing(restarted, "/2021/");
 		assertEquals("A year folder is an ordinary folder with no rule of its own.", Placement.NONE,
 			year.getPlacement());
-		assertEquals(Arrays.asList("2021-09-09 Fair", "2021-07-01 Lake"), names(year));
+		assertEquals("A year is read oldest first (issue #270).", Arrays.asList("2021-07-01 Lake", "2021-09-09 Fair"),
+			names(year));
 
 		// The rule places, it does not police: an album created inside the year folder stays there,
 		// however it is dated.

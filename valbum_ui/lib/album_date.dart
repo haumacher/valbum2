@@ -6,10 +6,12 @@
 ///
 /// * [describeDateSource] answers where the date on the screen comes from, so
 ///   the album properties can say it instead of showing a date out of nowhere.
-/// * [sortedFolders] is the order the server's `BY_DATE` comparator produces
-///   (`ResourceCache.BY_DATE`): the newest first, the undated behind them by
-///   name. The app applies it to what it was given, so a listing from an older
-///   server or from the offline cache reads like a current one.
+/// * [sortedFolders] is the order the server sorts a listing in
+///   (`ResourceCache.listingOrder`, issue #270): the oldest first in a listing
+///   whose own folder has a date, the newest first in an undated one, the
+///   undated entries behind the dated ones by name in both. The app applies it
+///   to what it was given, so a listing from an older server or from the
+///   offline cache reads like a current one.
 ///
 /// Two dates travel on the wire and only one is ever stored: [AlbumInfo.date]
 /// is the explicit date the author set, [AlbumInfo.effectiveDate] and
@@ -109,25 +111,69 @@ DateTime? folderNameDate(String folderName) {
 int _daysInMonth(int year, int month) =>
     DateTime(year, month + 1).difference(DateTime(year, month)).inDays;
 
-/// The folders of a listing in the order they are shown: the newest first,
-/// the undated behind them by name.
+/// The date of the listing at [path], the one its entries are ordered by
+/// ([sortedFolders]): the date at the start of its folder name, `null` for
+/// none.
+///
+/// The twin of the server's `ResourceCache.listingDate`. A listing's sidecar
+/// states no date of its own (a folder whose sidecar does is an album), so its
+/// name is all there is to it, and the app derives exactly what the server
+/// does. The root of a space ([path] empty) is undated whatever its folder is
+/// called: it is the whole library, not a period of time.
+DateTime? listingDateOf(List<String> path) =>
+    path.isEmpty ? null : folderNameDate(path.last);
+
+/// The folders of a listing in the order they are shown, see issue #270.
+///
+/// A listing whose own folder has a date ([listingDate], see
+/// [listingDateOf]) — a year folder `2025`, a month folder — is read through
+/// its period like an album: the oldest first. An undated listing (the root,
+/// `Trips`) keeps the newest first, so the start page opens on the latest
+/// year. Undated entries stand behind the dated ones by name in both.
 ///
 /// A copy, never the list it was given: the listing the app holds is what the
 /// server said, and the order is how it is read out. The server sorts its
-/// listing the same way (`ResourceCache.BY_DATE`), so this mirrors it for an
-/// older server and for the offline cache. The inbox of the space is no entry
-/// of any listing (issue #226).
-List<FolderInfo> sortedFolders(List<FolderInfo> folders) {
+/// listing the same way (`ResourceCache.listingOrder`), so this mirrors it for
+/// an older server and for the offline cache. The inbox of the space is no
+/// entry of any listing (issue #226).
+List<FolderInfo> sortedFolders(
+  List<FolderInfo> folders, {
+  DateTime? listingDate,
+}) {
+  var oldestFirst = listingDate != null;
   var result = List.of(folders);
   result.sort((a, b) {
+    var aDated = a.effectiveDate != 0;
+    var bDated = b.effectiveDate != 0;
+    if (aDated != bDated) {
+      // The undated behind the dated, in either order.
+      return aDated ? -1 : 1;
+    }
     if (a.effectiveDate != b.effectiveDate) {
-      // Newest first; an undated folder (0) therefore falls to the end.
-      return b.effectiveDate.compareTo(a.effectiveDate);
+      return oldestFirst
+          ? a.effectiveDate.compareTo(b.effectiveDate)
+          : b.effectiveDate.compareTo(a.effectiveDate);
     }
     return a.name.toLowerCase().compareTo(b.name.toLowerCase());
   });
   return result;
 }
+
+/// The folders of the listing at [path] in the order they are shown.
+///
+/// [sortedFolders] by the listing's own date ([listingDateOf]) — except at the
+/// top of a share link ([linkRoot]): there the path is empty although the
+/// folder the link opens may well be dated (a link on `2025`), and the app
+/// cannot tell. The server, which knows the folder, has ordered it already, so
+/// its order is kept as it was sent.
+List<FolderInfo> shownFolders(
+  List<FolderInfo> folders,
+  List<String> path, {
+  bool linkRoot = false,
+}) =>
+    linkRoot && path.isEmpty
+        ? List.of(folders)
+        : sortedFolders(folders, listingDate: listingDateOf(path));
 
 /// The date of an album as the app writes it out for a reader, `null` when
 /// nothing says when the album happened, see issue #107.

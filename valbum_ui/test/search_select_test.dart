@@ -228,8 +228,7 @@ void main() {
           reason: "The archive is named after the search.");
     });
 
-    testWidgets('a selection of several albums is one archive',
-        (tester) async {
+    testWidgets('a selection of several albums is one archive', (tester) async {
       var saver = installSaver();
       var space = await pumpSelected(tester, "2020 Trip/x.jpg");
       await tapMark(tester, "2021 Zoo/z.jpg");
@@ -245,8 +244,7 @@ void main() {
       expect(saver.saved.single.name, "Anne.zip");
     });
 
-    testWidgets('one photograph selected is its own original',
-        (tester) async {
+    testWidgets('one photograph selected is its own original', (tester) async {
       var saver = installSaver();
       var space = await pumpSelected(tester, "2021 Zoo/z.jpg");
 
@@ -281,7 +279,7 @@ void main() {
       await tester.tap(find.byKey(const Key("select-mode-collect")));
       await settle(tester);
       expect(find.byKey(const Key("collection-picker")), findsOneWidget);
-      await tester.tap(find.byKey(const Key("picker-folder-Best")));
+      await tapPickerRow(tester, "Best");
       await settle(tester);
       await tester.tap(find.byKey(const Key("picker-confirm")));
       await settle(tester);
@@ -302,8 +300,7 @@ void main() {
     });
 
     testWidgets('without download a long press opens nothing', (tester) async {
-      await pumpSelected(tester, "2020 Trip/x.jpg",
-          rights: const ["view"]);
+      await pumpSelected(tester, "2020 Trip/x.jpg", rights: const ["view"]);
       expect(find.byKey(const Key("select-mode-bar")), findsNothing);
       expect(find.byKey(const Key("search-criteria")), findsOneWidget);
       expect(find.byKey(const Key("edit-cancel")), findsNothing,
@@ -343,7 +340,7 @@ void main() {
       await rightClick(tester, "2021 Zoo/z.jpg");
       await tester.tap(find.byKey(const Key("tile-context-collect")));
       await settle(tester);
-      await tester.tap(find.byKey(const Key("picker-folder-Best")));
+      await tapPickerRow(tester, "Best");
       await settle(tester);
       await tester.tap(find.byKey(const Key("picker-confirm")));
       await settle(tester);
@@ -463,3 +460,10 @@ void main() {
     });
   });
 }
+
+/// Taps the picker's row of [name] near its top edge: the picker lists the
+/// undated by name (issue #270), and Best, the third, stands at the foot of
+/// the dialog at the test size, its lower half under the dialog's buttons.
+Future<void> tapPickerRow(WidgetTester tester, String name) =>
+    tester.tapAt(tester.getTopLeft(find.byKey(Key("picker-folder-$name"))) +
+        const Offset(24, 8));

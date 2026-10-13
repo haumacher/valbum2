@@ -77,6 +77,90 @@ void main() {
       expect([for (var folder in folders) folder.name],
           ["Trip", "Lake", "Zoo", "alpha"]);
     });
+
+    List<String> names(List<FolderInfo> folders) =>
+        [for (var folder in folders) folder.name];
+
+    FolderInfo dated(String name, int year, [int month = 1, int day = 1]) =>
+        FolderInfo(
+            name: name, title: name, effectiveDate: millis(year, month, day));
+
+    test('reads the root newest first: the latest year on top', () {
+      var years = [
+        dated("2023", 2023),
+        dated("2025", 2025),
+        dated("2024", 2024)
+      ];
+      expect(names(shownFolders(years, const [])), ["2025", "2024", "2023"]);
+    });
+
+    test('reads a dated folder oldest first, the undated behind (#270)', () {
+      var albums = [
+        dated("2025-12-24 Christmas", 2025, 12, 24),
+        FolderInfo(name: "Misc", title: "Misc"),
+        dated("2025-01-06 Snow", 2025, 1, 6),
+        dated("2025-07 Summer", 2025, 7),
+      ];
+      expect(
+        names(shownFolders(albums, const ["2025"])),
+        ["2025-01-06 Snow", "2025-07 Summer", "2025-12-24 Christmas", "Misc"],
+      );
+      expect(
+        names(shownFolders(albums, const ["2025", "2025-07 July"])),
+        ["2025-01-06 Snow", "2025-07 Summer", "2025-12-24 Christmas", "Misc"],
+        reason: "a month folder is dated as well",
+      );
+    });
+
+    test('reads an undated folder newest first', () {
+      var trips = [
+        dated("2019-07-04 Lake", 2019, 7, 4),
+        FolderInfo(name: "Somewhere", title: "Somewhere"),
+        dated("2023-02-01 Snow", 2023, 2, 1),
+      ];
+      expect(
+        names(shownFolders(trips, const ["Trips"])),
+        ["2023-02-01 Snow", "2019-07-04 Lake", "Somewhere"],
+      );
+    });
+
+    test('orders by the date it is given, as for a dated sidecar', () {
+      var albums = [
+        dated("Dec", 2025, 12),
+        FolderInfo(name: "none", title: "none"),
+        dated("Old", 1960),
+        dated("Jan", 2025),
+      ];
+      expect(
+        names(sortedFolders(albums, listingDate: DateTime(2025))),
+        ["Old", "Jan", "Dec", "none"],
+      );
+      expect(
+        names(sortedFolders(albums)),
+        ["Dec", "Jan", "Old", "none"],
+        reason: "a date before 1970 is a date, never behind the undated",
+      );
+    });
+
+    test('keeps the server order at the top of a share link', () {
+      // A link on "2025" opens at the empty path: the app cannot see the
+      // folder's date, the server has ordered it already.
+      var sent = [dated("Jan", 2025), dated("Dec", 2025, 12)];
+      expect(
+          names(shownFolders(sent, const [], linkRoot: true)), ["Jan", "Dec"]);
+      expect(names(shownFolders(sent, const ["2025"], linkRoot: true)),
+          ["Jan", "Dec"]);
+      expect(names(shownFolders(sent, const ["Trips"], linkRoot: true)),
+          ["Dec", "Jan"],
+          reason: "below the top of the link the path names the folder");
+    });
+
+    test('dates a listing by its folder name, the root by nothing', () {
+      expect(listingDateOf(const []), isNull);
+      expect(listingDateOf(const ["2025"]), DateTime(2025));
+      expect(listingDateOf(const ["2025", "2025-07 July"]), DateTime(2025, 7));
+      expect(listingDateOf(const ["Trips"]), isNull);
+    });
   });
 
   group('the listing', () {
@@ -101,6 +185,43 @@ void main() {
       });
 
       var shown = ["Lake", "Trip", "alpha", "Zoo"];
+      var positions = [
+        for (var title in shown) tester.getTopLeft(find.text(title)),
+      ];
+      for (var i = 1; i < positions.length; i++) {
+        expect(
+          positions[i - 1].dy < positions[i].dy ||
+              (positions[i - 1].dy == positions[i].dy &&
+                  positions[i - 1].dx < positions[i].dx),
+          isTrue,
+          reason: "'${shown[i - 1]}' comes before '${shown[i]}'",
+        );
+      }
+    });
+  });
+
+  group('a dated listing', () {
+    testWidgets('shows the oldest first, whatever the server sent',
+        (tester) async {
+      // An older server sends a year newest first; the app reads it through.
+      var client = clientReturning('''
+["ListingInfo", {
+  "path": "2025",
+  "title": "2025",
+  "folders": [
+    {"name": "Misc", "title": "Misc"},
+    {"name": "Dec", "title": "Dec", "effectiveDate": ${millis(2025, 12, 24)}},
+    {"name": "Jul", "title": "Jul", "effectiveDate": ${millis(2025, 7, 1)}},
+    {"name": "Jan", "title": "Jan", "effectiveDate": ${millis(2025, 1, 6)}}
+  ]
+}]''');
+      await withFakeImageHttp(() async {
+        await tester.pumpWidget(VAlbumApp(
+            client: client, initialRoute: const ListingOrAlbumRoute(["2025"])));
+        await tester.pumpAndSettle();
+      });
+
+      var shown = ["Jan", "Jul", "Dec", "Misc"];
       var positions = [
         for (var title in shown) tester.getTopLeft(find.text(title)),
       ];

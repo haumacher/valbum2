@@ -134,7 +134,8 @@ public class TestUnreadableFile extends TestCase {
 
 		ListingInfo listing = listing("/2025/");
 
-		assertEquals(Arrays.asList("2025-08-14 Mission", "2025-08-01 Trip"), folderNames(listing));
+		// A year folder lists its albums oldest first, see issue #270.
+		assertEquals(Arrays.asList("2025-08-01 Trip", "2025-08-14 Mission"), folderNames(listing));
 		FolderInfo broken = byName(listing, "2025-08-14 Mission");
 		assertEquals("Mission", broken.getTitle());
 		assertEquals(FolderKind.ALBUM, broken.getKind());
@@ -180,7 +181,7 @@ public class TestUnreadableFile extends TestCase {
 		jpeg("2025/2025-08-01 Trip", "a.jpg");
 
 		ListingInfo listing = listing("/2025/");
-		assertEquals(Arrays.asList("2025-08-15 Alone", "2025-08-14 Mission", "2025-08-01 Trip"),
+		assertEquals(Arrays.asList("2025-08-01 Trip", "2025-08-14 Mission", "2025-08-15 Alone"),
 			folderNames(listing));
 		assertEquals("Alone", byName(listing, "2025-08-15 Alone").getTitle());
 

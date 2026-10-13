@@ -21,6 +21,7 @@ import 'offline.dart';
 import 'resource.dart';
 import 'rights.dart';
 import 'selectable.dart';
+import 'share_session.dart';
 
 /// What a move acts on, as the button and the message name it.
 ///
@@ -713,8 +714,9 @@ class FolderPickerState extends State<FolderPicker> {
   /// well.
   String? _searchError;
 
-  /// The folders of [_path], empty while it is loading, while it failed, and
-  /// for an album (which has none).
+  /// The folders of [_path] in the order the listing shows them
+  /// ([shownFolders]), empty while it is loading, while it failed, and for an
+  /// album (which has none).
   List<FolderInfo> _folders = const [];
 
   /// The listing shown, `null` for an album and while nothing is shown: what
@@ -865,7 +867,13 @@ class FolderPickerState extends State<FolderPicker> {
       _loading = false;
       if (resource is ListingInfo) {
         _listing = resource;
-        _folders = resource.folders;
+        // In the order the listing itself shows them (issue #270): the
+        // oldest first in a dated folder, the newest first in an undated one.
+        _folders = shownFolders(
+          resource.folders,
+          _path,
+          linkRoot: ShareSession.of(context) != null,
+        );
       } else if (resource is AlbumInfo) {
         _leaf = true;
         _album = resource;
