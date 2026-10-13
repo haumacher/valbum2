@@ -224,3 +224,18 @@ class _BrowserStorageArea implements StorageArea {
   void remove(String key) =>
       _area.callMethod<JSAny?>("removeItem".toJS, key.toJS);
 }
+
+/// The browser's user agent, empty where it cannot be read: whether the
+/// offer "Open in app" is shown, see `deep_link.dart` (issue #275).
+String browserUserAgent() {
+  try {
+    var navigator = globalContext["navigator"] as JSObject?;
+    return (navigator?["userAgent"] as JSString?)?.toDart ?? "";
+  } catch (_) {
+    return "";
+  }
+}
+
+/// The browser's `localStorage`, where the dismissal of the offer "Open in
+/// app" is kept (issue #275); every access may throw, see `deep_link.dart`.
+StorageArea defaultLocalStorage() => _BrowserStorageArea("localStorage");

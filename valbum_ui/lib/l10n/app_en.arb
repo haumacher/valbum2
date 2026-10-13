@@ -6710,5 +6710,51 @@
   "@identifyAskOverviewAgain": {
     "description": "The sign-in card of the overview of everything shared with a contact (issue #267) when the server offers no way to confirm who the visitor is: the one way left.",
     "x-translated": "7a39fc22"
+  },
+  "openInAppLead": "This page can also be opened in the VAlbum app.",
+  "@openInAppLead": {
+    "description": "The small banner of the web app in a browser on Android (issue #275): the current album or photo can be opened in the installed app.",
+    "x-translated": "a38400e9"
+  },
+  "openInApp": "Open in app",
+  "@openInApp": {
+    "description": "The button of that banner: opens the current album or photo in the Android app, or its store page where the app is not installed.",
+    "x-translated": "5bb207fe"
+  },
+  "appLinkConnectTitle": "Connect to {host}?",
+  "@appLinkConnectTitle": {
+    "description": "Title of the question the app asks when a link to open an album names another album server than the one the app is connected to (issue #275).",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "foto.example.de"
+      }
+    },
+    "x-translated": "bc4f4765"
+  },
+  "appLinkConnectBody": "The link leads to the album server {server}. This app is connected to {current}; switching to the other server signs this device out of {current}.",
+  "@appLinkConnectBody": {
+    "description": "Text of that question: which server the link names, which one the app uses now, and that switching signs the device out of the current one.",
+    "placeholders": {
+      "server": {
+        "type": "String",
+        "example": "https://foto.example.de/valbum/"
+      },
+      "current": {
+        "type": "String",
+        "example": "https://nas.local/valbum/"
+      }
+    },
+    "x-translated": "a263c3d6"
+  },
+  "appLinkConnect": "Connect",
+  "@appLinkConnect": {
+    "description": "The button of that question: goes on to sign in at the server of the link.",
+    "x-translated": "bb72c083"
+  },
+  "appLinkPairingTitle": "Connect to the album server",
+  "@appLinkPairingTitle": {
+    "description": "Title of the page signing in at the album server a link named, after the question was answered with Connect (issue #275).",
+    "x-translated": "8692d917"
   }
 }

@@ -20,6 +20,7 @@ import 'camera_roll_view.dart';
 import 'client.dart';
 import 'connectivity.dart';
 import 'contact_session.dart';
+import 'deep_link.dart';
 import 'device_code_scanner.dart';
 import 'diagnostics.dart';
 import 'duplicates_view.dart';
@@ -187,6 +188,11 @@ class VAlbumApp extends StatefulWidget {
   /// #105).
   final List<NavigatorObserver> navigatorObservers;
 
+  /// The web app's offer to open the current place in the Android app
+  /// (issue #275). Defaults to the platform's, see [OpenInAppOffer.platform];
+  /// tests inject one with an Android browser's user agent.
+  final OpenInAppOffer? openInApp;
+
   const VAlbumApp({
     super.key,
     this.client,
@@ -207,6 +213,7 @@ class VAlbumApp extends StatefulWidget {
     this.openUrl,
     this.contactStore,
     this.navigatorObservers = const [],
+    this.openInApp,
   });
 
   @override
@@ -579,7 +586,9 @@ class VAlbumAppState extends State<VAlbumApp> {
   /// the browser's back and forward buttons produce afterwards.
   late final PlatformRouteInformationProvider _routeInformationProvider =
       PlatformRouteInformationProvider(
-    initialRouteInformation: _initialRouteInformation,
+    // The place of an app link that arrived before the router existed
+    // (issue #275), see [_showLinkedRoute].
+    initialRouteInformation: _linkStart ?? _initialRouteInformation,
   );
 
   /// Builds a client for the given data URL over this app's transport.
@@ -606,6 +615,7 @@ class VAlbumAppState extends State<VAlbumApp> {
     // it was opened at, see [_defaultSettings] and [_initialRouteInformation].
     settings.addListener(_settingsChanged);
     _initialRouteInformation;
+    _receiveAppLinks();
     var overview = _overviewAt;
     if (overview != null) {
       // The overview of what is shared (issue #267) asks the server itself,
@@ -830,7 +840,12 @@ class VAlbumAppState extends State<VAlbumApp> {
     var text = _invitationNoticeTextOf(AppLocalizations.of(context)!);
     var memberNotice = _memberNotice?.call(AppLocalizations.of(context)!);
     var below = child ?? const SizedBox.shrink();
-    if (text == null && memberNotice == null && !emailOffer && !signInOffer) {
+    var openInApp = _openInAppShown;
+    if (text == null &&
+        memberNotice == null &&
+        !emailOffer &&
+        !signInOffer &&
+        !openInApp) {
       return below;
     }
     return Column(
@@ -874,6 +889,17 @@ class VAlbumAppState extends State<VAlbumApp> {
                 SignInOfferBanner(
                   onOpen: _openSignInOffer,
                   onDismiss: _dismissSignInOffer,
+                ),
+              if (openInApp)
+                OpenInAppBanner(
+                  // The router moves on its own; the browser's back and
+                  // forward buttons arrive through the provider.
+                  routes: _router == null
+                      ? null
+                      : Listenable.merge(
+                          [_router, _routeInformationProvider]),
+                  appLink: _currentAppLink,
+                  onDismiss: () => setState(_openInApp.dismiss),
                 ),
             ],
           ),
@@ -1329,6 +1355,7 @@ class VAlbumAppState extends State<VAlbumApp> {
   @override
   void dispose() {
     settings.removeListener(_settingsChanged);
+    _appLinks?.dispose();
     cameraRoll.removeListener(_cameraRollChanged);
     cameraRoll.dispose();
     uploadTargets.dispose();
@@ -1356,7 +1383,163 @@ class VAlbumAppState extends State<VAlbumApp> {
   /// Inside a link session [_syncClient] ignores the settings entirely, so a
   /// store that answers late (or a screen that was left open in another tab)
   /// can never take the session's client away from it.
-  void _settingsChanged() => setState(_syncClient);
+  void _settingsChanged() => setState(() {
+        _syncClient();
+        _followAppLink();
+      });
+
+  // ## Opening an app link (issue #275)
+
+  /// Receives the `valbum:` links of the platform, see [AppLinkReceiver].
+  AppLinkReceiver? _appLinks;
+
+  /// The link received and not yet opened, `null` while there is none.
+  AppLink? _pendingLink;
+
+  /// Whether the [_pendingLink] was offered — the first screen filled in, or
+  /// the question asked: a server saved then that is not the link's is the
+  /// person's choice, and the link is let go.
+  bool _linkOffered = false;
+
+  /// The page connecting to the server of the [_pendingLink], while open.
+  Route<void>? _pairingRoute;
+
+  /// The location of the place of a link opened before the router existed.
+  RouteInformation? _linkStart;
+
+  /// Starts receiving links, and takes the one the app was started with —
+  /// off the web, where Flutter's deep linking hands it over as the initial
+  /// route. A browser is never opened at a `valbum:` link.
+  void _receiveAppLinks() {
+    if (kIsWeb) {
+      return;
+    }
+    _appLinks = AppLinkReceiver(_appLinkReceived);
+    var opened = Uri.tryParse(
+        WidgetsBinding.instance.platformDispatcher.defaultRouteName);
+    if (opened != null && isAppLink(opened)) {
+      _pendingLink = parseAppLink(opened);
+      _followAppLink();
+    }
+  }
+
+  /// A link arrived while the app runs. One that names no server opens
+  /// nothing.
+  void _appLinkReceived(Uri uri) {
+    var link = parseAppLink(uri);
+    if (link == null || !mounted) {
+      return;
+    }
+    setState(() {
+      _closePairing();
+      _pendingLink = link;
+      _linkOffered = false;
+      _followAppLink();
+    });
+  }
+
+  /// Opens the [_pendingLink] where the app can: at once on the server it is
+  /// connected to; on the first screen, filled in, where it is connected to
+  /// none; after the question "Connect to …?" where it is connected to
+  /// another one. Never inside a link session, and never before the stored
+  /// server is read.
+  void _followAppLink() {
+    var link = _pendingLink;
+    if (link == null || !settings.loaded || session != null) {
+      return;
+    }
+    var dataUrl = settings.dataUrl;
+    if (dataUrl != null && sameServer(appBaseOf(dataUrl), link.serverUrl)) {
+      _pendingLink = null;
+      _linkOffered = false;
+      _closePairing();
+      _showLinkedRoute(link.route);
+      return;
+    }
+    if (_linkOffered) {
+      _pendingLink = null;
+      _linkOffered = false;
+      return;
+    }
+    _linkOffered = true;
+    if (dataUrl != null) {
+      _askToConnect(link, appBaseOf(dataUrl));
+    }
+  }
+
+  /// Shows [route]: through the router where it exists, as the location it
+  /// starts at where it does not yet.
+  void _showLinkedRoute(VAlbumRoute route) {
+    var current = _router;
+    if (current != null) {
+      current.go(route);
+    } else {
+      _linkStart = RouteInformation(uri: routeToUri(route));
+    }
+  }
+
+  /// "Connect to <host>?", and on "Connect" the sign-in at that server.
+  Future<void> _askToConnect(AppLink link, String current) async {
+    await WidgetsBinding.instance.endOfFrame;
+    var context = _router?.navigatorKey.currentContext ??
+        _preRouter?.navigatorKey.currentContext;
+    if (context == null || !context.mounted || _pendingLink != link) {
+      return;
+    }
+    var connect = await askToConnect(context, link: link, current: current);
+    if (!mounted || !context.mounted || _pendingLink != link) {
+      return;
+    }
+    if (!connect) {
+      _pendingLink = null;
+      _linkOffered = false;
+      return;
+    }
+    var page = MaterialPageRoute<void>(
+      builder: (_) => ServerPairingPage(
+        settings: settings,
+        clientFor: clientFor,
+        server: serverLocationOf(link.serverUrl),
+      ),
+    );
+    _pairingRoute = page;
+    Navigator.of(context).push(page).then((_) {
+      if (_pairingRoute == page) {
+        // Left without connecting: the link is let go.
+        _pairingRoute = null;
+        if (_pendingLink == link) {
+          _pendingLink = null;
+          _linkOffered = false;
+        }
+      }
+    });
+  }
+
+  /// Takes the page of [_askToConnect] away, once it did its work.
+  void _closePairing() {
+    var page = _pairingRoute;
+    _pairingRoute = null;
+    if (page != null && page.isActive) {
+      page.navigator?.removeRoute(page);
+    }
+  }
+
+  /// The offer "Open in app" of this browser, see [VAlbumApp.openInApp].
+  late final OpenInAppOffer _openInApp =
+      widget.openInApp ?? OpenInAppOffer.platform();
+
+  /// Whether the web app offers "Open in app" now, see [offersOpenInApp]:
+  /// never in a link session.
+  bool get _openInAppShown =>
+      (client?.dataUrl ?? settings.dataUrl) != null &&
+      _openInApp.shows(linkSession: session != null || _overviewAt != null);
+
+  /// The `valbum:` link of the place shown now.
+  Uri _currentAppLink() => appLinkFor(
+        client?.dataUrl ?? settings.dataUrl!,
+        _router?.currentConfiguration ??
+            parseRoute(_initialRouteInformation.uri),
+      );
 
   void _syncClient() {
     var link = session;
@@ -1724,6 +1907,9 @@ class VAlbumAppState extends State<VAlbumApp> {
       // field takes an address, an invitation link or a scanned code
       // (issue #91). A browser never gets here: its origin is its server.
       return FirstScreen(
+        // A link to open in the app names its server (issue #275).
+        key: ValueKey(_pendingLink?.serverUrl),
+        initialServer: _pendingLink?.serverUrl,
         settings: settings,
         clientFor: clientFor,
         onInvited: (location, info) => setState(() {

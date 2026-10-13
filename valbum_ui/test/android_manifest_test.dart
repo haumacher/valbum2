@@ -62,4 +62,21 @@ void main() {
     expect(code, isNot(contains("resolveActivity")));
     expect(code, isNot(contains("queryIntentActivities")));
   });
+
+  // A link that opens a place of an album in the app (issue #275): the
+  // scheme `valbum`, browsable so that Chrome's `intent:` link reaches it,
+  // and Flutter's deep linking on, which hands it to the app as a route.
+  test('the manifest registers the scheme valbum', () {
+    var manifest =
+        File("android/app/src/main/AndroidManifest.xml").readAsStringSync();
+    expect(manifest, contains('android:scheme="valbum"'));
+    expect(manifest, contains('android:host="open"'));
+    expect(manifest, contains("android.intent.category.BROWSABLE"));
+    expect(
+      manifest,
+      matches(RegExp(r'android:name="flutter_deeplinking_enabled"\s*'
+          r'android:value="true"')),
+    );
+    expect(manifest, contains('android:launchMode="singleTop"'));
+  });
 }

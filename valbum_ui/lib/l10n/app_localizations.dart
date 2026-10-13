@@ -6320,6 +6320,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Ask a person who shared photos with you to send you your own link to this overview.'**
   String get identifyAskOverviewAgain;
+
+  /// The small banner of the web app in a browser on Android (issue #275): the current album or photo can be opened in the installed app.
+  ///
+  /// In en, this message translates to:
+  /// **'This page can also be opened in the VAlbum app.'**
+  String get openInAppLead;
+
+  /// The button of that banner: opens the current album or photo in the Android app, or its store page where the app is not installed.
+  ///
+  /// In en, this message translates to:
+  /// **'Open in app'**
+  String get openInApp;
+
+  /// Title of the question the app asks when a link to open an album names another album server than the one the app is connected to (issue #275).
+  ///
+  /// In en, this message translates to:
+  /// **'Connect to {host}?'**
+  String appLinkConnectTitle(String host);
+
+  /// Text of that question: which server the link names, which one the app uses now, and that switching signs the device out of the current one.
+  ///
+  /// In en, this message translates to:
+  /// **'The link leads to the album server {server}. This app is connected to {current}; switching to the other server signs this device out of {current}.'**
+  String appLinkConnectBody(String server, String current);
+
+  /// The button of that question: goes on to sign in at the server of the link.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect'**
+  String get appLinkConnect;
+
+  /// Title of the page signing in at the album server a link named, after the question was answered with Connect (issue #275).
+  ///
+  /// In en, this message translates to:
+  /// **'Connect to the album server'**
+  String get appLinkPairingTitle;
 }
 
 class _AppLocalizationsDelegate

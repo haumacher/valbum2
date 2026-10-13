@@ -38,6 +38,21 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- Opening a place of an album in the app (issue #275):
+                 valbum://open?server=<app base>&path=<route>, see
+                 `lib/deep_link.dart`. A scheme of its own, not App Links:
+                 every server has its own domain. Flutter's deep linking hands
+                 the link to the app as its initial route (cold start) and
+                 through pushRouteInformation (warm start, singleTop). -->
+            <meta-data
+              android:name="flutter_deeplinking_enabled"
+              android:value="true" />
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="valbum" android:host="open"/>
+            </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

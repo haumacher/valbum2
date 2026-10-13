@@ -1036,5 +1036,11 @@
   "contactOverviewOpened": "Übersichts-Link geöffnet am {day}",
   "identifyAskOverviewAgain": "Bitten Sie eine Person, die Fotos mit Ihnen geteilt hat, Ihnen Ihren eigenen Link zu dieser Übersicht zu senden.",
   "noOtherImageWithoutCamera": "Es gibt kein weiteres Bild ohne Kameradaten",
-  "selectAllWithoutCamera": "Alle Bilder ohne Kameradaten auswählen"
+  "selectAllWithoutCamera": "Alle Bilder ohne Kameradaten auswählen",
+  "openInAppLead": "Diese Seite kann auch in der VAlbum-App geöffnet werden.",
+  "openInApp": "In der App öffnen",
+  "appLinkConnectTitle": "Mit {host} verbinden?",
+  "appLinkConnect": "Verbinden",
+  "appLinkPairingTitle": "Mit dem Album-Server verbinden",
+  "appLinkConnectBody": "Der Link führt zum Album-Server {server}. Diese App ist mit {current} verbunden; beim Wechsel zum anderen Server wird dieses Gerät von {current} abgemeldet."
 }

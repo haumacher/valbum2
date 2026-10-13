@@ -75,11 +75,16 @@ class FirstScreen extends StatefulWidget {
   /// as a paste, see `VAlbumApp`.
   final void Function(ServerLocation location, InvitationInfo info) onInvited;
 
+  /// The server a link to open in the app named (issue #275), `null` for
+  /// none: the field is filled in with it and the sign-in follows at once.
+  final String? initialServer;
+
   const FirstScreen({
     super.key,
     required this.settings,
     required this.clientFor,
     required this.onInvited,
+    this.initialServer,
   });
 
   @override
@@ -100,6 +105,23 @@ class FirstScreenState extends State<FirstScreen> {
 
   /// Whether the server is being asked about an invitation.
   bool asking = false;
+
+  @override
+  void initState() {
+    super.initState();
+    var server = widget.initialServer;
+    if (server != null) {
+      controller.text = server;
+      try {
+        var location = serverLocationOf(server);
+        if (!location.isInvitation && !location.isShare) {
+          accepted = location;
+        }
+      } on FormatException {
+        // Left in the field, where "Continue" says what is wrong with it.
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -206,41 +228,18 @@ class FirstScreenState extends State<FirstScreen> {
   ///
   /// A server that shows its albums to anonymous callers needs no sign-in at
   /// all, and the way past is offered rather than hidden.
-  List<Widget> _signingIn(BuildContext context, ServerLocation server) {
-    var l10n = AppLocalizations.of(context)!;
-    return [
-      Text(l10n.albumServerLine(server.serverUrl), key: firstScreenServerKey),
-      const SizedBox(height: 8),
-      Align(
-        alignment: Alignment.centerLeft,
-        child: TextButton.icon(
-          key: firstScreenChangeKey,
-          onPressed: () => setState(() {
-            accepted = null;
-            scannedCode = "";
-          }),
-          icon: const Icon(Icons.edit),
-          label: Text(l10n.anotherServer),
-        ),
-      ),
-      const SizedBox(height: 16),
-      SignInForm(
-        key: const Key("first.signIn"),
+  List<Widget> _signingIn(BuildContext context, ServerLocation server) =>
+      _signInSteps(
+        context,
         settings: widget.settings,
         clientFor: widget.clientFor,
-        location: server,
-        initialCode: scannedCode,
-        saveServer: true,
-        explain: true,
-      ),
-      const SizedBox(height: 8),
-      TextButton(
-        key: firstScreenSkipKey,
-        onPressed: () => widget.settings.save(server.serverUrl),
-        child: Text(l10n.openWithoutSigningIn),
-      ),
-    ];
-  }
+        server: server,
+        scannedCode: scannedCode,
+        onChange: () => setState(() {
+          accepted = null;
+          scannedCode = "";
+        }),
+      );
 
   /// Reads a payload off the camera: the server into the field, the code into
   /// the sign-in below (issues #66, #91).
@@ -331,5 +330,98 @@ class FirstScreenState extends State<FirstScreen> {
     }
     setState(() => asking = false);
     widget.onInvited(location, offered);
+  }
+}
+
+/// The sign-in at a known [server], see [FirstScreenState._signingIn]; the way
+/// back to the field only where [onChange] is given.
+List<Widget> _signInSteps(
+  BuildContext context, {
+  required ServerSettings settings,
+  required ClientFactory clientFor,
+  required ServerLocation server,
+  String scannedCode = "",
+  VoidCallback? onChange,
+}) {
+  var l10n = AppLocalizations.of(context)!;
+  return [
+    Text(l10n.albumServerLine(server.serverUrl), key: firstScreenServerKey),
+    const SizedBox(height: 8),
+    if (onChange != null)
+      Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton.icon(
+          key: firstScreenChangeKey,
+          onPressed: onChange,
+          icon: const Icon(Icons.edit),
+          label: Text(l10n.anotherServer),
+        ),
+      ),
+    const SizedBox(height: 16),
+    SignInForm(
+      key: const Key("first.signIn"),
+      settings: settings,
+      clientFor: clientFor,
+      location: server,
+      initialCode: scannedCode,
+      saveServer: true,
+      explain: true,
+    ),
+    const SizedBox(height: 8),
+    TextButton(
+      key: firstScreenSkipKey,
+      onPressed: () => settings.save(server.serverUrl),
+      child: Text(l10n.openWithoutSigningIn),
+    ),
+  ];
+}
+
+/// The key of the page connecting the app to the server of a link.
+const Key serverPairingPageKey = Key("first.pairing");
+
+/// Connects the app, already connected elsewhere, to the server a link to
+/// open in the app named (issue #275): the sign-in of the first screen at
+/// that one server. Saving it — signed in or not — switches the app over,
+/// which then opens the place and closes this page.
+class ServerPairingPage extends StatelessWidget {
+  /// Where the server and the token are stored.
+  final ServerSettings settings;
+
+  /// Builds the client the sign-in asks with.
+  final ClientFactory clientFor;
+
+  /// The server to connect to.
+  final ServerLocation server;
+
+  const ServerPairingPage({
+    super.key = serverPairingPageKey,
+    required this.settings,
+    required this.clientFor,
+    required this.server,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
+    return Scaffold(
+      appBar: AppBar(title: Text(l10n.appLinkPairingTitle)),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: SingleChildScrollView(
+            padding: pagePadding(context, const EdgeInsets.all(24)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: _signInSteps(
+                context,
+                settings: settings,
+                clientFor: clientFor,
+                server: server,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

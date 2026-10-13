@@ -4083,4 +4083,27 @@ class AppLocalizationsDe extends AppLocalizations {
   @override
   String get identifyAskOverviewAgain =>
       'Bitten Sie eine Person, die Fotos mit Ihnen geteilt hat, Ihnen Ihren eigenen Link zu dieser Übersicht zu senden.';
+
+  @override
+  String get openInAppLead =>
+      'Diese Seite kann auch in der VAlbum-App geöffnet werden.';
+
+  @override
+  String get openInApp => 'In der App öffnen';
+
+  @override
+  String appLinkConnectTitle(String host) {
+    return 'Mit $host verbinden?';
+  }
+
+  @override
+  String appLinkConnectBody(String server, String current) {
+    return 'Der Link führt zum Album-Server $server. Diese App ist mit $current verbunden; beim Wechsel zum anderen Server wird dieses Gerät von $current abgemeldet.';
+  }
+
+  @override
+  String get appLinkConnect => 'Verbinden';
+
+  @override
+  String get appLinkPairingTitle => 'Mit dem Album-Server verbinden';
 }

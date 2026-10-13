@@ -300,3 +300,11 @@ Future<List<String>> hostResolution(String host) async {
 /// link session of its own and has nothing to remember.
 ContactCredentialStore defaultContactCredentialStore() =>
     ContactCredentialStore.memory();
+
+/// No browser, no user agent: the offer "Open in app" is the web app's
+/// (issue #275).
+String browserUserAgent() => "";
+
+/// Off the web there is no browser storage; the offer "Open in app" is never
+/// shown there anyway (issue #275).
+StorageArea defaultLocalStorage() => MemoryStorageArea();
