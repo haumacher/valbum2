@@ -36,6 +36,7 @@ import 'keyboard_scroll.dart';
 import 'label_dialog.dart';
 import 'l10n/app_localizations.dart';
 import 'listing_view.dart';
+import 'news.dart';
 import 'move_view.dart';
 import 'name_date.dart';
 import 'resource.dart';
@@ -1310,6 +1311,29 @@ class AlbumContentState extends State<AlbumContent>
   /// edited, its photographs named by their path below the folder searched.
   bool get isSearchView => widget.albumState.route is SearchRoute;
 
+  /// Whether this album is the view of an entry of the bell (issue #268): a
+  /// copy of the album holding the entry's photographs alone, looked at and
+  /// never edited, its photographs named as in their album.
+  bool get isNewsView => widget.albumState.route is NewsRoute;
+
+  /// Whether the tile of [image] is marked as new for this visit of the
+  /// album: it arrived with the entry of the bell the album was reached from
+  /// (issue #268), see [VAlbumRouterDelegate.freshIn].
+  bool isFresh(ImagePart image) {
+    if (widget.albumState.route is! ListingOrAlbumRoute) {
+      return false;
+    }
+    var fresh =
+        widget.albumState.navigator.delegate.freshIn(widget.albumState.path);
+    if (fresh == null) {
+      return false;
+    }
+    var group = image.group;
+    return group == null
+        ? fresh.contains(image.name)
+        : group.images.any((member) => fresh.contains(member.name));
+  }
+
   /// Whether the photographs shown lie in other albums, which keep their
   /// order, groups and headings: a collection or a search, saved or not.
   bool get showsOtherAlbums =>
@@ -1755,7 +1779,7 @@ class AlbumContentState extends State<AlbumContent>
   bool get maySelect =>
       rights.mayDownload &&
       !previewing &&
-      (isSearchView || !mayEnterEditMode) &&
+      (isSearchView || isNewsView || !mayEnterEditMode) &&
       !session.editMode &&
       holdsImages;
 
@@ -2238,7 +2262,8 @@ class AlbumContentState extends State<AlbumContent>
                   // offered in the view mode as well, see issue #121. Save and
                   // Cancel stay here: they are the edit's own.
                   actions: [
-                    if (!editing) ...navigationActions(context),
+                    if (!editing && !isNewsView) ...navigationActions(context),
+                    if (!editing && isNewsView) ...wayUp(),
                     if (editMode)
                       IconButton(
                         onPressed: () => save(),
@@ -2285,6 +2310,7 @@ class AlbumContentState extends State<AlbumContent>
       // A collection holds references, never files: photographs are added to
       // it by "Add to collection…" from their albums (issue #221).
       floatingActionButton: previewing ||
+              isNewsView ||
               isCollection(self) ||
               isSearch(self) ||
               !rights.mayContribute ||
@@ -2961,11 +2987,17 @@ class AlbumContentState extends State<AlbumContent>
               left: insets.left + floatingMargin,
               child: floating(wayUp()),
             ),
-          if (!editMode && !selectMode)
+          // The view of an entry of the bell has nothing to offer but the
+          // way back to its album (issue #268).
+          if (!editMode && !selectMode && !isNewsView)
             Positioned(
               top: insets.top + floatingMargin,
               right: insets.right + floatingMargin,
-              child: floating([...searchAction(), ...albumMenu(context)]),
+              child: floating([
+                ...searchAction(),
+                if (!isSearchView) const NewsBellButton(),
+                ...albumMenu(context),
+              ]),
             ),
         ],
       ),
@@ -3690,7 +3722,7 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
         onLongPress: () {
           if (state.maySelect) {
             state.enterSelectMode(part);
-          } else if (!state.isSearchView) {
+          } else if (!state.isSearchView && !state.isNewsView) {
             state.setEditMode(part);
           }
         },
@@ -3767,7 +3799,10 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
       height: height,
     );
     var marker = privacyMarker(image);
-    if (image.kind == ImageKind.image && marker == null) {
+    // New for this visit: it arrived with the entry of the bell the album was
+    // reached from (issue #268).
+    var fresh = state.isFresh(image);
+    if (image.kind == ImageKind.image && marker == null && !fresh) {
       return thumbnail;
     }
     var tile = SizedBox(
@@ -3789,6 +3824,21 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
               ),
             ),
           if (marker != null) Positioned(top: 4, left: 4, child: marker),
+          if (fresh)
+            Positioned(
+              top: 4,
+              right: 4,
+              child: Container(
+                key: newsFreshMarkerKey,
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: Colors.lightBlueAccent,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 2),
+                ),
+              ),
+            ),
         ],
       ),
     );

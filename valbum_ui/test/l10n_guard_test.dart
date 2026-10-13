@@ -91,6 +91,7 @@ const List<String> convertedFiles = [
   "lib/media_picker.dart",
   "lib/move_view.dart",
   "lib/name_date.dart",
+  "lib/news.dart",
   "lib/notices.dart",
   "lib/offline.dart",
   "lib/offline_file.dart",

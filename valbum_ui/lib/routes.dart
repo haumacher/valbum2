@@ -22,6 +22,8 @@
 /// | `/.duplicates/2005-08-24 Blumen/IMG_0417.JPG` | [ImageRoute] seen from the overview     |
 /// | `/.duplicates/2005-08-24 Blumen/IMG_0417.JPG/alternatives/` | [AlternativesRoute] seen from the overview |
 /// | `/.duplicates/2005-08-24 Blumen/IMG_0417.JPG/alternatives/IMG_0418.JPG` | [MemberRoute] seen from the overview |
+/// | `/2005-08-24 Blumen/.news/<key>/`             | [NewsRoute], an entry of the bell        |
+/// | `/2005-08-24 Blumen/.news/<key>/IMG_0417.JPG` | [ImageRoute] paging through that entry   |
 ///
 /// A folder or album is therefore addressed **with** a trailing slash and an
 /// image **without** one, exactly as the GWT client did. The segment
@@ -81,6 +83,11 @@ const String duplicatesSegment = ".duplicates";
 /// so it shadows nothing.
 const String searchSegment = ".search";
 
+/// The segment of the view of an entry of the bell below its album
+/// (`/<album>/.news/<key>/`), see issue #268 and [NewsRoute]. No folder of a
+/// library carries a leading dot, so it shadows nothing.
+const String newsSegment = ".news";
+
 /// The parameter of the location carrying the criteria of the search view,
 /// see [SearchRoute.query] (issue #243).
 const String searchQueryParameter = "q";
@@ -132,6 +139,10 @@ sealed class VAlbumRoute {
   /// Whether this view of an image was opened from the search view below
   /// [albumPath] and returns there, see [SearchRoute] (issue #227).
   bool get fromSearch => false;
+
+  /// The key of the entry of the bell this view shows the photographs of,
+  /// `null` for any other view, see [NewsRoute] (issue #268).
+  String? get newsKey => null;
 
   /// The location of this route below the app base, e.g. `/a/b.jpg`.
   String get path => "/${Uri(pathSegments: segments).path}";
@@ -199,32 +210,43 @@ class ImageRoute extends VAlbumRoute {
   @override
   final bool fromSearch;
 
+  /// The key of the entry of the bell whose photographs the viewer pages
+  /// through and returns to (issue #268), `null` for any other viewer: [name]
+  /// is the photograph's name in its album, see [NewsRoute].
+  final String? news;
+
   const ImageRoute(this.albumPath, this.name,
-      {this.fromDuplicates = false, this.fromSearch = false});
+      {this.fromDuplicates = false, this.fromSearch = false, this.news});
+
+  @override
+  String? get newsKey => news;
 
   /// Another image of the same album, seen from where this one is: paging in
   /// a viewer opened from the overview keeps its way back to the overview.
   ImageRoute withName(String other) => ImageRoute(albumPath, other,
-      fromDuplicates: fromDuplicates, fromSearch: fromSearch);
+      fromDuplicates: fromDuplicates, fromSearch: fromSearch, news: news);
 
   @override
   VAlbumRoute? get up => fromDuplicates
       ? const DuplicatesRoute()
       : fromSearch
           ? SearchRoute(albumPath)
-          : ListingOrAlbumRoute(albumPath);
+          : news != null
+              ? NewsRoute(albumPath, news!)
+              : ListingOrAlbumRoute(albumPath);
 
   @override
   List<String> get segments => [
         if (fromDuplicates) duplicatesSegment,
         ...albumPath,
         if (fromSearch) searchSegment,
+        if (news != null) ...[newsSegment, news!],
         name,
       ];
 
   @override
   VAlbumRoute withAlbumPath(List<String> path) => ImageRoute(path, name,
-      fromDuplicates: fromDuplicates, fromSearch: fromSearch);
+      fromDuplicates: fromDuplicates, fromSearch: fromSearch, news: news);
 
   @override
   bool operator ==(Object other) =>
@@ -232,11 +254,12 @@ class ImageRoute extends VAlbumRoute {
       name == other.name &&
       fromDuplicates == other.fromDuplicates &&
       fromSearch == other.fromSearch &&
+      news == other.news &&
       listEquals(albumPath, other.albumPath);
 
   @override
   int get hashCode => Object.hash(
-      Object.hashAll(albumPath), name, fromDuplicates, fromSearch);
+      Object.hashAll(albumPath), name, fromDuplicates, fromSearch, news);
 
   @override
   String toString() => "ImageRoute($path)";
@@ -519,6 +542,45 @@ class SearchRoute extends VAlbumRoute {
   String toString() => "SearchRoute($path)";
 }
 
+/// The photographs of one entry of the bell (issue #268), a level on their
+/// album: only them, in the album's order; a photograph opened here is an
+/// [ImageRoute] with [ImageRoute.news], which pages through them alone and
+/// returns here, and the way up leads to the album itself, see `news.dart`.
+class NewsRoute extends VAlbumRoute {
+  /// The album the photographs arrived in.
+  @override
+  final List<String> albumPath;
+
+  /// The key of the entry, see `NewsEntry.key`.
+  final String key;
+
+  const NewsRoute(this.albumPath, this.key);
+
+  @override
+  String? get newsKey => key;
+
+  @override
+  VAlbumRoute? get up => ListingOrAlbumRoute(albumPath);
+
+  @override
+  List<String> get segments => [...albumPath, newsSegment, key, ""];
+
+  @override
+  VAlbumRoute withAlbumPath(List<String> path) => NewsRoute(path, key);
+
+  @override
+  bool operator ==(Object other) =>
+      other is NewsRoute &&
+      key == other.key &&
+      listEquals(albumPath, other.albumPath);
+
+  @override
+  int get hashCode => Object.hash(newsSegment, Object.hashAll(albumPath), key);
+
+  @override
+  String toString() => "NewsRoute($path)";
+}
+
 /// The route the given location denotes.
 ///
 /// [basePath] is the app base the location is relative to (see the library
@@ -585,7 +647,26 @@ VAlbumRoute parseRoute(Uri uri, {String basePath = "/"}) {
     );
   }
 
+  // `/<album>/.news/<key>/<name>`: a photograph of an entry of the bell, see
+  // issue #268.
+  if (!folder &&
+      segments.length >= 3 &&
+      segments[segments.length - 3] == newsSegment) {
+    return ImageRoute(
+      segments.sublist(0, segments.length - 3),
+      segments.last,
+      news: segments[segments.length - 2],
+    );
+  }
+
   if (folder) {
+    // `/<album>/.news/<key>/`, an entry of the bell of issue #268.
+    if (segments.length >= 2 && segments[segments.length - 2] == newsSegment) {
+      return NewsRoute(
+        segments.sublist(0, segments.length - 2),
+        segments.last,
+      );
+    }
     // `/<folder>/.search/`, the search view of issue #227.
     if (segments.isNotEmpty && segments.last == searchSegment) {
       return SearchRoute(

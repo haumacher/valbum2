@@ -91,6 +91,8 @@ import de.haumacher.imageServer.shared.model.MoveName;
 import de.haumacher.imageServer.shared.model.MoveOutcome;
 import de.haumacher.imageServer.shared.model.MoveRequest;
 import de.haumacher.imageServer.shared.model.MoveResult;
+import de.haumacher.imageServer.shared.model.NewsKey;
+import de.haumacher.imageServer.shared.model.NewsRead;
 import de.haumacher.imageServer.shared.model.OidcExchange;
 import de.haumacher.imageServer.shared.model.OidcStart;
 import de.haumacher.imageServer.shared.model.OidcStarted;
@@ -362,6 +364,24 @@ public class ImageServlet extends HttpServlet {
 	/** What <code>?type=catch-up</code> is refused with to everybody but an administrator. */
 	public static final String CATCH_UP_REFUSED =
 		"How far the server has got preparing the albums is shown to the administrator of this space only.";
+
+	/** The type of the bell of issue #268: what arrived from others, see {@link Arrivals}. */
+	public static final String NEWS_TYPE = "news";
+
+	/** The type of the number of unread entries of the bell alone, what the app polls, see issue #268. */
+	public static final String NEWS_COUNT_TYPE = "news-count";
+
+	/** The action marking entries of the bell as read, see issue #268 and {@link NewsRead}. */
+	public static final String NEWS_READ_ACTION = "news-read";
+
+	/**
+	 * What the bell of issue #268 is refused with to everybody but a member: a share link, a contact
+	 * and an anonymous visitor are shown one album, never what arrives in the others.
+	 */
+	public static final String NEWS_REFUSED = "Only the members of this space are told what others added to its albums.";
+
+	/** What an unreadable {@link NewsRead} is refused with. */
+	public static final String NEWS_READ_UNREADABLE = "The request marking news as read cannot be read.";
 
 	/** What linking somebody else's account to a person is refused with, see issue #128. */
 	public static final String LINK_REFUSED =
@@ -1257,6 +1277,10 @@ public class ImageServlet extends HttpServlet {
 			serveCatchUp(context, caller);
 			return;
 		}
+		if (NEWS_TYPE.equals(type) || NEWS_COUNT_TYPE.equals(type)) {
+			serveNews(context, caller, NEWS_COUNT_TYPE.equals(type));
+			return;
+		}
 
 		int viewAs;
 		try {
@@ -1961,14 +1985,16 @@ public class ImageServlet extends HttpServlet {
 		if (caller == null) {
 			return HashCache.Attribution.NONE;
 		}
+		// When it arrived, for the bell of the others, see issue #268.
+		long now = System.currentTimeMillis();
 		if (caller.isShareLink()) {
 			return new HashCache.Attribution(caller.subject(), caller.contributorLabel(),
 				_auth.minRating(caller, folderPath, Privacy.PRIVATE), _auth.clearance(caller, folderPath),
 				_auth.photoLabel(caller),
 				// The personal link a contact came through, counted for its owner (issue #203).
-				caller.getContact() != null ? caller.getShare().getId() : "");
+				caller.getContact() != null ? caller.getShare().getId() : "").uploadedAt(now);
 		}
-		return new HashCache.Attribution(caller.subject(), caller.contributorLabel());
+		return new HashCache.Attribution(caller.subject(), caller.contributorLabel()).uploadedAt(now);
 	}
 
 
@@ -2123,7 +2149,8 @@ public class ImageServlet extends HttpServlet {
 		}
 
 		List<String> names = moveRequest.getNames().stream().map(MoveName::getName).collect(Collectors.toList());
-		MoveService moveService = new MoveService(_cache, _auth);
+		// Who moves, recorded where photographs leave the inbox, see issue #268.
+		MoveService moveService = new MoveService(_cache, _auth).movedBy(caller.subject(), caller.contributorLabel());
 
 		if (PhotoCollections.isCollection(source.toFile()) || PhotoCollections.isCollection(target.toFile())) {
 			// A collection holds references: nothing is moved into or out of it, see issue #221.
@@ -5387,6 +5414,10 @@ public class ImageServlet extends HttpServlet {
 			checkUploads(context);
 			return;
 		}
+		if (NEWS_READ_ACTION.equals(action)) {
+			markNewsRead(context, postCaller);
+			return;
+		}
 		if ("move".equals(action)) {
 			moveEntries(context);
 			return;
@@ -7030,6 +7061,99 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 		serveJsonObject(context.response(), CatchUp.status(_index.pipeline()));
+	}
+
+	/**
+	 * Answers the bell of issue #268 at <code>&lt;data&gt;/?type=news</code> (and its number of unread
+	 * entries alone at <code>?type=news-count</code>), see {@link Arrivals}: to a member only, the
+	 * path of the request is not looked at.
+	 */
+	private void serveNews(Context context, Caller caller, boolean countOnly) throws IOException {
+		if (!mayHaveNews(context, caller)) {
+			return;
+		}
+		serveJsonObject(context.response(), arrivals().news(caller.subject(), newsView(caller), countOnly));
+	}
+
+	/**
+	 * Marks entries of the bell of issue #268 as read, <code>POST &lt;data&gt;/?action=news-read</code>
+	 * with a {@link NewsRead}, and answers the bell as it is then.
+	 */
+	private void markNewsRead(Context context, Caller caller) throws IOException {
+		if (!mayHaveNews(context, caller)) {
+			return;
+		}
+		NewsRead request;
+		try {
+			request = NewsRead.readNewsRead(json(readBody(context.request())));
+		} catch (IOException | RuntimeException ex) {
+			LOG.warning("Rejecting an unreadable request marking news as read: " + ex.getMessage());
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, NEWS_READ_UNREADABLE);
+			return;
+		}
+		List<String> keys = new ArrayList<>();
+		for (NewsKey key : request.getKeys()) {
+			keys.add(key.getId());
+		}
+		Arrivals arrivals = arrivals();
+		Arrivals.View view = newsView(caller);
+		arrivals.markRead(caller.subject(), view, keys, request.isAll());
+		serveJsonObject(context.response(), arrivals.news(caller.subject(), view, false));
+	}
+
+	/** Whether the given caller is a member, who has a bell; refuses everybody else, see issue #268. */
+	private boolean mayHaveNews(Context context, Caller caller) throws IOException {
+		if (caller.isPaired() && !caller.isShareLink()) {
+			return true;
+		}
+		LOG.warning("Refusing the news to " + (caller.isShareLink()
+			? "the share link '" + caller.getShareLabel() + "'" : "a caller who is no member") + ".");
+		errorInfo(context, HttpServletResponse.SC_FORBIDDEN, NEWS_REFUSED);
+		return false;
+	}
+
+	/** The bell of this space, see issue #268. */
+	Arrivals arrivals() {
+		return new Arrivals(_spaceIndex, _newsClock);
+	}
+
+	/** The time of the bell, for the tests. */
+	private Arrivals.Clock _newsClock = System::currentTimeMillis;
+
+	/** Sets the time of the bell, for the tests. */
+	void setNewsClock(Arrivals.Clock clock) {
+		_newsClock = clock;
+	}
+
+	/**
+	 * What the given member is shown of an album in the bell of issue #268: what the album itself
+	 * shows them &mdash; their right to view it, their clearance, never the trash &mdash;, and never
+	 * the inbox, where nothing has arrived for anybody else yet.
+	 */
+	private Arrivals.View newsView(Caller caller) {
+		Path root = _basePath;
+		return folder -> {
+			PathInfo path = folder.isEmpty() ? new PathInfo(root) : new PathInfo(root, Paths.get(folder));
+			if (Inboxes.isInbox(path.toFile()) || !_auth.mayView(caller, path)) {
+				return null;
+			}
+			Resource resource = lookupOrSkip(path);
+			if (!(resource instanceof AlbumInfo)) {
+				return null;
+			}
+			// Viewed as a member and never as the owner's preview: the trash is never news.
+			Resource filtered = _privacy.filter(resource, path, _auth.clearance(caller, path),
+				_auth.minRating(caller, path, Privacy.MEMBERS), _auth.photoLabel(caller));
+			if (!(filtered instanceof AlbumInfo)) {
+				return null;
+			}
+			AlbumInfo album = (AlbumInfo) filtered;
+			List<String> names = new ArrayList<>();
+			Arrivals.collectNames(album.getParts(), names);
+			String title = album.getTitle() == null || album.getTitle().trim().isEmpty()
+				? path.toFile().getName() : album.getTitle();
+			return new Arrivals.Album(title, names);
+		};
 	}
 
 	/**

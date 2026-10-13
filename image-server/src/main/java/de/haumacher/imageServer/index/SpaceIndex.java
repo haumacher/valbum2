@@ -89,13 +89,18 @@ public final class SpaceIndex implements AutoCloseable {
 	 * The schema this build writes. A database stamped with anything else is deleted and built
 	 * again from the sidecars; bump it with every change of the tables below.
 	 */
-	public static final int SCHEMA = 2;
+	public static final int SCHEMA = 3;
 
 	/** The key of the generation in the meta table, see {@link TextIndex}. */
 	public static final String GENERATION_KEY = "generation";
 
 	/** The most of the budget Lucene's buffer of new documents takes, see {@link SpaceIndex}. */
 	public static final long MAX_TEXT_BUFFER = 16L * 1024 * 1024;
+
+	/**
+	 * The key of the moment the database was created in the meta table, see {@link #created()}.
+	 */
+	public static final String CREATED_KEY = "created";
 
 	/** The key of the schema stamp in the meta table. */
 	public static final String SCHEMA_KEY = "schema";
@@ -170,6 +175,9 @@ public final class SpaceIndex implements AutoCloseable {
 
 	/** What {@link #textSince()} answers. */
 	private long _textSince;
+
+	/** What {@link #created()} answers. */
+	private long _created;
 
 	private SpaceIndex(Path directory, String label, long budget) {
 		_directory = directory;
@@ -477,6 +485,16 @@ public final class SpaceIndex implements AutoCloseable {
 		return _textSince;
 	}
 
+	/**
+	 * When this database was created, milliseconds since the epoch: the start of what it knows
+	 * first-hand. The read marks of the bell (issue #268) are kept here and go with a rebuild; an
+	 * event older than this moment counts as read, so a rebuilt index does not ring for everything
+	 * the library ever received. <code>0</code> for an index that could not be opened at all.
+	 */
+	public synchronized long created() {
+		return _created;
+	}
+
 	/** Whether the text index is kept on disk, see {@link #isPersistent()}. */
 	public synchronized boolean isTextPersistent() {
 		return _text != null && _text.isPersistent();
@@ -522,7 +540,27 @@ public final class SpaceIndex implements AutoCloseable {
 
 	private synchronized void start() {
 		startDatabase();
+		readCreated();
 		openText();
+	}
+
+	/** Reads {@link #created()} from the meta table. */
+	private void readCreated() {
+		if (_writer == null) {
+			return;
+		}
+		try {
+			try (PreparedStatement statement = _writer.prepareStatement("SELECT val FROM meta WHERE name = ?")) {
+				statement.setString(1, CREATED_KEY);
+				try (ResultSet result = statement.executeQuery()) {
+					_created = result.next() ? Long.parseLong(result.getString(1)) : 0;
+				}
+			} finally {
+				_writer.commit();
+			}
+		} catch (SQLException | NumberFormatException ex) {
+			LOG.log(Level.WARNING, "The index of '" + _label + "' has no creation time: " + ex.getMessage(), ex);
+		}
 	}
 
 	/** Opens the text index beside the database, tied to its generation, see {@link SpaceIndex}. */
@@ -761,6 +799,12 @@ public final class SpaceIndex implements AutoCloseable {
 	 * tells whether it changed; <code>photo_persons</code>, <code>photo_labels</code> and <code>photo_places</code>,
 	 * the person ids of its confirmed faces, its labels and the GeoNames ids of its places, each
 	 * found by its value. Its text is in Lucene, a document per photograph keyed by the row's id.</li>
+	 * <li>The bell of issue #268, see <code>Arrivals</code>: <code>arrivals</code>, per folder of
+	 * <code>folders</code> the files that arrived for the others at a known moment &mdash; who made
+	 * them arrive (an upload, or a move out of the inbox), what to show for them, when, and whether
+	 * by a move &mdash; read from <code>.hashes.json</code> with the hashes; <code>arrival_marks</code>,
+	 * what each member marked as read: the folder, the actor and the span of time of an entry. The
+	 * marks are no truth of anything and go with a rebuild, see {@link #created()}.</li>
 	 * </ul>
 	 */
 	private void createSchema() throws SQLException {
@@ -797,6 +841,14 @@ public final class SpaceIndex implements AutoCloseable {
 			statement.execute("CREATE TABLE photo_places (photo BIGINT NOT NULL REFERENCES photos(id) ON DELETE CASCADE, "
 				+ "place INT NOT NULL, PRIMARY KEY (photo, place))");
 			statement.execute("CREATE INDEX photo_places_by_place ON photo_places(place)");
+
+			statement.execute("CREATE TABLE arrivals (folder BIGINT NOT NULL REFERENCES folders(id) ON DELETE CASCADE, "
+				+ "name VARCHAR NOT NULL, actor VARCHAR NOT NULL, label VARCHAR NOT NULL, arrived BIGINT NOT NULL, "
+				+ "moved BOOLEAN NOT NULL, PRIMARY KEY (folder, name))");
+			statement.execute("CREATE INDEX arrivals_by_time ON arrivals(arrived)");
+			statement.execute("CREATE TABLE arrival_marks (member VARCHAR NOT NULL, folder VARCHAR NOT NULL, "
+				+ "actor VARCHAR NOT NULL, first_at BIGINT NOT NULL, last_at BIGINT NOT NULL, marked BIGINT NOT NULL)");
+			statement.execute("CREATE INDEX arrival_marks_by_member ON arrival_marks(member)");
 		}
 		try (PreparedStatement statement = _writer.prepareStatement("INSERT INTO meta (name, val) VALUES (?, ?)")) {
 			statement.setString(1, SCHEMA_KEY);
@@ -804,6 +856,9 @@ public final class SpaceIndex implements AutoCloseable {
 			statement.executeUpdate();
 			statement.setString(1, GENERATION_KEY);
 			statement.setString(2, UUID.randomUUID().toString());
+			statement.executeUpdate();
+			statement.setString(1, CREATED_KEY);
+			statement.setString(2, String.valueOf(System.currentTimeMillis()));
 			statement.executeUpdate();
 		}
 		_writer.commit();

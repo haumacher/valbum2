@@ -13262,3 +13262,404 @@ class FolderMatch extends _JsonObject {
 
 }
 
+///  What arrived from others, the bell of issue #268: <code>&lt;data&gt;/?type=news</code>, answered
+///  to a member of the space only.
+/// 
+///  <p>
+///  An entry is the photographs one person made arrive in one album in one burst of time &mdash; an
+///  upload (by a member, a contact through a link, a device into a shared album) or a move out of the
+///  inbox into an album, the moment the photographs appear for everybody else. The caller's own
+///  uploads and moves are never an entry for them, and an entry holds only what the caller may see
+///  in its album (rights, clearance, never the trash): a photograph hidden from them is neither
+///  shown nor counted, and an entry of hidden photographs alone is not answered at all.
+///  </p>
+/// 
+///  <p>
+///  Derived on every request from the index of the space, where the events are read from the upload
+///  attribution of the albums' <code>.hashes.json</code> and the read marks are kept per member:
+///  the same on every device of the member, and gone with a rebuild of the index, after which what
+///  arrived before the rebuild counts as read.
+///  </p>
+class NewsInfo extends _JsonObject {
+	///  How many {@link #entries} are unread; all that <code>?type=news-count</code> answers.
+	int count;
+
+	///  The entries, the unread ones first, each part the most recent first; empty for
+	///  <code>?type=news-count</code>. What arrived more than 90 days ago is left out, and so is
+	///  everything beyond the first 200 entries.
+	List<NewsEntry> entries;
+
+	/// Creates a NewsInfo.
+	NewsInfo({
+			this.count = 0, 
+			this.entries = const [], 
+	});
+
+	/// Parses a NewsInfo from a string source.
+	static NewsInfo? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a NewsInfo instance from the given reader.
+	static NewsInfo read(JsonReader json) {
+		NewsInfo result = NewsInfo();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "NewsInfo";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "count": {
+				count = json.expectInt();
+				break;
+			}
+			case "entries": {
+				json.expectArray();
+				entries = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = NewsEntry.read(json);
+						if (value != null) {
+							entries.add(value);
+						}
+					}
+				}
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("count");
+		json.addNumber(count);
+
+		json.addKey("entries");
+		json.startArray();
+		for (var _element in entries) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+	}
+
+}
+
+///  One entry of {@link NewsInfo}: what one person made arrive in one album at one time.
+class NewsEntry extends _JsonObject {
+	///  What names this entry in {@link NewsRead#keys}: the same for every member and on every
+	///  request, while the entry's first photograph stays where it is. Not called <code>key</code>:
+	///  the Dart reader of the generator shadows a field of that name.
+	String id;
+
+	///  The album, its path below the root of the space with <code>/</code> between the folders.
+	String album;
+
+	///  The title of the album, its folder name where it has none.
+	String title;
+
+	///  Who made the photographs arrive, as named when they did: a member's name, a contact's, a link's label.
+	String who;
+
+	///  When the first photograph of the entry arrived, milliseconds since the epoch.
+	int first;
+
+	///  When the last photograph of the entry arrived, milliseconds since the epoch.
+	int last;
+
+	///  Whether any photograph of the entry is unread.
+	bool unread;
+
+	///  The photographs the caller may see, in the order of their album.
+	List<NewsPhoto> photos;
+
+	/// Creates a NewsEntry.
+	NewsEntry({
+			this.id = "", 
+			this.album = "", 
+			this.title = "", 
+			this.who = "", 
+			this.first = 0, 
+			this.last = 0, 
+			this.unread = false, 
+			this.photos = const [], 
+	});
+
+	/// Parses a NewsEntry from a string source.
+	static NewsEntry? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a NewsEntry instance from the given reader.
+	static NewsEntry read(JsonReader json) {
+		NewsEntry result = NewsEntry();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "NewsEntry";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "id": {
+				id = json.expectString();
+				break;
+			}
+			case "album": {
+				album = json.expectString();
+				break;
+			}
+			case "title": {
+				title = json.expectString();
+				break;
+			}
+			case "who": {
+				who = json.expectString();
+				break;
+			}
+			case "first": {
+				first = json.expectInt();
+				break;
+			}
+			case "last": {
+				last = json.expectInt();
+				break;
+			}
+			case "unread": {
+				unread = json.expectBool();
+				break;
+			}
+			case "photos": {
+				json.expectArray();
+				photos = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = NewsPhoto.read(json);
+						if (value != null) {
+							photos.add(value);
+						}
+					}
+				}
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("id");
+		json.addString(id);
+
+		json.addKey("album");
+		json.addString(album);
+
+		json.addKey("title");
+		json.addString(title);
+
+		json.addKey("who");
+		json.addString(who);
+
+		json.addKey("first");
+		json.addNumber(first);
+
+		json.addKey("last");
+		json.addNumber(last);
+
+		json.addKey("unread");
+		json.addBool(unread);
+
+		json.addKey("photos");
+		json.startArray();
+		for (var _element in photos) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+	}
+
+}
+
+///  One photograph of a {@link NewsEntry}.
+class NewsPhoto extends _JsonObject {
+	///  Its file name in the album.
+	String name;
+
+	///  Whether it arrived after what the caller marked as read.
+	bool unread;
+
+	/// Creates a NewsPhoto.
+	NewsPhoto({
+			this.name = "", 
+			this.unread = false, 
+	});
+
+	/// Parses a NewsPhoto from a string source.
+	static NewsPhoto? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a NewsPhoto instance from the given reader.
+	static NewsPhoto read(JsonReader json) {
+		NewsPhoto result = NewsPhoto();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "NewsPhoto";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "name": {
+				name = json.expectString();
+				break;
+			}
+			case "unread": {
+				unread = json.expectBool();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("name");
+		json.addString(name);
+
+		json.addKey("unread");
+		json.addBool(unread);
+	}
+
+}
+
+///  Marks entries of the bell as read, see {@link NewsInfo}: <code>POST &lt;data&gt;/?action=news-read</code>,
+///  answered with the {@link NewsInfo} as it is now.
+class NewsRead extends _JsonObject {
+	///  The {@link NewsEntry#id ids} of the entries visited.
+	List<NewsKey> keys;
+
+	///  Whether every entry is marked as read ("Mark all as read").
+	bool all;
+
+	/// Creates a NewsRead.
+	NewsRead({
+			this.keys = const [], 
+			this.all = false, 
+	});
+
+	/// Parses a NewsRead from a string source.
+	static NewsRead? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a NewsRead instance from the given reader.
+	static NewsRead read(JsonReader json) {
+		NewsRead result = NewsRead();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "NewsRead";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "keys": {
+				json.expectArray();
+				keys = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = NewsKey.read(json);
+						if (value != null) {
+							keys.add(value);
+						}
+					}
+				}
+				break;
+			}
+			case "all": {
+				all = json.expectBool();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("keys");
+		json.startArray();
+		for (var _element in keys) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+
+		json.addKey("all");
+		json.addBool(all);
+	}
+
+}
+
+///  One key of {@link NewsRead#keys}.
+class NewsKey extends _JsonObject {
+	///  The {@link NewsEntry#id}.
+	String id;
+
+	/// Creates a NewsKey.
+	NewsKey({
+			this.id = "", 
+	});
+
+	/// Parses a NewsKey from a string source.
+	static NewsKey? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a NewsKey instance from the given reader.
+	static NewsKey read(JsonReader json) {
+		NewsKey result = NewsKey();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "NewsKey";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "id": {
+				id = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("id");
+		json.addString(id);
+	}
+
+}
+

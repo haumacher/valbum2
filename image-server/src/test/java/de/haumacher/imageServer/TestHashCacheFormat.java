@@ -172,6 +172,72 @@ public class TestHashCacheFormat extends TestCase {
 		assertTrue(rewritten.contains("\"contributor\":\"user:bob\""));
 	}
 
+	/**
+	 * The sidecar as the builds of issues #203 to #267 wrote it: a contact's upload through a
+	 * personal link, without the time of the upload and without a move, see issue #268.
+	 */
+	private static final String BEFORE_ISSUE_268 = "{\"version\":1,\"files\":{\"petras.jpg\":{\"size\":%d,"
+		+ "\"modified\":%d,\"sha256\":\"%s\",\"contributor\":\"contact:p1\",\"contributorLabel\":\"Tante Petra\","
+		+ "\"linkMaxPrivacy\":0,\"contributorLink\":\"link1\"}}}";
+
+	public void testASidecarWrittenBeforeIssue268ReadsWithoutAnArrival() throws Exception {
+		File image = photo("petras.jpg");
+		String hash = HashCache.sha256(image);
+		Files.write(_folder.resolve(HashCache.FILE_NAME), String.format(BEFORE_ISSUE_268,
+			Long.valueOf(image.length()), Long.valueOf(image.lastModified()), hash).getBytes(StandardCharsets.UTF_8));
+
+		HashCache cache = new HashCache(_folder.toFile());
+		HashCache.Attribution read = cache.attributionOf("petras.jpg");
+
+		assertEquals(hash, cache.hashByName().get("petras.jpg"));
+		assertEquals("contact:p1", read.getContributor());
+		assertEquals("Tante Petra", read.getLabel());
+		assertEquals("link1", read.getLink());
+		assertEquals(0, read.getUploaded());
+		assertEquals("", read.getMover());
+		assertEquals(0, read.getMoved());
+		assertFalse("When it came is not known: it is in nobody's bell.", read.hasArrival());
+		assertTrue(cache.storedArrivals().isEmpty());
+
+		// Rewritten by this build, it stays what it was.
+		photo("other.jpg");
+		cache.refresh();
+		cache.flush();
+		assertFalse(contents(), contents().contains("uploaded"));
+		assertFalse(contents(), contents().contains("moved"));
+		assertEquals("contact:p1", new HashCache(_folder.toFile()).attributionOf("petras.jpg").getContributor());
+	}
+
+	public void testTheArrivalSurvivesARoundTrip() throws Exception {
+		File uploaded = photo("uploaded.jpg");
+		File moved = photo("moved.jpg");
+		HashCache written = new HashCache(_folder.toFile());
+		written.put(uploaded, HashCache.sha256(uploaded),
+			new HashCache.Attribution("contact:p1", "Tante Petra").uploadedAt(1_000L));
+		written.put(moved, HashCache.sha256(moved), new HashCache.Attribution("user:bob", "bob").uploadedAt(2_000L)
+			.movedOutOfInbox("user:carol", "carol", 3_000L));
+		written.flush();
+		assertTrue(contents(), contents().contains("\"uploaded\":1000"));
+		assertTrue(contents(), contents().contains("\"movedBy\":\"user:carol\""));
+
+		HashCache read = new HashCache(_folder.toFile());
+		HashCache.Attribution upload = read.attributionOf("uploaded.jpg");
+		assertEquals(1_000L, upload.getUploaded());
+		assertEquals("contact:p1", upload.arrivalActor());
+		assertEquals("Tante Petra", upload.arrivalLabel());
+		assertEquals(1_000L, upload.arrivalTime());
+		assertFalse(upload.arrivedByMove());
+
+		HashCache.Attribution move = read.attributionOf("moved.jpg");
+		assertEquals("Who uploaded it stays.", "user:bob", move.getContributor());
+		assertEquals(2_000L, move.getUploaded());
+		assertEquals("The others saw it when it left the inbox.", "user:carol", move.arrivalActor());
+		assertEquals("carol", move.arrivalLabel());
+		assertEquals(3_000L, move.arrivalTime());
+		assertTrue(move.arrivedByMove());
+		assertEquals(2, read.storedArrivals().size());
+	}
+
 	/** Writes the sidecar in the shape of the build before issue #53. */
 	private void writeOldFormat(File image, String hash) throws Exception {
 		Files.write(_folder.resolve(HashCache.FILE_NAME),

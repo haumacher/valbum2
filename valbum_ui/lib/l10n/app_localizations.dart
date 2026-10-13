@@ -6362,6 +6362,78 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Connect to the album server'**
   String get appLinkPairingTitle;
+
+  /// Tooltip of the bell icon in the app bar (issue #268): the bell lists what other people added to the albums (uploads, photos moved out of the inbox); the count is how many of those entries the reader has not opened yet. Address the reader formally (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'News from others: {count, plural, =0{nothing new} =1{1 new entry} other{{count} new entries}}'**
+  String newsTooltip(int count);
+
+  /// Title of the menu of the bell (issue #268), listing the photos other people added to the albums, the newest first.
+  ///
+  /// In en, this message translates to:
+  /// **'New from others'**
+  String get newsTitle;
+
+  /// Button in the menu of the bell (issue #268) marking every entry as read, so that the bell shows no number any more.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark all as read'**
+  String get newsMarkAllRead;
+
+  /// Shown in the menu of the bell (issue #268) when nobody else added photos to an album the reader may see in the last 90 days.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing new from others in the last 90 days.'**
+  String get newsNothing;
+
+  /// Who added photos, in an entry of the bell (issue #268), when the server recorded no name for them.
+  ///
+  /// In en, this message translates to:
+  /// **'Somebody'**
+  String get newsSomebody;
+
+  /// An entry of the bell (issue #268), following the name of the person in bold: e.g. 'Anna added 12 photos to “Rome”'. The person's name is shown before this text, so the text continues the sentence and starts in lower case; album is the title of the album the photos were added to. Address the reader formally (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'added {count, plural, =1{1 photo} other{{count} photos}} to “{album}”'**
+  String newsAdded(String album, int count);
+
+  /// How long ago photos were added, in an entry of the bell (issue #268): less than a minute ago.
+  ///
+  /// In en, this message translates to:
+  /// **'just now'**
+  String get newsJustNow;
+
+  /// How long ago photos were added, in an entry of the bell (issue #268), in minutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} min. ago'**
+  String newsMinutesAgo(int count);
+
+  /// How long ago photos were added, in an entry of the bell (issue #268), in hours.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} h ago'**
+  String newsHoursAgo(int count);
+
+  /// How long ago photos were added, in an entry of the bell (issue #268), in days.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{a day ago} other{{count} days ago}}'**
+  String newsDaysAgo(int count);
+
+  /// Subtitle of the page showing the photos of one entry of the bell (issue #268), only the photos the reader has not seen yet; who is the name of the person who added them.
+  ///
+  /// In en, this message translates to:
+  /// **'New: {count, plural, =1{1 photo} other{{count} photos}} added by {who}'**
+  String newsViewSubtitle(int count, String who);
+
+  /// Shown instead of the photos of an entry of the bell (issue #268) that was opened by its address (a bookmark, a reload) but no longer exists. Address the reader formally (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'This news is no longer there: its photos were moved or deleted, or they arrived more than 90 days ago.'**
+  String get newsEntryGone;
 }
 
 class _AppLocalizationsDelegate

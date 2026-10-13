@@ -33,6 +33,7 @@ import 'invitation.dart';
 import 'l10n/app_localizations.dart';
 import 'load_failure.dart';
 import 'listing_view.dart';
+import 'news.dart';
 import 'locales.dart';
 import 'media_picker.dart';
 import 'notices.dart';
@@ -428,6 +429,43 @@ class VAlbumAppState extends State<VAlbumApp> {
   /// The server and token [caller] was asked about, so that the question is
   /// asked once per client and not once per rebuild.
   String? _callerAsked;
+
+  /// What arrived from others, for a member (issue #268), see [NewsBell].
+  final NewsBell newsBell = NewsBell();
+
+  /// Whether [_syncNews] is due after the frame.
+  bool _newsSyncDue = false;
+
+  /// The client the bell asks: a member's own, never a link's, `null` where
+  /// there is no bell (issue #268).
+  VAlbumClient? get _newsClient {
+    var current = client;
+    if (current == null ||
+        shareLink != null ||
+        shareSession != null ||
+        session != null ||
+        !_readyForTheRouter ||
+        (current.token ?? "").isEmpty ||
+        (caller?.userName ?? "").isEmpty) {
+      return null;
+    }
+    return current;
+  }
+
+  /// Attaches the bell to the client of a member, after the frame that
+  /// changed who that is: attaching notifies the views showing the bell.
+  void _syncNews() {
+    if (_newsSyncDue) {
+      return;
+    }
+    _newsSyncDue = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _newsSyncDue = false;
+      if (mounted) {
+        newsBell.attach(_newsClient);
+      }
+    });
+  }
 
   /// Leaves the page for another URL, see [VAlbumApp.openUrl].
   late final void Function(String url) _openUrl = widget.openUrl ?? leaveForUrl;
@@ -896,8 +934,7 @@ class VAlbumAppState extends State<VAlbumApp> {
                   // forward buttons arrive through the provider.
                   routes: _router == null
                       ? null
-                      : Listenable.merge(
-                          [_router, _routeInformationProvider]),
+                      : Listenable.merge([_router, _routeInformationProvider]),
                   appLink: _currentAppLink,
                   onDismiss: () => setState(_openInApp.dismiss),
                 ),
@@ -1364,6 +1401,7 @@ class VAlbumAppState extends State<VAlbumApp> {
       photoLibrary.dispose();
     }
     _router?.dispose();
+    newsBell.dispose();
     if (widget.settings == null) {
       settings.dispose();
     }
@@ -1694,6 +1732,7 @@ class VAlbumAppState extends State<VAlbumApp> {
 
   @override
   Widget build(BuildContext context) {
+    _syncNews();
     return OfflineScope(
       state: offlineState,
       cache: cache,
@@ -1717,16 +1756,20 @@ class VAlbumAppState extends State<VAlbumApp> {
                   child: CallerScope(
                     caller: caller,
                     refresh: _refreshCaller,
-                    // A share link never sets a target (issue #240): inside
-                    // a session there is no server of the device's own.
-                    child: UploadTargetScope(
-                      targets: uploadTargets,
-                      client: session == null ? client : null,
-                      child: _overviewAt != null
-                          ? _overviewApp(_overviewAt!)
-                          : _readyForTheRouter && client != null
-                              ? _albumApp(client!)
-                              : _beforeTheRouter(),
+                    // The bell of a member, see issue #268.
+                    child: NewsScope(
+                      bell: newsBell,
+                      // A share link never sets a target (issue #240): inside
+                      // a session there is no server of the device's own.
+                      child: UploadTargetScope(
+                        targets: uploadTargets,
+                        client: session == null ? client : null,
+                        child: _overviewAt != null
+                            ? _overviewApp(_overviewAt!)
+                            : _readyForTheRouter && client != null
+                                ? _albumApp(client!)
+                                : _beforeTheRouter(),
+                      ),
                     ),
                   ),
                 ),
@@ -2052,6 +2095,13 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
   /// The search view of every folder searched below, see [searchSession].
   final Map<String, SearchSession> _searchSessions = {};
 
+  /// The entries of the bell opened, by their key, see [newsSession].
+  final Map<String, NewsSession> _newsSessions = {};
+
+  /// The album whose photographs of an entry of the bell are new for this
+  /// visit, and their names, see [freshIn]; `null` for none.
+  (String, Set<String>)? _fresh;
+
   VAlbumRoute _route;
 
   /// Incremented by [reload], so that the view re-runs its load.
@@ -2088,6 +2138,8 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
     _scrollOffsets.clear();
     _editSessions.clear();
     _searchSessions.clear();
+    _newsSessions.clear();
+    _fresh = null;
     _version++;
     notifyListeners();
   }
@@ -2116,6 +2168,12 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
   /// them from then on, and [currentConfiguration] writes them back.
   VAlbumRoute _arrive(VAlbumRoute target) {
     _forgetSearchOrigins(target);
+    var fresh = _fresh;
+    if (fresh != null && fresh.$1 != _pathKey(target.albumPath)) {
+      // The visit of the album an entry of the bell was opened on is over:
+      // its photographs are new no more (issue #268).
+      _fresh = null;
+    }
     if (target is SearchRoute) {
       var query = target.query;
       if (query == null) {
@@ -2408,6 +2466,49 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
 
   static String _pathKey(List<String> path) => path.join("/");
 
+  /// The entry of the bell of [key] as it was opened, see [NewsSession]
+  /// (issue #268).
+  NewsSession newsSession(String key) =>
+      _newsSessions.putIfAbsent(key, () => NewsSession(key));
+
+  /// The names of the photographs of the album at [path] that are new for
+  /// this visit — those of the entry of the bell last opened on it, until the
+  /// album is left (issue #268); `null` for none.
+  Set<String>? freshIn(List<String> path) {
+    var fresh = _fresh;
+    return fresh != null && fresh.$1 == _pathKey(path) ? fresh.$2 : null;
+  }
+
+  /// The album of the view of the entry of the bell of [key] in the album at
+  /// [path]: its photographs alone, see [newsAlbumOf]. Marks them as new for
+  /// the visit of the album, see [freshIn]. Fails with a sentence where the
+  /// server knows no such entry any more.
+  Future<Resource?> newsAlbum(
+    List<String> path,
+    String key,
+    AppLocalizations l10n,
+  ) async {
+    var session = newsSession(key);
+    var entry = await session.find(_client);
+    var names = session.names;
+    if (entry == null || names == null) {
+      throw VAlbumException(l10n.newsEntryGone);
+    }
+    var album = await resourceAt(path);
+    if (album is! AlbumInfo) {
+      return album;
+    }
+    if (_route.newsKey == key) {
+      _fresh = (_pathKey(path), names.toSet());
+    }
+    var who = entry.who.trim().isEmpty ? l10n.newsSomebody : entry.who;
+    return newsAlbumOf(
+      album,
+      names,
+      subTitle: l10n.newsViewSubtitle(names.length, who),
+    );
+  }
+
   /// The path under which a view of [route] keeps its state with this
   /// delegate: its scroll offset, its edit session and selection, its leave
   /// guard, its cached resource (issue #265).
@@ -2420,7 +2521,11 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
   static List<String> statePathOf(VAlbumRoute route) =>
       route is SearchRoute || route.fromSearch
           ? [...route.albumPath, searchSegment]
-          : route.albumPath;
+          // The view of an entry of the bell and its viewer show a copy of the
+          // album, which is not the album's state either (issue #268).
+          : route.newsKey != null
+              ? [...route.albumPath, newsSegment, route.newsKey!]
+              : route.albumPath;
 
   /// The system back button (and the browser's, on the web) goes up.
   ///
@@ -2474,6 +2579,13 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
             SearchRoute(folder),
             route,
           ],
+        // A viewer of an entry of the bell sits on the entry's view, and
+        // that on its album, which is where the way back leads (issue #268).
+        ImageRoute(news: var key?, albumPath: var album) => [
+            ListingOrAlbumRoute(album),
+            NewsRoute(album, key),
+            route,
+          ],
         ImageRoute(albumPath: var album) => [
             ListingOrAlbumRoute(album),
             route,
@@ -2514,6 +2626,11 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
         // The search view sits on the folder it searches, see issue #227.
         SearchRoute(albumPath: var folder) => [
             ListingOrAlbumRoute(searchOrigin ?? folder),
+            route,
+          ],
+        // The view of an entry of the bell sits on its album (issue #268).
+        NewsRoute(albumPath: var album) => [
+            ListingOrAlbumRoute(album),
             route,
           ],
         // The overview of the photographs in several albums sits on the start
@@ -2589,6 +2706,7 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
       ListingOrAlbumRoute() => "valbum:album:$album",
       ImageRoute(fromDuplicates: true) => "valbum:duplicates-image:$album",
       ImageRoute(fromSearch: true) => "valbum:search-image:$album",
+      ImageRoute(news: var key?) => "valbum:news-image:$album:$key",
       ImageRoute() => "valbum:image:$album",
       AlternativesRoute(fromDuplicates: true) =>
         "valbum:duplicates-alternatives:$album",
@@ -2599,6 +2717,7 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
       TrashRoute() => "valbum:trash:$album",
       DuplicatesRoute() => "valbum:duplicates",
       SearchRoute() => "valbum:search:$album",
+      NewsRoute(:var key) => "valbum:news:$album:$key",
     };
   }
 
@@ -2770,6 +2889,13 @@ class VAlbumState extends State<VAlbumView>
     if (route is DuplicatesRoute || route is SearchRoute) {
       // A page of the space that asks the server itself, see issues #220 and
       // #227: the listing it stands on is loaded by the level beneath it.
+      return;
+    }
+    var news = route.newsKey;
+    if (news != null) {
+      // The photographs of an entry of the bell alone, see issue #268.
+      _resourceFuture = navigator.delegate
+          .newsAlbum(path, news, AppLocalizations.of(context)!);
       return;
     }
     if (route.fromSearch) {
@@ -3021,6 +3147,13 @@ class VAlbumState extends State<VAlbumView>
       // level of its own above the album, restored or purged at once.
       return TrashContent(this, self, baseUrl);
     }
+    if (current is NewsRoute) {
+      // The photographs of an entry of the bell (issue #268), looked at as
+      // an album of their own.
+      return _remembersScrollOffset(
+        AlbumContent(this, self, baseUrl, pushPart),
+      );
+    }
     if (current is ListingOrAlbumRoute) {
       // An inbox is an album of another kind and is shown by a screen of its
       // own (issues #131, #136): always in the selection mode, nothing
@@ -3111,6 +3244,7 @@ class VAlbumState extends State<VAlbumView>
         TrashRoute() => "",
         DuplicatesRoute() => "",
         SearchRoute() => "",
+        NewsRoute() => "",
       };
 
   /// Every image of the album by its file name, group members included.
@@ -3552,13 +3686,15 @@ class VAlbumState extends State<VAlbumView>
   void showImage(AbstractImage image) => navigator.go(switch (route) {
         ImageRoute current => current.withName(image.thumbnailName),
         _ => ImageRoute(path, image.thumbnailName,
-            fromSearch: route is SearchRoute),
+            fromSearch: route is SearchRoute, news: route.newsKey),
       });
 
   /// Opens the viewer on the given part of the album — of the results of the
-  /// search view, where it is the search view's, see issue #227.
+  /// search view, where it is the search view's, see issue #227, and of the
+  /// photographs of an entry of the bell, see issue #268.
   Future<void> pushPart(AbstractImage image, String name) async =>
-      navigator.go(ImageRoute(path, name, fromSearch: route is SearchRoute));
+      navigator.go(ImageRoute(path, name,
+          fromSearch: route is SearchRoute, news: route.newsKey));
 
   /// Descends into the child folder of the displayed listing.
   void showElement(String name) =>

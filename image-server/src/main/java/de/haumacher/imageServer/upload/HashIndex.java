@@ -642,7 +642,7 @@ public class HashIndex {
 		}
 		synchronized (this) {
 			_reads.incrementAndGet();
-			record(path, sidecar.lastModified(), hashByName);
+			record(path, sidecar.lastModified(), hashByName, cache.storedArrivals());
 		}
 	}
 
@@ -739,16 +739,24 @@ public class HashIndex {
 		}
 		HashCache cache = new HashCache(folder);
 		_reads.incrementAndGet();
-		return sidecar(path, file.lastModified(), cache.storedHashByName());
+		return sidecar(path, file.lastModified(), cache.storedHashByName(), cache.storedArrivals());
 	}
 
 	/** Puts what a folder holds into the index, replacing what was known about it. */
-	private void record(String path, long stamp, Map<String, String> hashByName) {
-		_store.write(sidecar(path, stamp, hashByName)::apply);
+	private void record(String path, long stamp, Map<String, String> hashByName,
+			Map<String, HashCache.Attribution> arrivals) {
+		_store.write(sidecar(path, stamp, hashByName, arrivals)::apply);
 	}
 
-	/** What a folder holds, as the index records it; called under this index's lock. */
-	private Sidecar sidecar(String path, long stamp, Map<String, String> hashByName) {
+	/**
+	 * What a folder holds, as the index records it; called under this index's lock.
+	 *
+	 * @param arrivals
+	 *        The attribution of every file that arrived at a known moment, for the bell of issue
+	 *        #268, see {@link HashCache#storedArrivals()}.
+	 */
+	private Sidecar sidecar(String path, long stamp, Map<String, String> hashByName,
+			Map<String, HashCache.Attribution> arrivals) {
 		if (!LibraryFiles.isLibraryPath(path)) {
 			// No part of the library: never an answer, whatever wrote a sidecar there.
 			return new Sidecar(path, 0, null);
@@ -768,7 +776,13 @@ public class HashIndex {
 			}
 			nameByHash.putIfAbsent(entry.getValue(), entry.getKey());
 		}
-		return new Sidecar(path, stamp, nameByHash);
+		Map<String, HashCache.Attribution> arrived = new LinkedHashMap<>();
+		for (Map.Entry<String, HashCache.Attribution> entry : arrivals.entrySet()) {
+			if (!LibraryFiles.isIgnored(entry.getKey())) {
+				arrived.put(entry.getKey(), entry.getValue());
+			}
+		}
+		return new Sidecar(path, stamp, nameByHash, arrived);
 	}
 
 	/** What one folder's sidecar says, read and ready to be written into the index. */
@@ -784,10 +798,18 @@ public class HashIndex {
 		 */
 		final Map<String, String> _nameByHash;
 
+		/** The files that arrived at a known moment, by name, see issue #268. */
+		final Map<String, HashCache.Attribution> _arrivals;
+
 		Sidecar(String path, long stamp, Map<String, String> nameByHash) {
+			this(path, stamp, nameByHash, Collections.emptyMap());
+		}
+
+		Sidecar(String path, long stamp, Map<String, String> nameByHash, Map<String, HashCache.Attribution> arrivals) {
 			_path = path;
 			_stamp = stamp;
 			_nameByHash = nameByHash;
+			_arrivals = arrivals;
 		}
 
 		/** Writes this into the index, replacing what was known about the folder. */
@@ -810,6 +832,27 @@ public class HashIndex {
 					insert.addBatch();
 				}
 				insert.executeBatch();
+			}
+			// The events of the bell of issue #268, written through with the hashes they were read with.
+			try (PreparedStatement delete = connection.prepareStatement("DELETE FROM arrivals WHERE folder = ?")) {
+				delete.setLong(1, id);
+				delete.executeUpdate();
+			}
+			if (!_arrivals.isEmpty()) {
+				try (PreparedStatement insert = connection.prepareStatement(
+					"INSERT INTO arrivals (folder, name, actor, label, arrived, moved) VALUES (?, ?, ?, ?, ?, ?)")) {
+					for (Map.Entry<String, HashCache.Attribution> entry : _arrivals.entrySet()) {
+						HashCache.Attribution attribution = entry.getValue();
+						insert.setLong(1, id);
+						insert.setString(2, entry.getKey());
+						insert.setString(3, attribution.arrivalActor());
+						insert.setString(4, attribution.arrivalLabel());
+						insert.setLong(5, attribution.arrivalTime());
+						insert.setBoolean(6, attribution.arrivedByMove());
+						insert.addBatch();
+					}
+					insert.executeBatch();
+				}
 			}
 		}
 	}

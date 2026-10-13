@@ -6761,5 +6761,103 @@
   "@appLinkPairingTitle": {
     "description": "Title of the page signing in at the album server a link named, after the question was answered with Connect (issue #275).",
     "x-translated": "8692d917"
+  },
+  "newsTooltip": "News from others: {count, plural, =0{nothing new} =1{1 new entry} other{{count} new entries}}",
+  "@newsTooltip": {
+    "description": "Tooltip of the bell icon in the app bar (issue #268): the bell lists what other people added to the albums (uploads, photos moved out of the inbox); the count is how many of those entries the reader has not opened yet. Address the reader formally (German: 'Sie', never 'du').",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "a7cca555"
+  },
+  "newsTitle": "New from others",
+  "@newsTitle": {
+    "description": "Title of the menu of the bell (issue #268), listing the photos other people added to the albums, the newest first.",
+    "x-translated": "fbbcfd87"
+  },
+  "newsMarkAllRead": "Mark all as read",
+  "@newsMarkAllRead": {
+    "description": "Button in the menu of the bell (issue #268) marking every entry as read, so that the bell shows no number any more.",
+    "x-translated": "b459cb1"
+  },
+  "newsNothing": "Nothing new from others in the last 90 days.",
+  "@newsNothing": {
+    "description": "Shown in the menu of the bell (issue #268) when nobody else added photos to an album the reader may see in the last 90 days.",
+    "x-translated": "887addea"
+  },
+  "newsSomebody": "Somebody",
+  "@newsSomebody": {
+    "description": "Who added photos, in an entry of the bell (issue #268), when the server recorded no name for them.",
+    "x-translated": "dc212757"
+  },
+  "newsAdded": "added {count, plural, =1{1 photo} other{{count} photos}} to “{album}”",
+  "@newsAdded": {
+    "description": "An entry of the bell (issue #268), following the name of the person in bold: e.g. 'Anna added 12 photos to “Rome”'. The person's name is shown before this text, so the text continues the sentence and starts in lower case; album is the title of the album the photos were added to. Address the reader formally (German: 'Sie', never 'du').",
+    "placeholders": {
+      "album": {
+        "type": "String",
+        "example": "2026-10 Rome"
+      },
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "7b177baa"
+  },
+  "newsJustNow": "just now",
+  "@newsJustNow": {
+    "description": "How long ago photos were added, in an entry of the bell (issue #268): less than a minute ago.",
+    "x-translated": "d5c27f15"
+  },
+  "newsMinutesAgo": "{count} min. ago",
+  "@newsMinutesAgo": {
+    "description": "How long ago photos were added, in an entry of the bell (issue #268), in minutes.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "4e50d65c"
+  },
+  "newsHoursAgo": "{count} h ago",
+  "@newsHoursAgo": {
+    "description": "How long ago photos were added, in an entry of the bell (issue #268), in hours.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "5fb5d5f2"
+  },
+  "newsDaysAgo": "{count, plural, =1{a day ago} other{{count} days ago}}",
+  "@newsDaysAgo": {
+    "description": "How long ago photos were added, in an entry of the bell (issue #268), in days.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "42e9bf21"
+  },
+  "newsViewSubtitle": "New: {count, plural, =1{1 photo} other{{count} photos}} added by {who}",
+  "@newsViewSubtitle": {
+    "description": "Subtitle of the page showing the photos of one entry of the bell (issue #268), only the photos the reader has not seen yet; who is the name of the person who added them.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "who": {
+        "type": "String",
+        "example": "Anna"
+      }
+    },
+    "x-translated": "ca79f7e8"
+  },
+  "newsEntryGone": "This news is no longer there: its photos were moved or deleted, or they arrived more than 90 days ago.",
+  "@newsEntryGone": {
+    "description": "Shown instead of the photos of an entry of the bell (issue #268) that was opened by its address (a bookmark, a reload) but no longer exists. Address the reader formally (German: 'Sie', never 'du').",
+    "x-translated": "98bfcc36"
   }
 }

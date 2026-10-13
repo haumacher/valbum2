@@ -4055,4 +4055,78 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get appLinkPairingTitle => 'Connect to the album server';
+
+  @override
+  String newsTooltip(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count new entries',
+      one: '1 new entry',
+      zero: 'nothing new',
+    );
+    return 'News from others: $_temp0';
+  }
+
+  @override
+  String get newsTitle => 'New from others';
+
+  @override
+  String get newsMarkAllRead => 'Mark all as read';
+
+  @override
+  String get newsNothing => 'Nothing new from others in the last 90 days.';
+
+  @override
+  String get newsSomebody => 'Somebody';
+
+  @override
+  String newsAdded(String album, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count photos',
+      one: '1 photo',
+    );
+    return 'added $_temp0 to “$album”';
+  }
+
+  @override
+  String get newsJustNow => 'just now';
+
+  @override
+  String newsMinutesAgo(int count) {
+    return '$count min. ago';
+  }
+
+  @override
+  String newsHoursAgo(int count) {
+    return '$count h ago';
+  }
+
+  @override
+  String newsDaysAgo(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count days ago',
+      one: 'a day ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String newsViewSubtitle(int count, String who) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count photos',
+      one: '1 photo',
+    );
+    return 'New: $_temp0 added by $who';
+  }
+
+  @override
+  String get newsEntryGone =>
+      'This news is no longer there: its photos were moved or deleted, or they arrived more than 90 days ago.';
 }

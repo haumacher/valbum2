@@ -17,6 +17,7 @@ import 'crop.dart';
 import 'form_dialog.dart';
 import 'keyboard_scroll.dart';
 import 'l10n/app_localizations.dart';
+import 'news.dart';
 import 'listing_layout.dart';
 import 'move_view.dart';
 import 'resource.dart';
@@ -237,6 +238,8 @@ class ListingView extends StatelessWidget {
         actions: <Widget>[
           // Unobtrusive while a camera-roll sync runs, nothing otherwise.
           const CameraRollIndicator(),
+          // What arrived from others, for a member (issue #268).
+          const NewsBellButton(),
           if (maySearch)
             IconButton(
               key: const Key("open-search"),

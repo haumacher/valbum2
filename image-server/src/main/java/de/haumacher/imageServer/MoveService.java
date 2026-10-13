@@ -257,6 +257,36 @@ public class MoveService {
 		_auth = auth;
 	}
 
+	/** Who moves, see {@link #movedBy(String, String)}; the empty string for nobody named. */
+	private String _mover = "";
+
+	private String _moverLabel = "";
+
+	/**
+	 * The moment of the move running now where it takes photographs out of the inbox into an
+	 * album, see {@link #movedBy(String, String)}; <code>0</code> for any other move.
+	 */
+	private long _outOfInbox;
+
+	/**
+	 * Names who moves, see issue #268: a photograph this service takes out of the inbox into an
+	 * album records the mover and the moment in its attribution (see
+	 * {@link HashCache.Attribution#movedOutOfInbox(String, String, long)}), because that is when it
+	 * appears for everybody else, and the bell of the others tells them so.
+	 *
+	 * @param subject
+	 *        The {@link de.haumacher.imageServer.auth.AuthService.Caller#subject() subject} of the
+	 *        caller moving.
+	 * @param label
+	 *        What to show for them.
+	 * @return This service.
+	 */
+	public MoveService movedBy(String subject, String label) {
+		_mover = subject == null ? "" : subject;
+		_moverLabel = label == null ? "" : label;
+		return this;
+	}
+
 	/**
 	 * Thrown when the request as a whole cannot be carried out; the servlet answers with an
 	 * {@link de.haumacher.imageServer.shared.model.ErrorInfo} carrying {@link #getMessage()}.
@@ -410,6 +440,11 @@ public class MoveService {
 		// Where every photograph of the request ended up, by its name in the source folder: the
 		// name it landed under, or the name of the copy the target already held, see issue #273.
 		Map<String, String> landedAs = new HashMap<>();
+
+		// A move out of the inbox into an album is when its photographs appear for the others, see
+		// issue #268: one moment for the whole move, so that the bell groups it as one.
+		_outOfInbox = !_mover.isEmpty() && Inboxes.isInbox(sourceFolder) && !Inboxes.isInbox(targetFolder)
+			? System.currentTimeMillis() : 0;
 
 		MoveResult result = MoveResult.create();
 		HashCache sourceHashes = new HashCache(sourceFolder);
@@ -1079,6 +1114,10 @@ public class MoveService {
 		// Attribution travels with the photo: it is the source folder's record, carried into the
 		// target's, see issue #53.
 		HashCache.Attribution attribution = sourceHashes.attributionOf(name);
+		if (_outOfInbox > 0) {
+			// Out of the inbox: who moved it and when, see issue #268.
+			attribution = attribution.movedOutOfInbox(_mover, _moverLabel, _outOfInbox);
+		}
 
 		String existing = targetHashes.nameOf(hash);
 		if (existing != null) {

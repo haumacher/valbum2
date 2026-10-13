@@ -1043,5 +1043,17 @@
   "appLinkConnectBody": "Der Link führt zum Album-Server {server}. Diese App ist mit {current} verbunden; beim Wechsel zum anderen Server wird dieses Gerät von {current} abgemeldet.",
   "appLinkConnect": "Verbinden",
   "appLinkPairingTitle": "Mit dem Album-Server verbinden",
-  "inboxUnknownCamera": "Unbekannte Kamera"
+  "inboxUnknownCamera": "Unbekannte Kamera",
+  "newsTooltip": "Neues von anderen: {count, plural, =0{nichts Neues} =1{1 neuer Eintrag} other{{count} neue Einträge}}",
+  "newsTitle": "Neues von anderen",
+  "newsMarkAllRead": "Alle als gelesen markieren",
+  "newsNothing": "In den letzten 90 Tagen gab es keine neuen Beiträge von anderen.",
+  "newsSomebody": "Jemand",
+  "newsAdded": "hat {count, plural, =1{1 Foto} other{{count} Fotos}} zu „{album}“ hinzugefügt",
+  "newsJustNow": "gerade eben",
+  "newsMinutesAgo": "vor {count} Min.",
+  "newsHoursAgo": "vor {count} Std.",
+  "newsViewSubtitle": "Neu: {count, plural, =1{1 Foto} other{{count} Fotos}} hinzugefügt von {who}",
+  "newsEntryGone": "Diese Meldung ist nicht mehr vorhanden: Die Fotos wurden verschoben oder gelöscht, oder sie sind vor mehr als 90 Tagen eingegangen.",
+  "newsDaysAgo": "{count, plural, =1{vor einem Tag} other{vor {count} Tagen}}"
 }

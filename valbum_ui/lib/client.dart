@@ -3036,6 +3036,44 @@ class VAlbumClient {
     return CatchUpStatus.read(JsonReader.fromString(response.body));
   }
 
+  /// What arrived from others, the bell of issue #268: the entries, the
+  /// unread first; with [countOnly] just how many are unread — the one small
+  /// request the app polls.
+  ///
+  /// A member's question: a share link, a contact and an anonymous caller are
+  /// refused with the server's own sentence. Asking marks nothing as read.
+  Future<NewsInfo> news({bool countOnly = false}) async {
+    var url =
+        "${folderUrl(const [])}?type=${countOnly ? "news-count" : "news"}";
+    var response = await _http.get(Uri.parse(url), headers: authHeaders);
+    if (response.statusCode >= 300) {
+      throw failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingAsking("'$url'"),
+      );
+    }
+    return NewsInfo.read(JsonReader.fromString(response.body));
+  }
+
+  /// Marks the entries of the bell named by [keys] as read — or every entry
+  /// where [all] (issue #268) — and answers the bell as it is then. The
+  /// state is the member's on the server, the same on all their devices.
+  Future<NewsInfo> markNewsRead({
+    List<String> keys = const [],
+    bool all = false,
+  }) async {
+    var url = "${folderUrl(const [])}?action=news-read";
+    var response = await _postBody(
+      url,
+      _jsonOf(
+        NewsRead(keys: [for (var key in keys) NewsKey(id: key)], all: all)
+            .writeContent,
+      ),
+    );
+    return NewsInfo.read(JsonReader.fromString(response));
+  }
+
   /// Adds a person of [name] to the register, answering them (issue #125).
   ///
   /// Immediate and space-level: naming a group of faces in the editor creates

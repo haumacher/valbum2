@@ -90,6 +90,16 @@ import java.util.logging.Logger;
  * {@link de.haumacher.imageServer.Contributions}.
  * </p>
  *
+ * <p>
+ * When a photograph arrived, and how, for the bell of issue #268: an upload records the moment it
+ * stored the file (<code>"uploaded"</code>, milliseconds since the epoch), and a move out of the inbox
+ * into an album records who moved it and when (<code>"movedBy"</code>, <code>"movedByLabel"</code>,
+ * <code>"moved"</code>) &mdash; that is when the photograph appears for everybody else. Additive in
+ * the same way: a file recorded before them has no arrival and is in no bell, and an older build
+ * skips them. They are part of the attribution and travel with it; the events of the bell are read
+ * from them into the index of the space, see {@link HashIndex}, so a rebuilt index finds them again.
+ * </p>
+ *
  * <h2>One writer per folder</h2>
  *
  * <p>
@@ -143,6 +153,14 @@ public class HashCache {
 	private static final String LINK_LABEL__PROP = "linkLabel";
 
 	private static final String CONTRIBUTOR_LINK__PROP = "contributorLink";
+
+	private static final String UPLOADED__PROP = "uploaded";
+
+	private static final String MOVED_BY__PROP = "movedBy";
+
+	private static final String MOVED_BY_LABEL__PROP = "movedByLabel";
+
+	private static final String MOVED__PROP = "moved";
 
 	private static final int BUFFER_SIZE = 64 * 1024;
 
@@ -242,6 +260,14 @@ public class HashCache {
 
 		private final String _link;
 
+		private final long _uploaded;
+
+		private final String _mover;
+
+		private final String _moverLabel;
+
+		private final long _moved;
+
 		/** Creates an {@link Attribution}; <code>null</code> is the empty string. */
 		public Attribution(String contributor, String label) {
 			this(contributor, label, NO_RATING_FLOOR, NO_PRIVACY_CAP);
@@ -279,6 +305,15 @@ public class HashCache {
 		 */
 		public Attribution(String contributor, String label, int minRating, int maxPrivacy, String linkLabel,
 				String link) {
+			this(contributor, label, minRating, maxPrivacy, linkLabel, link, 0, "", "", 0);
+		}
+
+		private Attribution(String contributor, String label, int minRating, int maxPrivacy, String linkLabel,
+				String link, long uploaded, String mover, String moverLabel, long moved) {
+			_uploaded = uploaded;
+			_mover = mover == null ? "" : mover;
+			_moverLabel = moverLabel == null ? "" : moverLabel;
+			_moved = moved;
 			_link = link == null ? "" : link;
 			_contributor = contributor == null ? "" : contributor;
 			_label = label == null ? "" : label;
@@ -342,6 +377,84 @@ public class HashCache {
 		 */
 		public int getMaxPrivacy() {
 			return _maxPrivacy;
+		}
+
+		/**
+		 * The same attribution of an upload made at the given moment, see issue #268.
+		 *
+		 * @param time
+		 *        When the upload stored the file, milliseconds since the epoch.
+		 */
+		public Attribution uploadedAt(long time) {
+			return new Attribution(_contributor, _label, _minRating, _maxPrivacy, _linkLabel, _link, time, _mover,
+				_moverLabel, _moved);
+		}
+
+		/**
+		 * The same attribution of a photograph moved out of the inbox into an album by the given
+		 * subject at the given moment, see issue #268: that is when it appears for everybody else.
+		 * Who uploaded it stays as it was.
+		 */
+		public Attribution movedOutOfInbox(String mover, String moverLabel, long time) {
+			return new Attribution(_contributor, _label, _minRating, _maxPrivacy, _linkLabel, _link, _uploaded, mover,
+				moverLabel, time);
+		}
+
+		/**
+		 * When the upload stored the file, milliseconds since the epoch; <code>0</code> where that
+		 * was not recorded (a file stored before issue #268, or that came by other means).
+		 */
+		public long getUploaded() {
+			return _uploaded;
+		}
+
+		/**
+		 * The subject of who moved the file out of the inbox into its album, see issue #268; the
+		 * empty string where nobody did.
+		 */
+		public String getMover() {
+			return _mover;
+		}
+
+		/** What to show for {@link #getMover()}, copied at the move as {@link #getLabel()} is. */
+		public String getMoverLabel() {
+			return _moverLabel;
+		}
+
+		/** When the file was moved out of the inbox, <code>0</code> where it was not, see {@link #getMover()}. */
+		public long getMoved() {
+			return _moved;
+		}
+
+		/**
+		 * Whether the file arrived for the others at a known moment, see issue #268: an upload
+		 * recorded with its time, or a move out of the inbox.
+		 */
+		public boolean hasArrival() {
+			return arrivalTime() > 0 && !arrivalActor().isEmpty();
+		}
+
+		/**
+		 * Who made the file arrive for the others: who moved it out of the inbox, else who
+		 * uploaded it, see {@link #hasArrival()}.
+		 */
+		public String arrivalActor() {
+			return _moved > 0 ? _mover : _contributor;
+		}
+
+		/** What to show for {@link #arrivalActor()}. */
+		public String arrivalLabel() {
+			return _moved > 0 ? _moverLabel : _label;
+		}
+
+		/** When the file arrived for the others, see {@link #hasArrival()}. */
+		public long arrivalTime() {
+			return _moved > 0 ? _moved : _uploaded;
+		}
+
+		/** Whether the file arrived for the others by a move out of the inbox. */
+		public boolean arrivedByMove() {
+			return _moved > 0;
 		}
 
 		/** Whether the upload was recorded with a limit of the link it came through. */
@@ -690,6 +803,22 @@ public class HashCache {
 		return Collections.unmodifiableMap(result);
 	}
 
+	/**
+	 * The attribution of every file of this sidecar that arrived at a known moment, see
+	 * {@link Attribution#hasArrival()} and issue #268, exactly as the sidecar stands: the read the
+	 * index of the space takes the events of the bell from.
+	 */
+	public Map<String, Attribution> storedArrivals() {
+		Map<String, Attribution> result = new LinkedHashMap<>();
+		for (Map.Entry<String, Entry> entry : _entries.entrySet()) {
+			Attribution attribution = entry.getValue()._attribution;
+			if (attribution.hasArrival()) {
+				result.put(entry.getKey(), attribution);
+			}
+		}
+		return Collections.unmodifiableMap(result);
+	}
+
 	/** The SHA-256 hash of the given file's contents, in lower-case hex. */
 	public static String sha256(File file) throws IOException {
 		MessageDigest digest = newDigest();
@@ -802,6 +931,10 @@ public class HashCache {
 		int maxPrivacy = Attribution.NO_PRIVACY_CAP;
 		String linkLabel = "";
 		String link = "";
+		long uploaded = 0;
+		String mover = "";
+		String moverLabel = "";
+		long moved = 0;
 		in.beginObject();
 		while (in.hasNext()) {
 			String key = in.nextName();
@@ -833,6 +966,18 @@ public class HashCache {
 				case CONTRIBUTOR_LINK__PROP:
 					link = in.nextString();
 					break;
+				case UPLOADED__PROP:
+					uploaded = in.nextLong();
+					break;
+				case MOVED_BY__PROP:
+					mover = in.nextString();
+					break;
+				case MOVED_BY_LABEL__PROP:
+					moverLabel = in.nextString();
+					break;
+				case MOVED__PROP:
+					moved = in.nextLong();
+					break;
 				default:
 					// An entry written by a future version may carry more; it stays readable.
 					in.skipValue();
@@ -841,7 +986,7 @@ public class HashCache {
 		}
 		in.endObject();
 		return new Entry(size, modified, sha256, new Attribution(contributor, contributorLabel, minRating, maxPrivacy,
-			linkLabel, link));
+			linkLabel, link, uploaded, mover, moverLabel, moved));
 	}
 
 	private void store() throws IOException {
@@ -864,7 +1009,7 @@ public class HashCache {
 					out.name(SHA256__PROP);
 					out.value(entry.getValue()._sha256);
 					Attribution attribution = entry.getValue()._attribution;
-					if (attribution.isSet()) {
+					if (!attribution.getContributor().isEmpty()) {
 						// Only what somebody actually contributed: a library that was never
 						// uploaded to keeps the file it had before issue #53.
 						out.name(CONTRIBUTOR__PROP);
@@ -890,6 +1035,20 @@ public class HashCache {
 						// The personal link a contact uploaded the file through, see issue #203.
 						out.name(CONTRIBUTOR_LINK__PROP);
 						out.value(attribution.getLink());
+					}
+					if (attribution.getUploaded() > 0) {
+						// When the upload stored the file, see issue #268.
+						out.name(UPLOADED__PROP);
+						out.value(attribution.getUploaded());
+					}
+					if (attribution.getMoved() > 0) {
+						// Who moved the file out of the inbox, and when, see issue #268.
+						out.name(MOVED_BY__PROP);
+						out.value(attribution.getMover());
+						out.name(MOVED_BY_LABEL__PROP);
+						out.value(attribution.getMoverLabel());
+						out.name(MOVED__PROP);
+						out.value(attribution.getMoved());
 					}
 					out.endObject();
 				}

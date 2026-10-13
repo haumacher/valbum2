@@ -7,3 +7,5 @@ on every build. Edit the `.proto`, never the output; don't reformat `resource.da
 Generator limitations:
 - `repeated string` is mis-typed in Dart — wrap it in a message (e.g. `repeated LabelName`).
 - A concrete message cannot be subclassed in Dart — add an optional field instead (e.g. `ErrorInfo.identify`).
+- A field named `key` is shadowed in the Dart reader (`_readProperty(String key, …)` assigns the
+  parameter, the field stays empty) — name it otherwise (e.g. `NewsEntry.id`).

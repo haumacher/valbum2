@@ -67,13 +67,24 @@ mixin ReturnReveal<T extends StatefulWidget> on State<T> {
   /// Records the photo the viewer above shows, or scrolls to it the first
   /// time the page is on top, see [ReturnReveal].
   void watchReturn() {
+    var navigator = VAlbumNavigator.of(context);
+    var route = navigator.route;
+    var news = _newsAbove(route, navigator.delegate);
     if (_shown) {
-      return;
+      if (news == null || (ModalRoute.isCurrentOf(context) ?? true)) {
+        return;
+      }
+      // The album was on the screen before an entry of the bell was opened
+      // on it: the way back still leads to the photographs of the entry
+      // (issue #268).
+      _shown = false;
     }
-    var route = VAlbumNavigator.of(context).route;
     if (!(ModalRoute.isCurrentOf(context) ?? true)) {
-      var above = _photoAbove(route);
-      if (above != null) {
+      var above = news ?? _photoAbove(route);
+      // The view of the entry names its first photograph, the viewer the
+      // one it shows: coming back from the viewer through the entry's view
+      // keeps the photograph looked at last.
+      if (above != null && !(route is NewsRoute && _shownAbove != null)) {
         _shownAbove = above;
       }
       return;
@@ -84,6 +95,23 @@ mixin ReturnReveal<T extends StatefulWidget> on State<T> {
     if (names != null) {
       _revealLater(names, _revealFrames);
     }
+  }
+
+  /// The names of the photo the way back from an entry of the bell (issue
+  /// #268) leads to on this album — the one the viewer shows, or the first of
+  /// the entry —, `null` where [route] is no view of an entry of this album.
+  List<String>? _newsAbove(VAlbumRoute route, VAlbumRouterDelegate delegate) {
+    var key = route.newsKey;
+    if (key == null ||
+        revealView.route is! ListingOrAlbumRoute ||
+        !listEquals(route.albumPath, revealView.route.albumPath)) {
+      return null;
+    }
+    if (route is ImageRoute) {
+      return [route.name];
+    }
+    var names = delegate.newsSession(key).names;
+    return names == null || names.isEmpty ? null : [names.first];
   }
 
   /// The names of the photo [route] shows above this page, `null` where it
