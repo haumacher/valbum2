@@ -30,6 +30,17 @@ class FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   PlatformException initError =
       PlatformException(code: "VideoError", message: "Cannot open video");
 
+  /// Whether the video surface takes a pointer for itself, as the player's
+  /// platform view does on the web: there it is in the hit test and wins the
+  /// gesture arena over every recognizer above it (issue #271).
+  bool surfaceTakesPointer = false;
+
+  /// How often the video surface took a tap, see [surfaceTakesPointer].
+  int surfaceTaps = 0;
+
+  /// The ids of the players disposed, in order.
+  final List<int> disposedIds = <int>[];
+
   /// Whether a created player says nothing at all — neither a video nor an
   /// error — which is the silent failure of issue #184.
   bool neverInit = false;
@@ -79,6 +90,7 @@ class FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   @override
   Future<void> dispose(int playerId) async {
     calls.add("dispose");
+    disposedIds.add(playerId);
     await _streams.remove(playerId)?.close();
   }
 
@@ -108,6 +120,17 @@ class FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   Future<Duration> getPosition(int playerId) async => Duration.zero;
 
   @override
-  Widget buildViewWithOptions(VideoViewOptions options) =>
-      const SizedBox.expand(key: Key("fake-video-surface"));
+  Widget buildViewWithOptions(VideoViewOptions options) {
+    const surface = SizedBox.expand(key: Key("fake-video-surface"));
+    if (!surfaceTakesPointer) {
+      return surface;
+    }
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => surfaceTaps++,
+      onLongPress: () {},
+      onSecondaryTapUp: (_) {},
+      child: surface,
+    );
+  }
 }

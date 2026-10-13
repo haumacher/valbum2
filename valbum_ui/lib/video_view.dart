@@ -1767,14 +1767,24 @@ class VideoTeaserState extends State<VideoTeaser> {
           widget.child,
           if (playing)
             Positioned.fill(
-              child: FittedBox(
-                fit: BoxFit.contain,
-                clipBehavior: Clip.hardEdge,
-                child: SizedBox.fromSize(
-                  size: controller.value.size,
-                  child: VideoPlayer(
-                    controller,
-                    key: const Key("video-teaser"),
+              // The teaser is a picture over the tile, never a target of its
+              // own (issue #271): a tap, a long press or a secondary click
+              // means the tile, whether the teaser plays or not. On the web
+              // the player is a platform view, and a platform view in the
+              // hit test enters the gesture arena and wins it, so that the
+              // tile's tap never fires; left out of the hit test, the pointer
+              // events the engine reads off the <video> go to the tile as
+              // they do over the poster.
+              child: IgnorePointer(
+                child: FittedBox(
+                  fit: BoxFit.contain,
+                  clipBehavior: Clip.hardEdge,
+                  child: SizedBox.fromSize(
+                    size: controller.value.size,
+                    child: VideoPlayer(
+                      controller,
+                      key: const Key("video-teaser"),
+                    ),
                   ),
                 ),
               ),
