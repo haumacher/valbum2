@@ -270,6 +270,22 @@ public class TestSpaces extends TestCase {
 		assertEquals(SpaceServlet.sessionNeedsSpace("i"), error(invitation).getMessage());
 	}
 
+	/** The overview of what is shared with a contact lives under its space, see issue #267. */
+	public void testTheOverviewOfWhatIsSharedLivesUnderItsSpace() throws Exception {
+		space("alice", "{\"anonymous\":\"public\"}");
+
+		FakeResponse root = get("/shared/", null);
+		assertEquals(HttpServletResponse.SC_NOT_FOUND, root.status());
+		assertEquals(SpaceServlet.sessionNeedsSpace("shared"), error(root).getMessage());
+
+		String overview = body(get("/alice/shared/", null));
+		assertTrue("Expected the base on the overview: " + overview,
+			overview.contains("<base href=\"/valbum/alice/shared/\">"));
+		String album = body(get("/alice/shared/AbCdEfGh/", null));
+		assertTrue("Expected the base on the album: " + album,
+			album.contains("<base href=\"/valbum/alice/shared/AbCdEfGh/\">"));
+	}
+
 	// --- The users of a space. ---
 
 	/** The answer names the space, the role, the clearance and the share flag. */
@@ -413,7 +429,7 @@ public class TestSpaces extends TestCase {
 		if (_servlet == null) {
 			Spaces spaces = detect(null, AuthMode.WRITES);
 			_spaces = spaces;
-			ResourceServlet app = new ResourceServlet(_webRoot, "/data", "s", "i");
+			ResourceServlet app = Main.application(_webRoot);
 			app.setBaseSegments(spaces.segments());
 			_servlet = new SpaceServlet(spaces, app);
 			_servlet.init(config());

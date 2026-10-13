@@ -50,7 +50,8 @@ public class TestZipDownload extends ShareTestCase {
 		assertEquals("attachment; filename=\"2024-05-01 Zoo.zip\"; filename*=UTF-8''2024-05-01%20Zoo.zip",
 			response.header("Content-Disposition"));
 		assertEquals("no-store", response.header("Cache-Control"));
-		assertEquals("Authorization, " + de.haumacher.imageServer.auth.AuthService.CONTACT_HEADER, response.header("Vary"));
+		assertEquals("Authorization, " + de.haumacher.imageServer.auth.AuthService.CONTACT_HEADER + ", "
+			+ de.haumacher.imageServer.auth.AuthService.SHARED_HEADER, response.header("Vary"));
 
 		Map<String, byte[]> entries = entries(response);
 		assertEquals(Arrays.asList("public.jpg", "members.jpg"), Arrays.asList(entries.keySet().toArray()));

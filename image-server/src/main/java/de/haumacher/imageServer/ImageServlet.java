@@ -834,6 +834,11 @@ public class ImageServlet extends HttpServlet {
 		return _privacy;
 	}
 
+	/** The passkeys of this space, for the ways a contact signs in that the overview of issue #267 answers. */
+	Passkeys passkeys() {
+		return _passkeys;
+	}
+
 
 	private JakartaServletFileUpload<UploadItem, UploadFactory> _fileUpload;
 
@@ -1177,6 +1182,17 @@ public class ImageServlet extends HttpServlet {
 			// offers exactly these.
 			info.setSignInMethods(memberSignInMethods());
 			serveJsonObject(response, info);
+			return;
+		}
+		if (SharedOverview.TYPE.equals(type)) {
+			// Everything shared with a contact, see issue #267.
+			new SharedOverview(this, _auth, _basePath).serve(context, caller);
+			return;
+		}
+		if (caller.isOverview()) {
+			// The overview opens no album itself; each of its albums is opened as its link (#267).
+			LOG.warning("Refusing '" + pathInfo + "' to the overview of what is shared.");
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.OVERVIEW_ONLY);
 			return;
 		}
 		if ("invitations".equals(type)) {
@@ -4062,8 +4078,9 @@ public class ImageServlet extends HttpServlet {
 			errorInfo(context, ex.getStatus(), ex.getMessage());
 			return;
 		}
-		LOG.info("Identified " + issued.getContact() + " through the share link "
-			+ caller.getShare().getId() + (request.isRemember() ? ", remembered." : "."));
+		LOG.info("Identified " + issued.getContact() + " through "
+			+ (caller.getShare() == null ? "their overview link" : "the share link " + caller.getShare().getId())
+			+ (request.isRemember() ? ", remembered." : "."));
 		serveJsonObject(context.response(), ContactCredential.create()
 			.setCredential(issued.getCredential())
 			.setExpires(issued.getSession().getExpires())
@@ -4216,9 +4233,13 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 		AddressProof.Target target = addressProof().providerTarget(caller);
-		// A member's sign-in (issue #233) has no link: it returns to the application itself.
+		// A member's sign-in (issue #233) has no link: it returns to the application itself. One at
+		// the overview of issue #267 returns to the overview, or to the album of it it began in.
+		String bearer = bearer(context.request());
 		String returnUrl = _oidc.getPublicUrl() + appBase(context) + "/"
-			+ (target.isMember() ? "" : ShareStore.URL_SEGMENT + "/" + bearer(context.request()) + "/");
+			+ (target.isMember() ? ""
+				: bearer.isEmpty() ? sharedBase(context.request())
+					: ShareStore.URL_SEGMENT + "/" + bearer + "/");
 		try {
 			OidcLogins.Started started = _oidc.start(provider, new OidcLogins.Start(_space, linkId(target),
 				target._kind.name(), whom(target), returnUrl, request.isRemember(), request.getDisplayName()));
@@ -4326,6 +4347,19 @@ public class ImageServlet extends HttpServlet {
 			return "user:" + target._user.getName();
 		}
 		return target._contact == null ? "" : target._contact.getId();
+	}
+
+	/**
+	 * Where a sign-in at the overview of issue #267 returns to, below the application's base:
+	 * <code>shared/</code>, or <code>shared/&lt;link id&gt;/</code> for an album of it that names a
+	 * link of this space &mdash; never a value the request made up.
+	 */
+	private String sharedBase(HttpServletRequest request) {
+		String value = request.getHeader(AuthService.SHARED_HEADER);
+		String id = value == null ? "" : value.trim();
+		boolean link = !id.isEmpty() && !AuthService.SHARED_ALL.equals(id) && _auth.getShares() != null
+			&& _auth.getShares().get(id) != null;
+		return AuthService.SHARED_SEGMENT + "/" + (link ? id + "/" : "");
 	}
 
 	/** The bearer token of the given request, empty where it carries none. */
@@ -4788,6 +4822,11 @@ public class ImageServlet extends HttpServlet {
 	 * {@link ShareStore#URL_SEGMENT}.
 	 * </p>
 	 */
+	/** The server-relative address the given contact's overview link opens, see issue #267. */
+	String overviewUrl(Context context, String token) {
+		return shareUrl(context, token);
+	}
+
 	private String shareUrl(Context context, String token) {
 		return appUrl(context, ShareStore.URL_SEGMENT, token);
 	}
@@ -5293,6 +5332,12 @@ public class ImageServlet extends HttpServlet {
 		if (gone(context, postCaller)) {
 			return;
 		}
+		if (postCaller.isOverview() && !"end-other-sessions".equals(action) && !"end-own-session".equals(action)) {
+			// The overview changes nothing but the contact's own sessions, see issue #267.
+			LOG.warning("Refusing the action '" + action + "' to the overview of what is shared.");
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.OVERVIEW_ONLY);
+			return;
+		}
 		if (inboxHiddenFromLink(context, postCaller)) {
 			return;
 		}
@@ -5439,6 +5484,11 @@ public class ImageServlet extends HttpServlet {
 			endOwnSession(context);
 			return;
 		}
+		if (SharedOverview.LINK_ACTION.equals(action)) {
+			// A contact's own link to the overview of what is shared with them, see issue #267.
+			new SharedOverview(this, _auth, _basePath).issueLink(context);
+			return;
+		}
 		if ("unshare".equals(action)) {
 			removeShare(context);
 			return;
@@ -5569,7 +5619,7 @@ public class ImageServlet extends HttpServlet {
 			allowCrossOrigin(response);
 			response.setStatus(identification.getStatus());
 			serveJson(response, PersonalLinks.identifyRequired(identification, addressProof().methods(identification),
-				SharePreview.linkTitle(_cache, _basePath, identification.getLink())));
+				identification.isShared() ? "" : SharePreview.linkTitle(_cache, _basePath, identification.getLink())));
 			return true;
 		}
 		if (!caller.isShareGone()) {
@@ -8639,6 +8689,37 @@ public class ImageServlet extends HttpServlet {
 			.setRights(listing.getRights());
 	}
 
+	/**
+	 * The tile of the folder at the given path as a listing above it would show it to the given
+	 * caller: its picture as the caller may see it, a collection's and a saved search's included.
+	 * What the overview of issue #267 shows a link's folder with, asked as that link.
+	 */
+	FolderInfo tileFor(PathInfo path, Caller caller) {
+		FolderInfo tile = ResourceCache.folderInfo(path.toFile());
+		if (Inboxes.isInbox(path.toFile())) {
+			// A link never shows an inbox's photographs, see issue #131.
+			tile.setIndexPicture(null);
+			return tile;
+		}
+		String label = _auth.photoLabel(caller);
+		int clearance = _auth.clearance(caller, path);
+		int minRating = _auth.minRating(caller, path, Privacy.PRIVATE);
+		tile = _privacy.filterEntry(tile, path, clearance, minRating, label);
+		tile = collectionCover(tile, path, caller, Privacy.PRIVATE, label);
+		if (tile.getIndexPicture() == null) {
+			// Where the tile has not learned its picture yet (the background did not record the
+			// album), the link's own album is asked: the picture its card shows, see issue #260.
+			Resource album = _cache.lookup(path);
+			if (album instanceof AlbumInfo && !PhotoCollections.isCollection(album) && !PhotoSearch.isSearch(album)) {
+				ThumbnailInfo cover = _privacy.tileCover((AlbumInfo) album, clearance, minRating, label);
+				if (cover != null) {
+					tile.setIndexPicture(cover);
+				}
+			}
+		}
+		return tile;
+	}
+
 	private FolderInfo collectionCover(FolderInfo folder, PathInfo childPath, Caller caller, int viewAs, String label) {
 		if (folder.getKind() == de.haumacher.imageServer.shared.model.FolderKind.SEARCH) {
 			return searchTile(folder, childPath, caller, viewAs, label);
@@ -9070,9 +9151,9 @@ public class ImageServlet extends HttpServlet {
 	private static void allowCrossOrigin(HttpServletResponse response) {
 		response.setHeader("Access-Control-Allow-Origin", "*");
 		response.setHeader("Access-Control-Allow-Headers",
-			"Authorization, Content-Type, " + AuthService.CONTACT_HEADER);
+			"Authorization, Content-Type, " + AuthService.CONTACT_HEADER + ", " + AuthService.SHARED_HEADER);
 		response.setHeader("Cache-Control", "no-store");
-		response.setHeader("Vary", "Authorization, " + AuthService.CONTACT_HEADER);
+		response.setHeader("Vary", "Authorization, " + AuthService.CONTACT_HEADER + ", " + AuthService.SHARED_HEADER);
 	}
 
 	/**

@@ -47,6 +47,9 @@ public class IdentifyRequired extends de.haumacher.msgbuf.data.AbstractDataObjec
 	/** @see #isGroup() */
 	private static final String GROUP__PROP = "group";
 
+	/** @see #isShared() */
+	private static final String SHARED__PROP = "shared";
+
 	private boolean _firstOpen = false;
 
 	private de.haumacher.imageServer.shared.model.ContactInfo _contact = null;
@@ -62,6 +65,8 @@ public class IdentifyRequired extends de.haumacher.msgbuf.data.AbstractDataObjec
 	private String _sharedBy = "";
 
 	private boolean _group = false;
+
+	private boolean _shared = false;
 
 	/**
 	 * Creates a {@link IdentifyRequired} instance.
@@ -293,6 +298,29 @@ public class IdentifyRequired extends de.haumacher.msgbuf.data.AbstractDataObjec
 		_group = value;
 	}
 
+	/**
+	 * Whether it is the overview of everything shared with the caller that asks who they are, not a
+	 * link, see issue #267: {@link #getTitle()} and {@link #getSharedBy()} are empty. With a {@link #getContact()}
+	 * it is that contact's own overview link; without one, whoever proves an address, a passkey or
+	 * an authenticator app of a contact of the space (or of a member, who is signed in as such).
+	 */
+	public final boolean isShared() {
+		return _shared;
+	}
+
+	/**
+	 * @see #isShared()
+	 */
+	public de.haumacher.imageServer.shared.model.IdentifyRequired setShared(boolean value) {
+		internalSetShared(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #isShared()} without chain call utility. */
+	protected final void internalSetShared(boolean value) {
+		_shared = value;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.IdentifyRequired readIdentifyRequired(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.IdentifyRequired result = new de.haumacher.imageServer.shared.model.IdentifyRequired();
@@ -334,6 +362,8 @@ public class IdentifyRequired extends de.haumacher.msgbuf.data.AbstractDataObjec
 		out.value(getSharedBy());
 		out.name(GROUP__PROP);
 		out.value(isGroup());
+		out.name(SHARED__PROP);
+		out.value(isShared());
 	}
 
 	@Override
@@ -361,6 +391,7 @@ public class IdentifyRequired extends de.haumacher.msgbuf.data.AbstractDataObjec
 			case TITLE__PROP: setTitle(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case SHARED_BY__PROP: setSharedBy(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case GROUP__PROP: setGroup(in.nextBoolean()); break;
+			case SHARED__PROP: setShared(in.nextBoolean()); break;
 			default: super.readField(in, field);
 		}
 	}

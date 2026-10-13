@@ -641,8 +641,7 @@ public class Main {
 		// The same application is served below "/s/<token>/" (a share link, issue #51) and
 		// "/i/<token>/" (an invitation, issue #52), so that either opens it with its own base href;
 		// the static handler never looks at the token.
-		ResourceServlet app = new ResourceServlet(webRootPath, Settings.DATA_PREFIX,
-			ShareStore.URL_SEGMENT, InvitationStore.URL_SEGMENT);
+		ResourceServlet app = application(webRootPath);
 		// A page load of a dead invitation address is the start page of its space, see issue #88.
 		app.setSessionGuard(new InvitationRedirect(spaces));
 		if (spaces.getMode() == SpaceMode.SINGLE) {
@@ -697,6 +696,20 @@ public class Main {
 
 		server.setHandler(handlers);
 		return server;
+	}
+
+	/**
+	 * The static handler of the application, with every base it is served under besides the context
+	 * root: a share link <code>/s/&lt;token&gt;/</code> (issue #51), an invitation
+	 * <code>/i/&lt;token&gt;/</code> (issue #52), and the overview of what is shared with a contact,
+	 * <code>/shared/</code>, a base of its own whose albums are <code>/shared/&lt;link id&gt;/</code>
+	 * (issue #267).
+	 */
+	static ResourceServlet application(Path webRoot) {
+		ResourceServlet app = new ResourceServlet(webRoot, Settings.DATA_PREFIX, ShareStore.URL_SEGMENT,
+			InvitationStore.URL_SEGMENT, AuthService.SHARED_SEGMENT);
+		app.setBarePrefixes(AuthService.SHARED_SEGMENT);
+		return app;
 	}
 
 	/**

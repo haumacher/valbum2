@@ -817,6 +817,21 @@ class VAlbumClient {
   /// on the server).
   static const String contactHeader = "X-VAlbum-Contact";
 
+  /// What the overview of everything shared with a contact (issue #267)
+  /// asks for, `null` everywhere else: [sharedAll] for the overview itself,
+  /// the id of one of its links for that link's view.
+  ///
+  /// Sent as [sharedHeader] beside the [contact] credential and instead of a
+  /// bearer: the overview opens a link through the credential alone, the
+  /// link's own token being nobody's to hand out.
+  final String? shared;
+
+  /// The header [shared] travels in (`AuthService.SHARED_HEADER`).
+  static const String sharedHeader = "X-VAlbum-Shared";
+
+  /// The value of [shared] naming the overview itself (`AuthService.SHARED_ALL`).
+  static const String sharedAll = "all";
+
   /// The name of the user this device is signed in as, empty for "the library
   /// owner" (who has no name of their own) and while nobody is signed in.
   ///
@@ -866,6 +881,7 @@ class VAlbumClient {
     required this.dataUrl,
     this.token,
     this.contact,
+    this.shared,
     this.userName = "",
     http.Client? httpClient,
     this.cache,
@@ -889,6 +905,7 @@ class VAlbumClient {
         dataUrl: dataUrl,
         token: token,
         contact: contact,
+        shared: shared,
         userName: userName,
         httpClient: _transport,
         cache: cache,
@@ -904,6 +921,7 @@ class VAlbumClient {
         dataUrl: dataUrl,
         token: token,
         contact: contact,
+        shared: shared,
         userName: userName ?? this.userName,
         httpClient: _transport,
         cache: cache,
@@ -918,6 +936,7 @@ class VAlbumClient {
         dataUrl: dataUrl,
         token: token,
         contact: contact,
+        shared: shared,
         userName: userName,
         httpClient: _transport,
         cache: cache,
@@ -932,8 +951,10 @@ class VAlbumClient {
   Map<String, String> get authHeaders {
     var value = token;
     var person = contact;
+    var overview = shared;
     if ((value == null || value.isEmpty) &&
-        (person == null || person.isEmpty)) {
+        (person == null || person.isEmpty) &&
+        (overview == null || overview.isEmpty)) {
       // The same constant as ever: an image provider keyed by its headers
       // finds what it cached under them.
       return const {};
@@ -941,6 +962,7 @@ class VAlbumClient {
     return {
       if (value != null && value.isNotEmpty) "Authorization": "Bearer $value",
       if (person != null && person.isNotEmpty) contactHeader: person,
+      if (overview != null && overview.isNotEmpty) sharedHeader: overview,
     };
   }
 
@@ -2703,6 +2725,38 @@ class VAlbumClient {
     var url = "${folderUrl(const [])}?action=$action";
     var response = await _postBody(url, body);
     return Contact.read(JsonReader.fromString(response));
+  }
+
+  /// Everything shared with the contact of this client, issue #267: the
+  /// overview's one request (`?type=shared`), asked with the contact
+  /// credential and [sharedAll]. A caller the server does not recognise is
+  /// refused with the sign-in offer ([VAlbumException.identify]), a member's
+  /// device with `409`.
+  Future<SharedWithYou> sharedWithYou() async {
+    var url = "${folderUrl(const [])}?type=shared";
+    var response = await _http.get(Uri.parse(url), headers: authHeaders);
+    if (response.statusCode >= 300) {
+      throw failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingAsking("'$url'"),
+      );
+    }
+    return SharedWithYou.read(JsonReader.fromString(response.body));
+  }
+
+  /// Issues the given contact their own link to the overview of everything
+  /// shared with them (issue #267), voiding the one before; with [withdraw]
+  /// voids it without a new one. Asked by a member who manages the contacts.
+  Future<OverviewLink> overviewLink(String contact,
+      {bool withdraw = false}) async {
+    var url = "${folderUrl(const [])}?action=overview-link";
+    var response = await _postBody(
+      url,
+      _jsonOf(OverviewLinkRequest(contact: contact, withdraw: withdraw)
+          .writeContent),
+    );
+    return OverviewLink.read(JsonReader.fromString(response));
   }
 
   /// Signs the contact of this session out of every other browser (issue

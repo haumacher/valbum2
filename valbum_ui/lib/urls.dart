@@ -7,7 +7,10 @@
 ///
 ///  * app `https://host/valbum/`, API `https://host/valbum/data`,
 ///  * a share link `https://host/valbum/s/<token>/`,
-///  * an invitation `https://host/valbum/i/<token>/`.
+///  * an invitation `https://host/valbum/i/<token>/`,
+///  * the overview of everything shared with a contact
+///    `https://host/valbum/shared/`, and one of its albums
+///    `https://host/valbum/shared/<link id>/` (issue #267).
 ///
 /// A multi-space server (Phase 6, issue #85) puts everything of one space
 /// below the space's own segment, and nothing else changes:
@@ -169,6 +172,11 @@ const String shareUrlSegment = "s";
 /// see issue #52 (`<base>/i/<token>/`, see [shareUrlSegment]).
 const String invitationUrlSegment = "i";
 
+/// The path segment below which the server serves the overview of everything
+/// shared with a contact (`<base>/shared/`) and its albums
+/// (`<base>/shared/<link id>/`), see issue #267.
+const String sharedUrlSegment = "shared";
+
 /// What a token in the app base opens: a share link, or an invitation.
 ///
 /// The two are one mechanism with two ends. Both are a token the server put
@@ -182,7 +190,13 @@ enum SessionKind {
   share(shareUrlSegment),
 
   /// An invitation, `<context>/i/<token>/`, see `invitation.dart`.
-  invitation(invitationUrlSegment);
+  invitation(invitationUrlSegment),
+
+  /// An album of the overview of everything shared with a contact,
+  /// `<context>/shared/<link id>/` (issue #267): a link session like
+  /// [share], opened through the contact credential and the link's id instead
+  /// of a token.
+  shared(sharedUrlSegment);
 
   /// The path segment the server serves this kind under.
   final String segment;
@@ -238,6 +252,17 @@ class SessionUrl {
 
   /// Whether this is an invitation, see [SessionKind.invitation].
   bool get isInvitation => kind == SessionKind.invitation;
+
+  /// Whether this is an album of the overview, see [SessionKind.shared].
+  bool get isSharedAlbum => kind == SessionKind.shared;
+
+  /// Whether this session runs inside one link: a share link, or an album of
+  /// the overview (issue #267).
+  bool get isLink => isShare || isSharedAlbum;
+
+  /// The overview of everything shared with a contact in this session's
+  /// space, see [sharedOverviewAddress].
+  String get overviewAddress => sharedOverviewAddress(dataUrl);
 
   /// The app base of the server serving this session, `<context>/`.
   ///
@@ -319,6 +344,56 @@ SessionUrl? sessionUrl(Uri base, {String? basePath}) {
     basePath: "$contextPath${kind.segment}/$token/",
   );
 }
+
+/// The overview of everything shared with a contact, the app loaded at
+/// `<base>/shared/` (issue #267).
+///
+/// No token: the overview is asked with the contact credential this browser
+/// holds for the space, see `contact_session.dart`.
+class OverviewUrl {
+  /// The URL of the JSON API of the space, without a trailing slash.
+  final String dataUrl;
+
+  const OverviewUrl({required this.dataUrl});
+
+  /// The app base of the space, `<context>/`.
+  String get appBase => appBaseOf(dataUrl);
+
+  /// The address of the overview itself.
+  String get address => sharedOverviewAddress(dataUrl);
+
+  @override
+  String toString() => "OverviewUrl(at $dataUrl)";
+}
+
+/// The overview the app was loaded into, `null` for every other start: an
+/// app base whose last segment is [sharedUrlSegment] (issue #267). The rule
+/// of [sessionUrl], one segment instead of two.
+OverviewUrl? overviewUrl(Uri base, {String? basePath}) {
+  var path = basePath ?? _directoryOf(base.path);
+  var segments = [
+    for (var segment in path.split("/"))
+      if (segment.isNotEmpty) segment,
+  ];
+  if (segments.isEmpty || segments.last != sharedUrlSegment) {
+    return null;
+  }
+  var context = segments.sublist(0, segments.length - 1);
+  var contextPath = context.isEmpty ? "/" : "/${context.join("/")}/";
+  return OverviewUrl(
+    dataUrl: deriveDataUrl(base, isWeb: true, basePath: contextPath),
+  );
+}
+
+/// The address of the overview of everything shared with a contact in the
+/// space whose JSON API lives at [dataUrl]: `<app base>shared/` (issue #267).
+String sharedOverviewAddress(String dataUrl) =>
+    "${appBaseOf(dataUrl)}$sharedUrlSegment/";
+
+/// The address of the album of the overview opening the link of the given
+/// [id]: `<app base>shared/<id>/` (issue #267).
+String sharedAlbumAddress(String dataUrl, String id) =>
+    "${sharedOverviewAddress(dataUrl)}${Uri.encodeComponent(id)}/";
 
 /// The app base of the server whose JSON API lives at [dataUrl].
 ///
@@ -431,6 +506,12 @@ ServerLocation serverLocationOf(String entered) {
     );
   }
   var folder = _folderOf(uri.path);
+  var overview = overviewUrl(uri, basePath: folder);
+  if (overview != null) {
+    // The overview of what is shared (issue #267) names its space's server.
+    return ServerLocation(
+        serverUrl: overview.appBase, dataUrl: overview.dataUrl);
+  }
   var session = sessionUrl(uri, basePath: folder);
   if (session == null) {
     var dataUrl = deriveDataUrl(uri, isWeb: true, basePath: folder);

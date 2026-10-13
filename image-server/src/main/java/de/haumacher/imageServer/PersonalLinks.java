@@ -131,6 +131,11 @@ public final class PersonalLinks {
 		for (SignIns.Passkey passkey : contact.getPasskeys()) {
 			result.addPasskey(passkey(passkey));
 		}
+		ContactStore.OverviewToken overview = contact.getOverview();
+		if (overview != null) {
+			// The contact's own overview link of issue #267: when, never the token.
+			result.setOverviewIssued(overview.getIssued()).setOverviewOpened(overview.getOpened());
+		}
 		for (ContactStore.Session session : contact.getSessions()) {
 			result.addSession(ContactSession.create()
 				.setId(session.getId())
@@ -256,7 +261,9 @@ public final class PersonalLinks {
 			.setFirstOpen(identification.isFirstOpen())
 			// The label is its maker's alone; the visitor is told the shared folder's title.
 			.setTitle(title)
-			.setSharedBy(link.getCreatedBy())
+			// The overview of issue #267 is no link, and nobody shared it.
+			.setShared(identification.isShared())
+			.setSharedBy(link == null ? "" : link.getCreatedBy())
 			// The group link of issue #211 names no address: that would reveal the group.
 			.setGroup(AddressProof.isGroup(identification));
 		ContactStore.Contact contact = identification.getContact();

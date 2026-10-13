@@ -14,7 +14,9 @@
 ///  * "Other app…" → the system share sheet, in the app;
 ///  * "Copy link", everywhere.
 ///
-/// The text is a short default the sharer edits in their own app.
+/// The text is a short default the sharer edits in their own app. It ends
+/// with one line naming the overview of everything shared with the recipient
+/// (issue #267), where every link of theirs is in one place.
 library;
 
 import 'package:flutter/material.dart';
@@ -78,20 +80,36 @@ class RecipientSendLines extends StatelessWidget {
   /// clipboard are the ways, a phone's apps are not at hand.
   final bool isWeb;
 
+  /// The overview of everything shared with the recipient in this space
+  /// (issue #267), named in a line of its own; `null` for none.
+  final String? overview;
+
+  /// The subject and the text of the message instead of those of a link: the
+  /// contact's own overview link (issue #267).
+  final String? subject;
+
+  /// See [subject].
+  final String? body;
+
   const RecipientSendLines({
     super.key,
     required this.recipient,
     required this.url,
     required this.album,
     required this.isWeb,
+    this.overview,
+    this.subject,
+    this.body,
   });
 
   @override
   Widget build(BuildContext context) {
     var l10n = AppLocalizations.of(context)!;
     var id = recipient.contact;
-    var subject = l10n.shareMessageSubject(album);
-    var body = l10n.shareMessageBody(album, recipient.name, url);
+    var subject = this.subject ?? l10n.shareMessageSubject(album);
+    var body = this.body ??
+        withOverviewLine(
+            l10n, l10n.shareMessageBody(album, recipient.name, url), overview);
     var emails = [
       for (var address in recipient.addresses)
         if (address.kind == AddressKind.email) address.value,
@@ -185,18 +203,24 @@ class GroupSendLines extends StatelessWidget {
   /// How the shared album is named in the message.
   final String album;
 
+  /// The overview of everything shared with the recipients (issue #267),
+  /// named in a line of its own; `null` for none.
+  final String? overview;
+
   const GroupSendLines({
     super.key,
     required this.addresses,
     required this.url,
     required this.album,
+    this.overview,
   });
 
   @override
   Widget build(BuildContext context) {
     var l10n = AppLocalizations.of(context)!;
     var subject = l10n.shareMessageSubject(album);
-    var body = l10n.shareMessageBodyGroup(album, url);
+    var body = withOverviewLine(
+        l10n, l10n.shareMessageBodyGroup(album, url), overview);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -223,6 +247,14 @@ class GroupSendLines extends StatelessWidget {
     );
   }
 }
+
+/// The message [body] with the line naming the [overview] of everything shared
+/// with its recipient (issue #267); [body] alone where there is none.
+String withOverviewLine(AppLocalizations l10n, String body, String? overview) =>
+    overview == null
+        ? body
+        : "${body.endsWith("\n") ? body : "$body\n"}"
+            "${l10n.shareMessageOverviewLine(overview)}\n";
 
 /// Opens [uri] outside the app, saying so where nothing on the device can.
 Future<void> _launchLink(BuildContext context, Uri uri) async {

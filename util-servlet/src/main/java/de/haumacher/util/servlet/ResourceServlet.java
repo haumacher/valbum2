@@ -47,6 +47,8 @@ public class ResourceServlet extends HttpServlet {
 
 	private java.util.Collection<String> _baseSegments = java.util.Collections.emptySet();
 
+	private String[] _barePrefixes = new String[0];
+
 	/**
 	 * Creates a {@link ResourceServlet} serving the class path only.
 	 *
@@ -108,6 +110,18 @@ public class ResourceServlet extends HttpServlet {
 	 */
 	public void setBaseSegments(java.util.Collection<String> segments) {
 		_baseSegments = segments == null ? java.util.Collections.emptySet() : segments;
+	}
+
+	/**
+	 * The virtual prefixes that are a base of the application by themselves as well, without a
+	 * token: <code>/&lt;prefix&gt;/</code> is served with the base <code>/&lt;prefix&gt;</code>, and
+	 * so is every file of the web root below it (the overview of what is shared with a contact,
+	 * issue #267, whose albums are <code>/&lt;prefix&gt;/&lt;link id&gt;/</code>), see
+	 * {@link WebRootResolver#bareBase(String, String, java.util.function.Predicate)}. A page decorator,
+	 * a session guard and a session resource are asked with the empty token there.
+	 */
+	public void setBarePrefixes(String... prefixes) {
+		_barePrefixes = prefixes == null ? new String[0] : prefixes;
 	}
 
 	/**
@@ -255,10 +269,26 @@ public class ResourceServlet extends HttpServlet {
 	protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
 		String pathInfo = request.getPathInfo();
 
-		String virtualBase = WebRootResolver.virtualBase(pathInfo, _virtualPrefixes);
 		// What the session lives below: the context root, or a space of a multi-space server.
 		String appBase = "";
-		String sessionBase = virtualBase;
+		String virtualBase = null;
+		String sessionBase = null;
+		String space = WebRootResolver.singleSegmentBase(pathInfo, _baseSegments);
+		String inSpace = space == null ? pathInfo : pathInfo.substring(space.length());
+		for (String prefix : _barePrefixes) {
+			// A base without a token, asked first: its own files lie where a token would.
+			String bare = WebRootResolver.bareBase(inSpace, prefix, this::exists);
+			if (bare != null) {
+				appBase = space == null ? "" : space;
+				virtualBase = appBase + bare;
+				sessionBase = bare;
+				break;
+			}
+		}
+		if (virtualBase == null) {
+			virtualBase = WebRootResolver.virtualBase(pathInfo, _virtualPrefixes);
+			sessionBase = virtualBase;
+		}
 		if (virtualBase == null) {
 			// A session of a space is the longer base, so it is asked for before the space itself.
 			virtualBase = WebRootResolver.spaceSessionBase(pathInfo, _baseSegments, _virtualPrefixes);
@@ -280,8 +310,9 @@ public class ResourceServlet extends HttpServlet {
 		String sessionToken = null;
 		if (sessionBase != null) {
 			int slash = sessionBase.indexOf('/', 1);
-			sessionPrefix = sessionBase.substring(1, slash);
-			sessionToken = sessionBase.substring(slash + 1);
+			// A bare base carries no token, see #setBarePrefixes(String...).
+			sessionPrefix = slash < 0 ? sessionBase.substring(1) : sessionBase.substring(1, slash);
+			sessionToken = slash < 0 ? "" : sessionBase.substring(slash + 1);
 		}
 
 		if (sessionPrefix != null && _sessionGuard != null && WebRootResolver.isRoute(relative)) {

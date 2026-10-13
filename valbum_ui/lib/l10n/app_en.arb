@@ -6585,5 +6585,120 @@
   "@albumStillPreparing": {
     "description": "Shown above the photos of an album the server has not completely processed yet (issue #253): newly added photos are still missing; the app asks for the album again by itself meanwhile (issue #258).",
     "x-translated": "5ddaeee6"
+  },
+  "sharedWithYouTitle": "All shared with you",
+  "@sharedWithYouTitle": {
+    "description": "Title of the overview of every album shared with a contact (issue #267), and the menu entry in every link view leading to it.",
+    "x-translated": "3a8f9d10"
+  },
+  "sharedWithYouEmpty": "Nothing is shared with you here at the moment.",
+  "@sharedWithYouEmpty": {
+    "description": "The overview of what is shared with a contact (issue #267) when no link is open to them.",
+    "x-translated": "83985a57"
+  },
+  "sharedAlbumFrom": "from {name}",
+  "@sharedAlbumFrom": {
+    "description": "Under the title of an album in the overview of what is shared with a contact (issue #267): who shared it.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "alice"
+      }
+    },
+    "x-translated": "949f14e9"
+  },
+  "identifySharedIntro": "Confirm the e-mail address the photos were shared with to see everything that was shared with you.",
+  "@identifySharedIntro": {
+    "description": "The sign-in card of the overview of what is shared with a contact (issue #267), shown to a browser that is not recognised yet.",
+    "x-translated": "fc8fc199"
+  },
+  "shareMessageOverviewLine": "Everything that was shared with you: {link}",
+  "@shareMessageOverviewLine": {
+    "description": "One line appended to the message carrying a personal link (issue #267): the address of the overview of everything shared with the recipient.",
+    "placeholders": {
+      "link": {
+        "type": "String",
+        "example": "https://example.org/valbum/shared/"
+      }
+    },
+    "x-translated": "9351073a"
+  },
+  "contactOverviewLinkSend": "Send overview link…",
+  "@contactOverviewLinkSend": {
+    "description": "Menu entry on a contact (issue #267): issue the contact their own link to the overview of everything shared with them, and send it.",
+    "x-translated": "407781bb"
+  },
+  "contactOverviewLinkWithdraw": "Withdraw overview link",
+  "@contactOverviewLinkWithdraw": {
+    "description": "Menu entry on a contact (issue #267): void the contact's link to the overview of everything shared with them.",
+    "x-translated": "6be7b118"
+  },
+  "overviewLinkHeading": "Overview link for {name}",
+  "@overviewLinkHeading": {
+    "description": "Title of the dialog showing a contact's new link to the overview of everything shared with them (issue #267).",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Tante Petra"
+      }
+    },
+    "x-translated": "2466b07a"
+  },
+  "overviewLinkOnce": "This link is shown only now. Sending it again makes a new one, and this one stops working.",
+  "@overviewLinkOnce": {
+    "description": "Note in the dialog of a contact's new overview link (issue #267).",
+    "x-translated": "2457448b"
+  },
+  "overviewMessageSubject": "Photos shared with you",
+  "@overviewMessageSubject": {
+    "description": "Subject of the message carrying a contact's overview link (issue #267).",
+    "x-translated": "e4eda14"
+  },
+  "overviewMessageBody": "Hello {name},\n\nhere is everything that was shared with you:\n{link}\n",
+  "@overviewMessageBody": {
+    "description": "Default text of the message carrying a contact's overview link (issue #267); the sharer edits it in their own app. Keep the line breaks.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Petra"
+      },
+      "link": {
+        "type": "String",
+        "example": "https://example.org/valbum/s/token/"
+      }
+    },
+    "x-translated": "ef3940dc"
+  },
+  "overviewLinkWithdrawn": "The overview link was withdrawn.",
+  "@overviewLinkWithdrawn": {
+    "description": "Confirmation after a contact's overview link was withdrawn (issue #267).",
+    "x-translated": "fabe79c9"
+  },
+  "contactOverviewIssued": "overview link sent on {day}",
+  "@contactOverviewIssued": {
+    "description": "Part of the line under a contact (issue #267): when their overview link was issued.",
+    "placeholders": {
+      "day": {
+        "type": "String",
+        "example": "Oct 13, 2026"
+      }
+    },
+    "x-translated": "1f686ce8"
+  },
+  "contactOverviewOpened": "overview link opened on {day}",
+  "@contactOverviewOpened": {
+    "description": "Part of the line under a contact (issue #267): when their overview link was first opened.",
+    "placeholders": {
+      "day": {
+        "type": "String",
+        "example": "Oct 13, 2026"
+      }
+    },
+    "x-translated": "2471af42"
+  },
+  "identifyAskOverviewAgain": "Ask a person who shared photos with you to send you your own link to this overview.",
+  "@identifyAskOverviewAgain": {
+    "description": "The sign-in card of the overview of everything shared with a contact (issue #267) when the server offers no way to confirm who the visitor is: the one way left.",
+    "x-translated": "7a39fc22"
   }
 }

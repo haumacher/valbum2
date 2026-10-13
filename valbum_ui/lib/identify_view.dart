@@ -58,8 +58,9 @@ class IdentifyScreen extends StatefulWidget {
   /// whatever credential this browser holds for the space.
   final VAlbumClient client;
 
-  /// The link the page was opened at, for its cover (#104).
-  final SessionUrl session;
+  /// The link the page was opened at, for its cover (#104); `null` at the
+  /// overview of what is shared with a contact (issue #267), which has none.
+  final SessionUrl? session;
 
   /// What the server said it needs.
   final IdentifyRequired identify;
@@ -89,7 +90,7 @@ class IdentifyScreen extends StatefulWidget {
   const IdentifyScreen({
     super.key,
     required this.client,
-    required this.session,
+    this.session,
     required this.identify,
     required this.onCredential,
     required this.onSignInStarted,
@@ -148,8 +149,9 @@ class IdentifyScreenState extends State<IdentifyScreen> {
   /// recipients of a personal link, each proving an address of theirs once.
   bool get _group => _identify.group;
 
-  /// Whether the link is an open personal link: no recipient's own link.
-  bool get _open => _identify.contact == null && !_group;
+  /// Whether the link is an open personal link: no recipient's own link. The
+  /// overview of issue #267 is none: it enters nobody new, so it asks no name.
+  bool get _open => _identify.contact == null && !_group && !_identify.shared;
 
   /// Whether the visitor types the address the code goes to: an open link,
   /// and a group link, which never shows whom it was sent to (#211).
@@ -278,9 +280,15 @@ class IdentifyScreenState extends State<IdentifyScreen> {
 
   /// The address of the link's cover (#104): the shared album's picture,
   /// answered anonymously below the link's own base.
-  String get _coverUrl => Uri.parse(widget.session.dataUrl)
-      .replace(path: "${widget.session.basePath}cover.jpg")
-      .toString();
+  String? get _coverUrl {
+    var session = widget.session;
+    if (session == null || _identify.shared) {
+      return null;
+    }
+    return Uri.parse(session.dataUrl)
+        .replace(path: "${session.basePath}cover.jpg")
+        .toString();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -290,6 +298,7 @@ class IdentifyScreenState extends State<IdentifyScreen> {
     // maker's alone and never shown here.
     var title = _identify.title.trim();
     var sharer = _identify.sharedBy.trim();
+    var cover = _coverUrl;
     return Scaffold(
       key: const Key("identify-screen"),
       body: Center(
@@ -301,21 +310,27 @@ class IdentifyScreenState extends State<IdentifyScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
               children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.network(
-                    _coverUrl,
-                    key: const Key("identify-cover"),
-                    height: 180,
-                    fit: BoxFit.cover,
-                    // No cover, no gap: the link may show none.
-                    errorBuilder: (context, error, stack) =>
-                        const SizedBox.shrink(),
+                if (cover != null)
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(
+                      cover,
+                      key: const Key("identify-cover"),
+                      height: 180,
+                      fit: BoxFit.cover,
+                      // No cover, no gap: the link may show none.
+                      errorBuilder: (context, error, stack) =>
+                          const SizedBox.shrink(),
+                    ),
                   ),
-                ),
                 const SizedBox(height: 16),
                 Text(
-                  title.isEmpty ? l10n.sharedAlbumFallback : title,
+                  _identify.shared
+                      // The overview of issue #267 is no album.
+                      ? l10n.sharedWithYouTitle
+                      : title.isEmpty
+                          ? l10n.sharedAlbumFallback
+                          : title,
                   key: const Key("identify-label"),
                   style: theme.textTheme.headlineSmall,
                   textAlign: TextAlign.center,
@@ -451,15 +466,20 @@ class IdentifyScreenState extends State<IdentifyScreen> {
       const SizedBox(height: 8),
       Text(_group
           ? l10n.identifyGroupIntro
-          : _open
-              ? l10n.identifyOpenIntro
-              : l10n.identifyRecipientIntro),
+          : _identify.shared && _identify.contact == null
+              ? l10n.identifySharedIntro
+              : _open
+                  ? l10n.identifyOpenIntro
+                  : l10n.identifyRecipientIntro),
       if (offered.isEmpty) ...[
         const SizedBox(height: 16),
         Text(
-          sharer.isEmpty
-              ? l10n.identifyAskAgainNobody
-              : l10n.identifyAskAgain(sharer),
+          // The overview (issue #267) is nobody's link to send again.
+          _identify.shared
+              ? l10n.identifyAskOverviewAgain
+              : sharer.isEmpty
+                  ? l10n.identifyAskAgainNobody
+                  : l10n.identifyAskAgain(sharer),
           key: const Key("identify-ask-again"),
         ),
       ] else ...[

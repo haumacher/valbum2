@@ -78,11 +78,14 @@ public class TestShareDelete extends PersonalLinkTestCase {
 		}
 		assertTrue(identify(petrasToken, true).status() >= 400);
 
-		// The session opened through it has ended; the one opened through the other link has not.
+		// The other link still admits Petra, so the session opened through the deleted one stays
+		// (issue #267): it opens the other link, and the deleted one for nobody. A contact the space
+		// admits nowhere else is signed out, see TestSharedOverview.
 		ContactStore contacts = new ContactStore(_base);
-		assertNull("Signed out of the deleted link.", contacts.recognize(throughParty));
+		assertNotNull("Still admitted through the other link.", contacts.recognize(throughParty));
 		assertNotNull("Still in through the other link.", contacts.recognize(throughOther));
 		assertEquals(200, getAs("/", "json", otherToken, throughOther).status());
+		assertEquals(200, getAs("/", "json", otherToken, throughParty).status());
 
 		// The contacts stay contacts of the space.
 		assertNotNull(contacts.get(petra));

@@ -285,7 +285,9 @@ public class SpaceServlet extends HttpServlet {
 
 	/** Whether the given first segment is the prefix of a share or an invitation session. */
 	private static boolean isSessionPrefix(String segment) {
-		return ShareStore.URL_SEGMENT.equals(segment) || InvitationStore.URL_SEGMENT.equals(segment);
+		// The overview of what is shared with a contact (issue #267) belongs to a space as well.
+		return ShareStore.URL_SEGMENT.equals(segment) || InvitationStore.URL_SEGMENT.equals(segment)
+			|| de.haumacher.imageServer.auth.AuthService.SHARED_SEGMENT.equals(segment);
 	}
 
 	private void refuseSpace(HttpServletResponse response, String message) throws IOException {

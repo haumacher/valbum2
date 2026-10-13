@@ -95,11 +95,14 @@ class ThumbnailImage extends ImageProvider<ThumbnailImage> {
       other.scale == scale &&
       other.large == large &&
       other.client.dataUrl == client.dataUrl &&
-      other.client.token == client.token;
+      other.client.token == client.token &&
+      // The albums of the overview of issue #267 ask one server without a
+      // token, each through its own link: the same name is another picture.
+      other.client.shared == client.shared;
 
   @override
-  int get hashCode =>
-      Object.hash(imageUrl, scale, large, client.dataUrl, client.token);
+  int get hashCode => Object.hash(
+      imageUrl, scale, large, client.dataUrl, client.token, client.shared);
 
   @override
   String toString() => "ThumbnailImage($url)";

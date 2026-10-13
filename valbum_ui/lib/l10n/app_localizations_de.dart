@@ -4015,4 +4015,65 @@ class AppLocalizationsDe extends AppLocalizations {
   @override
   String get albumStillPreparing =>
       'Dieses Album wird noch vorbereitet. Die Fotos, die der Server noch nicht gelesen hat, werden hier angezeigt, sobald er sie liest.';
+
+  @override
+  String get sharedWithYouTitle => 'Alles, was mit Ihnen geteilt wurde';
+
+  @override
+  String get sharedWithYouEmpty => 'Hier ist derzeit nichts mit Ihnen geteilt.';
+
+  @override
+  String sharedAlbumFrom(String name) {
+    return 'von $name';
+  }
+
+  @override
+  String get identifySharedIntro =>
+      'Bestätigen Sie die E-Mail-Adresse, mit der die Fotos geteilt wurden, um alles zu sehen, was mit Ihnen geteilt wurde.';
+
+  @override
+  String shareMessageOverviewLine(String link) {
+    return 'Alles, was mit Ihnen geteilt wurde: $link';
+  }
+
+  @override
+  String get contactOverviewLinkSend => 'Übersichts-Link senden…';
+
+  @override
+  String get contactOverviewLinkWithdraw => 'Übersichts-Link zurückziehen';
+
+  @override
+  String overviewLinkHeading(String name) {
+    return 'Übersichts-Link für $name';
+  }
+
+  @override
+  String get overviewLinkOnce =>
+      'Dieser Link wird nur jetzt angezeigt. Wird er erneut gesendet, entsteht ein neuer, und dieser funktioniert nicht mehr.';
+
+  @override
+  String get overviewMessageSubject => 'Fotos, die mit Ihnen geteilt wurden';
+
+  @override
+  String overviewMessageBody(String name, String link) {
+    return 'Hallo $name,\n\nhier ist alles, was mit Ihnen geteilt wurde:\n$link\n';
+  }
+
+  @override
+  String get overviewLinkWithdrawn =>
+      'Der Übersichts-Link wurde zurückgezogen.';
+
+  @override
+  String contactOverviewIssued(String day) {
+    return 'Übersichts-Link gesendet am $day';
+  }
+
+  @override
+  String contactOverviewOpened(String day) {
+    return 'Übersichts-Link geöffnet am $day';
+  }
+
+  @override
+  String get identifyAskOverviewAgain =>
+      'Bitten Sie eine Person, die Fotos mit Ihnen geteilt hat, Ihnen Ihren eigenen Link zu dieser Übersicht zu senden.';
 }

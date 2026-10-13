@@ -9,6 +9,7 @@ import 'package:flutter/material.dart' hide Orientation;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:valbum_ui/about.dart' as about;
 import 'package:valbum_ui/contact_session.dart';
 import 'package:valbum_ui/main.dart';
 import 'package:valbum_ui/manage_view.dart';
@@ -238,6 +239,22 @@ class ContactServer {
     var body = jsonDecode(request.body) as Map<String, dynamic>;
     var id = body["contact"] as String;
     var contact = Map<String, Object>.of(contactOf(contacts, id));
+    if (action == "overview-link") {
+      // A contact's own overview link (issue #267), voided or issued anew.
+      var withdraw = body["withdraw"] == true;
+      contact["overviewIssued"] = withdraw ? "" : "2026-05-10T10:00:00Z";
+      contact["overviewOpened"] = "";
+      contacts = {
+        "contacts": [
+          for (var c in contacts["contacts"] as List)
+            c["id"] == id ? contact : c,
+        ],
+      };
+      return json(jsonEncode({
+        "url": withdraw ? "" : "/valbum/s/ov-$id/",
+        "contact": contact,
+      }));
+    }
     switch (action) {
       case "rename-contact":
         contact["name"] = body["name"] as String;
@@ -524,6 +541,48 @@ void main() {
       expect(
           server.bodyOf("block-contact"),
           {"link": "", "contact": "c2", "shutOut": false});
+    });
+
+    testWidgets('issues a contact their overview link and withdraws it',
+        (tester) async {
+      var launched = <Uri>[];
+      var before = about.openExternalUrl;
+      about.openExternalUrl = (uri) async {
+        launched.add(uri);
+        return true;
+      };
+      addTearDown(() => about.openExternalUrl = before);
+      var server = ContactServer();
+      await pumpContacts(tester, server);
+      await tapKey(tester, "contact-menu-c1");
+      expect(find.byKey(const Key("contact-overview-withdraw-c1")),
+          findsNothing);
+      await tester.tap(find.byKey(const Key("contact-overview-c1")));
+      await tester.pumpAndSettle();
+
+      expect(server.bodyOf("overview-link"),
+          {"contact": "c1", "withdraw": false});
+      expect(find.byKey(const Key("overview-link-dialog")), findsOneWidget);
+      var url = tester
+          .widget<SelectableText>(find.byKey(const Key("overview-link-url")))
+          .data!;
+      expect(url, "http://server/valbum/s/ov-c1/");
+      await tapKey(tester, "send-email-c1-0");
+      expect(launched.single.path, "petra@gmx.de");
+      expect(launched.single.queryParameters["subject"],
+          testL10n.overviewMessageSubject);
+      expect(launched.single.queryParameters["body"],
+          testL10n.overviewMessageBody("Petra", url));
+      await tapKey(tester, "overview-link-close");
+
+      var issued =
+          testL10n.contactOverviewIssued(dayOf("2026-05-10T10:00:00Z"));
+      expect(textOf(tester, "contact-details-c1"), contains(issued));
+      await openMenu(tester, "c1", "overview-withdraw");
+      expect(server.bodyOf("overview-link"),
+          {"contact": "c1", "withdraw": true});
+      expect(find.text(testL10n.overviewLinkWithdrawn), findsOneWidget);
+      expect(textOf(tester, "contact-details-c1"), isNot(contains(issued)));
     });
 
     testWidgets('a refusal is said in the server\'s words', (tester) async {

@@ -144,6 +144,35 @@ public class WebRootResolver {
 		return "/" + segment;
 	}
 
+	/**
+	 * The base a path carries that lies at a virtual prefix without a token, see issue #267.
+	 *
+	 * <p>
+	 * <code>/&lt;prefix&gt;</code> and <code>/&lt;prefix&gt;/</code> are the entry point, and a path
+	 * below it is one of the application's own files where the web root holds what follows the
+	 * prefix (<code>/shared/main.dart.js</code>); any other path below the prefix is left to the
+	 * session bases of {@link #virtualBase(String, String...)}.
+	 * </p>
+	 *
+	 * @param exists
+	 *        Whether a web-root-relative path denotes an existing file.
+	 * @return <code>/&lt;prefix&gt;</code>, <code>null</code> if the path is no such base.
+	 */
+	public static String bareBase(String pathInfo, String prefix, Predicate<String> exists) {
+		if (pathInfo == null || prefix == null || prefix.isEmpty()) {
+			return null;
+		}
+		String head = "/" + prefix;
+		if (pathInfo.equals(head) || pathInfo.equals(head + "/")) {
+			return head;
+		}
+		if (!pathInfo.startsWith(head + "/")) {
+			return null;
+		}
+		String rest = normalize(pathInfo.substring(head.length()));
+		return rest != null && !rest.isEmpty() && !rest.endsWith("/") && exists.test(rest) ? head : null;
+	}
+
 	private static String virtualBase(String pathInfo, String prefix) {
 		if (prefix == null || prefix.isEmpty()) {
 			return null;

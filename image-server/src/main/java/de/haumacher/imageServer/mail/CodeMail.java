@@ -52,7 +52,10 @@ public final class CodeMail {
 		SIGN_IN,
 
 		/** A signed-in member adds an address to sign in with (issue #233). */
-		MEMBER_ADDRESS;
+		MEMBER_ADDRESS,
+
+		/** A contact opens the overview of everything shared with them, without a link (issue #267). */
+		SHARED;
 	}
 
 	/**
@@ -143,6 +146,9 @@ public final class CodeMail {
 		StringBuilder text = new StringBuilder("Hallo,\n\n");
 		if (purpose == Purpose.SIGN_IN) {
 			text.append("mit diesem Code melden Sie sich bei ").append(about._space).append(" an:\n");
+		} else if (purpose == Purpose.SHARED) {
+			text.append("mit diesem Code sehen Sie alles, was in ").append(about._space)
+				.append(" mit Ihnen geteilt wurde:\n");
 		} else if (purpose == Purpose.MEMBER_ADDRESS) {
 			text.append("mit diesem Code bestätigen Sie Ihre E-Mail-Adresse für die Anmeldung bei ")
 				.append(about._space).append(":\n");
@@ -164,7 +170,8 @@ public final class CodeMail {
 		text.append(purpose == Purpose.SIGN_IN ? "einfach ignorieren – ohne den Code meldet sich niemand an.\n"
 			: purpose == Purpose.ADD_ADDRESS || purpose == Purpose.MEMBER_ADDRESS
 				? "einfach ignorieren – ohne den Code wird die Adresse nicht gespeichert.\n"
-				: "einfach ignorieren – ohne den Code kann niemand das Album öffnen.\n");
+				: purpose == Purpose.SHARED ? "einfach ignorieren – ohne den Code sieht niemand, was mit Ihnen geteilt wurde.\n"
+					: "einfach ignorieren – ohne den Code kann niemand das Album öffnen.\n");
 		footer(text, about);
 		return new CodeMail(sender, subject, text.toString());
 	}
@@ -177,6 +184,8 @@ public final class CodeMail {
 		StringBuilder text = new StringBuilder("Hello,\n\n");
 		if (purpose == Purpose.SIGN_IN) {
 			text.append("This code signs you in to ").append(about._space).append(":\n");
+		} else if (purpose == Purpose.SHARED) {
+			text.append("This code shows you everything shared with you in ").append(about._space).append(":\n");
 		} else if (purpose == Purpose.MEMBER_ADDRESS) {
 			text.append("This code confirms your e-mail address for signing in to ").append(about._space)
 				.append(":\n");
@@ -198,7 +207,8 @@ public final class CodeMail {
 		text.append(purpose == Purpose.SIGN_IN ? "without the code nobody signs in.\n"
 			: purpose == Purpose.ADD_ADDRESS || purpose == Purpose.MEMBER_ADDRESS
 				? "without the code the address is not saved.\n"
-				: "without the code nobody can open the album.\n");
+				: purpose == Purpose.SHARED ? "without the code nobody sees what was shared with you.\n"
+					: "without the code nobody can open the album.\n");
 		footer(text, about);
 		return new CodeMail(sender, subject, text.toString());
 	}

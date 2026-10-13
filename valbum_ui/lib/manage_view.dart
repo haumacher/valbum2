@@ -12,6 +12,7 @@ library;
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -22,6 +23,7 @@ import 'client.dart';
 import 'device_code_payload.dart';
 import 'form_dialog.dart';
 import 'l10n/app_localizations.dart';
+import 'recipient_send.dart';
 import 'resource.dart';
 import 'selectable.dart';
 import 'settings.dart';
@@ -2028,6 +2030,18 @@ class ContactsSectionState extends State<ContactsSection> {
           value: () => _signIns(contact),
           child: Text(l10n.contactSignInsEntry),
         ),
+        // The contact's own link to everything shared with them (#267).
+        PopupMenuItem(
+          key: Key("contact-overview-${contact.id}"),
+          value: () => _sendOverview(contact),
+          child: Text(l10n.contactOverviewLinkSend),
+        ),
+        if (contact.overviewIssued.isNotEmpty)
+          PopupMenuItem(
+            key: Key("contact-overview-withdraw-${contact.id}"),
+            value: () => _withdrawOverview(contact),
+            child: Text(l10n.contactOverviewLinkWithdraw),
+          ),
         PopupMenuItem(
           key: Key("contact-block-${contact.id}"),
           value: () => _block(contact, !blocked),
@@ -2092,6 +2106,43 @@ class ContactsSectionState extends State<ContactsSection> {
       return;
     }
     await _act(contact, (client) => client.renameContact(contact.id, name));
+  }
+
+  /// Issues [contact] their own overview link (issue #267) — the one before
+  /// stops working — and shows it once, with the ways to send it.
+  Future<void> _sendOverview(Contact contact) async {
+    OverviewLink? issued;
+    await _act(contact, (client) async {
+      issued = await client.overviewLink(contact.id);
+      return issued!.contact ?? contact;
+    });
+    var link = issued;
+    var client = widget.client;
+    if (link == null || client == null || !mounted) {
+      return;
+    }
+    await showAppDialog<void>(
+      context: context,
+      builder: (context) => OverviewLinkDialog(
+        contact: link.contact ?? contact,
+        url: absoluteServerUrl(client.dataUrl, link.url),
+      ),
+    );
+  }
+
+  /// Voids [contact]'s overview link (issue #267).
+  Future<void> _withdrawOverview(Contact contact) async {
+    var messenger = ScaffoldMessenger.maybeOf(context);
+    var done = AppLocalizations.of(context)!.overviewLinkWithdrawn;
+    var withdrawn = false;
+    await _act(contact, (client) async {
+      var answer = await client.overviewLink(contact.id, withdraw: true);
+      withdrawn = true;
+      return answer.contact ?? contact;
+    });
+    if (withdrawn) {
+      messenger?.showSnackBar(SnackBar(content: Text(done)));
+    }
   }
 
   Future<void> _block(Contact contact, bool shutOut) =>
@@ -2183,6 +2234,11 @@ String contactDetails(AppLocalizations l10n, Contact contact) {
     if (contact.authenticator.isNotEmpty) l10n.contactAuthenticatorMark,
     if (contact.passkeys.isNotEmpty) l10n.contactPasskeyCount(contact.passkeys.length),
     if (contact.uploads > 0) l10n.photosAdded(contact.uploads),
+    // The contact's own overview link (issue #267): sent, and opened.
+    if (contact.overviewOpened.isNotEmpty)
+      l10n.contactOverviewOpened(dayOf(contact.overviewOpened))
+    else if (contact.overviewIssued.isNotEmpty)
+      l10n.contactOverviewIssued(dayOf(contact.overviewIssued)),
     if (contact.lastSeen.isNotEmpty) l10n.lastSeenOn(dayOf(contact.lastSeen)),
   ].join(" · ");
 }
@@ -2192,6 +2248,68 @@ bool _liveAt(String expires, DateTime now) {
     return DateTime.parse(expires).isAfter(now);
   } catch (_) {
     return true;
+  }
+}
+
+/// A contact's new overview link (issue #267), shown this once: the address,
+/// and the ways to send it to them, as a personal link's are sent.
+class OverviewLinkDialog extends StatelessWidget {
+  /// Whose link it is.
+  final Contact contact;
+
+  /// The link, absolute.
+  final String url;
+
+  /// Whether the page runs in a browser, see [RecipientSendLines.isWeb].
+  final bool isWeb;
+
+  const OverviewLinkDialog({
+    super.key,
+    required this.contact,
+    required this.url,
+    this.isWeb = kIsWeb,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
+    var greeting = contact.displayName.trim().isNotEmpty
+        ? contact.displayName.trim()
+        : contact.name;
+    return AlertDialog(
+      key: const Key("overview-link-dialog"),
+      title: Text(l10n.overviewLinkHeading(contact.name)),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SelectableText(url, key: const Key("overview-link-url")),
+            RecipientSendLines(
+              recipient: RecipientLink(
+                contact: contact.id,
+                name: contact.name,
+                addresses: contact.addresses,
+              ),
+              url: url,
+              album: "",
+              isWeb: isWeb,
+              subject: l10n.overviewMessageSubject,
+              body: l10n.overviewMessageBody(greeting, url),
+            ),
+            const SizedBox(height: 8),
+            Text(l10n.overviewLinkOnce, key: const Key("overview-link-once")),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          key: const Key("overview-link-close"),
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(l10n.close),
+        ),
+      ],
+    );
   }
 }
 

@@ -46,6 +46,7 @@ import 'search_view.dart';
 import 'selectable.dart';
 import 'settings.dart';
 import 'share_session.dart';
+import 'shared_overview.dart';
 import 'sign_in_options.dart';
 import 'sign_in_form.dart';
 import 'trash_view.dart';
@@ -138,6 +139,17 @@ class VAlbumApp extends StatefulWidget {
   /// server field, see `invitation.dart`. Tests inject it.
   final SessionUrl? session;
 
+  /// The overview of everything shared with a contact the app was opened at,
+  /// `<context>/shared/` (issue #267).
+  ///
+  /// Defaults to what the app base says on the web (see [overviewUrl]) and to
+  /// `null` everywhere else. Tests inject it.
+  final OverviewUrl? overview;
+
+  /// Opens another page keeping this one in the history, see [openPageUrl]:
+  /// an album of the overview (issue #267). Tests inject it.
+  final void Function(String url)? openPage;
+
   /// The location the app was opened at, read once at start-up (issue #88).
   ///
   /// Only one thing is read from it, and only on an ordinary start: the
@@ -188,6 +200,8 @@ class VAlbumApp extends StatefulWidget {
     this.wakelock,
     this.deviceCodeScanner,
     this.session,
+    this.overview,
+    this.openPage,
     this.location,
     this.rewriteLocation,
     this.openUrl,
@@ -340,7 +354,8 @@ class VAlbumAppState extends State<VAlbumApp> {
   bool _signInReturned = false;
 
   /// The token session the app was opened at, see [VAlbumApp.session].
-  late final SessionUrl? _session = widget.session ?? _detectSession();
+  late final SessionUrl? _session =
+      widget.session ?? (widget.overview == null ? _detectSession() : null);
 
   /// The session the app was loaded at, read off the app base on the web.
   ///
@@ -349,6 +364,21 @@ class VAlbumAppState extends State<VAlbumApp> {
   /// the app base still says which token this is.
   static SessionUrl? _detectSession() => kIsWeb
       ? sessionUrl(
+          Uri.base,
+          basePath: appBasePath(
+            Uri.base.path,
+            WidgetsBinding.instance.platformDispatcher.defaultRouteName,
+          ),
+        )
+      : null;
+
+  /// The overview the app was opened at, see [VAlbumApp.overview].
+  late final OverviewUrl? _overviewAt =
+      widget.overview ?? (widget.session == null ? _detectOverview() : null);
+
+  /// The overview the app was loaded at, read off the app base on the web.
+  static OverviewUrl? _detectOverview() => kIsWeb
+      ? overviewUrl(
           Uri.base,
           basePath: appBasePath(
             Uri.base.path,
@@ -367,7 +397,8 @@ class VAlbumAppState extends State<VAlbumApp> {
   /// The share link this session runs in, `null` in every other start.
   SessionUrl? get shareLink {
     var current = session;
-    return current != null && current.isShare ? current : null;
+    // An album of the overview is a link session too (issue #267).
+    return current != null && current.isLink ? current : null;
   }
 
   /// The invitation this session runs in, `null` in every other start.
@@ -393,6 +424,10 @@ class VAlbumAppState extends State<VAlbumApp> {
 
   /// Leaves the page for another URL, see [VAlbumApp.openUrl].
   late final void Function(String url) _openUrl = widget.openUrl ?? leaveForUrl;
+
+  /// Opens a page keeping this one in the history, see [VAlbumApp.openPage].
+  late final void Function(String url) _openPage =
+      widget.openPage ?? openPageUrl;
 
   /// Rewrites the location without loading anything, see
   /// [VAlbumApp.rewriteLocation].
@@ -571,10 +606,31 @@ class VAlbumAppState extends State<VAlbumApp> {
     // it was opened at, see [_defaultSettings] and [_initialRouteInformation].
     settings.addListener(_settingsChanged);
     _initialRouteInformation;
+    var overview = _overviewAt;
+    if (overview != null) {
+      // The overview of what is shared (issue #267) asks the server itself,
+      // see [SharedOverviewPage]; of the device it reads only the name a
+      // member's proof signs in under, and whether this browser is a member
+      // here already, who belongs at the space itself.
+      settings.store.loadDeviceName().then((name) {
+        if (mounted) {
+          setState(() => _storedDeviceName = name);
+        }
+      }, onError: (_) {});
+      var loaded = settings.loaded ? Future<void>.value() : settings.load();
+      loaded.then((_) {
+        if (mounted &&
+            (settings.token ?? "").isNotEmpty &&
+            settings.dataUrl == overview.dataUrl) {
+          _openUrl(overview.appBase);
+        }
+      }, onError: (_) {});
+      return;
+    }
     _readInvitationNotice();
     _readMemberReturn();
     var opened = session;
-    if (opened != null && opened.isShare) {
+    if (opened != null && opened.isLink) {
       _contactCredential = contactStore.read(opened.dataUrl);
       settings.store.loadDeviceName().then((name) {
         if (mounted) {
@@ -935,7 +991,7 @@ class VAlbumAppState extends State<VAlbumApp> {
   ///    plain page of [_startupScreen].
   Future<void> _confirmSession() async {
     var link = session!;
-    if (link.isShare) {
+    if (link.isLink) {
       await _returnFromSignIn(link);
       if (!mounted || _leavingForMember) {
         return;
@@ -952,7 +1008,7 @@ class VAlbumAppState extends State<VAlbumApp> {
       if (mounted) {
         var needs = refusal.identify;
         setState(() {
-          if (needs != null && link.isShare) {
+          if (needs != null && link.isLink) {
             // A personal link that does not know who is asking: the
             // identification card, see `identify_view.dart` (issue #202).
             _identify = needs;
@@ -983,6 +1039,13 @@ class VAlbumAppState extends State<VAlbumApp> {
       setState(() => invitationInfo = offered);
       return;
     }
+    if (answer.overview) {
+      // A contact's own link to the overview of what is shared with them,
+      // recognised (issue #267): the overview is where it leads.
+      _leavingForMember = true;
+      _openUrl(link.overviewAddress);
+      return;
+    }
     var share = answer.share;
     if (share == null) {
       // No link of this server: deleted (issue #217) or never made, which a
@@ -1004,9 +1067,14 @@ class VAlbumAppState extends State<VAlbumApp> {
         onSwitchPerson: share.contact == null ? null : _signOutAndSwitch,
         onSignOutOthers: share.contact == null ? null : _signOutOthers,
         onSignInOptions: share.contact == null ? null : _openSignInOptions,
+        onOverview: share.contact == null ? null : _toOverview,
       );
     });
   }
+
+  /// "All shared with you" (issue #267): the overview of the contact's
+  /// space, a page of its own; the browser's back button returns here.
+  void _toOverview(BuildContext context) => _openPage(session!.overviewAddress);
 
   /// "Sign-in options…" (issue #208): the contact of this session sets up or
   /// removes an authenticator app; what changed is kept in the session.
@@ -1035,6 +1103,7 @@ class VAlbumAppState extends State<VAlbumApp> {
         onSwitchPerson: current.onSwitchPerson,
         onSignOutOthers: current.onSignOutOthers,
         onSignInOptions: current.onSignInOptions,
+        onOverview: current.onOverview,
       );
 
   /// "Also signed in on n other browsers — sign out others" (issue #203):
@@ -1296,14 +1365,20 @@ class VAlbumAppState extends State<VAlbumApp> {
       // stored device token is consulted, and the session's token is never
       // written to the store. Nothing is cached either — a visitor's session
       // leaves nothing on the device it was opened on.
+      // An album of the overview carries no token: the link's id beside the
+      // contact credential opens it (issue #267).
+      var token = link.isSharedAlbum ? null : link.token;
+      var shared = link.isSharedAlbum ? link.token : null;
       if (client?.dataUrl == link.dataUrl &&
-          client?.token == link.token &&
+          client?.token == token &&
+          client?.shared == shared &&
           client?.contact == _contactCredential) {
         return;
       }
       var sessionClient = VAlbumClient(
         dataUrl: link.dataUrl,
-        token: link.token,
+        token: token,
+        shared: shared,
         // Who this browser is on a personal link, beside the link's token and
         // never instead of it, see `contact_session.dart`.
         contact: _contactCredential,
@@ -1464,9 +1539,11 @@ class VAlbumAppState extends State<VAlbumApp> {
                     child: UploadTargetScope(
                       targets: uploadTargets,
                       client: session == null ? client : null,
-                      child: _readyForTheRouter && client != null
-                          ? _albumApp(client!)
-                          : _beforeTheRouter(),
+                      child: _overviewAt != null
+                          ? _overviewApp(_overviewAt!)
+                          : _readyForTheRouter && client != null
+                              ? _albumApp(client!)
+                              : _beforeTheRouter(),
                     ),
                   ),
                 ),
@@ -1501,6 +1578,47 @@ class VAlbumAppState extends State<VAlbumApp> {
         builder: _withInvitationNotice,
         routerDelegate: _preRouter ??= SilentRouterDelegate(_startupScreen),
       );
+
+  /// The overview of what is shared with a contact (issue #267): a page of its
+  /// own, without the album app's router — it has no routes; each album is a
+  /// page of its own at `<context>/shared/<link id>/`.
+  Widget _overviewApp(OverviewUrl overview) => MaterialApp.router(
+        onGenerateTitle: (context) => AppLocalizations.of(context)!.appTitle,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        localeListResolutionCallback: resolveAppLocale,
+        theme: ThemeData(primarySwatch: Colors.blue),
+        routerDelegate: _preRouter ??= SilentRouterDelegate(
+          (context) => SharedOverviewPage(
+            overview: overview,
+            clientOf: (credential, shared) => VAlbumClient(
+              dataUrl: overview.dataUrl,
+              contact: credential,
+              shared: shared,
+              httpClient: _transport,
+              offlineState: offlineState,
+              log: diagnostics,
+            ),
+            contactStore: contactStore,
+            openPage: _openPage,
+            openUrl: _openUrl,
+            onMember: (member) => _overviewMember(overview, member),
+            location: widget.location ?? (kIsWeb ? Uri.base : null),
+            rewriteLocation: _rewriteLocation,
+            deviceName: settings.deviceName ?? _storedDeviceName,
+          ),
+        ),
+      );
+
+  /// A proof at the overview named a member (issue #233): this browser is
+  /// signed in as them and leaves for the space's own application.
+  Future<void> _overviewMember(
+      OverviewUrl overview, PairResponse member) async {
+    await settings.save(overview.appBase);
+    await settings.signedInAs(member.token, member.deviceName,
+        userName: member.userName);
+    _openUrl(overview.appBase);
+  }
 
   /// The delegate of the screens shown before the router, see
   /// [_beforeTheRouter].
@@ -1539,6 +1657,10 @@ class VAlbumAppState extends State<VAlbumApp> {
         // may be holding: the way to be somebody else (issue #202).
         onSwitchPerson: shareLink != null && _contactCredential != null
             ? _switchPerson
+            : null,
+        // An album of the overview that is gone leads back to it (#267).
+        onOverview: shareLink != null && shareLink!.isSharedAlbum
+            ? () => _openUrl(shareLink!.overviewAddress)
             : null,
       );
     }

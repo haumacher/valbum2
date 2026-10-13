@@ -3963,4 +3963,65 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get albumStillPreparing =>
       'This album is still being prepared. The photos the server has not read yet appear here as it reads them.';
+
+  @override
+  String get sharedWithYouTitle => 'All shared with you';
+
+  @override
+  String get sharedWithYouEmpty =>
+      'Nothing is shared with you here at the moment.';
+
+  @override
+  String sharedAlbumFrom(String name) {
+    return 'from $name';
+  }
+
+  @override
+  String get identifySharedIntro =>
+      'Confirm the e-mail address the photos were shared with to see everything that was shared with you.';
+
+  @override
+  String shareMessageOverviewLine(String link) {
+    return 'Everything that was shared with you: $link';
+  }
+
+  @override
+  String get contactOverviewLinkSend => 'Send overview link…';
+
+  @override
+  String get contactOverviewLinkWithdraw => 'Withdraw overview link';
+
+  @override
+  String overviewLinkHeading(String name) {
+    return 'Overview link for $name';
+  }
+
+  @override
+  String get overviewLinkOnce =>
+      'This link is shown only now. Sending it again makes a new one, and this one stops working.';
+
+  @override
+  String get overviewMessageSubject => 'Photos shared with you';
+
+  @override
+  String overviewMessageBody(String name, String link) {
+    return 'Hello $name,\n\nhere is everything that was shared with you:\n$link\n';
+  }
+
+  @override
+  String get overviewLinkWithdrawn => 'The overview link was withdrawn.';
+
+  @override
+  String contactOverviewIssued(String day) {
+    return 'overview link sent on $day';
+  }
+
+  @override
+  String contactOverviewOpened(String day) {
+    return 'overview link opened on $day';
+  }
+
+  @override
+  String get identifyAskOverviewAgain =>
+      'Ask a person who shared photos with you to send you your own link to this overview.';
 }

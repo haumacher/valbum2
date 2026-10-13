@@ -1035,6 +1035,7 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
           url: absoluteServerUrl(widget.client.dataUrl, recipient.url),
           album: _albumName,
           isWeb: widget.isWeb,
+          overview: sharedOverviewAddress(widget.client.dataUrl),
         ),
       const SizedBox(height: 16),
       Text(
@@ -1066,7 +1067,12 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
           style: Theme.of(context).textTheme.titleSmall),
       const SizedBox(height: 8),
       SelectableText(url, key: const Key("share-link-url")),
-      GroupSendLines(addresses: addresses, url: url, album: _albumName),
+      GroupSendLines(
+        addresses: addresses,
+        url: url,
+        album: _albumName,
+        overview: sharedOverviewAddress(widget.client.dataUrl),
+      ),
       Text(l10n.groupLinkNote, key: const Key("group-link-note")),
       if (without.isNotEmpty) ...[
         const SizedBox(height: 16),
@@ -1078,6 +1084,7 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
             url: absoluteServerUrl(widget.client.dataUrl, recipient.url),
             album: _albumName,
             isWeb: widget.isWeb,
+            overview: sharedOverviewAddress(widget.client.dataUrl),
           ),
       ],
     ];

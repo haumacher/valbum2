@@ -63,6 +63,9 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getSignInMethods() */
 	private static final String SIGN_IN_METHODS__PROP = "signInMethods";
 
+	/** @see #isOverview() */
+	private static final String OVERVIEW__PROP = "overview";
+
 	private String _mode = "";
 
 	private String _deviceName = "";
@@ -94,6 +97,8 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private int _inboxCount = 0;
 
 	private final java.util.List<de.haumacher.imageServer.shared.model.ProofMethod> _signInMethods = new java.util.ArrayList<>();
+
+	private boolean _overview = false;
 
 	/**
 	 * Creates a {@link AuthInfo} instance.
@@ -561,6 +566,27 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 		_signInMethods.remove(value);
 	}
 
+	/**
+	 * Whether the caller presented a contact's own overview link (issue #267) and is recognised as
+	 * that contact: the app leaves the link for the overview, <code>&lt;app base&gt;/shared/</code>.
+	 */
+	public final boolean isOverview() {
+		return _overview;
+	}
+
+	/**
+	 * @see #isOverview()
+	 */
+	public de.haumacher.imageServer.shared.model.AuthInfo setOverview(boolean value) {
+		internalSetOverview(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #isOverview()} without chain call utility. */
+	protected final void internalSetOverview(boolean value) {
+		_overview = value;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.AuthInfo readAuthInfo(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.AuthInfo result = new de.haumacher.imageServer.shared.model.AuthInfo();
@@ -620,6 +646,8 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 			x.writeTo(out);
 		}
 		out.endArray();
+		out.name(OVERVIEW__PROP);
+		out.value(isOverview());
 	}
 
 	@Override
@@ -655,6 +683,7 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 				in.endArray();
 			}
 			break;
+			case OVERVIEW__PROP: setOverview(in.nextBoolean()); break;
 			default: super.readField(in, field);
 		}
 	}

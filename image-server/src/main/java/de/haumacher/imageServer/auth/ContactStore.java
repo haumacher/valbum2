@@ -63,6 +63,17 @@ import java.util.regex.Pattern;
  *     "expires":"…","remember":true,"lastUsed":"…"}]}]}
  * </pre>
  *
+ * <p>
+ * Issue #267 adds, without a version bump because it is additive and written only where there is
+ * one, the contact's own link to the overview of everything shared with them, stored like the own
+ * token of a recipient: its hash, the hashes of the links it replaced, when it was issued and when
+ * it was first opened.
+ * </p>
+ *
+ * <pre>
+ *   "overview":{"tokenHash":"&lt;64 hex&gt;","voided":["&lt;64 hex&gt;"],"issued":"…","opened":""}
+ * </pre>
+ *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
 public class ContactStore implements SignInRegister {
@@ -260,6 +271,81 @@ public class ContactStore implements SignInRegister {
 		}
 	}
 
+	/**
+	 * A contact's own link to the overview of everything shared with them, see issue #267.
+	 *
+	 * <p>
+	 * Stored like the own token of a {@link ShareStore.Recipient}: its hash, never itself; the
+	 * hashes of the links it replaced, so that one of them is told it was replaced rather than that
+	 * nobody issued it; when it was issued; and when it was first opened &mdash; the first open
+	 * identifies the contact, exactly as a recipient's own link does.
+	 * </p>
+	 */
+	public static final class OverviewToken {
+
+		String _tokenHash;
+
+		final List<String> _voided = new ArrayList<>();
+
+		String _issued;
+
+		String _opened;
+
+		OverviewToken(String tokenHash, String issued, String opened) {
+			_tokenHash = tokenHash;
+			_issued = issued;
+			_opened = opened;
+		}
+
+		/** The hash of the current token, empty after a withdrawal. */
+		String getTokenHash() {
+			return _tokenHash;
+		}
+
+		/** When the current token was issued, empty after a withdrawal. */
+		public String getIssued() {
+			return _issued;
+		}
+
+		/** When the current token was first opened, empty while it never was. */
+		public String getOpened() {
+			return _opened;
+		}
+
+		/** Whether the current token was opened: it identifies nobody any more. */
+		public boolean isOpened() {
+			return !_opened.isEmpty();
+		}
+
+		/** Whether there is a current token at all. */
+		public boolean isLive() {
+			return !_tokenHash.isEmpty();
+		}
+	}
+
+	/** What a token is among the overview links of the contacts, see {@link ContactStore#matchOverview(String)}. */
+	public static final class OverviewMatch {
+
+		private final Contact _contact;
+
+		private final boolean _voided;
+
+		OverviewMatch(Contact contact, boolean voided) {
+			_contact = contact;
+			_voided = voided;
+		}
+
+		/** The contact whose overview link it is. */
+		public Contact getContact() {
+			return _contact;
+		}
+
+		/** Whether it is a token that was replaced or withdrawn. */
+		public boolean isVoided() {
+			return _voided;
+		}
+	}
+
 	public static final class Contact implements SignInHolder {
 
 		private final String _id;
@@ -284,6 +370,9 @@ public class ContactStore implements SignInRegister {
 
 		private SignIns _signIns = new SignIns();
 
+		/** The contact's own overview link, <code>null</code> while none was ever issued (issue #267). */
+		private OverviewToken _overview;
+
 		Contact(String id, String name, String displayName, String created, String createdBy, String firstSeen,
 				String lastSeen, String blocked) {
 			_id = id;
@@ -294,6 +383,14 @@ public class ContactStore implements SignInRegister {
 			_firstSeen = firstSeen;
 			_lastSeen = lastSeen;
 			_blocked = blocked;
+		}
+
+		/**
+		 * The contact's own link to the overview of everything shared with them, <code>null</code>
+		 * while none was ever issued, see issue #267.
+		 */
+		public OverviewToken getOverview() {
+			return _overview;
 		}
 
 		/** The id; an upload is attributed to {@link #getSubject()}. */
@@ -1035,11 +1132,27 @@ public class ContactStore implements SignInRegister {
 	 * @return How many sessions were ended.
 	 */
 	public synchronized int endSessionsOfLink(String link) throws IOException {
+		return endSessionsOfLink(link, java.util.Set.of());
+	}
+
+	/**
+	 * Ends the sessions opened through the given share link of every contact but the given ones,
+	 * see issue #267: a contact the space still admits elsewhere keeps their browsers, which simply
+	 * no longer open the deleted link.
+	 *
+	 * @param kept
+	 *        The ids of the contacts whose sessions stay.
+	 * @return How many sessions were ended.
+	 */
+	public synchronized int endSessionsOfLink(String link, java.util.Set<String> kept) throws IOException {
 		if (link == null || link.isEmpty()) {
 			return 0;
 		}
 		int ended = 0;
 		for (Contact contact : _contacts) {
+			if (kept.contains(contact.getId())) {
+				continue;
+			}
 			for (Iterator<Session> it = contact._sessions.iterator(); it.hasNext();) {
 				if (link.equals(it.next().getLink())) {
 					it.remove();
@@ -1163,6 +1276,111 @@ public class ContactStore implements SignInRegister {
 	}
 
 	/**
+	 * Issues the given contact their own link to the overview of everything shared with them, see
+	 * issue #267; the link they had before is void from then on.
+	 *
+	 * @return The token, answered exactly once and stored only as its hash; <code>null</code> if
+	 *         there is no such contact.
+	 */
+	public synchronized String issueOverview(String contactId) throws IOException {
+		Contact contact = get(contactId);
+		if (contact == null) {
+			return null;
+		}
+		byte[] bytes = new byte[TOKEN_BYTES];
+		_random.nextBytes(bytes);
+		String token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+		String now = Instant.now().toString();
+		OverviewToken overview = contact._overview;
+		if (overview == null) {
+			contact._overview = new OverviewToken(UserStore.hash(token), now, "");
+		} else {
+			if (overview.isLive()) {
+				overview._voided.add(overview._tokenHash);
+			}
+			overview._tokenHash = UserStore.hash(token);
+			overview._issued = now;
+			overview._opened = "";
+		}
+		store();
+		return token;
+	}
+
+	/**
+	 * Voids the given contact's overview link without issuing another, see issue #267.
+	 *
+	 * @return The contact, <code>null</code> if there is none.
+	 */
+	public synchronized Contact withdrawOverview(String contactId) throws IOException {
+		Contact contact = get(contactId);
+		if (contact == null) {
+			return null;
+		}
+		OverviewToken overview = contact._overview;
+		if (overview != null && overview.isLive()) {
+			overview._voided.add(overview._tokenHash);
+			overview._tokenHash = "";
+			overview._issued = "";
+			overview._opened = "";
+			store();
+		}
+		return contact;
+	}
+
+	/**
+	 * Whose overview link the given token is, current or voided, see issue #267.
+	 *
+	 * @return <code>null</code> if it is none this space issued.
+	 */
+	public synchronized OverviewMatch matchOverview(String token) {
+		if (token == null || token.isEmpty()) {
+			return null;
+		}
+		byte[] hash = UserStore.hash(token).getBytes(StandardCharsets.US_ASCII);
+		for (Contact contact : _contacts) {
+			OverviewToken overview = contact._overview;
+			if (overview == null) {
+				continue;
+			}
+			// Constant-time comparison: the hash of a guessed token must not be probed by timing.
+			if (!overview._tokenHash.isEmpty()
+				&& MessageDigest.isEqual(hash, overview._tokenHash.getBytes(StandardCharsets.US_ASCII))) {
+				return new OverviewMatch(contact, false);
+			}
+			for (String voided : overview._voided) {
+				if (MessageDigest.isEqual(hash, voided.getBytes(StandardCharsets.US_ASCII))) {
+					return new OverviewMatch(contact, true);
+				}
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Marks the given contact's current overview link as opened: it identifies nobody any more.
+	 *
+	 * @return Whether this call opened it; <code>false</code> if it was opened before, which is how
+	 *         only one of two concurrent first opens wins.
+	 */
+	public synchronized boolean openOverview(Contact contact) throws IOException {
+		OverviewToken overview = contact._overview;
+		if (overview == null || !overview.isLive() || overview.isOpened() || !_contacts.contains(contact)) {
+			return false;
+		}
+		overview._opened = Instant.now().toString();
+		store();
+		return true;
+	}
+
+	/** Takes back {@link #openOverview(Contact)}, for an identification that could not be finished. */
+	synchronized void reopenOverview(Contact contact) throws IOException {
+		if (contact._overview != null) {
+			contact._overview._opened = "";
+			store();
+		}
+	}
+
+	/**
 	 * Shuts the given contact out of the whole space, or lets them in again.
 	 *
 	 * <p>
@@ -1268,10 +1486,14 @@ public class ContactStore implements SignInRegister {
 		List<Address> addresses = new ArrayList<>();
 		List<Session> sessions = new ArrayList<>();
 		SignIns signIns = new SignIns();
+		OverviewToken overview = null;
 		in.beginObject();
 		while (in.hasNext()) {
 			String field = in.nextName();
 			switch (field) {
+				case "overview":
+					overview = readOverview(in);
+					break;
 				case "id":
 					id = in.nextString();
 					break;
@@ -1321,6 +1543,7 @@ public class ContactStore implements SignInRegister {
 		Contact contact = new Contact(id, name, displayName, created, createdBy, firstSeen, lastSeen, blocked);
 		contact._addresses.addAll(addresses);
 		contact._signIns = signIns;
+		contact._overview = overview;
 		Instant now = Instant.now();
 		for (Session session : sessions) {
 			// A credential that ran out is of no use to anybody; it is not carried on.
@@ -1329,6 +1552,37 @@ public class ContactStore implements SignInRegister {
 			}
 		}
 		return contact;
+	}
+
+	/** Reads a contact's overview link as {@link #writeContact} writes it, see issue #267. */
+	private static OverviewToken readOverview(JsonReader in) throws IOException {
+		OverviewToken result = new OverviewToken("", "", "");
+		in.beginObject();
+		while (in.hasNext()) {
+			switch (in.nextName()) {
+				case "tokenHash":
+					result._tokenHash = in.nextString();
+					break;
+				case "voided":
+					in.beginArray();
+					while (in.hasNext()) {
+						result._voided.add(in.nextString());
+					}
+					in.endArray();
+					break;
+				case "issued":
+					result._issued = in.nextString();
+					break;
+				case "opened":
+					result._opened = in.nextString();
+					break;
+				default:
+					in.skipValue();
+					break;
+			}
+		}
+		in.endObject();
+		return result;
 	}
 
 	/** Reads an address as {@link #writeAddress} writes it; a member's too, see {@link UserStore}. */
@@ -1494,6 +1748,25 @@ public class ContactStore implements SignInRegister {
 		out.endArray();
 		// Written only where there is one, so that a register without any reads as before.
 		contact._signIns.write(out);
+		OverviewToken overview = contact._overview;
+		if (overview != null) {
+			// The own overview link of issue #267, likewise only where one was ever issued.
+			out.name("overview");
+			out.beginObject();
+			out.name("tokenHash");
+			out.value(overview._tokenHash);
+			out.name("voided");
+			out.beginArray();
+			for (String voided : overview._voided) {
+				out.value(voided);
+			}
+			out.endArray();
+			out.name("issued");
+			out.value(overview._issued);
+			out.name("opened");
+			out.value(overview._opened);
+			out.endObject();
+		}
 		out.endObject();
 	}
 }

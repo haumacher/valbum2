@@ -619,6 +619,53 @@ public class AuthService {
 	/** What a link of a kind this build does not know is answered. */
 	public static final String LINK_TYPE_UNKNOWN = "This link is of a kind this server does not know.";
 
+	/**
+	 * The header the overview of everything shared with a contact (issue #267) sends instead of a
+	 * bearer: {@link #SHARED_ALL} for the overview itself, the id of one of its links for that link's
+	 * view. Beside it the contact credential ({@link #CONTACT_HEADER}) is what lets anybody in; a
+	 * request that carries a bearer is decided by its bearer, and this header is ignored.
+	 */
+	public static final String SHARED_HEADER = "X-VAlbum-Shared";
+
+	/** The value of {@link #SHARED_HEADER} naming the overview itself, never a link id. */
+	public static final String SHARED_ALL = "all";
+
+	/**
+	 * The path segment the application is served under for the overview of issue #267:
+	 * <code>&lt;context&gt;/shared/</code> is the overview, <code>&lt;context&gt;/shared/&lt;link id&gt;/</code>
+	 * one of its links (each below the space on a multi-space server).
+	 */
+	public static final String SHARED_SEGMENT = "shared";
+
+	/** What the overview asks a caller it does not recognise (issue #267). */
+	public static final String IDENTIFY_SHARED = "Confirm who you are to see everything that was shared with you.";
+
+	/** What a contact's own overview link is answered that was sent to somebody else (issue #267). */
+	public static final String OVERVIEW_NOT_YOURS =
+		"This link was sent to someone else. Confirm the address it was sent to, or open your own link.";
+
+	/**
+	 * What a link of the overview is answered that the caller may not open through it (issue #267):
+	 * deleted, never shared with them, or an open link they never opened; one sentence for all, so
+	 * that an id says nothing about a link that is none of the caller's business.
+	 */
+	public static final String SHARED_NOT_YOURS = "This album is no longer shared with you.";
+
+	/** What a member's device is answered at the overview (issue #267). */
+	public static final String SHARED_MEMBER =
+		"You are signed in as a member of this space: everything shared here is in the space itself.";
+
+	/** What a share link is answered at the overview (issue #267). */
+	public static final String SHARED_LINK_REFUSED =
+		"A link opens its own album only. Open the overview of everything shared with you and confirm who you are.";
+
+	/** What the overview itself is answered at every endpoint but its own (issue #267). */
+	public static final String OVERVIEW_ONLY =
+		"The overview of what is shared with you opens no album itself: open one of its albums.";
+
+	/** What the overview is answered on a server whose contacts are switched off (issue #267). */
+	public static final String SHARED_UNAVAILABLE = "Nothing is shared with anybody personally on this server.";
+
 	/** What <code>?action=identify</code> is answered where there is nothing to confirm (issue #198). */
 	public static final String IDENTIFY_NOTHING =
 		"There is nothing to confirm here: open the link you were sent to say who you are.";
@@ -644,13 +691,34 @@ public class AuthService {
 
 		private final ContactStore.Contact _contact;
 
+		private final ContactStore.OverviewToken _overview;
+
 		Identification(int status, String message, ShareStore.Link link, ShareStore.Recipient recipient,
 				ContactStore.Contact contact) {
+			this(status, message, link, recipient, contact, null);
+		}
+
+		Identification(int status, String message, ShareStore.Link link, ShareStore.Recipient recipient,
+				ContactStore.Contact contact, ContactStore.OverviewToken overview) {
 			_status = status;
 			_message = message;
 			_link = link;
 			_recipient = recipient;
 			_contact = contact;
+			_overview = overview;
+		}
+
+		/**
+		 * Whether it is the overview of issue #267 that asks, not a link: {@link #getLink()} is
+		 * <code>null</code>, and {@link #getContact()} names the contact of an own overview link.
+		 */
+		public boolean isShared() {
+			return _link == null;
+		}
+
+		/** The contact's own overview link that was presented, <code>null</code> for everything else (issue #267). */
+		public ContactStore.OverviewToken getOverview() {
+			return _overview;
 		}
 
 		/** The HTTP status to answer. */
@@ -663,7 +731,7 @@ public class AuthService {
 			return _message;
 		}
 
-		/** The link the caller presented. */
+		/** The link the caller presented, <code>null</code> at the overview of issue #267. */
 		public ShareStore.Link getLink() {
 			return _link;
 		}
@@ -680,6 +748,10 @@ public class AuthService {
 
 		/** Whether the presented token is a recipient's own link that was never opened. */
 		public boolean isFirstOpen() {
+			if (_overview != null) {
+				// A contact's own overview link identifies them like a recipient's own link (#267).
+				return !_overview.isOpened();
+			}
 			return _recipient != null && !_recipient.isOpened();
 		}
 	}
@@ -716,6 +788,9 @@ public class AuthService {
 		private ContactStore.Session _session;
 
 		private Identification _identification;
+
+		/** Whether this caller is at the overview of everything shared with a contact, see issue #267. */
+		private boolean _overview;
 
 		private Caller(User user, UserStore.Device device, boolean tokenPresented, String refusal,
 				ShareStore.Link share, String gone) {
@@ -830,7 +905,35 @@ public class AuthService {
 			Caller result =
 				new Caller(null, null, true, identification.getMessage(), identification.getLink(), null);
 			result._identification = identification;
+			result._overview = identification.isShared();
 			return result;
+		}
+
+		/**
+		 * A contact at the overview of everything shared with them, recognised by their credential
+		 * alone, see issue #267.
+		 *
+		 * <p>
+		 * No link: it opens nothing and may do nothing but list what is shared with the contact
+		 * (<code>?type=shared</code>) and look after the contact's own sessions and ways to sign in.
+		 * Each album of the overview is opened as a caller of its own link, see
+		 * {@link AuthService#caller(HttpServletRequest)}.
+		 * </p>
+		 */
+		static Caller overview(ContactStore.Contact contact, ContactStore.Session session) {
+			Caller result = new Caller(null, null, false, null, null, null);
+			result._contact = contact;
+			result._session = session;
+			result._overview = true;
+			return result;
+		}
+
+		/**
+		 * Whether this caller is at the overview of issue #267 rather than in a link: recognised
+		 * ({@link #getContact()}) or asked who they are ({@link #mustIdentify()}).
+		 */
+		public boolean isOverview() {
+			return _overview;
 		}
 
 		/** The contact this caller is, <code>null</code> for everybody but a session of a personal link. */
@@ -1294,7 +1397,8 @@ public class AuthService {
 	 *
 	 * <p>
 	 * Its record and the tokens of its recipients go ({@link ShareStore#delete(String)}), and the
-	 * contact sessions opened through it end; the contacts stay, and so does the attribution of what
+	 * contact sessions opened through it end where the space admits their contact nowhere else (see
+	 * {@link #endSessionsOf(ShareStore.Link)}); the contacts stay, and so does the attribution of what
 	 * was uploaded through it, which was copied at the upload (issue #53).
 	 * </p>
 	 *
@@ -1335,15 +1439,49 @@ public class AuthService {
 		return contact;
 	}
 
-	/** Ends the contact sessions opened through the given deleted link. */
+	/**
+	 * Ends the contact sessions opened through the given deleted link, of every contact the space
+	 * admits nowhere else, see issues #217 and #267.
+	 *
+	 * <p>
+	 * Issue #217 made a session one link's: deleting the link cut off whoever came in through it. With
+	 * the overview of issue #267 a session is the person's in the whole space, so it ends only where
+	 * the person has nothing else &mdash; no link the overview lists for them
+	 * ({@link #sharedWith(ContactStore.Contact)}: addressed to them, or an open link they opened, live
+	 * and not shut to them) and no live overview link of their own. Otherwise it stays, and simply no
+	 * longer opens the deleted link, which is gone for everybody. An open link nobody named them on
+	 * and they never opened does not count: it admits everybody, and would keep everybody.
+	 * </p>
+	 */
 	private void endSessionsOf(ShareStore.Link link) throws IOException {
 		if (_contacts == null) {
 			return;
 		}
-		int ended = _contacts.endSessionsOfLink(link.getId());
+		java.util.Set<String> kept = new java.util.HashSet<>();
+		for (ContactStore.Contact contact : _contacts.getContacts()) {
+			if (admittedElsewhere(contact)) {
+				kept.add(contact.getId());
+			}
+		}
+		int ended = _contacts.endSessionsOfLink(link.getId(), kept);
 		if (ended > 0) {
 			LOG.info("Ended " + ended + " contact session(s) opened through the deleted link " + link + ".");
 		}
+	}
+
+	/**
+	 * Whether the space still admits the given contact somewhere, see {@link #endSessionsOf}: a link
+	 * of their overview, or a live overview link of their own (issue #267).
+	 */
+	private boolean admittedElsewhere(ContactStore.Contact contact) {
+		if (contact.isBlocked()) {
+			return false;
+		}
+		ContactStore.OverviewToken overview = contact.getOverview();
+		if (overview != null && overview.isLive()) {
+			return true;
+		}
+		return !sharedWith(contact).isEmpty();
 	}
 
 	/** The device codes of this server, <code>null</code> while {@link AuthMode#OFF}. */
@@ -1391,6 +1529,11 @@ public class AuthService {
 		}
 		String token = token(request);
 		if (token == null) {
+			String shared = request.getHeader(SHARED_HEADER);
+			if (shared != null) {
+				// The overview of issue #267, or one of its links: the contact credential alone.
+				return sharedCaller(shared.trim(), request.getHeader(CONTACT_HEADER));
+			}
 			return Caller.ANONYMOUS;
 		}
 		Login login = _users.lookup(token);
@@ -1399,6 +1542,11 @@ public class AuthService {
 			ShareStore.Match match = _shares.match(token);
 			ShareStore.Link share = match == null ? null : match.getLink();
 			if (share == null) {
+				// Nor a share link; it may still be a contact's own overview link of issue #267.
+				ContactStore.OverviewMatch overview = _contacts.matchOverview(token);
+				if (overview != null) {
+					return overviewCaller(overview, request.getHeader(CONTACT_HEADER));
+				}
 				// Nor a share link; it may still be an invitation of issue #52, which since issue
 				// #89 is a code of the device code store. The share store is asked first because a
 				// share token is a session that reaches every endpoint, while an invitation is
@@ -1518,6 +1666,150 @@ public class AuthService {
 	}
 
 	/**
+	 * Identifies a caller of the overview of everything shared with a contact, or of one of its
+	 * links, by the contact credential alone, see issue #267.
+	 *
+	 * <p>
+	 * Without a credential this space recognises, the overview asks who they are (and so does each
+	 * of its links): the sign-in offer of a link, which names nobody. With one, {@link #SHARED_ALL}
+	 * is the overview itself, and a link id is that link exactly as its own address would open it
+	 * for the contact &mdash; its rights, its clearance, its rating floor and label, confined to its
+	 * folder &mdash; where the overview lists it ({@link #sharedWith(ContactStore.Contact)}). The
+	 * open counts as an open of the link itself: a recipient's own link is opened by it and the
+	 * visit is noted for the link's owner. A link the contact may not open this way is answered
+	 * {@link #SHARED_NOT_YOURS} whatever the reason, so that an id is no oracle; an expired link
+	 * and a shut-out contact are told so, as on the link's own address, where the link was theirs.
+	 * </p>
+	 *
+	 * @param value
+	 *        The value of {@link #SHARED_HEADER}.
+	 * @param credential
+	 *        The contact credential beside it, <code>null</code> for none.
+	 */
+	private Caller sharedCaller(String value, String credential) {
+		ContactStore.Recognized recognized = _contacts.recognize(credential);
+		if (recognized == null) {
+			return sharedNobody();
+		}
+		ContactStore.Contact contact = recognized.getContact();
+		if (SHARED_ALL.equals(value)) {
+			return Caller.overview(contact, recognized.getSession());
+		}
+		ShareStore.Link link = _shares.get(value);
+		String id = contact.getId();
+		if (link == null || !link.isPersonal() || (link.recipient(id) == null && link.visitOf(id) == null)) {
+			return Caller.shareGone(link, SHARED_NOT_YOURS);
+		}
+		if (link.isExpired(java.time.Instant.now())) {
+			return Caller.shareGone(link, LINK_EXPIRED);
+		}
+		if (link.isShutOut(id)) {
+			return Caller.shareGone(link, CONTACT_SHUT_OUT);
+		}
+		if (!link.admits(id)) {
+			return Caller.shareGone(link, SHARED_NOT_YOURS);
+		}
+		ShareStore.Recipient recipient = link.recipient(id);
+		try {
+			if (recipient != null && !recipient.isOpened()) {
+				// Opened through the overview is opened: the sharer sees it, and the recipient's own
+				// token identifies nobody else from now on, as after an open in a browser that knew
+				// them (issue #267).
+				_shares.open(link, recipient);
+			}
+			_shares.visited(link, id);
+		} catch (IOException ex) {
+			LOG.log(java.util.logging.Level.WARNING,
+				"Cannot note the open of the link " + link + " by " + contact + ": " + ex.getMessage());
+		}
+		return Caller.contact(link, contact, recognized.getSession());
+	}
+
+	/** Whoever the overview of issue #267 does not recognise: asked who they are, naming nobody. */
+	public Caller sharedNobody() {
+		return Caller.identify(
+			new Identification(HttpServletResponse.SC_UNAUTHORIZED, IDENTIFY_SHARED, null, null, null));
+	}
+
+	/**
+	 * Identifies a caller presenting a contact's own overview link, see issue #267: the rules of a
+	 * recipient's own link ({@link #personalCaller}), with the overview in place of the link.
+	 *
+	 * <ul>
+	 * <li>A token that was replaced or withdrawn is gone, and so is the link of a contact shut out
+	 * of the space.</li>
+	 * <li>Its contact's credential lets them in: the overview, whose token is opened by it.</li>
+	 * <li>A token never opened identifies its contact (<code>?action=identify</code>), whoever else
+	 * this browser knows: on the family tablet the next person opening their own link is the next
+	 * person.</li>
+	 * <li>Anybody else is asked who they are: without a credential the contact's masked addresses,
+	 * with the credential of somebody else {@link #OVERVIEW_NOT_YOURS}.</li>
+	 * </ul>
+	 */
+	private Caller overviewCaller(ContactStore.OverviewMatch match, String credential) {
+		ContactStore.Contact contact = match.getContact();
+		if (match.isVoided()) {
+			return Caller.shareGone(null, RECIPIENT_LINK_REPLACED);
+		}
+		if (contact.isBlocked()) {
+			return Caller.shareGone(null, CONTACT_SHUT_OUT);
+		}
+		ContactStore.OverviewToken token = contact.getOverview();
+		ContactStore.Recognized recognized = _contacts.recognize(credential);
+		if (recognized != null && recognized.getContact().getId().equals(contact.getId())) {
+			if (!token.isOpened()) {
+				try {
+					_contacts.openOverview(contact);
+				} catch (IOException ex) {
+					LOG.log(java.util.logging.Level.WARNING,
+						"Cannot mark the overview link of " + contact + " as opened: " + ex.getMessage());
+				}
+			}
+			return Caller.overview(contact, recognized.getSession());
+		}
+		if (!token.isOpened()) {
+			return Caller.identify(new Identification(HttpServletResponse.SC_UNAUTHORIZED, IDENTIFY_FIRST, null, null,
+				contact, token));
+		}
+		if (recognized != null) {
+			return Caller.identify(new Identification(HttpServletResponse.SC_FORBIDDEN, OVERVIEW_NOT_YOURS, null, null,
+				contact, token));
+		}
+		return Caller.identify(
+			new Identification(HttpServletResponse.SC_UNAUTHORIZED, IDENTIFY_REQUIRED, null, null, contact, token));
+	}
+
+	/**
+	 * The links the overview of issue #267 lists for the given contact, the most recently shared
+	 * first: every personal link addressed to them and every open personal link they opened, that
+	 * neither expired nor shuts them out. Each is a link of its own; nothing is merged.
+	 */
+	public java.util.List<ShareStore.Link> sharedWith(ContactStore.Contact contact) {
+		java.util.List<ShareStore.Link> result = new java.util.ArrayList<>();
+		if (_shares == null || contact == null || contact.isBlocked()) {
+			return result;
+		}
+		String id = contact.getId();
+		java.time.Instant now = java.time.Instant.now();
+		for (ShareStore.Link link : _shares.getLinks()) {
+			if (link.isPersonal() && !link.isExpired(now) && link.admits(id)
+				&& (link.recipient(id) != null || link.visitOf(id) != null)) {
+				result.add(link);
+			}
+		}
+		java.util.Collections.reverse(result);
+		return result;
+	}
+
+	/**
+	 * The caller one of the given contact's links answers as, without noting anything: what the
+	 * overview of issue #267 asks the link's folder with, to show it as the link itself would.
+	 */
+	public Caller linkCaller(ShareStore.Link link, ContactStore.Contact contact, ContactStore.Session session) {
+		return Caller.contact(link, contact, session);
+	}
+
+	/**
 	 * The first open of a recipient's own link: it identifies them, see issue #198.
 	 *
 	 * <p>
@@ -1540,6 +1832,10 @@ public class AuthService {
 			}
 			throw new Refused(HttpServletResponse.SC_BAD_REQUEST, IDENTIFY_NOTHING);
 		}
+		ContactStore.OverviewToken overview = identification.getOverview();
+		if (overview != null) {
+			return identifyOverview(identification.getContact(), remember, displayName);
+		}
 		ShareStore.Link link = identification.getLink();
 		ShareStore.Recipient recipient = identification.getRecipient();
 		synchronized (_identifyLock) {
@@ -1557,6 +1853,27 @@ public class AuthService {
 			} catch (IOException ex) {
 				// No credential, no first open: the link stays the recipient's to open.
 				_shares.reopen(recipient);
+				throw ex;
+			}
+		}
+	}
+
+	/** The first open of a contact's own overview link, see {@link #identify} and issue #267. */
+	private ContactStore.Issued identifyOverview(ContactStore.Contact contact, boolean remember, String displayName)
+			throws Refused, IOException {
+		synchronized (_identifyLock) {
+			if (!_contacts.openOverview(contact)) {
+				throw new Refused(HttpServletResponse.SC_UNAUTHORIZED, IDENTIFY_REQUIRED);
+			}
+			try {
+				// Opened through no link: the session ends with none of them (issue #217).
+				ContactStore.Issued issued = _contacts.issue(contact.getId(), "", remember, displayName);
+				if (issued == null) {
+					throw new Refused(HttpServletResponse.SC_GONE, RECIPIENT_GONE);
+				}
+				return issued;
+			} catch (IOException ex) {
+				_contacts.reopenOverview(contact);
 				throw ex;
 			}
 		}
@@ -1715,7 +2032,7 @@ public class AuthService {
 
 	/** Whether the given caller may read. */
 	public boolean readAllowed(Caller caller) {
-		if (caller.hasInvalidToken()) {
+		if (caller.hasInvalidToken() || caller.isOverview()) {
 			return false;
 		}
 		if (caller.isShareLink()) {
@@ -1729,7 +2046,7 @@ public class AuthService {
 
 	/** Whether the given caller may write. */
 	public boolean writeAllowed(Caller caller) {
-		if (caller.hasInvalidToken()) {
+		if (caller.hasInvalidToken() || caller.isOverview()) {
 			return false;
 		}
 		if (_mode == AuthMode.OFF) {
@@ -1803,7 +2120,8 @@ public class AuthService {
 		if (_mode == AuthMode.OFF) {
 			return Rights.ALL;
 		}
-		if (caller.hasInvalidToken() || caller.isShareGone() || caller.mustIdentify()) {
+		if (caller.hasInvalidToken() || caller.isShareGone() || caller.mustIdentify() || caller.isOverview()) {
+			// The overview of issue #267 opens nothing itself; each of its albums is its link.
 			return Rights.NONE;
 		}
 		if (caller.isShareLink()) {
@@ -2624,6 +2942,10 @@ public class AuthService {
 				.setNote(invited == null ? "" : invited.getNote())
 				.setRecipient(invited == null ? "" : invited.getRecipient())
 				.setExpires(invitation.getExpires()));
+		}
+		if (caller.isOverview() && caller.getContact() != null) {
+			// A contact's own overview link, recognised: the app leaves it for the overview (#267).
+			result.setOverview(true);
 		}
 		if (!caller.isShareLink() || caller.isShareGone() || basePath == null) {
 			return result;

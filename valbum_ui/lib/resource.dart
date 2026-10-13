@@ -3633,6 +3633,10 @@ class AuthInfo extends _JsonObject {
 	///  <code>oidc:&lt;provider&gt;</code> per provider of OpenID Connect.
 	List<ProofMethod> signInMethods;
 
+	///  Whether the caller presented a contact's own overview link (issue #267) and is recognised as
+	///  that contact: the app leaves the link for the overview, <code>&lt;app base&gt;/shared/</code>.
+	bool overview;
+
 	/// Creates a AuthInfo.
 	AuthInfo({
 			this.mode = "", 
@@ -3651,6 +3655,7 @@ class AuthInfo extends _JsonObject {
 			this.inbox = "", 
 			this.inboxCount = 0, 
 			this.signInMethods = const [], 
+			this.overview = false, 
 	});
 
 	/// Parses a AuthInfo from a string source.
@@ -3753,6 +3758,10 @@ class AuthInfo extends _JsonObject {
 				}
 				break;
 			}
+			case "overview": {
+				overview = json.expectBool();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -3822,6 +3831,9 @@ class AuthInfo extends _JsonObject {
 			_element.writeContent(json);
 		}
 		json.endArray();
+
+		json.addKey("overview");
+		json.addBool(overview);
 	}
 
 }
@@ -4381,6 +4393,239 @@ class ContactInfo extends _JsonObject {
 
 		json.addKey("displayName");
 		json.addString(displayName);
+	}
+
+}
+
+///  Everything shared with a contact in this space, the answer of <code>&lt;data&gt;/?type=shared</code>,
+///  see issue #267.
+/// 
+///  <p>
+///  Asked by the overview at <code>&lt;app base&gt;/shared/</code> with the contact credential alone
+///  (<code>X-VAlbum-Contact</code>, beside <code>X-VAlbum-Shared: all</code> and no bearer). One
+///  {@link SharedAlbum} per link the contact may open: a personal link addressed to them, and an open
+///  personal link they opened &mdash; neither expired, deleted nor shut to them. Rights are never
+///  merged: two links on the same or nested folders are two albums.
+///  </p>
+class SharedWithYou extends _JsonObject {
+	///  Who the server takes the caller to be.
+	ContactInfo? contact;
+
+	///  The albums, the most recently shared first.
+	List<SharedAlbum> albums;
+
+	///  On how many other browsers the contact is signed in, see {@link ShareInfo#otherSessions}.
+	int otherSessions;
+
+	///  How the contact may be recognised on another browser, see {@link ShareInfo#signIns}.
+	ContactSignIns? signIns;
+
+	/// Creates a SharedWithYou.
+	SharedWithYou({
+			this.contact, 
+			this.albums = const [], 
+			this.otherSessions = 0, 
+			this.signIns, 
+	});
+
+	/// Parses a SharedWithYou from a string source.
+	static SharedWithYou? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a SharedWithYou instance from the given reader.
+	static SharedWithYou read(JsonReader json) {
+		SharedWithYou result = SharedWithYou();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "SharedWithYou";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "contact": {
+				contact = json.tryNull() ? null : ContactInfo.read(json);
+				break;
+			}
+			case "albums": {
+				json.expectArray();
+				albums = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = SharedAlbum.read(json);
+						if (value != null) {
+							albums.add(value);
+						}
+					}
+				}
+				break;
+			}
+			case "otherSessions": {
+				otherSessions = json.expectInt();
+				break;
+			}
+			case "signIns": {
+				signIns = json.tryNull() ? null : ContactSignIns.read(json);
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		var _contact = contact;
+		if (_contact != null) {
+			json.addKey("contact");
+			_contact.writeContent(json);
+		}
+
+		json.addKey("albums");
+		json.startArray();
+		for (var _element in albums) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+
+		json.addKey("otherSessions");
+		json.addNumber(otherSessions);
+
+		var _signIns = signIns;
+		if (_signIns != null) {
+			json.addKey("signIns");
+			_signIns.writeContent(json);
+		}
+	}
+
+}
+
+///  One link of {@link SharedWithYou}: what the link itself shows of its folder, see issue #267.
+/// 
+///  <p>
+///  Never a token: the link is opened through the contact credential, at
+///  <code>&lt;app base&gt;/shared/&lt;link&gt;/</code>, whose requests carry
+///  <code>X-VAlbum-Shared: &lt;link&gt;</code> beside the credential, and everything below is exactly
+///  that link's view.
+///  </p>
+class SharedAlbum extends _JsonObject {
+	///  The id of the link.
+	String link;
+
+	///  The shared folder's tile as the link itself sees it: its title, and its picture as filtered
+	///  for the link (privacy, rating floor, label), whose {@link ThumbnailInfo#image} is relative to
+	///  the shared folder, the root of the link's view; <code>null</code> where the folder is gone.
+	FolderInfo? folder;
+
+	///  The member who shared it.
+	String sharedBy;
+
+	///  When the link expires, an ISO-8601 instant; empty if it never does.
+	String expires;
+
+	///  What the link allows: <code>view</code>, <code>download</code>, <code>contribute</code>.
+	List<RightName> rights;
+
+	///  When the link was shared, an ISO-8601 instant.
+	String created;
+
+	/// Creates a SharedAlbum.
+	SharedAlbum({
+			this.link = "", 
+			this.folder, 
+			this.sharedBy = "", 
+			this.expires = "", 
+			this.rights = const [], 
+			this.created = "", 
+	});
+
+	/// Parses a SharedAlbum from a string source.
+	static SharedAlbum? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a SharedAlbum instance from the given reader.
+	static SharedAlbum read(JsonReader json) {
+		SharedAlbum result = SharedAlbum();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "SharedAlbum";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "link": {
+				link = json.expectString();
+				break;
+			}
+			case "folder": {
+				folder = json.tryNull() ? null : FolderInfo.read(json);
+				break;
+			}
+			case "sharedBy": {
+				sharedBy = json.expectString();
+				break;
+			}
+			case "expires": {
+				expires = json.expectString();
+				break;
+			}
+			case "rights": {
+				json.expectArray();
+				rights = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = RightName.read(json);
+						if (value != null) {
+							rights.add(value);
+						}
+					}
+				}
+				break;
+			}
+			case "created": {
+				created = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("link");
+		json.addString(link);
+
+		var _folder = folder;
+		if (_folder != null) {
+			json.addKey("folder");
+			_folder.writeContent(json);
+		}
+
+		json.addKey("sharedBy");
+		json.addString(sharedBy);
+
+		json.addKey("expires");
+		json.addString(expires);
+
+		json.addKey("rights");
+		json.startArray();
+		for (var _element in rights) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+
+		json.addKey("created");
+		json.addString(created);
 	}
 
 }
@@ -8262,6 +8507,14 @@ class Contact extends _JsonObject {
 	///  The contact's passkeys (issue #204), in the order they were registered.
 	List<ContactPasskey> passkeys;
 
+	///  When the contact's own overview link was issued (issue #267), an ISO-8601 instant; empty
+	///  while they have none. Never the token, which is answered once by
+	///  <code>?action=overview-link</code>.
+	String overviewIssued;
+
+	///  When the contact's current overview link was first opened, empty while it never was (issue #267).
+	String overviewOpened;
+
 	/// Creates a Contact.
 	Contact({
 			this.id = "", 
@@ -8277,6 +8530,8 @@ class Contact extends _JsonObject {
 			this.uploads = 0, 
 			this.authenticator = "", 
 			this.passkeys = const [], 
+			this.overviewIssued = "", 
+			this.overviewOpened = "", 
 	});
 
 	/// Parses a Contact from a string source.
@@ -8376,6 +8631,14 @@ class Contact extends _JsonObject {
 				}
 				break;
 			}
+			case "overviewIssued": {
+				overviewIssued = json.expectString();
+				break;
+			}
+			case "overviewOpened": {
+				overviewOpened = json.expectString();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -8434,6 +8697,136 @@ class Contact extends _JsonObject {
 			_element.writeContent(json);
 		}
 		json.endArray();
+
+		json.addKey("overviewIssued");
+		json.addString(overviewIssued);
+
+		json.addKey("overviewOpened");
+		json.addString(overviewOpened);
+	}
+
+}
+
+///  Issuing a contact their own link to the overview of everything shared with them,
+///  <code>&lt;data&gt;/?action=overview-link</code>, see issue #267.
+/// 
+///  <p>
+///  Each issue voids the contact's earlier overview link; <code>withdraw</code> voids it without a
+///  new one. Answered by an {@link OverviewLink}.
+///  </p>
+class OverviewLinkRequest extends _JsonObject {
+	///  The id of the contact.
+	String contact;
+
+	///  Whether to void the contact's overview link without issuing a new one.
+	bool withdraw;
+
+	/// Creates a OverviewLinkRequest.
+	OverviewLinkRequest({
+			this.contact = "", 
+			this.withdraw = false, 
+	});
+
+	/// Parses a OverviewLinkRequest from a string source.
+	static OverviewLinkRequest? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a OverviewLinkRequest instance from the given reader.
+	static OverviewLinkRequest read(JsonReader json) {
+		OverviewLinkRequest result = OverviewLinkRequest();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "OverviewLinkRequest";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "contact": {
+				contact = json.expectString();
+				break;
+			}
+			case "withdraw": {
+				withdraw = json.expectBool();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("contact");
+		json.addString(contact);
+
+		json.addKey("withdraw");
+		json.addBool(withdraw);
+	}
+
+}
+
+///  The answer of <code>?action=overview-link</code>, see {@link OverviewLinkRequest} and issue #267.
+class OverviewLink extends _JsonObject {
+	///  The contact's new overview link, server-relative (<code>&lt;context&gt;/s/&lt;token&gt;/</code>),
+	///  answered exactly once; empty after a withdrawal.
+	String url;
+
+	///  The contact as the register now holds them.
+	Contact? contact;
+
+	/// Creates a OverviewLink.
+	OverviewLink({
+			this.url = "", 
+			this.contact, 
+	});
+
+	/// Parses a OverviewLink from a string source.
+	static OverviewLink? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a OverviewLink instance from the given reader.
+	static OverviewLink read(JsonReader json) {
+		OverviewLink result = OverviewLink();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "OverviewLink";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "url": {
+				url = json.expectString();
+				break;
+			}
+			case "contact": {
+				contact = json.tryNull() ? null : Contact.read(json);
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("url");
+		json.addString(url);
+
+		var _contact = contact;
+		if (_contact != null) {
+			json.addKey("contact");
+			_contact.writeContent(json);
+		}
 	}
 
 }
@@ -9253,6 +9646,12 @@ class IdentifyRequired extends _JsonObject {
 	///  <code>addresses</code> stays empty here, because naming them would reveal the group.
 	bool group;
 
+	///  Whether it is the overview of everything shared with the caller that asks who they are, not a
+	///  link, see issue #267: {@link #title} and {@link #sharedBy} are empty. With a {@link #contact}
+	///  it is that contact's own overview link; without one, whoever proves an address, a passkey or
+	///  an authenticator app of a contact of the space (or of a member, who is signed in as such).
+	bool shared;
+
 	/// Creates a IdentifyRequired.
 	IdentifyRequired({
 			this.firstOpen = false, 
@@ -9263,6 +9662,7 @@ class IdentifyRequired extends _JsonObject {
 			this.title = "", 
 			this.sharedBy = "", 
 			this.group = false, 
+			this.shared = false, 
 	});
 
 	/// Parses a IdentifyRequired from a string source.
@@ -9333,6 +9733,10 @@ class IdentifyRequired extends _JsonObject {
 				group = json.expectBool();
 				break;
 			}
+			case "shared": {
+				shared = json.expectBool();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -9375,6 +9779,9 @@ class IdentifyRequired extends _JsonObject {
 
 		json.addKey("group");
 		json.addBool(group);
+
+		json.addKey("shared");
+		json.addBool(shared);
 	}
 
 }

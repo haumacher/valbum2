@@ -62,6 +62,12 @@ public class Contact extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getPasskeys() */
 	private static final String PASSKEYS__PROP = "passkeys";
 
+	/** @see #getOverviewIssued() */
+	private static final String OVERVIEW_ISSUED__PROP = "overviewIssued";
+
+	/** @see #getOverviewOpened() */
+	private static final String OVERVIEW_OPENED__PROP = "overviewOpened";
+
 	private String _id = "";
 
 	private String _name = "";
@@ -87,6 +93,10 @@ public class Contact extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private String _authenticator = "";
 
 	private final java.util.List<de.haumacher.imageServer.shared.model.ContactPasskey> _passkeys = new java.util.ArrayList<>();
+
+	private String _overviewIssued = "";
+
+	private String _overviewOpened = "";
 
 	/**
 	 * Creates a {@link Contact} instance.
@@ -427,6 +437,48 @@ public class Contact extends de.haumacher.msgbuf.data.AbstractDataObject {
 		_passkeys.remove(value);
 	}
 
+	/**
+	 * When the contact's own overview link was issued (issue #267), an ISO-8601 instant; empty
+	 * while they have none. Never the token, which is answered once by
+	 * <code>?action=overview-link</code>.
+	 */
+	public final String getOverviewIssued() {
+		return _overviewIssued;
+	}
+
+	/**
+	 * @see #getOverviewIssued()
+	 */
+	public de.haumacher.imageServer.shared.model.Contact setOverviewIssued(String value) {
+		internalSetOverviewIssued(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getOverviewIssued()} without chain call utility. */
+	protected final void internalSetOverviewIssued(String value) {
+		_overviewIssued = value;
+	}
+
+	/**
+	 * When the contact's current overview link was first opened, empty while it never was (issue #267).
+	 */
+	public final String getOverviewOpened() {
+		return _overviewOpened;
+	}
+
+	/**
+	 * @see #getOverviewOpened()
+	 */
+	public de.haumacher.imageServer.shared.model.Contact setOverviewOpened(String value) {
+		internalSetOverviewOpened(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getOverviewOpened()} without chain call utility. */
+	protected final void internalSetOverviewOpened(String value) {
+		_overviewOpened = value;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.Contact readContact(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.Contact result = new de.haumacher.imageServer.shared.model.Contact();
@@ -480,6 +532,10 @@ public class Contact extends de.haumacher.msgbuf.data.AbstractDataObject {
 			x.writeTo(out);
 		}
 		out.endArray();
+		out.name(OVERVIEW_ISSUED__PROP);
+		out.value(getOverviewIssued());
+		out.name(OVERVIEW_OPENED__PROP);
+		out.value(getOverviewOpened());
 	}
 
 	@Override
@@ -519,6 +575,8 @@ public class Contact extends de.haumacher.msgbuf.data.AbstractDataObject {
 				in.endArray();
 			}
 			break;
+			case OVERVIEW_ISSUED__PROP: setOverviewIssued(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case OVERVIEW_OPENED__PROP: setOverviewOpened(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			default: super.readField(in, field);
 		}
 	}

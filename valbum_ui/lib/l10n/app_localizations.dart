@@ -6218,6 +6218,96 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'This album is still being prepared. The photos the server has not read yet appear here as it reads them.'**
   String get albumStillPreparing;
+
+  /// Title of the overview of every album shared with a contact (issue #267), and the menu entry in every link view leading to it.
+  ///
+  /// In en, this message translates to:
+  /// **'All shared with you'**
+  String get sharedWithYouTitle;
+
+  /// The overview of what is shared with a contact (issue #267) when no link is open to them.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing is shared with you here at the moment.'**
+  String get sharedWithYouEmpty;
+
+  /// Under the title of an album in the overview of what is shared with a contact (issue #267): who shared it.
+  ///
+  /// In en, this message translates to:
+  /// **'from {name}'**
+  String sharedAlbumFrom(String name);
+
+  /// The sign-in card of the overview of what is shared with a contact (issue #267), shown to a browser that is not recognised yet.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm the e-mail address the photos were shared with to see everything that was shared with you.'**
+  String get identifySharedIntro;
+
+  /// One line appended to the message carrying a personal link (issue #267): the address of the overview of everything shared with the recipient.
+  ///
+  /// In en, this message translates to:
+  /// **'Everything that was shared with you: {link}'**
+  String shareMessageOverviewLine(String link);
+
+  /// Menu entry on a contact (issue #267): issue the contact their own link to the overview of everything shared with them, and send it.
+  ///
+  /// In en, this message translates to:
+  /// **'Send overview link…'**
+  String get contactOverviewLinkSend;
+
+  /// Menu entry on a contact (issue #267): void the contact's link to the overview of everything shared with them.
+  ///
+  /// In en, this message translates to:
+  /// **'Withdraw overview link'**
+  String get contactOverviewLinkWithdraw;
+
+  /// Title of the dialog showing a contact's new link to the overview of everything shared with them (issue #267).
+  ///
+  /// In en, this message translates to:
+  /// **'Overview link for {name}'**
+  String overviewLinkHeading(String name);
+
+  /// Note in the dialog of a contact's new overview link (issue #267).
+  ///
+  /// In en, this message translates to:
+  /// **'This link is shown only now. Sending it again makes a new one, and this one stops working.'**
+  String get overviewLinkOnce;
+
+  /// Subject of the message carrying a contact's overview link (issue #267).
+  ///
+  /// In en, this message translates to:
+  /// **'Photos shared with you'**
+  String get overviewMessageSubject;
+
+  /// Default text of the message carrying a contact's overview link (issue #267); the sharer edits it in their own app. Keep the line breaks.
+  ///
+  /// In en, this message translates to:
+  /// **'Hello {name},\n\nhere is everything that was shared with you:\n{link}\n'**
+  String overviewMessageBody(String name, String link);
+
+  /// Confirmation after a contact's overview link was withdrawn (issue #267).
+  ///
+  /// In en, this message translates to:
+  /// **'The overview link was withdrawn.'**
+  String get overviewLinkWithdrawn;
+
+  /// Part of the line under a contact (issue #267): when their overview link was issued.
+  ///
+  /// In en, this message translates to:
+  /// **'overview link sent on {day}'**
+  String contactOverviewIssued(String day);
+
+  /// Part of the line under a contact (issue #267): when their overview link was first opened.
+  ///
+  /// In en, this message translates to:
+  /// **'overview link opened on {day}'**
+  String contactOverviewOpened(String day);
+
+  /// The sign-in card of the overview of everything shared with a contact (issue #267) when the server offers no way to confirm who the visitor is: the one way left.
+  ///
+  /// In en, this message translates to:
+  /// **'Ask a person who shared photos with you to send you your own link to this overview.'**
+  String get identifyAskOverviewAgain;
 }
 
 class _AppLocalizationsDelegate

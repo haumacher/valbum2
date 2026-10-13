@@ -194,6 +194,57 @@ public class TestResourceServlet extends TestCase {
 			other.body());
 	}
 
+	// --- A base without a token, the overview of issue #267. ---
+
+	public void testABarePrefixIsABaseOfItsOwn() throws Exception {
+		for (String entry : new String[] { "/shared/", "/shared" }) {
+			FakeResponse response = bare(entry, null);
+			assertEquals(HttpServletResponse.SC_OK, response.status());
+			assertTrue(response.body(), response.body().contains("<base href=\"" + CONTEXT + "/shared/\">"));
+		}
+	}
+
+	public void testTheFilesOfABareBaseAreTheApplicationsOwn() throws Exception {
+		FakeResponse response = bare("/shared/main.dart.js", null);
+		assertEquals(SCRIPT, response.body());
+	}
+
+	public void testBelowABarePrefixATokenIsASessionBase() throws Exception {
+		FakeResponse response = bare("/shared/abc123/", null);
+		assertEquals(HttpServletResponse.SC_OK, response.status());
+		assertTrue(response.body(), response.body().contains("<base href=\"" + CONTEXT + "/shared/abc123/\">"));
+		assertEquals(SCRIPT, bare("/shared/abc123/main.dart.js", null).body());
+	}
+
+	public void testABareBaseInASpace() throws Exception {
+		FakeResponse response = bare("/alice/shared/", java.util.Set.of("alice"));
+		assertTrue(response.body(), response.body().contains("<base href=\"" + CONTEXT + "/alice/shared/\">"));
+		FakeResponse session = bare("/alice/shared/abc123/", java.util.Set.of("alice"));
+		assertTrue(session.body(), session.body().contains("<base href=\"" + CONTEXT + "/alice/shared/abc123/\">"));
+	}
+
+	public void testAHookIsAskedWithAnEmptyTokenAtABareBase() throws Exception {
+		ResourceServlet servlet = servlet("s", "shared");
+		servlet.setBarePrefixes("shared");
+		StringBuilder asked = new StringBuilder();
+		servlet.setPageDecorator((request, html, appBase, prefix, token) -> {
+			asked.append(prefix).append(":").append(token).append(";");
+			return html;
+		});
+		servlet.doGet(request("/shared/"), new FakeResponse().response());
+		servlet.doGet(request("/shared/abc/"), new FakeResponse().response());
+		assertEquals("shared:;shared:abc;", asked.toString());
+	}
+
+	private FakeResponse bare(String pathInfo, java.util.Set<String> spaces) throws Exception {
+		ResourceServlet servlet = servlet("s", "i", "shared");
+		servlet.setBarePrefixes("shared");
+		servlet.setBaseSegments(spaces);
+		FakeResponse response = new FakeResponse();
+		servlet.doGet(request(pathInfo), response.response());
+		return response;
+	}
+
 	private FakeResponse decorated(String pathInfo, ResourceServlet.PageDecorator decorator) throws Exception {
 		ResourceServlet servlet = servlet("s", "i");
 		servlet.setPageDecorator(decorator);

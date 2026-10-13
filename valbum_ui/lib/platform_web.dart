@@ -141,6 +141,15 @@ void leaveForUrl(String url) => _replaceLocation(url);
 @JS('window.location.replace')
 external void _replaceLocation(String url);
 
+/// Opens [url] in the page the app runs in, keeping the page it leaves in the
+/// history: an album of the overview of what is shared with a contact (issue
+/// #267) is another app base, and the browser's back button leads back to the
+/// overview — the sibling of [leaveForUrl], which forgets the page.
+void openPageUrl(String url) => _assignLocation(url);
+
+@JS('window.location.assign')
+external void _assignLocation(String url);
+
 /// Rewrites the browser location to [url] without loading anything.
 ///
 /// The sibling of [leaveForUrl] for the one thing that must *not* be a

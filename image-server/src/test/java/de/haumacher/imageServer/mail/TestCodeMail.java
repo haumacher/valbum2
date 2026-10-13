@@ -57,6 +57,22 @@ public class TestCodeMail extends TestCase {
 			+ "Familie Haumacher · https://fotos.haumacher.de/valbum/\n", mail.getText());
 	}
 
+	public void testTheOverviewOfWhatIsShared() {
+		// Issue #267: no link, nobody shared it; the space names where the code comes from.
+		About overview = new About("", "", "Familie Haumacher", "https://fotos.haumacher.de/valbum");
+		CodeMail english = CodeMail.of(CodeMail.ENGLISH, Purpose.SHARED, overview, "023826", 10);
+		assertEquals("VAlbum", english.getSender());
+		assertEquals("Code for Familie Haumacher: 023826", english.getSubject());
+		assertTrue(english.getText(), english.getText()
+			.contains("This code shows you everything shared with you in Familie Haumacher:\n"));
+		assertTrue(english.getText(), english.getText().contains("without the code nobody sees what was shared with you.\n"));
+		CodeMail german = CodeMail.of(CodeMail.GERMAN, Purpose.SHARED, overview, "023826", 10);
+		assertTrue(german.getText(), german.getText()
+			.contains("mit diesem Code sehen Sie alles, was in Familie Haumacher mit Ihnen geteilt wurde:\n"));
+		assertTrue(german.getText(),
+			german.getText().contains("ohne den Code sieht niemand, was mit Ihnen geteilt wurde.\n"));
+	}
+
 	public void testGermanAddAddress() {
 		CodeMail mail = CodeMail.of(CodeMail.GERMAN, Purpose.ADD_ADDRESS, RADTOUR, "023826", 10);
 		assertEquals("Haui über VAlbum", mail.getSender());

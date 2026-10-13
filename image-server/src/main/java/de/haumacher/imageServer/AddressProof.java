@@ -58,6 +58,14 @@ import java.util.logging.Logger;
  * creates anybody.</li>
  * </ul>
  * <p>
+ * <b>The overview of issue #267</b> asks without a link: whoever proves an address of a contact of
+ * the space (a typed one, answered alike whether or not it is one, as on the group link), their
+ * passkey or authenticator app, is that contact &mdash; never a new one, the overview being nobody's
+ * way into the space. A contact's own overview link asks like a recipient's own link, for that
+ * contact alone. A member's proof signs the member in there too (issue #233).
+ * </p>
+ *
+ * <p>
  * Everybody else &mdash; a first open (which needs no proof), an anonymous link, a member, an
  * anonymous caller &mdash; proves nothing here by a code.
  * </p>
@@ -125,7 +133,21 @@ final class AddressProof {
 		MEMBER,
 
 		/** A signed-in member adding an address to sign in with (issue #233). */
-		MEMBER_ADD;
+		MEMBER_ADD,
+
+		/**
+		 * The overview of everything shared with a contact, without a link (issue #267): an address
+		 * of any contact of the space, who is never created here.
+		 */
+		SHARED;
+	}
+
+	/** What a proof at the overview is refused with whose address no contact holds (issue #267). */
+	static final String NOTHING_SHARED = "Nothing is shared with this address here.";
+
+	/** The key a link is counted and bound by, the overview's for none (issue #267). */
+	static String linkKey(ShareStore.Link link) {
+		return link == null ? AuthService.SHARED_SEGMENT : link.getId();
 	}
 
 	/** What a proof is refused with on the sign-in form that names no member (any more). */
@@ -170,7 +192,9 @@ final class AddressProof {
 		String scope() {
 			switch (_kind) {
 				case RECIPIENT:
-					return "recipient:" + _link.getId() + ":" + _contact.getId();
+					return "recipient:" + linkKey(_link) + ":" + _contact.getId();
+				case SHARED:
+					return "shared";
 				case OPEN:
 					return "open:" + _link.getId();
 				case ADDRESSED:
@@ -234,6 +258,13 @@ final class AddressProof {
 	/** What the given refusal of a personal link lets its caller prove, <code>null</code> for nothing. */
 	private static Kind kind(Identification identification) {
 		ShareStore.Link link = identification.getLink();
+		if (identification.isShared()) {
+			// The overview (issue #267): its own link names its contact, as a recipient's does.
+			if (identification.getContact() != null) {
+				return identification.isFirstOpen() ? null : Kind.RECIPIENT;
+			}
+			return Kind.SHARED;
+		}
 		if (identification.getRecipient() != null) {
 			return identification.isFirstOpen() || identification.getContact() == null ? null : Kind.RECIPIENT;
 		}
@@ -290,7 +321,7 @@ final class AddressProof {
 		List<ProofMethod> result = new ArrayList<>();
 		Kind kind = kind(identification);
 		boolean email = kind == Kind.RECIPIENT && hasEmail(identification.getContact());
-		if (kind == Kind.OPEN || kind == Kind.ADDRESSED || email) {
+		if (kind == Kind.OPEN || kind == Kind.ADDRESSED || kind == Kind.SHARED || email) {
 			if (_proofs.isAvailable()) {
 				result.add(ProofMethod.create().setName(EmailProofs.METHOD));
 			}
@@ -315,7 +346,7 @@ final class AddressProof {
 	 * anybody of the space &mdash; each neither blocked nor shut out of the link.
 	 */
 	private boolean anyCandidate(Identification identification, Kind kind, Predicate<SignInHolder> test) {
-		if ((kind == Kind.OPEN || kind == Kind.ADDRESSED) && anyMember(test)) {
+		if ((kind == Kind.OPEN || kind == Kind.ADDRESSED || kind == Kind.SHARED) && anyMember(test)) {
 			// A member's proof signs the member in on any link (issue #233).
 			return true;
 		}
@@ -333,6 +364,7 @@ final class AddressProof {
 				}
 				return false;
 			case OPEN:
+			case SHARED:
 				for (ContactStore.Contact contact : contacts.getContacts()) {
 					if (admissible(link, contact) && test.test(contact)) {
 						return true;
@@ -378,7 +410,7 @@ final class AddressProof {
 	}
 
 	private static boolean admissible(ShareStore.Link link, ContactStore.Contact contact) {
-		return contact != null && !contact.isBlocked() && !link.isShutOut(contact.getId());
+		return contact != null && !contact.isBlocked() && (link == null || !link.isShutOut(contact.getId()));
 	}
 
 	/**
@@ -414,11 +446,12 @@ final class AddressProof {
 			UserStore.User member = memberHolding(email);
 			if (member != null) {
 				// A member's address names the member, on any link (issue #233).
-				totp.verify(_auth.getUsers(), member, TotpSignIns.addressKey(link.getId(), email), code, client);
+				totp.verify(_auth.getUsers(), member, TotpSignIns.addressKey(linkKey(link), email), code, client);
 				return member(member, deviceName, "a code of their authenticator app");
 			}
-			contact = kind == Kind.OPEN ? _auth.getContacts().byEmail(email) : recipientHolding(link, email);
-			totp.verify(contact, TotpSignIns.addressKey(link.getId(), email), code, client);
+			contact = kind == Kind.OPEN || kind == Kind.SHARED ? _auth.getContacts().byEmail(email)
+				: recipientHolding(link, email);
+			totp.verify(contact, TotpSignIns.addressKey(linkKey(link), email), code, client);
 		}
 		return identified(link, contact, remember, displayName, "a code of their authenticator app");
 	}
@@ -434,7 +467,7 @@ final class AddressProof {
 			return null;
 		}
 		ContactStore.Contact contact = kind == Kind.RECIPIENT ? identification.getContact() : null;
-		return "sign-in:" + space + ":" + identification.getLink().getId() + ":" + kind + ":"
+		return "sign-in:" + space + ":" + linkKey(identification.getLink()) + ":" + kind + ":"
 			+ (contact == null ? "" : contact.getId());
 	}
 
@@ -560,7 +593,7 @@ final class AddressProof {
 		}
 		Identification identification = caller.getIdentification();
 		Kind kind = kind(identification);
-		if (kind == Kind.OPEN || kind == Kind.ADDRESSED) {
+		if (kind == Kind.OPEN || kind == Kind.ADDRESSED || kind == Kind.SHARED) {
 			return new Target(kind, identification.getLink(), null, typed(address));
 		}
 		ContactStore.Contact contact = identification.getContact();
@@ -624,13 +657,24 @@ final class AddressProof {
 		if (target.isMember()) {
 			return proveMember(target, client, language, spaceBase);
 		}
-		// Who shared what, as the members know it: nothing the requester typed (issue #232).
-		CodeMail.About about = new CodeMail.About(target._link.getCreatedBy(), _titles.apply(target._link), _spaceName,
-			appAddress(_proofs.getPublicUrl(), spaceBase));
-		CodeMail.Purpose purpose = target._kind == Kind.ADD ? CodeMail.Purpose.ADD_ADDRESS : CodeMail.Purpose.OPEN;
+		// Who shared what, as the members know it: nothing the requester typed (issue #232). At the
+		// overview of issue #267 there is no link, and nobody shared it.
+		ShareStore.Link link = target._link;
+		CodeMail.About about = new CodeMail.About(link == null ? "" : link.getCreatedBy(),
+			link == null ? "" : _titles.apply(link), _spaceName, appAddress(_proofs.getPublicUrl(), spaceBase));
+		CodeMail.Purpose purpose = target._kind == Kind.ADD ? CodeMail.Purpose.ADD_ADDRESS
+			: link == null ? CodeMail.Purpose.SHARED : CodeMail.Purpose.OPEN;
 		EmailProofs.MailText text = (code, minutes) -> CodeMail.of(language, purpose, about, code, minutes);
 		EmailProofs.Sent sent;
-		if (target._kind == Kind.ADDRESSED) {
+		if (target._kind == Kind.SHARED) {
+			// The same work and the same answer for a contact's address and anybody else's, as on
+			// the group link; mailed only where a contact of the space who is not shut out holds it.
+			ContactStore.Contact holder = _auth.getContacts().byEmail(target._email);
+			boolean deliver = (holder != null && !holder.isBlocked()) || memberHolding(target._email) != null;
+			sent = _proofs.sendQuietly(target.scope(), target._email, linkKey(null), client, text, deliver);
+			LOG.info((deliver ? "Mailing a code" : "Mailing no code to an address of nobody")
+				+ " through the overview of what is shared.");
+		} else if (target._kind == Kind.ADDRESSED) {
 			// The group link: the same work and the same answer for a recipient and a stranger.
 			ContactStore.Contact holder = recipientHolding(target._link, target._email);
 			// A member's address is mailed too: their proof signs them in (issue #233).
@@ -640,8 +684,8 @@ final class AddressProof {
 			LOG.info((deliver ? "Mailing a code" : "Mailing no code to an address that is no admitted recipient's")
 				+ " through the group link " + target._link.getId() + ".");
 		} else {
-			sent = _proofs.send(target.scope(), target._email, target._link.getId(), client, text);
-			LOG.info("Mailed a code through the share link " + target._link.getId() + " (" + target._kind + ").");
+			sent = _proofs.send(target.scope(), target._email, linkKey(link), client, text);
+			LOG.info("Mailed a code through the share link " + linkKey(link) + " (" + target._kind + ").");
 		}
 		return EmailProofSent.create()
 			.setAddress(new ContactStore.Address(ContactStore.EMAIL, target._email, false).masked())
@@ -698,7 +742,7 @@ final class AddressProof {
 			return member;
 		}
 		Target resolved = target._kind == Kind.ADDRESSED ? recipientTarget(target._link, target._email, "a code")
-			: target;
+			: target._kind == Kind.SHARED ? sharedTarget(target._email, "a code") : target;
 		return proven(caller, resolved, remember, displayName, "a proven address");
 	}
 
@@ -730,6 +774,26 @@ final class AddressProof {
 			throw new AuthService.Refused(HttpServletResponse.SC_GONE, AuthService.CONTACT_SHUT_OUT);
 		}
 		return new Target(Kind.RECIPIENT, link, holder, email);
+	}
+
+	/**
+	 * What a proven address makes of a visitor of the overview (issue #267): the contact holding it,
+	 * never a new one.
+	 *
+	 * @throws AuthService.Refused
+	 *         <code>403</code> {@link #NOTHING_SHARED} for an address no contact holds,
+	 *         <code>410</code> {@link AuthService#CONTACT_SHUT_OUT} for a contact shut out of the space.
+	 */
+	private Target sharedTarget(String email, String how) throws AuthService.Refused {
+		ContactStore.Contact holder = _auth.getContacts().byEmail(email);
+		if (holder == null) {
+			LOG.info("Refusing " + how + " at the overview: no contact's address.");
+			throw new AuthService.Refused(HttpServletResponse.SC_FORBIDDEN, NOTHING_SHARED);
+		}
+		if (holder.isBlocked()) {
+			throw new AuthService.Refused(HttpServletResponse.SC_GONE, AuthService.CONTACT_SHUT_OUT);
+		}
+		return new Target(Kind.RECIPIENT, null, holder, email);
 	}
 
 	/**
@@ -769,6 +833,9 @@ final class AddressProof {
 			}
 			case ADDRESSED:
 				resolved = recipientTarget(link, email, "a sign-in with " + provider);
+				break;
+			case SHARED:
+				resolved = sharedTarget(email, "a sign-in with " + provider);
 				break;
 			default:
 				resolved = new Target(target._kind, link, target._contact, email);
@@ -876,7 +943,7 @@ final class AddressProof {
 		if (contact == null) {
 			throw new AuthService.Refused(HttpServletResponse.SC_GONE, AuthService.RECIPIENT_GONE);
 		}
-		if (contact.isBlocked() || link.isShutOut(contact.getId())) {
+		if (contact.isBlocked() || (link != null && link.isShutOut(contact.getId()))) {
 			throw new AuthService.Refused(HttpServletResponse.SC_GONE, AuthService.CONTACT_SHUT_OUT);
 		}
 		return issue(link, contact, remember, displayName, how);
@@ -885,11 +952,14 @@ final class AddressProof {
 	private ContactCredential issue(ShareStore.Link link, ContactStore.Contact contact, boolean remember,
 			String displayName, String how) throws AuthService.Refused, IOException {
 		ContactStore contacts = _auth.getContacts();
-		ContactStore.Issued issued = contacts.issue(contact.getId(), link.getId(), remember, displayName);
+		// A session begun at the overview (issue #267) was opened through no link and ends with none.
+		ContactStore.Issued issued = contacts.issue(contact.getId(), link == null ? "" : link.getId(), remember,
+			displayName);
 		if (issued == null) {
 			throw new AuthService.Refused(HttpServletResponse.SC_GONE, AuthService.RECIPIENT_GONE);
 		}
-		LOG.info("Identified " + contact + " by " + how + " through the share link " + link.getId()
+		LOG.info("Identified " + contact + " by " + how + " through "
+			+ (link == null ? "the overview" : "the share link " + link.getId())
 			+ (remember ? ", remembered." : "."));
 		return ContactCredential.create()
 			.setCredential(issued.getCredential())

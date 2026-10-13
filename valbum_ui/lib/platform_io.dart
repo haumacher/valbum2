@@ -253,6 +253,10 @@ class FileDialogDownloadSaver extends DownloadSaver {
 /// simply carries on with the token it was given, see `invitation.dart`.
 void leaveForUrl(String url) {}
 
+/// Opens [url] in the page the app runs in: nothing, off the web, where the
+/// overview of issue #267 is opened in a browser.
+void openPageUrl(String url) {}
+
 /// Rewrites the location of the page the app runs in: nothing, off the web.
 ///
 /// There is no address bar on a phone or a desktop, and no redirect that could

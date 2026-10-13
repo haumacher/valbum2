@@ -60,6 +60,11 @@ class ShareSession {
   /// `null` where the session is no contact's.
   final Future<void> Function(BuildContext context)? onSignInOptions;
 
+  /// Opens the overview of everything shared with the contact of this session
+  /// in its space: "All shared with you" (issue #267). `null` where the
+  /// session is no contact's.
+  final void Function(BuildContext context)? onOverview;
+
   const ShareSession({
     required this.url,
     required this.info,
@@ -67,6 +72,7 @@ class ShareSession {
     this.onSwitchPerson,
     this.onSignOutOthers,
     this.onSignInOptions,
+    this.onOverview,
   });
 
   /// Who the server takes the visitor of a personal link to be, `null` for
@@ -118,7 +124,8 @@ class ShareSessionScope extends InheritedWidget {
 }
 
 /// The entries a menu of a personal link's session ends with (issue #202):
-/// whom the server takes the visitor to be, "Also signed in on n other
+/// "All shared with you" (issue #267), whom the server takes the visitor to
+/// be, "Also signed in on n other
 /// browsers — sign out others" where they are (issue #203), "Sign-in
 /// options…" (issue #208), and "Not you? Switch person".
 ///
@@ -133,8 +140,24 @@ List<PopupMenuEntry<void Function(BuildContext)>> switchPersonEntries(
     return const [];
   }
   var l10n = AppLocalizations.of(context)!;
+  var overview = session!.onOverview;
   return [
     const PopupMenuDivider(),
+    if (overview != null)
+      PopupMenuItem<void Function(BuildContext)>(
+        key: const Key("shared-overview-entry"),
+        value: overview,
+        child: Row(
+          children: [
+            const Padding(
+              padding: EdgeInsets.only(right: 16),
+              child:
+                  Icon(Icons.photo_library_outlined, color: Colors.blueAccent),
+            ),
+            Flexible(child: Text(l10n.sharedWithYouTitle)),
+          ],
+        ),
+      ),
     PopupMenuItem<void Function(BuildContext)>(
       enabled: false,
       child: Text(
@@ -142,7 +165,7 @@ List<PopupMenuEntry<void Function(BuildContext)>> switchPersonEntries(
         key: const Key("contact-line"),
       ),
     ),
-    if (session!.info.otherSessions > 0 && session.onSignOutOthers != null)
+    if (session.info.otherSessions > 0 && session.onSignOutOthers != null)
       PopupMenuItem<void Function(BuildContext)>(
         key: const Key("sign-out-others"),
         value: session.onSignOutOthers,
@@ -295,11 +318,17 @@ class ShareGoneScreen extends StatelessWidget {
   /// where it is nobody (issue #202).
   final VoidCallback? onSwitchPerson;
 
+  /// Goes back to the overview of everything shared with the contact, `null`
+  /// where the link was not opened from it (issue #267): an album that left
+  /// the overview says why, and the way back.
+  final VoidCallback? onOverview;
+
   const ShareGoneScreen({
     super.key,
     required this.message,
     this.onContinue,
     this.onSwitchPerson,
+    this.onOverview,
   });
 
   @override
@@ -307,21 +336,29 @@ class ShareGoneScreen extends StatelessWidget {
         key: const Key("share-gone"),
         icon: Icons.link_off,
         message: message,
-        action: onContinue != null
+        action: onOverview != null
             ? FilledButton.icon(
-                key: const Key("invitation-continue"),
-                onPressed: onContinue,
-                icon: const Icon(Icons.home),
-                label: Text(AppLocalizations.of(context)!.shareContinueToStart),
+                key: const Key("share-overview"),
+                onPressed: onOverview,
+                icon: const Icon(Icons.photo_library_outlined),
+                label: Text(AppLocalizations.of(context)!.sharedWithYouTitle),
               )
-            : onSwitchPerson != null
+            : onContinue != null
                 ? FilledButton.icon(
-                    key: const Key("share-switch-person"),
-                    onPressed: onSwitchPerson,
-                    icon: const Icon(Icons.switch_account),
-                    label: Text(AppLocalizations.of(context)!.switchPerson),
+                    key: const Key("invitation-continue"),
+                    onPressed: onContinue,
+                    icon: const Icon(Icons.home),
+                    label: Text(
+                        AppLocalizations.of(context)!.shareContinueToStart),
                   )
-                : null,
+                : onSwitchPerson != null
+                    ? FilledButton.icon(
+                        key: const Key("share-switch-person"),
+                        onPressed: onSwitchPerson,
+                        icon: const Icon(Icons.switch_account),
+                        label: Text(AppLocalizations.of(context)!.switchPerson),
+                      )
+                    : null,
       );
 }
 

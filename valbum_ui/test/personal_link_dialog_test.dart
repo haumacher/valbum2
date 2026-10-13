@@ -485,6 +485,12 @@ void main() {
       // other way round (the generated method takes the album first).
       expect(petra.queryParameters["body"], startsWith("Hello Tante Petra,"));
       expect(petra.queryParameters["body"], contains("photos of Zoo:"));
+      // And the overview of everything shared with them, in a line of its
+      // own (issue #267).
+      expect(
+          petra.queryParameters["body"],
+          endsWith(
+              "\n${testL10n.shareMessageOverviewLine("http://server/valbum/shared/")}\n"));
       expect(petra.toString(), isNot(contains("+")),
           reason: "a blank is %20, never a plus");
       expect(launched[1].path, "oma@web.de");
