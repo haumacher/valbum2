@@ -136,6 +136,43 @@ public class TestVideoPreempt extends TestCase {
 		assertEquals(Arrays.asList("long.mp4", "asked.mp4", "long.mp4"), _started);
 	}
 
+	/**
+	 * The fast lane of the background (an upload, a picture somebody waits for, see issue #258) puts
+	 * the background's own transcode aside, as a request does: it is not failed, and comes back.
+	 */
+	public void testTheFastLanePutsTheBackgroundAside() throws Exception {
+		if (!available()) {
+			return;
+		}
+		File longOne = video("long.mp4");
+		_seconds.put("long.mp4", 60);
+
+		AtomicReference<VideoRenditions.Rendition> background = new AtomicReference<>();
+		Thread pipeline = new Thread(() -> {
+			try {
+				background.set(_videos.make(longOne, VideoRenditions.Kind.PLAYBACK));
+			} catch (InterruptedException ex) {
+				// Ends the test thread.
+			}
+		});
+		pipeline.start();
+		await(tmpOf(longOne), true);
+
+		long start = System.currentTimeMillis();
+		_videos.putAsideBackground();
+		pipeline.join(TIMEOUT);
+		assertFalse(pipeline.isAlive());
+		assertTrue("Not the minute: " + (System.currentTimeMillis() - start) + " ms",
+			System.currentTimeMillis() - start < 20_000);
+		assertEquals("Put aside, not failed.", VideoRenditions.State.DEFERRED, background.get().getState());
+		assertNull(_videos.failure(VideoRenditions.file(longOne, VideoRenditions.Kind.PLAYBACK)));
+		assertFalse("The half-made output is gone.", tmpOf(longOne).exists());
+
+		_seconds.put("long.mp4", 0);
+		assertEquals("Made again from the start.", VideoRenditions.State.READY,
+			_videos.make(longOne, VideoRenditions.Kind.PLAYBACK).getState());
+	}
+
 	public void testARequestIsNeverPreempted() throws Exception {
 		if (!available()) {
 			return;

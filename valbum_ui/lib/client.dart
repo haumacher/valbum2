@@ -92,12 +92,12 @@ class UploadFile {
 
   /// The same file, with its contents' hash attached.
   UploadFile withHash(String hash) => UploadFile(
-    name: name,
-    length: length,
-    openRead: openRead,
-    sha256: hash,
-    blob: blob,
-  );
+        name: name,
+        length: length,
+        openRead: openRead,
+        sha256: hash,
+        blob: blob,
+      );
 }
 
 /// A file to be taken out of the album (issues #164, #209): what it is called
@@ -394,7 +394,8 @@ String interruptedUploadMessage(
   required int onServer,
   required int total,
   required int remaining,
-}) => "$cause: ${l10n.uploadInterruptedCounts(total, onServer, remaining)}";
+}) =>
+    "$cause: ${l10n.uploadInterruptedCounts(total, onServer, remaining)}";
 
 /// An upload that stopped after some of its batches had arrived, see
 /// [VAlbumClient.uploadNew] and issue #63.
@@ -557,10 +558,10 @@ class UploadProgress {
 
   /// What the dialog shows before the upload has reported anything.
   factory UploadProgress.start(int images) => UploadProgress(
-    phase: UploadPhase.preparing,
-    imagesDone: images > 0 ? 1 : 0,
-    imagesTotal: images,
-  );
+        phase: UploadPhase.preparing,
+        imagesDone: images > 0 ? 1 : 0,
+        imagesTotal: images,
+      );
 
   /// Whether the wheel can show a value, or has to spin.
   bool get determinate => phase == UploadPhase.transferring;
@@ -570,15 +571,15 @@ class UploadProgress {
 
   /// The one line the dialog shows, see [uploadImageCountMessage].
   String lineOf(AppLocalizations l10n) => switch (phase) {
-    UploadPhase.preparing => l10n.uploadPreparing(imagesTotal, imagesDone),
-    UploadPhase.asking => uploadAskingMessage(l10n),
-    UploadPhase.transferring => uploadImageCountMessage(
-      l10n,
-      imagesSent,
-      imagesTotal,
-    ),
-    UploadPhase.waiting => uploadWaitingMessage(l10n),
-  };
+        UploadPhase.preparing => l10n.uploadPreparing(imagesTotal, imagesDone),
+        UploadPhase.asking => uploadAskingMessage(l10n),
+        UploadPhase.transferring => uploadImageCountMessage(
+            l10n,
+            imagesSent,
+            imagesTotal,
+          ),
+        UploadPhase.waiting => uploadWaitingMessage(l10n),
+      };
 
   @override
   bool operator ==(Object other) =>
@@ -594,8 +595,7 @@ class UploadProgress {
       Object.hash(phase, imagesDone, imagesSent, imagesTotal, fraction);
 
   @override
-  String toString() =>
-      "UploadProgress(${phase.name}, "
+  String toString() => "UploadProgress(${phase.name}, "
       "$imagesDone/$imagesTotal, sent: $imagesSent, $fraction)";
 }
 
@@ -886,45 +886,45 @@ class VAlbumClient {
   /// `ServerSettings`: only the URL changes, the transport (a fake one, in a
   /// test) stays the same.
   VAlbumClient withDataUrl(String dataUrl) => VAlbumClient(
-    dataUrl: dataUrl,
-    token: token,
-    contact: contact,
-    userName: userName,
-    httpClient: _transport,
-    cache: cache,
-    offlineState: offlineState,
-    log: log,
-    timeout: timeout,
-  );
+        dataUrl: dataUrl,
+        token: token,
+        contact: contact,
+        userName: userName,
+        httpClient: _transport,
+        cache: cache,
+        offlineState: offlineState,
+        log: log,
+        timeout: timeout,
+      );
 
   /// The same client, identifying itself with the given token from now on.
   ///
   /// `null` drops the token: the client talks to the server anonymously again.
   VAlbumClient withToken(String? token, {String? userName}) => VAlbumClient(
-    dataUrl: dataUrl,
-    token: token,
-    contact: contact,
-    userName: userName ?? this.userName,
-    httpClient: _transport,
-    cache: cache,
-    offlineState: offlineState,
-    log: log,
-    timeout: timeout,
-  );
+        dataUrl: dataUrl,
+        token: token,
+        contact: contact,
+        userName: userName ?? this.userName,
+        httpClient: _transport,
+        cache: cache,
+        offlineState: offlineState,
+        log: log,
+        timeout: timeout,
+      );
 
   /// The same client, recognised as the given contact from now on, see
   /// [contact]; `null` forgets who the session is (issue #202).
   VAlbumClient withContact(String? contact) => VAlbumClient(
-    dataUrl: dataUrl,
-    token: token,
-    contact: contact,
-    userName: userName,
-    httpClient: _transport,
-    cache: cache,
-    offlineState: offlineState,
-    log: log,
-    timeout: timeout,
-  );
+        dataUrl: dataUrl,
+        token: token,
+        contact: contact,
+        userName: userName,
+        httpClient: _transport,
+        cache: cache,
+        offlineState: offlineState,
+        log: log,
+        timeout: timeout,
+      );
 
   /// The authorization headers of every request, empty while unpaired: the
   /// bearer, and beside it the [contact] credential of a personal link's
@@ -966,15 +966,16 @@ class VAlbumClient {
     OfflineCache? cache,
     OfflineState? offlineState,
     DiagnosticsLog? log,
-  }) => VAlbumClient(
-    dataUrl: deriveDataUrl(Uri.base, isWeb: kIsWeb),
-    token: token,
-    userName: userName,
-    httpClient: httpClient,
-    cache: cache,
-    offlineState: offlineState,
-    log: log,
-  );
+  }) =>
+      VAlbumClient(
+        dataUrl: deriveDataUrl(Uri.base, isWeb: kIsWeb),
+        token: token,
+        userName: userName,
+        httpClient: httpClient,
+        cache: cache,
+        offlineState: offlineState,
+        log: log,
+      );
 
   /// The URL of the resource at the given path (a list of folder names).
   String baseUrl(List<String> path) =>
@@ -1068,9 +1069,8 @@ class VAlbumClient {
       "teaser" => "teaser",
       _ => throw ArgumentError.value(url, "url", "no video file"),
     };
-    var asked = uri
-        .replace(queryParameters: {"type": "media-url", "for": kind})
-        .toString();
+    var asked = uri.replace(
+        queryParameters: {"type": "media-url", "for": kind}).toString();
     var response = await _http
         .get(Uri.parse(asked), headers: authHeaders)
         .timeout(timeout);
@@ -1127,7 +1127,8 @@ class VAlbumClient {
     if (response.statusCode == notReadyStatus) {
       // Not made yet by the server's background (issue #256): no failure,
       // nothing to log, and nothing the offline store could stand in for.
-      throw ImageNotReady(url);
+      throw ImageNotReady(url,
+          retryAfter: notReadyRetryAfterOf(response.headers["retry-after"]));
     }
     if (response.statusCode != 200) {
       throw failure(
@@ -1157,14 +1158,12 @@ class VAlbumClient {
   Future<SourceAnswer> probeSource(String url) async {
     http.Response response;
     try {
-      response = await _transport
-          .get(Uri.parse(url), headers: {...authHeaders, "Range": "bytes=0-0"})
-          .timeout(timeout);
+      response = await _transport.get(Uri.parse(url),
+          headers: {...authHeaders, "Range": "bytes=0-0"}).timeout(timeout);
     } catch (error) {
       return SourceAnswer(
-        transportError: isTransportFailure(error)
-            ? transportMessage(error)
-            : "$error",
+        transportError:
+            isTransportFailure(error) ? transportMessage(error) : "$error",
       );
     }
     offlineState?.online();
@@ -1174,11 +1173,9 @@ class VAlbumClient {
       status: status,
       reason: response.reasonPhrase,
       contentType: headers["content-type"],
-      contentLength:
-          int.tryParse(headers["content-length"] ?? "") ??
+      contentLength: int.tryParse(headers["content-length"] ?? "") ??
           response.bodyBytes.length,
-      totalLength:
-          SourceAnswer.totalOf(headers["content-range"]) ??
+      totalLength: SourceAnswer.totalOf(headers["content-range"]) ??
           (status == 200
               ? int.tryParse(headers["content-length"] ?? "")
               : null),
@@ -1227,6 +1224,12 @@ class VAlbumClient {
       answer: answer,
     );
   }
+
+  /// The `Retry-After` of a picture not made yet (issue #258), `null` where
+  /// the server named none: what a page waits at most before it asks again,
+  /// see [NotReadyReAsk].
+  static Duration? notReadyRetryAfterOf(String? header) =>
+      int.tryParse((header ?? "").trim()) == null ? null : retryAfterOf(header);
 
   /// The `Retry-After` header as a duration, clamped, see
   /// [RenditionState.retryAfter].
@@ -1398,7 +1401,8 @@ class VAlbumClient {
   /// while the server is away.
   ///
   /// [large] asks for the large preview, see [thumbnailUrl].
-  Future<Uint8List> thumbnailBytes(String imageUrl, {bool large = false}) async {
+  Future<Uint8List> thumbnailBytes(String imageUrl,
+      {bool large = false}) async {
     var url = thumbnailUrl(imageUrl, large: large);
     http.Response response;
     try {
@@ -1418,7 +1422,8 @@ class VAlbumClient {
     if (response.statusCode == notReadyStatus) {
       // Not made yet by the server's background (issue #256): no failure,
       // nothing to log, and nothing the offline store could stand in for.
-      throw ImageNotReady(url);
+      throw ImageNotReady(url,
+          retryAfter: notReadyRetryAfterOf(response.headers["retry-after"]));
     }
     if (response.statusCode != 200) {
       throw failure(
@@ -1437,10 +1442,10 @@ class VAlbumClient {
   /// error are answers, and answers are shown as they are.
   /// What a transport failure says, without the exception's own decoration.
   static String transportMessage(Object error) => switch (error) {
-    http.ClientException(message: var message) => message,
-    TimeoutException() => platformMessages.noAnswerInTime,
-    _ => error.toString(),
-  };
+        http.ClientException(message: var message) => message,
+        TimeoutException() => platformMessages.noAnswerInTime,
+        _ => error.toString(),
+      };
 
   static bool isTransportFailure(Object error) =>
       error is http.ClientException ||
@@ -2283,9 +2288,8 @@ class VAlbumClient {
         );
       }
 
-      var batchStored = result.files
-          .where((file) => file.status != uploadPresent)
-          .length;
+      var batchStored =
+          result.files.where((file) => file.status != uploadPresent).length;
       storedHashes.addAll([
         for (var file in result.files)
           if (file.status != uploadPresent && file.hash.isNotEmpty) file.hash,
@@ -2364,9 +2368,8 @@ class VAlbumClient {
     if (isTransportFailure(error)) {
       return uploadConnectionLost(platformMessages);
     }
-    var message = error is VAlbumException
-        ? error.message
-        : error.toString().trim();
+    var message =
+        error is VAlbumException ? error.message : error.toString().trim();
     message = message.trim();
     while (message.endsWith(".") || message.endsWith("!")) {
       message = message.substring(0, message.length - 1).trimRight();
@@ -2434,9 +2437,8 @@ class VAlbumClient {
   /// `download=1`, to send it as an attachment under its own name.
   Future<String> originalAddress(String url) async {
     var value = token;
-    var address = value == null || value.isEmpty
-        ? url
-        : (await signMediaUrl(url)).url;
+    var address =
+        value == null || value.isEmpty ? url : (await signMediaUrl(url)).url;
     return "$address${address.contains("?") ? "&" : "?"}download=1";
   }
 
@@ -2453,19 +2455,21 @@ class VAlbumClient {
     List<String> path,
     List<String> names,
     String archiveName,
-  ) => DownloadSource(
-    name: archiveName,
-    open: () {
-      var url = "${folderUrl(path)}?action=zip";
-      return _openDownload(
-        http.Request("POST", Uri.parse(url))
-          ..headers.addAll({"Content-Type": "application/json", ...authHeaders})
-          ..body = _namesBody(names),
-        url,
+  ) =>
+      DownloadSource(
+        name: archiveName,
+        open: () {
+          var url = "${folderUrl(path)}?action=zip";
+          return _openDownload(
+            http.Request("POST", Uri.parse(url))
+              ..headers
+                  .addAll({"Content-Type": "application/json", ...authHeaders})
+              ..body = _namesBody(names),
+            url,
+          );
+        },
+        address: () => archiveAddress(path, names),
       );
-    },
-    address: () => archiveAddress(path, names),
-  );
 
   /// The address a browser downloads the archive of [names] in the album at
   /// [path] from by itself (issue #209).
@@ -2479,14 +2483,12 @@ class VAlbumClient {
   /// [signMediaUrl] appends to the address it was asked for.
   Future<String> archiveAddress(List<String> path, List<String> names) async {
     var url = "${folderUrl(path)}?action=zip-ticket";
-    var response = await _http
-        .post(
-          Uri.parse(url),
-          encoding: Encoding.getByName("utf-8"),
-          body: _namesBody(names),
-          headers: {"Content-Type": "application/json", ...authHeaders},
-        )
-        .timeout(timeout);
+    var response = await _http.post(
+      Uri.parse(url),
+      encoding: Encoding.getByName("utf-8"),
+      body: _namesBody(names),
+      headers: {"Content-Type": "application/json", ...authHeaders},
+    ).timeout(timeout);
     if (response.statusCode != 200) {
       throw failure(
         response.statusCode,
@@ -2642,16 +2644,17 @@ class VAlbumClient {
   /// Shuts the contact out of every link of the space, or lets them in again
   /// (issue #198's `block-contact`); answers the contact.
   Future<Contact> blockContact(String contact, bool shutOut) => _postContact(
-    "block-contact",
-    _jsonOf(ContactShutOut(contact: contact, shutOut: shutOut).writeContent),
-  );
+        "block-contact",
+        _jsonOf(
+            ContactShutOut(contact: contact, shutOut: shutOut).writeContent),
+      );
 
   /// Gives a contact another name in the space (issue #203); answers the
   /// contact.
   Future<Contact> renameContact(String contact, String name) => _postContact(
-    "rename-contact",
-    _jsonOf(ContactRename(contact: contact, name: name).writeContent),
-  );
+        "rename-contact",
+        _jsonOf(ContactRename(contact: contact, name: name).writeContent),
+      );
 
   /// Ends one browser session of a contact, or every one where [session] is
   /// empty (issue #203); answers the contact.
@@ -2666,9 +2669,9 @@ class VAlbumClient {
   /// Deletes a contact from the space (issue #203); answers the contact as
   /// it was.
   Future<Contact> deleteContact(String contact) => _postContact(
-    "delete-contact",
-    _jsonOf(ContactDelete(contact: contact).writeContent),
-  );
+        "delete-contact",
+        _jsonOf(ContactDelete(contact: contact).writeContent),
+      );
 
   /// Posts one of the contact requests of the space, answering a [Contact].
   Future<Contact> _postContact(String action, String body) async {
@@ -2773,12 +2776,13 @@ class VAlbumClient {
     String contact,
     String method, {
     String id = "",
-  }) => _postContact(
-    "remove-contact-sign-in",
-    _jsonOf(
-      SignInRemove(contact: contact, method: method, id: id).writeContent,
-    ),
-  );
+  }) =>
+      _postContact(
+        "remove-contact-sign-in",
+        _jsonOf(
+          SignInRemove(contact: contact, method: method, id: id).writeContent,
+        ),
+      );
 
   /// Starts registering a passkey for the contact of this session (issue
   /// #204): the options for `navigator.credentials.create`.
@@ -3443,8 +3447,8 @@ class _CountingRequest extends http.BaseRequest {
     this._body, {
     required void Function(int transferred) onTransferred,
     UploadHandle? handle,
-  }) : _onTransferred = onTransferred,
-       _handle = handle;
+  })  : _onTransferred = onTransferred,
+        _handle = handle;
 
   @override
   http.ByteStream finalize() {

@@ -25,3 +25,7 @@ recorded answers `AlbumInfo.preparing`.
   (`PreviewCache.drop`), and the steps of `CatchUp` make it again. No `*.source` record is written;
   one an older build left is litter the previews step removes. A servlet without a background makes
   them on the request, as it records folders on the request.
+- Nobody waits a quiet period for what a person waits for (#258): an upload hands its files to
+  `FolderPipeline.uploaded`, a sidecar write to `edited`, and a `202` names its file to `demanded`
+  — the pipeline's fast lane, ahead of the catch-up. A `202` must stay out of
+  `ImageServlet#makes`: counted as a request, the app's re-asks would hold up the very work.

@@ -1596,8 +1596,13 @@ class ImageViewState extends State<ImageView>
     return result;
   }
 
+  /// The viewer, whose picture not made yet is asked for again by itself
+  /// while it is the top page, see [NotReadyReAsk] and issue #258.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      NotReadyReAsk(child: _buildViewer(context));
+
+  Widget _buildViewer(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
       body: CallbackShortcuts(
@@ -2089,33 +2094,41 @@ class ImageViewState extends State<ImageView>
 
   /// The picture itself, in the layer its coordinates belong to.
   Widget buildContent(ImageTransform tx) {
-    var image = Image(
-      // What a test asks for when it asks what the viewer shows: the
-      // thumbnail beneath is a second [Image] in the same tree.
-      key: const Key("image-picture"),
-      image: picture,
-      fit: BoxFit.fill,
-      // A rebuild with the same picture keeps what is on the screen.
-      gaplessPlayback: true,
-      // Nothing until the first frame has decoded: what shows through is the
-      // thumbnail beneath, see [buildLayers].
-      frameBuilder: (context, child, frame, wasSynchronouslyLoaded) =>
-          wasSynchronouslyLoaded || frame != null
-              ? child
-              : const SizedBox.expand(),
-      // `Image` can only say *that* the picture failed. It is never a refused
-      // right — the viewer asks for nothing this caller may not have, see
-      // [viewerPicture] — so it is a failure, and failures speak once.
-      errorBuilder: (context, error, stackTrace) {
-        if (isImageNotReady(error)) {
-          // Not made yet by the server (issue #256): no failure; the
-          // thumbnail beneath shows through, and a reload asks again.
-          rememberNotReady(picture);
-        } else {
-          _reportFailure(error);
-        }
-        return const SizedBox.expand();
-      },
+    // A picture not made yet is asked for again by the viewer's re-ask (issue
+    // #258), see [AskAgain] and [build].
+    var picture = this.picture;
+    var image = AskAgain(
+      provider: picture,
+      builder: (context) => Image(
+        // What a test asks for when it asks what the viewer shows: the
+        // thumbnail beneath is a second [Image] in the same tree.
+        key: const Key("image-picture"),
+        image: picture,
+        fit: BoxFit.fill,
+        // A rebuild with the same picture keeps what is on the screen.
+        gaplessPlayback: true,
+        // Nothing until the first frame has decoded: what shows through is the
+        // thumbnail beneath, see [buildLayers].
+        frameBuilder: (context, child, frame, wasSynchronouslyLoaded) =>
+            wasSynchronouslyLoaded || frame != null
+                ? child
+                : const SizedBox.expand(),
+        // `Image` can only say *that* the picture failed. It is never a refused
+        // right — the viewer asks for nothing this caller may not have, see
+        // [viewerPicture] — so it is a failure, and failures speak once.
+        errorBuilder: (context, error, stackTrace) {
+          if (isImageNotReady(error)) {
+            // Not made yet by the server (issue #256): no failure; the
+            // thumbnail beneath shows through, and the viewer's re-ask asks
+            // again (issue #258).
+            NotReadyReAsk.remember(context, picture,
+                retryAfter: error is ImageNotReady ? error.retryAfter : null);
+          } else {
+            _reportFailure(error);
+          }
+          return const SizedBox.expand();
+        },
+      ),
     );
     // The same layer either way: what the caller may have differs, where it
     // is drawn does not, see [pictureLayer] and issue #106.

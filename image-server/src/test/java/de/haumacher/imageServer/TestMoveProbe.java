@@ -78,6 +78,10 @@ public class TestMoveProbe extends TestCase {
 		byte[] x = jpeg(6, 4, Color.RED);
 		write("A/x.jpg", x);
 		write("B/y.jpg", jpeg(4, 6, Color.BLUE));
+		// Neither carries a recorded date, so each is dated by its file: the same stamp for both, or
+		// the clock tick between the two writes would decide where the move puts x (issue #262).
+		long stamp = _base.resolve("A/x.jpg").toFile().lastModified();
+		assertTrue(_base.resolve("B/y.jpg").toFile().setLastModified(stamp));
 		String owner = signIn();
 		ImageServlet servlet = servlet();
 

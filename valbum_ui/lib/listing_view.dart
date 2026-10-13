@@ -20,6 +20,7 @@ import 'l10n/app_localizations.dart';
 import 'listing_layout.dart';
 import 'move_view.dart';
 import 'resource.dart';
+import 'not_ready.dart';
 import 'offline.dart';
 import 'oriented_thumbnail.dart';
 import 'rights.dart';
@@ -127,7 +128,6 @@ Widget indexPictureTile(
       ),
     );
 
-
 /// Displays a [ListingInfo] as a grid of folder tiles.
 class ListingView extends StatelessWidget {
   final VAlbumState albumState;
@@ -176,8 +176,14 @@ class ListingView extends StatelessWidget {
             !CallerInfo.permissionOf(context).named,
       );
 
+  /// The listing, whose tiles answered "not made yet" — the large preview of
+  /// a tile just starred, the cut preview of a cover just chosen (issue #260)
+  /// — are asked again by themselves, see [NotReadyReAsk] and issue #258.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      NotReadyReAsk(child: _buildListing(context));
+
+  Widget _buildListing(BuildContext context) {
     var l10n = AppLocalizations.of(context)!;
     var self = listing;
     // Inside a share link nothing that changes anything is offered, and
@@ -193,7 +199,10 @@ class ListingView extends StatelessWidget {
     // entry in the menu -- for whoever may put something in it, which is
     // whom the server names it to (issue #226).
     var caller = CallerInfo.maybeOf(context);
-    var inbox = link == null && albumState.path.isEmpty && caller != null && caller.hasInbox
+    var inbox = link == null &&
+            albumState.path.isEmpty &&
+            caller != null &&
+            caller.hasInbox
         ? caller
         : null;
     // Which photographs lie in several albums is the space's overview, asked
@@ -463,7 +472,8 @@ class ListingView extends StatelessWidget {
     // server sends a listing in since issue #48, applied here as well, so
     // that an older server and the offline cache read the same way.
     var folders = sortedFolders(self.folders);
-    var cells = tileCells([for (var folder in folders) folder.starred], columns);
+    var cells =
+        tileCells([for (var folder in folders) folder.starred], columns);
     return TileGrid(
       key: const Key("listing-tiles"),
       cellWidth: imageWidth + 2 * imageBorder,
@@ -851,8 +861,8 @@ class ListingView extends StatelessWidget {
     try {
       var child = await client.loadResource(childPath);
       if (child is AlbumInfo) {
-        written = await client.saveAlbum(
-            childPath, child..starred = !folder.starred);
+        written =
+            await client.saveAlbum(childPath, child..starred = !folder.starred);
       } else if (child is ListingInfo) {
         written = await client.saveListing(
             childPath, child..starred = !folder.starred);
@@ -1261,7 +1271,6 @@ class FolderPropertiesDialogState extends State<FolderPropertiesDialog> {
   }
 }
 
-
 class CreateAlbumDialog extends StatefulWidget {
   /// The day the album is proposed with, `null` for none — the field is then
   /// empty, and it may stay empty: an album without a date is left where it
@@ -1425,8 +1434,9 @@ class CreateCollectionDialogState extends State<CreateCollectionDialog> {
             autofocus: true,
             decoration: InputDecoration(label: Text(l10n.titleLabel)),
             onSaved: (value) => title = value,
-            validator: (String? value) =>
-                value == null || value.trim().isEmpty ? l10n.mustNotBeEmpty : null,
+            validator: (String? value) => value == null || value.trim().isEmpty
+                ? l10n.mustNotBeEmpty
+                : null,
           ),
         ],
         actions: [

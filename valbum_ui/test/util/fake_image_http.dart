@@ -54,9 +54,9 @@ class FakeImageHttp {
 /// viewer still reports (issue #95). A URL [notReady] answers `true` for is
 /// answered `202 Accepted` with an `ErrorInfo`, as the server answers a
 /// picture its background has not made yet (issue #256) — no failure, the
-/// placeholder or the thumbnail beneath stands in until a reload. The
-/// predicates are read at every request, so a test may change its mind
-/// (the background made it) by changing what they answer.
+/// placeholder or the thumbnail beneath stands in until a re-ask (issue
+/// #258). The predicates are read at every request, so a test may change its
+/// mind (the background made it) by changing what they answer.
 void fakeImageRequests({
   List<String>? requested,
   bool Function(Uri url)? pending,

@@ -62,6 +62,13 @@ import java.util.logging.Logger;
  * requests and runs alone, see {@link Background}.
  * </p>
  *
+ * <p>
+ * What a person waits for goes first, in the fast lane of the pipeline (issue #258): the thumbnail
+ * and display rendition of a file just uploaded, file by file ({@link Previews}, see
+ * {@link FolderPipeline.Step#runFile(File, FolderPipeline.Pass)}), and a generated file a request
+ * was answered "not there yet" for.
+ * </p>
+ *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
  */
 public final class CatchUp {
@@ -274,6 +281,47 @@ public final class CatchUp {
 			return Outcome.DONE;
 		}
 
+		/**
+		 * The fast lane of issue #258: the thumbnail of a file just uploaded (the preview of a
+		 * photograph, the poster of a video), then its display rendition, before the folder as a
+		 * whole. A raw beside its JPEG and a file that cannot be read get nothing, as above.
+		 */
+		@Override
+		public void runFile(File file, FolderPipeline.Pass pass) throws InterruptedException {
+			File folder = file.getParentFile();
+			if (!ResourceCache.isImage(file) || AnalysisRecord.broken(folder).contains(file.getName())
+				|| !writable(folder)) {
+				return;
+			}
+			if (RawFile.isRaw(file) && hasCompanion(file)) {
+				return;
+			}
+			switch (pass) {
+				case THUMBNAIL:
+					report(folder, file, make(file, PreviewCache.previewFile(file), () -> PreviewCache.createPreview(file)));
+					break;
+				case DISPLAY:
+					if (PreviewCache.needsDisplay(file)) {
+						report(folder, file, make(file, PreviewCache.displayFile(file),
+							() -> PreviewCache.createDisplay(file)));
+					}
+					break;
+				default:
+					break;
+			}
+		}
+
+		/** Whether a picture of the name of the given raw stands beside it, see issue #191. */
+		private static boolean hasCompanion(File raw) {
+			String base = RawPairs.base(raw.getName());
+			for (File other : images(raw.getParentFile())) {
+				if (RawPairs.isCompanionType(other.getName()) && RawPairs.base(other.getName()).equals(base)) {
+					return true;
+				}
+			}
+			return false;
+		}
+
 		private void report(File folder, File file, String failure) {
 			if (failure != null) {
 				_pipeline.reportFailure(folder, PREVIEWS + ": " + file.getName() + ": " + failure);
@@ -419,6 +467,12 @@ public final class CatchUp {
 		@Override
 		public String itemOf(String unit) {
 			return unit.substring(unit.indexOf(SEPARATOR) + 1);
+		}
+
+		@Override
+		public void putAside() {
+			// For the fast lane, see issue #258: made again from the start, later.
+			_videos.putAsideBackground();
 		}
 
 		@Override

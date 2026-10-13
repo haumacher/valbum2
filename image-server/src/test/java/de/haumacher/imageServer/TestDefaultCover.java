@@ -35,6 +35,7 @@ import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -344,7 +345,9 @@ public class TestDefaultCover extends TestCase {
 		Files.createDirectories(folder);
 		for (File file : FIXTURE.listFiles()) {
 			if (file.isFile() && !file.getName().startsWith(".")) {
-				Files.copy(file.toPath(), folder.resolve(file.getName()));
+				// With the fixture's own stamps: a photograph without a recorded date is dated by
+				// its file, and copies made a clock tick apart would order two albums differently.
+				Files.copy(file.toPath(), folder.resolve(file.getName()), StandardCopyOption.COPY_ATTRIBUTES);
 			}
 		}
 	}

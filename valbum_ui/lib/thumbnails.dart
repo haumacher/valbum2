@@ -67,10 +67,11 @@ class ThumbnailImage extends ImageProvider<ThumbnailImage> {
         thumbnailBytesKey(client, imageUrl, large: large),
         () => client.thumbnailBytes(imageUrl, large: large),
       );
-    } on ImageNotReady {
+    } on ImageNotReady catch (error) {
       // Not made yet (issue #256): the failed stream stays cached, so that a
-      // tile built again asks nothing; a reload asks again.
-      rememberNotReady(this);
+      // tile built again asks nothing; a re-ask or a reload asks again (issue
+      // #258).
+      rememberNotReady(this, retryAfter: error.retryAfter);
       rethrow;
     } catch (error) {
       // The stream must be told, or the image widget waits forever.
@@ -302,9 +303,9 @@ class FaceImage extends ImageProvider<FaceImage> {
     Uint8List bytes;
     try {
       bytes = await client.faceBytes(imageUrl, index);
-    } on ImageNotReady {
+    } on ImageNotReady catch (error) {
       // Not cut yet (issue #256), see [ThumbnailImage].
-      rememberNotReady(this);
+      rememberNotReady(this, retryAfter: error.retryAfter);
       rethrow;
     } catch (error) {
       // The stream must be told, or the image widget waits forever.
@@ -643,10 +644,12 @@ class _ThumbnailState extends State<_Thumbnail> {
     onError: (Object error, StackTrace? stack) {
       if (isImageNotReady(error)) {
         _notReady = true;
-        // The tile's own key, which a reload evicts (issue #256).
+        // The tile's own key, which a re-ask or a reload evicts (issues #256,
+        // #258).
         var held = _heldImage;
-        if (held != null) {
-          rememberNotReady(held);
+        if (held != null && mounted) {
+          NotReadyReAsk.remember(context, held,
+              retryAfter: error is ImageNotReady ? error.retryAfter : null);
         }
       }
     },
@@ -656,14 +659,36 @@ class _ThumbnailState extends State<_Thumbnail> {
   ImageProvider? _heldImage;
 
   /// Whether the server answered this tile's picture "not made yet" (issue
-  /// #256): it shows the placeholder, and asks again only once a reload has
-  /// thrown the answer away, see [forgetNotReadyImages].
+  /// #256): it shows the placeholder, and asks again once a re-ask of its page
+  /// or a reload has thrown the answer away, see [forgetNotReadyImages] and
+  /// [_forgotten].
   bool _notReady = false;
 
-  /// Counts the times the [Image] is built afresh: after a reload a tile
+  /// Counts the times the [Image] is built afresh: after a re-ask a tile
   /// answered "not made yet" has a new stream, which an [Image] of the same
   /// provider would never resolve.
   int _attempt = 0;
+
+  /// Asks again where the answer "not made yet" of this tile was thrown away
+  /// (issue #258); a tile that shows its picture asks nothing.
+  void _forgotten() {
+    var held = _heldImage;
+    if (!mounted || !_notReady || held == null || !wasForgotten(held)) {
+      return;
+    }
+    // Resolved in the build that makes the new [Image] as well, which then
+    // shares the one request.
+    setState(() => _askAgain = true);
+  }
+
+  /// Whether the next build asks for the picture again, see [_forgotten].
+  bool _askAgain = false;
+
+  @override
+  void initState() {
+    super.initState();
+    notReadyForgotten.addListener(_forgotten);
+  }
 
   /// Whether this tile asks for the large preview, see [wantsLargeThumbnail]
   /// and issue #241.
@@ -719,7 +744,8 @@ class _ThumbnailState extends State<_Thumbnail> {
     var stream = target.resolve(configuration);
     if (stream.key != _held?.key) {
       if (_notReady) {
-        // Asked again after a reload (issue #256): a new [Image] resolves it.
+        // Asked again after a re-ask or a reload (issues #256, #258): a new
+        // [Image] resolves it.
         _notReady = false;
         _attempt++;
       }
@@ -782,6 +808,7 @@ class _ThumbnailState extends State<_Thumbnail> {
 
   @override
   void dispose() {
+    notReadyForgotten.removeListener(_forgotten);
     _stopAwaiting();
     _held?.removeListener(_listener);
     _held = null;
@@ -789,7 +816,15 @@ class _ThumbnailState extends State<_Thumbnail> {
   }
 
   @override
-  Widget build(BuildContext context) => Image(
+  Widget build(BuildContext context) {
+    if (_askAgain) {
+      _askAgain = false;
+      _hold();
+    }
+    return _picture();
+  }
+
+  Widget _picture() => Image(
         key: ValueKey<int>(_attempt),
         image: _image,
         width: widget.width,
@@ -806,9 +841,9 @@ class _ThumbnailState extends State<_Thumbnail> {
   /// The tile whose picture could not be had.
   ///
   /// One the server has not made yet (issue #256) is the placeholder of a
-  /// picture on its way — neutral, no error icon — and stays so until a
-  /// reload. Any other failure is an empty box, as it always was outside a
-  /// debug build.
+  /// picture on its way — neutral, no error icon — until a re-ask of its page
+  /// (issue #258) or a reload brings it. Any other failure is an empty box, as
+  /// it always was outside a debug build.
   Widget _failed(BuildContext context, Object error, StackTrace? stack) =>
       SizedBox(
         key: isImageNotReady(error) ? const Key("thumbnail-not-ready") : null,

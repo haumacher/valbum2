@@ -1719,14 +1719,25 @@ public class FaceIndex {
 
 		private final boolean _pending;
 
+		private final File _target;
+
 		Crop(File file, String reason) {
-			this(file, reason, false);
+			this(file, reason, false, file);
 		}
 
-		Crop(File file, String reason, boolean pending) {
+		Crop(File file, String reason, boolean pending, File target) {
 			_file = file;
 			_reason = reason;
 			_pending = pending;
+			_target = target;
+		}
+
+		/**
+		 * Where the crop lies once it is cut: of a {@link #isPending() pending} one, what the
+		 * background is asked to cut, see issue #258; <code>null</code> where there is no face.
+		 */
+		public File getTarget() {
+			return _target;
 		}
 
 		/**
@@ -1821,7 +1832,7 @@ public class FaceIndex {
 			return new Crop(null, failed);
 		}
 		if (!make) {
-			return new Crop(null, "The face is not cut out yet.", true);
+			return new Crop(null, "The face is not cut out yet.", true, target);
 		}
 		return cut(image, face, target);
 	}

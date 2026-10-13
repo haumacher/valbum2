@@ -26,6 +26,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Deque;
@@ -80,6 +81,39 @@ import java.util.logging.Logger;
  * not change in between, and waits again otherwise. Watching the files themselves would not do:
  * inside a new folder nobody watches anything yet, and <code>cp -p</code> sets old modification
  * stamps.
+ * </p>
+ *
+ * <h2>The fast lane of issue #258</h2>
+ *
+ * <p>
+ * Ahead of everything a noticed folder and the catch-up wait for, the pipeline works for people
+ * who wait. Three priorities, highest first:
+ * </p>
+ *
+ * <ol>
+ * <li><b>Just uploaded.</b> The upload hands over the folder and the files it wrote
+ * ({@link #uploaded(File, Collection)}): no quiet period, no waiting for the watch. The analysis
+ * of the folder first (until it is recorded, the album is answered as being prepared and without
+ * the new files), then the thumbnail of every uploaded file, one file per task, then their display
+ * renditions ({@link Step#runFile(File, Pass)}), then the folder as a whole: its faces, its tile and
+ * everything else, its videos queued as units. A sidecar the server wrote ({@link #edited(File)}: a
+ * star, a cover, a crop) joins here at the folder stage: its new cut and large previews are
+ * made at once, everything else of the folder costs a stat.</li>
+ * <li><b>Demanded.</b> A request answered "not there yet" for a preview, a display rendition or a
+ * face crop says which file somebody waits for ({@link #demanded(File, File, Demand)}); it is
+ * made next, the oldest demand first. Cheap on the request thread, deduplicated by the file, and
+ * bounded ({@link #MAX_DEMANDS}).</li>
+ * <li>The catch-up, as above; the units of the videos behind it.</li>
+ * </ol>
+ *
+ * <p>
+ * This orders the background's own work. It is no priority among requests, and changes nothing of
+ * how the background gives way to them ({@link Background}): every decode of the lane waits for the
+ * requests that make something and runs alone. A request answered "not there yet" makes nothing and
+ * is not counted there, so neither the stream of those answers nor an app asking again holds up the
+ * very work it waits for. A transcode of the video units that runs when urgent work arrives is put
+ * aside ({@link UnitStep#putAside()}), as a request's transcode puts it aside. A folder of the lane
+ * is not worked on by its watch's notice meanwhile; one noticed later finds the work done.
  * </p>
  *
  * <h2>What is remembered</h2>
@@ -266,6 +300,39 @@ public class FolderPipeline {
 		default void discover(File folder) throws IOException {
 			// Nothing to look at.
 		}
+
+		/**
+		 * Makes what the given pass of the fast lane asks of the given file, which was just uploaded
+		 * (see {@link FolderPipeline#uploaded(File, Collection)} and issue #258); nothing by default.
+		 *
+		 * <p>
+		 * Called on the pipeline's thread only, one file and one pass at a time, before the folder
+		 * as a whole is worked on. Does nothing (cheaply) where it is there; a decode is a unit of
+		 * {@link Background#decode(java.util.concurrent.Callable)} as everywhere in the background.
+		 * </p>
+		 */
+		default void runFile(File file, Pass pass) throws InterruptedException {
+			// Nothing of one file.
+		}
+	}
+
+	/** What the fast lane makes of each uploaded file, pass by pass, see issue #258. */
+	public enum Pass {
+		/** What the tile of the file shows: the preview of a photograph, the poster of a video. */
+		THUMBNAIL,
+
+		/** What the viewer shows of a picture no browser shows as it is: its display rendition. */
+		DISPLAY
+	}
+
+	/**
+	 * Makes one generated file somebody asked for and was answered "not there yet", see
+	 * {@link FolderPipeline#demanded(File, File, Demand)} and issue #258.
+	 */
+	public interface Demand {
+
+		/** Makes it, decoding what it needs; called inside {@link Background#decode(java.util.concurrent.Callable)}. */
+		void make() throws Exception;
 	}
 
 	/**
@@ -295,6 +362,16 @@ public class FolderPipeline {
 		/** What the given unit is the work for, which the status counts, see {@link Status#getVideos()}. */
 		default String itemOf(String unit) {
 			return unit;
+		}
+
+		/**
+		 * Puts the unit that runs now aside for urgent work of the fast lane (an upload, a file
+		 * somebody waits for, see issue #258), as a request does: {@link #runUnit(File, String)}
+		 * then answers {@link Outcome#AGAIN} soon. Called on any thread; nothing by default, the
+		 * unit then runs to its end.
+		 */
+		default void putAside() {
+			// A unit that cannot be put aside runs to its end.
 		}
 
 		@Override
@@ -570,6 +647,49 @@ public class FolderPipeline {
 	/** Before when no unit runs, see {@link Outcome#AGAIN}; guarded by this. */
 	private long _unitsAfter;
 
+	/** The task of {@link #work()} queued with a delay, <code>null</code> for none; guarded by this. */
+	private java.util.concurrent.ScheduledFuture<?> _delayedWork;
+
+	/** The unit step running a unit now, see {@link UnitStep#putAside()}. */
+	private volatile UnitStep _runningUnit;
+
+	/**
+	 * How many files somebody waits for are remembered at most, see {@link #demanded(File, File, Demand)}:
+	 * beyond, the oldest demand is forgotten; the catch-up makes it in its turn.
+	 */
+	public static final int MAX_DEMANDS = 1000;
+
+	/** The folders of the fast lane whose analysis comes first, see {@link FolderPipeline}; guarded by this. */
+	private final Map<String, File> _toRecord = new LinkedHashMap<>();
+
+	/** The uploaded files whose thumbnail the fast lane makes, by absolute path; guarded by this. */
+	private final Map<String, File> _thumbnails = new LinkedHashMap<>();
+
+	/** The uploaded files whose display rendition the fast lane makes, by absolute path; guarded by this. */
+	private final Map<String, File> _displays = new LinkedHashMap<>();
+
+	/** The folders of the fast lane worked on as a whole, by path; guarded by this. */
+	private final Map<String, File> _urgentFolders = new LinkedHashMap<>();
+
+	/** A file somebody waits for, see {@link #demanded(File, File, Demand)}. */
+	private static final class Wanted {
+
+		final File _original;
+
+		final File _target;
+
+		final Demand _make;
+
+		Wanted(File original, File target, Demand make) {
+			_original = original;
+			_target = target;
+			_make = make;
+		}
+	}
+
+	/** The files somebody waits for, the oldest first, by the absolute path of the target; guarded by this. */
+	private final Map<String, Wanted> _demands = new LinkedHashMap<>();
+
 	/** The folders holding images the pass knows of, see {@link Status#getTotal()}; guarded by this. */
 	private final Set<String> _known = new LinkedHashSet<>();
 
@@ -734,15 +854,63 @@ public class FolderPipeline {
 	private static final java.util.List<FolderPipeline> STARTED = new java.util.concurrent.CopyOnWriteArrayList<>();
 
 	/**
-	 * Notices the given folder in the pipeline of the space it lies in: the server wrote its
-	 * sidecar, see issue #256. A crop, a star, a picture chosen, a face tagged change which
-	 * generated files a request asks for without changing a photograph; the background makes them,
-	 * and a request never does. Cheap and safe on a request thread, see {@link #notice(File, boolean)}.
+	 * Hands the given folder to the fast lane of the pipeline of the space it lies in: the server
+	 * wrote its sidecar, see issues #256 and #258. A crop, a star, a picture chosen, a face tagged
+	 * change which generated files a request asks for without changing a photograph (a cut preview,
+	 * the large preview of a starred tile, a face crop, issue #260); the background makes them at
+	 * once, and a request never does. Cheap and safe on a request thread.
 	 */
 	public static void edited(File folder) {
-		for (FolderPipeline pipeline : STARTED) {
-			pipeline.notice(folder, false);
+		FolderPipeline pipeline = owner(folder);
+		if (pipeline != null) {
+			pipeline.urgent(folder, Collections.<File> emptyList());
 		}
+	}
+
+	/**
+	 * Hands the given files, just uploaded into the given folder, to the fast lane of the pipeline
+	 * of the space, see {@link FolderPipeline} and issue #258: no quiet period, nothing waits for the
+	 * watch. Cheap and safe on a request thread; a multi-file upload hands over request by request,
+	 * and what is handed over twice is queued once.
+	 */
+	public static void uploaded(File folder, Collection<File> files) {
+		FolderPipeline pipeline = owner(folder);
+		if (pipeline != null) {
+			pipeline.urgent(folder, files);
+		}
+	}
+
+	/**
+	 * Tells the pipeline of the space that somebody waits for the given generated file of the given
+	 * original: a request was answered "not there yet", see {@link FolderPipeline} and issue #258.
+	 * The request makes nothing; the background makes it ahead of its catch-up.
+	 *
+	 * <p>
+	 * Cheap and safe on a request thread: nothing is read, nothing decoded. A file asked for again
+	 * keeps its place; beyond {@link #MAX_DEMANDS} the oldest demand is forgotten.
+	 * </p>
+	 *
+	 * @return Whether a started pipeline took the demand.
+	 */
+	public static boolean demanded(File original, File target, Demand make) {
+		FolderPipeline pipeline = owner(original.getParentFile());
+		return pipeline != null && pipeline.demand(original, target, make);
+	}
+
+	/** The started pipeline of the space the given folder lies in, the innermost; <code>null</code> for none. */
+	private static FolderPipeline owner(File folder) {
+		if (folder == null) {
+			return null;
+		}
+		FolderPipeline result = null;
+		for (FolderPipeline pipeline : STARTED) {
+			String path = pipeline.relative(folder);
+			if (path != null && LibraryFiles.isLibraryPath(path)
+				&& (result == null || pipeline._root.startsWith(result._root))) {
+				result = pipeline;
+			}
+		}
+		return result;
 	}
 
 	/** Stops the thread; what is done is written. */
@@ -759,6 +927,12 @@ public class FolderPipeline {
 			// Nothing is lost: the next walk finds the same work again, and what is done is recorded.
 			_photoQueue.clear();
 			_unitQueue.clear();
+			_toRecord.clear();
+			_thumbnails.clear();
+			_displays.clear();
+			_urgentFolders.clear();
+			_demands.clear();
+			_delayedWork = null;
 			_workScheduled = false;
 		}
 		if (watch != null) {
@@ -814,7 +988,7 @@ public class FolderPipeline {
 
 	/** Whether nothing waits; called while synchronized. */
 	private boolean idle() {
-		return _pending.isEmpty() && _photoQueue.isEmpty() && _unitQueue.isEmpty() && !_workScheduled;
+		return _pending.isEmpty() && _photoQueue.isEmpty() && _unitQueue.isEmpty() && !hasUrgent() && !_workScheduled;
 	}
 
 	// --- The sweep. ---
@@ -1042,6 +1216,8 @@ public class FolderPipeline {
 		}
 		_pending.remove(path);
 		_photoQueue.remove(path);
+		_toRecord.remove(path);
+		_urgentFolders.remove(path);
 		_known.remove(path);
 		_settled.remove(path);
 		_unitQueue.values().removeIf(work -> work._path.equals(path));
@@ -1123,6 +1299,11 @@ public class FolderPipeline {
 					continue;
 				}
 				ready = fingerprint.equals(pending._fingerprint) && pending._due <= System.currentTimeMillis();
+				if (!pending._tree && inLane(path)) {
+					// The fast lane works on it as a whole anyway, see issue #258.
+					_pending.remove(path);
+					continue;
+				}
 				if (ready) {
 					_pending.remove(path);
 				} else {
@@ -1435,6 +1616,171 @@ public class FolderPipeline {
 		return files != null && files.length > 0;
 	}
 
+	// --- The fast lane of issue #258. ---
+
+	/**
+	 * Queues the given folder in the fast lane, with the given files just uploaded into it, see
+	 * {@link #uploaded(File, Collection)} and {@link #edited(File)}.
+	 */
+	void urgent(File folder, Collection<File> files) {
+		String path = relative(folder);
+		if (path == null || !LibraryFiles.isLibraryPath(path)) {
+			return;
+		}
+		synchronized (this) {
+			if (_executor == null) {
+				return;
+			}
+			if (!files.isEmpty()) {
+				// The album answers only what is recorded: an upload into a folder recorded before
+				// is recorded by the upload itself, anything else of it here, first.
+				_toRecord.put(path, folder);
+				for (File file : files) {
+					String key = file.getAbsolutePath();
+					_thumbnails.put(key, file);
+					_displays.put(key, file);
+				}
+			}
+			_urgentFolders.put(path, folder);
+			hurry();
+		}
+	}
+
+	/** Takes a demand, see {@link #demanded(File, File, Demand)}. */
+	boolean demand(File original, File target, Demand make) {
+		synchronized (this) {
+			if (_executor == null) {
+				return false;
+			}
+			String key = target.getAbsolutePath();
+			if (!_demands.containsKey(key)) {
+				_demands.put(key, new Wanted(original, target, make));
+				while (_demands.size() > MAX_DEMANDS) {
+					_demands.remove(_demands.keySet().iterator().next());
+				}
+				// Asked again while it waits: hurried already.
+				hurry();
+			}
+			return true;
+		}
+	}
+
+	/**
+	 * Has the urgent work just queued run next: a task of {@link #work()} that waits for the units'
+	 * pause runs at once, and a unit running now is put aside; called while synchronized.
+	 */
+	private void hurry() {
+		if (_delayedWork != null && _delayedWork.cancel(false)) {
+			_delayedWork = null;
+			_workScheduled = false;
+		}
+		scheduleWork();
+		UnitStep running = _runningUnit;
+		if (running != null) {
+			running.putAside();
+		}
+	}
+
+	/** Whether work of the fast lane waits; called while synchronized. */
+	private boolean hasUrgent() {
+		return !_toRecord.isEmpty() || !_thumbnails.isEmpty() || !_displays.isEmpty() || !_urgentFolders.isEmpty()
+			|| !_demands.isEmpty();
+	}
+
+	/** Whether the given folder waits in the fast lane, which works on it as a whole; while synchronized. */
+	private boolean inLane(String path) {
+		return _toRecord.containsKey(path) || _urgentFolders.containsKey(path);
+	}
+
+	/** How many pieces of work wait in the fast lane; for the tests. */
+	public synchronized int urgentWork() {
+		return _toRecord.size() + _thumbnails.size() + _displays.size() + _urgentFolders.size() + _demands.size();
+	}
+
+	/**
+	 * Takes the next piece of the fast lane out of it, in the order of {@link FolderPipeline}:
+	 * <code>null</code> when there is none. Called while synchronized.
+	 */
+	private Runnable nextUrgent() {
+		if (!_toRecord.isEmpty()) {
+			File folder = poll(_toRecord);
+			return () -> process(folder, Stage.RECORD);
+		}
+		if (!_thumbnails.isEmpty()) {
+			File file = poll(_thumbnails);
+			return () -> runFile(file, Pass.THUMBNAIL);
+		}
+		if (!_displays.isEmpty()) {
+			File file = poll(_displays);
+			return () -> runFile(file, Pass.DISPLAY);
+		}
+		if (!_urgentFolders.isEmpty()) {
+			File folder = poll(_urgentFolders);
+			return () -> process(folder);
+		}
+		if (!_demands.isEmpty()) {
+			Wanted wanted = poll(_demands);
+			return () -> make(wanted);
+		}
+		return null;
+	}
+
+	/** Takes the first entry out of the given queue. */
+	private static <T> T poll(Map<String, T> queue) {
+		Map.Entry<String, T> first = queue.entrySet().iterator().next();
+		queue.remove(first.getKey());
+		return first.getValue();
+	}
+
+	/** Runs the given pass of every step on the given uploaded file, see {@link Step#runFile(File, Pass)}. */
+	private void runFile(File file, Pass pass) {
+		if (!file.isFile()) {
+			return;
+		}
+		String path = relative(file.getParentFile());
+		for (Step step : byStage()) {
+			if (Thread.currentThread().isInterrupted()) {
+				return;
+			}
+			_currentStep = step.name();
+			_currentFolder = path;
+			try {
+				step.runFile(file, pass);
+			} catch (InterruptedException ex) {
+				Thread.currentThread().interrupt();
+				return;
+			} catch (RuntimeException ex) {
+				// The folder as a whole comes next, and reports what it cannot do.
+				LOG.log(Level.WARNING, "Step '" + step.name() + "' failed on the upload '" + file.getAbsolutePath()
+					+ "': " + ex.getMessage(), ex);
+			} finally {
+				_currentStep = null;
+				_currentFolder = null;
+			}
+		}
+	}
+
+	/** Makes the given file somebody waits for, unless it is there meanwhile. */
+	private void make(Wanted wanted) {
+		if (de.haumacher.imageServer.PreviewCache.present(wanted._target) || !wanted._original.isFile()) {
+			return;
+		}
+		_currentFolder = relative(wanted._original.getParentFile());
+		try {
+			Background.decode(() -> {
+				wanted._make.make();
+				return null;
+			});
+		} catch (InterruptedException ex) {
+			Thread.currentThread().interrupt();
+		} catch (Exception ex) {
+			// Remembered by the maker as the failure a request is answered with, see issue #256.
+			LOG.log(Level.FINE, "Cannot make '" + wanted._target.getName() + "': " + ex.getMessage(), ex);
+		} finally {
+			_currentFolder = null;
+		}
+	}
+
 	// --- The catch-up of issue #236. ---
 
 	/**
@@ -1511,14 +1857,16 @@ public class FolderPipeline {
 
 	/** Queues a task of {@link #work()} unless one is queued or there is nothing; while synchronized. */
 	private void scheduleWork() {
-		if (_workScheduled || _executor == null || (_photoQueue.isEmpty() && _unitQueue.isEmpty())) {
+		if (_workScheduled || _executor == null
+			|| (_photoQueue.isEmpty() && _unitQueue.isEmpty() && !hasUrgent())) {
 			return;
 		}
 		try {
-			long delay = _photoQueue.isEmpty() ? _unitsAfter - System.currentTimeMillis() : 0;
+			long delay = _photoQueue.isEmpty() && !hasUrgent() ? _unitsAfter - System.currentTimeMillis() : 0;
 			if (delay > 0) {
-				_executor.schedule(this::work, delay, TimeUnit.MILLISECONDS);
+				_delayedWork = _executor.schedule(this::work, delay, TimeUnit.MILLISECONDS);
 			} else {
+				_delayedWork = null;
 				_executor.execute(this::work);
 			}
 			_workScheduled = true;
@@ -1528,19 +1876,26 @@ public class FolderPipeline {
 	}
 
 	/**
-	 * One piece of queued work: the photo steps of the next folder, else one unit of the videos.
+	 * One piece of queued work: the next piece of the fast lane, else the photo steps of the next
+	 * folder, else one unit of the videos.
 	 *
 	 * <p>
 	 * One piece per task, so that a folder whose quiet period ended is worked on before the next
-	 * piece: ticks are due earlier than the task queued after this one.
+	 * piece: ticks are due earlier than the task queued after this one; and so that urgent work
+	 * handed over meanwhile is next, see issue #258.
 	 * </p>
 	 */
 	private void work() {
 		File folder = null;
 		boolean unit = false;
+		Runnable urgent;
 		synchronized (this) {
 			_workScheduled = false;
-			if (!_photoQueue.isEmpty()) {
+			_delayedWork = null;
+			urgent = nextUrgent();
+			if (urgent != null) {
+				// Ahead of everything else, see issue #258.
+			} else if (!_photoQueue.isEmpty()) {
 				Map.Entry<String, File> first = _photoQueue.entrySet().iterator().next();
 				_photoQueue.remove(first.getKey());
 				folder = first.getValue();
@@ -1548,7 +1903,9 @@ public class FolderPipeline {
 				unit = !_unitQueue.isEmpty() && System.currentTimeMillis() >= _unitsAfter;
 			}
 		}
-		if (folder != null) {
+		if (urgent != null) {
+			urgent.run();
+		} else if (folder != null) {
 			process(folder);
 		} else if (unit) {
 			runUnit();
@@ -1570,8 +1927,10 @@ public class FolderPipeline {
 			File folder = null;
 			boolean unit;
 			long wait;
+			Runnable urgent;
 			synchronized (this) {
-				if (!_photoQueue.isEmpty()) {
+				urgent = nextUrgent();
+				if (urgent == null && !_photoQueue.isEmpty()) {
 					Map.Entry<String, File> first = _photoQueue.entrySet().iterator().next();
 					_photoQueue.remove(first.getKey());
 					folder = first.getValue();
@@ -1579,7 +1938,9 @@ public class FolderPipeline {
 				unit = !_unitQueue.isEmpty();
 				wait = _unitsAfter - System.currentTimeMillis();
 			}
-			if (folder != null) {
+			if (urgent != null) {
+				urgent.run();
+			} else if (folder != null) {
 				process(folder);
 			} else if (unit) {
 				if (wait > 0) {
@@ -1629,12 +1990,21 @@ public class FolderPipeline {
 		Exception problem = null;
 		_currentStep = name;
 		_currentFolder = work._path;
+		_runningUnit = work._step;
 		try {
+			synchronized (this) {
+				if (hasUrgent()) {
+					// Handed over while this was taken: it goes first, see issue #258.
+					_unitsAfter = System.currentTimeMillis();
+					return;
+				}
+			}
 			outcome = work._step.runUnit(work._folder, unit);
 		} catch (IOException | RuntimeException ex) {
 			outcome = Outcome.FAILED;
 			problem = ex;
 		} finally {
+			_runningUnit = null;
 			_currentStep = null;
 			_currentFolder = null;
 		}

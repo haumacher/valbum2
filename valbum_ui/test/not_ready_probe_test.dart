@@ -1,10 +1,7 @@
-/// Probe for issue #256: in the viewer, a photograph whose display copy the
-/// server has not made yet (a HEIC) is not a failure, and a reload asks for
-/// it again.
-///
-/// The viewer has no reload of its own: the reload is the album's, reached
-/// by going back, and the picture is asked again when the viewer is opened
-/// once more.
+/// Probe for issues #256 and #258: in the viewer, a photograph whose display
+/// copy the server has not made yet (a HEIC) is not a failure, and the viewer
+/// asks for it again by itself while it is the top page — the display copy
+/// shows without going back and reloading, as issue #256 still needed.
 library;
 
 import 'package:flutter/material.dart' hide Orientation;
@@ -12,9 +9,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:valbum_ui/main.dart';
+import 'package:valbum_ui/not_ready.dart';
 
 import 'util/fake_image_http.dart';
-import 'util/l10n.dart';
 import 'util/viewer_harness.dart' show withEmptyImageCache, letImagesDecode;
 
 const String dataUrl = "http://server/valbum/data";
@@ -29,9 +26,10 @@ void main() {
   setUp(() {
     withEmptyImageCache();
     forgetThumbnailBytes();
+    resetNotReady();
   });
 
-  testWidgets('a display copy not made yet, in the viewer, then a reload',
+  testWidgets('a display copy not made yet, in the viewer, shows by itself',
       (tester) async {
     var requests = <http.Request>[];
     var ready = false;
@@ -87,38 +85,36 @@ void main() {
         reason: "the placeholder stands in beneath");
     expect(shownPicture(tester), isNull, reason: "nothing sharp yet");
 
-    // Waiting asks nothing again.
+    // Not asked again before the wait (the platform's fetch names no
+    // Retry-After: the default).
     await withFakeImageHttp(() async {
-      await tester.pump(const Duration(minutes: 5));
+      await tester.pump(reAskDefault - const Duration(seconds: 1));
       await tester.pumpAndSettle();
     });
-    expect(displayRequests(), asked, reason: "no retry");
+    expect(displayRequests(), asked, reason: "not before the wait");
 
-    // The background made it; the user goes back, reloads the album and
-    // opens the photograph again.
+    // The background made it; nobody goes back or reloads.
     ready = true;
     await withFakeImageHttp(() async {
-      await tester.tap(find.byIcon(Icons.arrow_back));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byIcon(Icons.more_vert).first);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text(testL10n.reload).last);
+      await tester.pump(const Duration(seconds: 1));
       await tester.pumpAndSettle();
     });
     await letImagesDecode(tester);
-    expect(find.byKey(const Key("thumbnail-not-ready")), findsNothing,
-        reason: "the reload asked for the thumbnail again");
-    await withFakeImageHttp(() async {
-      await tester.tap(find.byType(Image).first);
-      await tester.pumpAndSettle();
-    });
-    await letImagesDecode(tester);
+    expect(find.byType(ImageView), findsOneWidget, reason: "still the viewer");
     expect(displayRequests(), greaterThan(asked),
-        reason: "a reload asks again for what was not there");
+        reason: "the viewer asks again by itself");
     expect(shownPicture(tester), isNotNull, reason: "the display copy shows");
     expect(tester.takeException(), isNull);
     expect(find.byType(SnackBar), findsNothing);
     expect(log.entries, isEmpty);
+
+    // Nothing pending in the viewer: nothing is asked any more.
+    var after = displayRequests();
+    await withFakeImageHttp(() async {
+      await tester.pump(const Duration(minutes: 5));
+      await tester.pumpAndSettle();
+    });
+    expect(displayRequests(), after);
   });
 }
 

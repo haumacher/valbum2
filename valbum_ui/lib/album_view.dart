@@ -39,6 +39,7 @@ import 'listing_view.dart';
 import 'move_view.dart';
 import 'name_date.dart';
 import 'resource.dart';
+import 'not_ready.dart';
 import 'offline.dart';
 import 'persons_view.dart';
 import 'oriented_thumbnail.dart';
@@ -2139,8 +2140,31 @@ class AlbumContentState extends State<AlbumContent>
   /// The transport to the album server.
   VAlbumClient get client => widget.albumState.client;
 
+  /// The album, asked again by itself while the server is still preparing it
+  /// or a picture of it is not made yet (issues #253, #258), see
+  /// [NotReadyReAsk]: not in the edit mode and the select mode, whose
+  /// selection a re-read album takes away, nor in a "view as" preview.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => NotReadyReAsk(
+        paused: () => editMode || selectMode || previewing,
+        preparing: () => widget.album.preparing,
+        onReAsk: _reAskAlbum,
+        child: _buildAlbum(context),
+      );
+
+  /// Reads the album again while the server is preparing it (issue #253):
+  /// the ordinary reload of the album, the one the face editor's poll uses as
+  /// well ([PersonsContentState]). Its pictures are asked again by the
+  /// re-ask itself, each tile that was not made yet, see [NotReadyReAsk].
+  void _reAskAlbum() {
+    if (!widget.album.preparing) {
+      return;
+    }
+    widget.albumState.navigator.delegate.forget(widget.albumState.path);
+    widget.albumState.reload();
+  }
+
+  Widget _buildAlbum(BuildContext context) {
     _syncBrowserMenu();
     var self = shownAlbum;
 
@@ -3061,8 +3085,8 @@ class AlbumContentState extends State<AlbumContent>
     }
     // An album the server has not read yet says so (issue #253): an empty
     // page would look like an empty album, and one missing its newest photos
-    // like an album without them. Nothing asks again by itself: a reload
-    // shows what the server has read since.
+    // like an album without them. It is asked for again meanwhile, see
+    // [NotReadyReAsk].
     if (self.preparing) {
       var empty = !self.parts.any((part) => part is AbstractImage);
       result.add(SliverToBoxAdapter(child: preparingNotice(empty: empty)));
@@ -3153,7 +3177,7 @@ class AlbumContentState extends State<AlbumContent>
         children: [
           if (empty) ...[
             // A still icon and not a spinner: nothing on this page is
-            // running; a reload shows what the server has read since.
+            // running, the album is merely asked for again now and then.
             const Icon(Icons.hourglass_empty, size: 32, color: Colors.white70),
             const SizedBox(height: 16),
           ],

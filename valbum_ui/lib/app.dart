@@ -282,8 +282,7 @@ class VAlbumAppState extends State<VAlbumApp> {
 
   /// Where new photos of this device go besides the inbox, per server
   /// (issue #240), kept in the same store as the camera-roll configuration.
-  late final UploadTargets uploadTargets =
-      UploadTargets(store: settings.store);
+  late final UploadTargets uploadTargets = UploadTargets(store: settings.store);
 
   /// The network the device is on, see [ConnectivitySource] (issue #36).
   ///
@@ -1057,8 +1056,7 @@ class VAlbumAppState extends State<VAlbumApp> {
       await speaker.endOtherSessions();
     } catch (error) {
       messenger?.showSnackBar(SnackBar(
-          content:
-              Text(error is VAlbumException ? error.message : "$error")));
+          content: Text(error is VAlbumException ? error.message : "$error")));
       return;
     }
     if (!mounted) {
@@ -1161,9 +1159,7 @@ class VAlbumAppState extends State<VAlbumApp> {
     contactStore.keepSignIn(
       session!.dataUrl,
       PendingSignIn(
-          binding: started.binding,
-          remember: remember,
-          deviceName: deviceName),
+          binding: started.binding, remember: remember, deviceName: deviceName),
     );
     _openUrl(started.url);
   }
@@ -3100,6 +3096,13 @@ class VAlbumState extends State<VAlbumView>
       ),
     );
 
+    // The server's background makes the new pictures within a second or two
+    // (issue #258): the page showing them asks again soon, see
+    // [NotReadyReAsk].
+    if (summary.stored > 0) {
+      noteUpload();
+    }
+
     // The upload outlives the view it was started from: on a slow link the
     // user is long gone by the time the server answers. Refreshing a view that
     // is no longer there is not worth any machinery — the next visit fetches
@@ -3145,8 +3148,9 @@ class VAlbumState extends State<VAlbumView>
 
   /// Re-fetches the displayed resource from the server.
   ///
-  /// The pictures the server had not made yet are asked for again too: the
-  /// app never asks again by itself (issue #256).
+  /// The pictures the server had not made yet are asked for again too (issue
+  /// #256), at once; meanwhile a page asks again by itself only while
+  /// something is pending, see [NotReadyReAsk] and issue #258.
   void reload() {
     forgetNotReadyImages();
     if (route is SearchRoute) {

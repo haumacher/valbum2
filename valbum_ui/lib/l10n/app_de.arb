@@ -1001,6 +1001,8 @@
   "searchWithoutCamera": "Ohne Kamera",
   "searchAllOf": "Alle davon",
   "searchAnyOf": "Eines davon",
+  "searchScope": "In: {scope}",
+  "searchEverywhere": "In der gesamten Bibliothek suchen",
   "searchExclude": "Ausschließen",
   "searchExcluded": "Nicht: {criterion}",
   "searchWordNot": "nicht",
@@ -1009,8 +1011,6 @@
   "brokenVideoExplanation": "Dieses Video kann nicht abgespielt werden: Die Datei ist beschädigt oder unvollständig.",
   "brokenFileReason": "Vom Server angegebener Grund: {reason}",
   "brokenFileSize": "Dateigröße: {size}",
-  "albumPreparing": "Dieses Album wird gerade vorbereitet. Laden Sie es später neu, um die Fotos zu sehen, die der Server bis dahin eingelesen hat.",
-  "albumStillPreparing": "Dieses Album wird noch vorbereitet. Laden Sie es später neu, um die Fotos zu sehen, die der Server noch nicht eingelesen hat.",
-  "searchScope": "In: {scope}",
-  "searchEverywhere": "In der gesamten Bibliothek suchen"
+  "albumPreparing": "Dieses Album wird gerade vorbereitet. Die Fotos darin werden hier angezeigt, sobald der Server sie einliest.",
+  "albumStillPreparing": "Dieses Album wird noch vorbereitet. Die Fotos, die der Server noch nicht gelesen hat, werden hier angezeigt, sobald er sie liest."
 }

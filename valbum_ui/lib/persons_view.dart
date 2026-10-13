@@ -59,6 +59,7 @@ import 'client.dart';
 import 'drag_scroll.dart';
 import 'form_dialog.dart';
 import 'l10n/app_localizations.dart';
+import 'not_ready.dart';
 import 'offline.dart';
 import 'oriented_thumbnail.dart';
 import 'person_names.dart';
@@ -1416,8 +1417,13 @@ class PersonsContentState extends State<PersonsContent>
   // The screen.
   // -------------------------------------------------------------------------
 
+  /// The screen, whose face crops not cut yet are asked for again by
+  /// themselves, see [NotReadyReAsk] and issue #258.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      NotReadyReAsk(child: _buildScreen(context));
+
+  Widget _buildScreen(BuildContext context) {
     var shown = groups;
     _labels = disambiguate([
       for (var group in shown)
@@ -2116,15 +2122,27 @@ class FaceTile extends StatelessWidget {
     // Every face has a crop since issue #155 — a tag without a detection is
     // cut from the original by its own box — so the clipped thumbnail is only
     // what stands in for a crop that cannot be had.
-    return Image(
-      image: FaceImage(client, imageUrl, face.face.index),
-      width: size,
-      height: size,
-      fit: BoxFit.cover,
-      gaplessPlayback: true,
-      // A crop the server does not have after all: the picture and the box
-      // say the same thing, so nothing is left blank.
-      errorBuilder: (context, error, stack) => clipped(),
+    // A crop not cut yet is asked for again by the page's re-ask (issue
+    // #258), see [AskAgain].
+    var crop = FaceImage(client, imageUrl, face.face.index);
+    return AskAgain(
+      provider: crop,
+      builder: (context) => Image(
+        image: crop,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        gaplessPlayback: true,
+        // A crop the server does not have after all: the picture and the box
+        // say the same thing, so nothing is left blank.
+        errorBuilder: (context, error, stack) {
+          if (isImageNotReady(error)) {
+            NotReadyReAsk.remember(context, crop,
+                retryAfter: error is ImageNotReady ? error.retryAfter : null);
+          }
+          return clipped();
+        },
+      ),
     );
   }
 
@@ -2356,8 +2374,8 @@ class _PersonChooserState extends State<PersonChooser> {
       }
       var row = _rows[_shown[_highlighted].id]?.currentContext;
       if (row != null) {
-        Scrollable.ensureVisible(row, alignment: 0.5, duration:
-            const Duration(milliseconds: 100));
+        Scrollable.ensureVisible(row,
+            alignment: 0.5, duration: const Duration(milliseconds: 100));
       }
     });
   }
@@ -2372,7 +2390,8 @@ class _PersonChooserState extends State<PersonChooser> {
       Navigator.of(context).pop(_shown[_highlighted]);
       return;
     }
-    if (_shown.isEmpty && widget.onCreate != null &&
+    if (_shown.isEmpty &&
+        widget.onCreate != null &&
         _search.text.trim().isNotEmpty) {
       _create();
     }
@@ -2397,10 +2416,16 @@ class _PersonChooserState extends State<PersonChooser> {
     // In this album first, everybody else behind them, each section in the
     // order of what is written on it (issue #150).
     var here = byDisplayName(
-      [for (var person in shown) if (widget.inAlbum.contains(person.id)) person],
+      [
+        for (var person in shown)
+          if (widget.inAlbum.contains(person.id)) person
+      ],
     );
     var elsewhere = byDisplayName(
-      [for (var person in shown) if (!widget.inAlbum.contains(person.id)) person],
+      [
+        for (var person in shown)
+          if (!widget.inAlbum.contains(person.id)) person
+      ],
     );
     // What the keyboard walks: the two sections, in the order they are drawn.
     _shown = [...here, ...elsewhere];
@@ -2489,8 +2514,7 @@ class _PersonChooserState extends State<PersonChooser> {
               TextField(
                 key: const Key("persons-search"),
                 controller: _search,
-                decoration:
-                    InputDecoration(labelText: l10n.personsSearchLabel),
+                decoration: InputDecoration(labelText: l10n.personsSearchLabel),
                 // A changed filter leaves the highlight nowhere, see
                 // [_highlighted].
                 onChanged: (_) => setState(() => _highlighted = -1),
@@ -2524,7 +2548,8 @@ class _PersonChooserState extends State<PersonChooser> {
   }
 
   /// One person to pick, see issue #146 for the two names.
-  Widget _pick(BuildContext context, Person person, Map<String, String> labels) {
+  Widget _pick(
+      BuildContext context, Person person, Map<String, String> labels) {
     var highlighted = _highlighted >= 0 &&
         _highlighted < _shown.length &&
         _shown[_highlighted].id == person.id;

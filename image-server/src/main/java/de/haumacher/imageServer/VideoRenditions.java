@@ -348,6 +348,24 @@ public class VideoRenditions {
 	private BackgroundJob _background;
 
 	/**
+	 * Puts the background transcode running now aside for urgent work of the background itself (an
+	 * upload, a picture somebody waits for, see issue #258), as a request's transcode does: its FFmpeg
+	 * is killed and {@link #make(File, Kind)} answers {@link State#DEFERRED}. One a request waits
+	 * for is never put aside.
+	 */
+	public void putAsideBackground() {
+		synchronized (_slot) {
+			BackgroundJob background = _background;
+			if (background != null && !background._promoted && !background._preempted) {
+				background._preempted = true;
+				if (background._process != null) {
+					kill(background._process);
+				}
+			}
+		}
+	}
+
+	/**
 	 * Takes the slot for a request's transcode of the given rendition, preempting a background
 	 * transcode of another one, waiting for one of the same, see {@link #make(File, Kind)}.
 	 */

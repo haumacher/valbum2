@@ -319,7 +319,7 @@ public class ImageServlet extends HttpServlet {
 	 * made yet is answered with, <code>202 Accepted</code> like {@link #RENDITION_PENDING}: a
 	 * request never makes one, see issue #256.
 	 */
-	public static final String PREVIEW_PENDING = "This picture is being prepared; please reload shortly.";
+	public static final String PREVIEW_PENDING = "This picture is being prepared; please try again shortly.";
 
 	/**
 	 * The message a request for a face crop that this caller is answered no faces of is refused
@@ -565,6 +565,13 @@ public class ImageServlet extends HttpServlet {
 
 	/** How long a caller waits before asking for a pending rendition again, in seconds. */
 	public static final String RETRY_AFTER_SECONDS = "10";
+
+	/**
+	 * How long a caller waits at most before asking for a preview, a display rendition or a face
+	 * crop again that is not there yet, in seconds: the background makes one asked for next (issue
+	 * #258), a matter of a second, where a transcode takes minutes.
+	 */
+	public static final String PREVIEW_RETRY_AFTER_SECONDS = "3";
 
 	/**
 	 * What a rendition request is answered with on a server that cannot transcode at all.
@@ -1829,7 +1836,8 @@ public class ImageServlet extends HttpServlet {
 	 * Records the given files, just uploaded into the given folder, see issue #253: the upload
 	 * request analyses what it brought (it is a write, never a read of an album), so that the album
 	 * shows it with the next read instead of after the background's quiet period. A file that cannot
-	 * be read is recorded as broken.
+	 * be read is recorded as broken. Then hands them to the fast lane of the background, see issue
+	 * #258.
 	 */
 	private void recordUploads(File folder, List<File> stored) {
 		if (stored.isEmpty()) {
@@ -1838,9 +1846,12 @@ public class ImageServlet extends HttpServlet {
 		try {
 			AnalysisRecord.add(folder, stored, _cache.analyst());
 		} catch (IOException | RuntimeException ex) {
-			// The background records them after its quiet period.
+			// The fast lane records them first.
 			LOG.log(Level.WARNING, "Cannot record the upload into '" + folder + "': " + ex.getMessage(), ex);
 		}
+		// And the background makes their thumbnails at once, ahead of its catch-up and without the
+		// quiet period of the watch, see issue #258.
+		de.haumacher.imageServer.pipeline.FolderPipeline.uploaded(folder, stored);
 	}
 
 	/**
@@ -6613,7 +6624,8 @@ public class ImageServlet extends HttpServlet {
 	 */
 	private boolean makes(String type) {
 		// With a background, a preview, a display rendition and a face crop are served as it made
-		// them, never made here, see issue #256.
+		// them, never made here, see issue #256. Neither is a request answered "not there yet":
+		// counted, the app asking again would hold up the very work it waits for (issue #258).
 		return (!_cache.hasBackground() && ("tn".equals(type) || DISPLAY_TYPE.equals(type) || FACE_TYPE.equals(type)))
 			|| VideoRenditions.Kind.PLAYBACK.parameter().equals(type)
 			|| VideoRenditions.Kind.TEASER.parameter().equals(type);
@@ -6642,9 +6654,19 @@ public class ImageServlet extends HttpServlet {
 				if (_cache.hasBackground()) {
 					// Served as the background made it, or not there yet: a request never makes a
 					// preview and never looks at the original, see issue #256.
-					data = PreviewCache.previewTarget(pathInfo.toFile(), region, large);
+					File original = pathInfo.toFile();
+					double[] cut = region;
+					data = PreviewCache.previewTarget(original, cut, large);
 					if (!PreviewCache.present(data)) {
-						notMadeYet(context, data, failure -> previewFailed(pathInfo.toFile(), failure));
+						notMadeYet(context, original, data, failure -> previewFailed(original, failure),
+							() -> {
+								// The large preview of a starred tile (#241), a cut one, the plain one.
+								if (large) {
+									PreviewCache.createLargePreview(original, cut);
+								} else {
+									PreviewCache.createPreview(original, cut);
+								}
+							});
 						return;
 					}
 				} else {
@@ -6704,7 +6726,8 @@ public class ImageServlet extends HttpServlet {
 			// As the background made it, or not there yet, see issue #256.
 			data = PreviewCache.displayFile(file);
 			if (!PreviewCache.present(data)) {
-				notMadeYet(context, data, failure -> displayFailed(file, failure));
+				notMadeYet(context, file, data, failure -> displayFailed(file, failure),
+					() -> PreviewCache.createDisplay(file));
 				return;
 			}
 		} else {
@@ -6738,15 +6761,31 @@ public class ImageServlet extends HttpServlet {
 	 * <code>202 Accepted</code> with {@link #PREVIEW_PENDING}, the convention of a video rendition
 	 * that is not there yet (issue #74) &mdash; or, where the background tried and failed, that
 	 * failure, because coming back would not help.
+	 *
+	 * <p>
+	 * Somebody waits for it: the background is told, and makes it ahead of its catch-up, see issue
+	 * #258. Nothing is made here, and such a request is no request the background gives way to
+	 * ({@link #makes(String)}): the app asking again must not hold up what it waits for.
+	 * </p>
 	 */
-	private void notMadeYet(Context context, File generated,
-			java.util.function.Function<PreviewException, String> message) throws IOException {
+	private void notMadeYet(Context context, File original, File generated,
+			java.util.function.Function<PreviewException, String> message,
+			de.haumacher.imageServer.pipeline.FolderPipeline.Demand make) throws IOException {
 		PreviewException failure = PreviewCache.failure(generated);
 		if (failure != null) {
 			errorInfo(context, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, message.apply(failure));
 			return;
 		}
-		context.response().setHeader("Retry-After", RETRY_AFTER_SECONDS);
+		de.haumacher.imageServer.pipeline.FolderPipeline.demanded(original, generated, make);
+		notThereYet(context);
+	}
+
+	/**
+	 * Answers <code>202 Accepted</code> with {@link #PREVIEW_PENDING}, and when to ask again:
+	 * {@link #PREVIEW_RETRY_AFTER_SECONDS}.
+	 */
+	private static void notThereYet(Context context) throws IOException {
+		context.response().setHeader("Retry-After", PREVIEW_RETRY_AFTER_SECONDS);
 		errorInfo(context, HttpServletResponse.SC_ACCEPTED, PREVIEW_PENDING);
 	}
 
@@ -8687,8 +8726,11 @@ public class ImageServlet extends HttpServlet {
 		// Cut by the background where there is one, never here, see issue #256.
 		FaceIndex.Crop crop = _faces.crop(pathInfo.toFile(), index, tags, !_cache.hasBackground());
 		if (crop.isPending()) {
-			context.response().setHeader("Retry-After", RETRY_AFTER_SECONDS);
-			errorInfo(context, HttpServletResponse.SC_ACCEPTED, PREVIEW_PENDING);
+			// Cut next by the background, see issue #258.
+			File image = pathInfo.toFile();
+			de.haumacher.imageServer.pipeline.FolderPipeline.demanded(image, crop.getTarget(),
+				() -> _faces.crop(image, index, tags, true));
+			notThereYet(context);
 			return;
 		}
 		if (crop.getFile() == null) {

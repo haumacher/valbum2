@@ -33,6 +33,14 @@ import java.util.concurrent.locks.ReentrantLock;
  * counting those would stop the background for as long as somebody watches it.
  * </p>
  *
+ * <p>
+ * The fast lane of issue #258 ({@link FolderPipeline}: an upload, a file somebody was answered "not
+ * there yet" for) is no priority among these requests either: it orders the background's
+ * <em>own</em> work, ahead of its catch-up, and every decode of it waits here like any other. A
+ * request answered "not there yet" makes nothing and is not counted: an app asking again for what it
+ * waits for must not hold up the very work that makes it.
+ * </p>
+ *
  * <h2>One decode at a time</h2>
  *
  * <p>

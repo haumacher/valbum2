@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:valbum_ui/main.dart';
+import 'package:valbum_ui/not_ready.dart';
 import 'package:valbum_ui/video_view.dart';
 
 import 'util/fake_image_http.dart';
@@ -254,8 +255,9 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets("says so, asks nothing by itself, and shows its photos after "
-        "a reload", (tester) async {
+    testWidgets(
+        "says so, asks again by itself, and shows its photos once "
+        "the server has read them", (tester) async {
       var server = Server(album(const [], preparing: true));
       await withFakeImageHttp(() async {
         await tester.pumpWidget(VAlbumApp(client: server.client));
@@ -265,24 +267,59 @@ void main() {
       expect(find.text(testL10n.albumPreparing), findsOneWidget);
       var fetches = server.albumFetches;
 
-      // Nothing asks again by itself (issue #256), however long it takes.
+      // Asked again by itself while it is being prepared (issue #258, which
+      // took back the "press reload" of issue #256), once per wait.
       await withFakeImageHttp(() async {
-        await tester.pump(const Duration(minutes: 5));
+        await tester.pump(reAskDefault);
         await tester.pumpAndSettle();
       });
-      expect(server.albumFetches, fetches);
+      expect(server.albumFetches, fetches + 1);
       expect(find.byKey(const Key("album-preparing")), findsOneWidget);
 
-      // The background has read the folder; the user reloads.
+      // The background has read the folder: the next re-ask shows it.
       server.answer = album([readable, brokenPhoto]);
       await withFakeImageHttp(() async {
-        await reload(tester);
+        await tester.pump(reAskDefault);
+        await tester.pumpAndSettle();
       });
-      expect(server.albumFetches, fetches + 1);
+      expect(server.albumFetches, fetches + 2);
       expect(find.byKey(const Key("album-preparing")), findsNothing);
       expect(find.byKey(const Key("album-still-preparing")), findsNothing);
       expect(find.byType(Image), findsOneWidget);
       expect(find.byKey(const ValueKey("broken-tile-bad.jpg")), findsOneWidget);
+
+      // Nothing is pending any more: nothing asks again.
+      await withFakeImageHttp(() async {
+        await tester.pump(const Duration(minutes: 5));
+        await tester.pumpAndSettle();
+      });
+      expect(server.albumFetches, fetches + 2);
+    });
+
+    testWidgets("is not asked again in the select mode", (tester) async {
+      var server = Server(album([readable], preparing: true));
+      await withFakeImageHttp(() async {
+        await tester.pumpWidget(VAlbumApp(client: server.client));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byIcon(Icons.more_vert).last);
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key("select-mode")));
+        await tester.pumpAndSettle();
+      });
+      expect(
+          tester.state<AlbumContentState>(find.byType(AlbumContent)).selectMode,
+          isTrue,
+          reason: "in the select mode");
+      var fetches = server.albumFetches;
+      await withFakeImageHttp(() async {
+        await tester.pump(const Duration(minutes: 1));
+        await tester.pumpAndSettle();
+      });
+      expect(server.albumFetches, fetches,
+          reason: "a re-read album would take the selection away");
+      expect(
+          tester.state<AlbumContentState>(find.byType(AlbumContent)).selectMode,
+          isTrue);
     });
 
     testWidgets("with photos of an older build shows them and a note",
