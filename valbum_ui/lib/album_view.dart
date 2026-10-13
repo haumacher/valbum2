@@ -1972,8 +1972,8 @@ class AlbumContentState extends State<AlbumContent>
       subject: ImageSubject(names.length),
       delegate: widget.albumState.navigator.delegate,
       // An album created in the picker is dated by the photos that go into
-      // it, see issue #114.
-      albumDate: newAlbumDay(selected),
+      // it (issue #114), and the album suggested lies nearest them (#279).
+      takenOn: earliestTaken(selected),
       cover: cover,
       onMoved: () {
         if (!mounted) {

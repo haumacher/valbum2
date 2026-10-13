@@ -3,12 +3,18 @@
  */
 package de.haumacher.imageServer;
 
+import de.haumacher.imageServer.auth.Privacy;
 import de.haumacher.imageServer.cache.AnalysisRecord;
 import de.haumacher.imageServer.cache.ResourceCache;
+import de.haumacher.imageServer.shared.model.AlbumInfo;
+import de.haumacher.imageServer.shared.model.AlbumPart;
 import de.haumacher.imageServer.shared.model.FolderInfo;
 import de.haumacher.imageServer.shared.model.FolderKind;
 import de.haumacher.imageServer.shared.model.FolderMatch;
 import de.haumacher.imageServer.shared.model.FolderMatches;
+import de.haumacher.imageServer.shared.model.FolderResource;
+import de.haumacher.imageServer.shared.model.ImageGroup;
+import de.haumacher.imageServer.shared.model.ImagePart;
 import java.io.File;
 import java.text.Normalizer;
 import java.time.Instant;
@@ -111,6 +117,12 @@ public final class FolderFinder {
 		/** The date, <code>yyyy-MM-dd</code>, empty for a folder that did not happen on a day. */
 		final String _date;
 
+		/**
+		 * The time the album spans, see {@link #span(File)}: read on first demand, <code>null</code>
+		 * before.
+		 */
+		private volatile long[] _span;
+
 		Known(long folderStamp, long sidecarStamp, long recordStamp, FolderInfo tile, String[] children) {
 			_folderStamp = folderStamp;
 			_sidecarStamp = sidecarStamp;
@@ -121,6 +133,25 @@ public final class FolderFinder {
 			_words = words(_own);
 			_date = hasDate(tile) ? LocalDate.ofInstant(Instant.ofEpochMilli(tile.getEffectiveDate()),
 				ZoneId.systemDefault()).toString() : "";
+		}
+
+		/**
+		 * The time the album spans, <code>{first, last}</code> in milliseconds since the epoch,
+		 * <code>{0, 0}</code> where nothing says: its date and the days of its photographs, see
+		 * {@link FolderFinder#span(File, FolderInfo)}.
+		 *
+		 * <p>
+		 * Read once, on first demand: the search of issue #261 never asks for it. The description
+		 * is replaced as a whole where its folder, sidecar or record changes, so this goes with it.
+		 * </p>
+		 */
+		long[] span(File dir) {
+			long[] result = _span;
+			if (result == null) {
+				result = FolderFinder.span(dir, _tile);
+				_span = result;
+			}
+			return result;
 		}
 
 		/** Whether anything below this folder is a folder of the library: not below a collection or a saved search. */
@@ -165,6 +196,166 @@ public final class FolderFinder {
 		}
 		result.setMore(found.size() > max);
 		return result;
+	}
+
+	/**
+	 * The albums below the given folder nearest to the given day, the nearest first: the target the
+	 * folder picker of a move suggests, see issue #279 and the class comment.
+	 *
+	 * <p>
+	 * An album whose time covers the day is nearest of all; otherwise the distance to the nearer end
+	 * of its time decides. Equally near, the newer album comes first, then by path. An album
+	 * nothing dates is never answered, nor is a folder of folders, a collection, a saved search or
+	 * the inbox: photographs are moved into an album.
+	 * </p>
+	 *
+	 * @param scope
+	 *        The folder to look below; itself is no match.
+	 * @param day
+	 *        The day the photographs to move were taken on, in milliseconds since the epoch.
+	 * @param source
+	 *        The path of the album below the scope the photographs are moved out of,
+	 *        <code>null</code> for none: moving there would move nothing, so it is answered only
+	 *        where no other album is.
+	 * @param limit
+	 *        How many albums to answer, see {@link #MAX_LIMIT}.
+	 * @param visible
+	 *        Whether the caller may see the folder at the given path, see
+	 *        {@link #find(PathInfo, String, int, Predicate)}.
+	 * @param target
+	 *        Whether the caller may add photographs to the album at the given path: an album they
+	 *        may not is no target.
+	 */
+	public FolderMatches nearest(PathInfo scope, long day, String source, int limit, Predicate<PathInfo> visible,
+			Predicate<PathInfo> target) {
+		FolderMatches result = FolderMatches.create();
+		List<Near> found = new ArrayList<>();
+		Known root = known(scope.toFile());
+		if (root != null) {
+			collect(scope, "", root, day, visible, target, found);
+		}
+		found.sort(NEAREST_FIRST);
+		if (source != null && found.size() > 1) {
+			found.removeIf(near -> near._path.equals(source));
+		}
+		int max = Math.max(1, Math.min(limit, MAX_LIMIT));
+		for (int n = 0, size = Math.min(max, found.size()); n < size; n++) {
+			Near near = found.get(n);
+			result.addFolder(FolderMatch.create().setPath(near._path).setFolder(copy(near._known._tile)));
+		}
+		result.setMore(found.size() > max);
+		return result;
+	}
+
+	private static final class Near {
+		final String _path;
+
+		final Known _known;
+
+		/** How far the album's time lies from the day, <code>0</code> where it covers it. */
+		final long _distance;
+
+		/** When the album begins, which decides between equally near ones: the newer first. */
+		final long _start;
+
+		Near(String path, Known known, long distance, long start) {
+			_path = path;
+			_known = known;
+			_distance = distance;
+			_start = start;
+		}
+	}
+
+	/** See {@link #nearest(PathInfo, long, String, int, Predicate, Predicate)}. */
+	static final Comparator<Near> NEAREST_FIRST = Comparator.comparingLong((Near near) -> near._distance)
+		.thenComparing(Comparator.comparingLong((Near near) -> near._start).reversed())
+		.thenComparing(near -> near._path, String.CASE_INSENSITIVE_ORDER);
+
+	private void collect(PathInfo folder, String prefix, Known known, long day, Predicate<PathInfo> visible,
+			Predicate<PathInfo> target, List<Near> found) {
+		for (String name : known._children) {
+			PathInfo child = folder.child(name);
+			File dir = child.toFile();
+			if (Inboxes.isInbox(dir)) {
+				continue;
+			}
+			Known description = known(dir);
+			if (description == null || !visible.test(child)) {
+				// As in walk(...): nothing of a folder the caller may not see.
+				continue;
+			}
+			String path = prefix + name;
+			if (description._tile.getKind() == FolderKind.ALBUM) {
+				long[] span = description.span(dir);
+				if (span[0] > 0 && target.test(child)) {
+					long distance = day < span[0] ? span[0] - day : day > span[1] ? day - span[1] : 0;
+					found.add(new Near(path, description, distance, span[0]));
+				}
+			}
+			if (description.descends()) {
+				collect(child, path + "/", description, day, visible, target, found);
+			}
+		}
+	}
+
+	/**
+	 * The time the album in the given folder spans, see {@link Known#span(File)}: from the earliest to
+	 * the latest of its date and the days its photographs were taken on.
+	 *
+	 * <p>
+	 * The photographs are those its sidecar lists and those its analysis record found besides, read
+	 * from these two files and not from one image. A photograph only the owner of the space may see
+	 * ({@link Privacy#PRIVATE}) does not count: the caller asking may be any member, and which album
+	 * is suggested to them must not depend on what they cannot see.
+	 * </p>
+	 */
+	static long[] span(File dir, FolderInfo tile) {
+		long[] result = { 0, 0 };
+		include(result, tile.getEffectiveDate());
+		try {
+			FolderResource sidecar = ResourceCache.readSidecar(dir);
+			if (sidecar instanceof AlbumInfo) {
+				for (AlbumPart part : ((AlbumInfo) sidecar).getParts()) {
+					if (part instanceof ImagePart) {
+						include(result, (ImagePart) part);
+					} else if (part instanceof ImageGroup) {
+						for (ImagePart image : ((ImageGroup) part).getImages()) {
+							include(result, image);
+						}
+					}
+				}
+			}
+		} catch (RuntimeException ex) {
+			// A sidecar that cannot be read says nothing here: the album is dated by its tile alone.
+		}
+		AnalysisRecord record = AnalysisRecord.read(dir);
+		if (record != null) {
+			for (AnalysisRecord.Entry entry : record.entries()) {
+				ImagePart part = entry.getPart();
+				if (part != null) {
+					include(result, part);
+				}
+			}
+		}
+		return result;
+	}
+
+	private static void include(long[] span, ImagePart image) {
+		if (image.getPrivacy() < Privacy.PRIVATE) {
+			include(span, image.getDate());
+		}
+	}
+
+	private static void include(long[] span, long date) {
+		if (date <= 0) {
+			return;
+		}
+		if (span[0] == 0 || date < span[0]) {
+			span[0] = date;
+		}
+		if (date > span[1]) {
+			span[1] = date;
+		}
 	}
 
 	private static final class Found {

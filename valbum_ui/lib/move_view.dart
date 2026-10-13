@@ -21,7 +21,6 @@ import 'offline.dart';
 import 'resource.dart';
 import 'rights.dart';
 import 'selectable.dart';
-import 'share_session.dart';
 
 /// What a move acts on, as the button and the message name it.
 ///
@@ -106,11 +105,18 @@ String targetPath(List<String> target) => target.join("/");
 ///
 /// The picker offers only targets of the kind [MoveSubject.livesInAlbum]
 /// names, see issue #113, and — for images — the album that does not exist
-/// yet: [albumDate] is the day such an album is proposed with, the earliest
-/// day the selection was taken on, see issue #114. The album is created first
+/// yet: [takenOn] is the earliest day the selection was taken on
+/// ([earliestTaken]), which such an album is proposed with (today where it is
+/// `null`), see issue #114. The album is created first
 /// and the images are then moved into the path the server answered for it,
 /// which is not necessarily the path it was asked for: a placement rule of
 /// the folder above files it into its year folder, see issue #48.
+///
+/// Images are moved to where they belong, see issue #279: the picker opens on
+/// the album the server suggests for [takenOn] (the one nearest to that day,
+/// never [source] itself while there is another), selected — or, where
+/// nothing says when the images were taken, on [source] selected. See
+/// [FolderPicker.suggestNear].
 ///
 /// An album the picker created in this very dialog is said to be so in the
 /// move request, and the server then gives it its cover from what arrives,
@@ -127,7 +133,7 @@ Future<void> moveWithPicker({
   required MoveSubject subject,
   required VAlbumRouterDelegate? delegate,
   required VoidCallback onMoved,
-  DateTime? albumDate,
+  DateTime? takenOn,
   String? cover,
 }) async {
   if (refuseWhileOffline(context)) {
@@ -152,7 +158,11 @@ Future<void> moveWithPicker({
       // An album is created where an album may stand, and only for the images
       // that are to go into it, see issue #114.
       mayCreateAlbum: subject.livesInAlbum,
-      newAlbumDate: albumDate,
+      newAlbumDate: takenOn ?? DateTime.now(),
+      // Where the images belong, see issue #279; an album or a folder is
+      // moved into a folder of folders, which nothing suggests.
+      suggestNear: subject.livesInAlbum ? takenOn : null,
+      sourceAlbum: subject.livesInAlbum ? source : null,
     ),
   );
   if (picked == null || !context.mounted) {
@@ -517,12 +527,13 @@ void _say(BuildContext context, String message) =>
       SnackBar(content: Text(message), duration: const Duration(seconds: 6)),
     );
 
-/// The day a new album for [parts] is proposed with, see issue #114.
+/// The earliest day anything of [parts] was taken on, `null` where nothing
+/// says — a date of `0` is "unknown" and does not count.
 ///
-/// The earliest day anything of the selection was taken on — a date of `0` is
-/// "unknown" and does not count — and today where nothing says when anything
-/// happened, which is the day the listing's own dialog opens on.
-DateTime newAlbumDay(Iterable<AlbumPart> parts) {
+/// The day a new album for them is proposed with (issue #114; today where
+/// this is `null`, the day the listing's own dialog opens on), and the day the
+/// album a move suggests lies nearest to (issue #279).
+DateTime? earliestTaken(Iterable<AlbumPart> parts) {
   var earliest = 0;
   for (var part in parts) {
     for (var date in _datesOf(part)) {
@@ -531,9 +542,7 @@ DateTime newAlbumDay(Iterable<AlbumPart> parts) {
       }
     }
   }
-  return earliest == 0
-      ? DateTime.now()
-      : DateTime.fromMillisecondsSinceEpoch(earliest);
+  return earliest == 0 ? null : DateTime.fromMillisecondsSinceEpoch(earliest);
 }
 
 /// The dates an album part carries: one for an image, one per member for a
@@ -644,6 +653,12 @@ const double _roomyPickerHeight = 260;
 /// flat list, each with the folder it lies in. Picking one shows that folder
 /// in the picker; whether it can be confirmed is decided there, by exactly
 /// the rules of a folder reached by browsing. An empty field is the tree.
+///
+/// A move of images opens where they belong, see issue #279 and
+/// [suggestNear]: at the level of the album suggested, that album *selected*
+/// and scrolled to the middle — the confirm then acts on it, not on the folder
+/// shown. Going anywhere else leaves the selection behind. Every level lists
+/// its folders the oldest first ([pickerFolders]).
 class FolderPicker extends StatefulWidget {
   final VAlbumClient client;
 
@@ -680,6 +695,20 @@ class FolderPicker extends StatefulWidget {
   /// reason, entry by entry.
   final bool requireContribute;
 
+  /// The day the images to move were taken on, see issue #279: the picker
+  /// asks the server for the album nearest to it
+  /// ([VAlbumClient.nearestAlbum]) and opens with it selected. Where the
+  /// server suggests nothing or cannot be asked, the picker opens at
+  /// [initialPath] as it always did — it is a suggestion, not a step.
+  final DateTime? suggestNear;
+
+  /// The album the images are moved out of, see issue #279: never suggested
+  /// while another album is — moving there moves nothing — and the album
+  /// selected where [suggestNear] is `null` (images that do not say when they
+  /// were taken, such as scans, mostly stay near where they are). An inbox is
+  /// no entry of a listing, so from there the picker opens unselected.
+  final List<String>? sourceAlbum;
+
   const FolderPicker({
     super.key,
     required this.client,
@@ -691,6 +720,8 @@ class FolderPicker extends StatefulWidget {
     this.targetIsCollection = false,
     this.title,
     this.requireContribute = false,
+    this.suggestNear,
+    this.sourceAlbum,
   });
 
   @override
@@ -738,7 +769,7 @@ class FolderPickerState extends State<FolderPicker> {
   String? _searchError;
 
   /// The folders of [_path] in the order the listing shows them
-  /// ([shownFolders]), empty while it is loading, while it failed, and for an
+  /// ([pickerFolders]), empty while it is loading, while it failed, and for an
   /// album (which has none).
   List<FolderInfo> _folders = const [];
 
@@ -765,15 +796,68 @@ class FolderPickerState extends State<FolderPicker> {
   /// shown: its title and its rights, see [FolderPicker.requireContribute].
   AlbumInfo? _album;
 
+  /// The album of the level shown that the confirm acts on, see issue #279:
+  /// the one the picker opened with, `null` where none is selected — then the
+  /// confirm acts on the folder shown.
+  FolderInfo? _selected;
+
+  /// The name of the folder to select once the level shown has loaded.
+  String? _toSelect;
+
+  /// Whether the picker was taken anywhere since it opened: a suggestion
+  /// that arrives afterwards is no longer wanted.
+  bool _moved = false;
+
+  /// Scrolls the level shown, to bring [_selected] to the middle.
+  final ScrollController _scroll = ScrollController();
+
+  /// Marks the row of [_selected], to find it on the screen.
+  final GlobalKey _selectedRow = GlobalKey();
+
   @override
   void initState() {
     super.initState();
     _path = List.of(widget.initialPath);
-    _load();
+    _open();
+  }
+
+  /// Opens the picker where the move belongs, see issue #279 and
+  /// [FolderPicker.suggestNear]; at [FolderPicker.initialPath] where nothing
+  /// is suggested.
+  Future<void> _open() async {
+    var near = widget.suggestNear;
+    var source = widget.sourceAlbum;
+    List<String>? selection;
+    if (near != null) {
+      try {
+        var found = await widget.client.nearestAlbum(
+          near,
+          source: source ?? const [],
+        );
+        if (found.folders.isNotEmpty) {
+          selection = splitPath(found.folders.first.path);
+        }
+      } catch (error) {
+        // A suggestion only: the picker opens as it always did. A log line
+        // for the developer, never shown.
+        debugPrint("move-suggestion($near):$error");
+      }
+    } else {
+      selection = source;
+    }
+    if (!mounted || _moved) {
+      return;
+    }
+    if (selection != null && selection.isNotEmpty) {
+      _path = selection.sublist(0, selection.length - 1);
+      _toSelect = selection.last;
+    }
+    await _load();
   }
 
   @override
   void dispose() {
+    _scroll.dispose();
     _searchDelay?.cancel();
     _highlight.dispose();
     _query.dispose();
@@ -838,6 +922,7 @@ class FolderPickerState extends State<FolderPicker> {
   void _goTo(FolderMatch match) {
     _searchDelay?.cancel();
     _query.clear();
+    _leaving();
     setState(() {
       _searchSerial++;
       _searching = false;
@@ -862,6 +947,7 @@ class FolderPickerState extends State<FolderPicker> {
     // Another level, other entries: the highlight stands on none of them.
     _highlight.reset();
     setState(() {
+      _selected = null;
       _loading = true;
       _error = null;
       _folders = const [];
@@ -886,17 +972,20 @@ class FolderPickerState extends State<FolderPicker> {
     if (!mounted) {
       return;
     }
+    var wanted = _toSelect;
+    _toSelect = null;
     setState(() {
       _loading = false;
       if (resource is ListingInfo) {
         _listing = resource;
-        // In the order the listing itself shows them (issue #270): the
-        // oldest first in a dated folder, the newest first in an undated one.
-        _folders = shownFolders(
-          resource.folders,
-          _path,
-          linkRoot: ShareSession.of(context) != null,
-        );
+        // The oldest first at every level, see issue #279: the listing opens
+        // on the latest year (issue #270), the picker reads through time.
+        _folders = pickerFolders(resource.folders);
+        for (var folder in _folders) {
+          if (folder.name == wanted && _selectable(folder)) {
+            _selected = folder;
+          }
+        }
       } else if (resource is AlbumInfo) {
         _leaf = true;
         _album = resource;
@@ -906,16 +995,71 @@ class FolderPickerState extends State<FolderPicker> {
         _error = AppLocalizations.of(context)!.folderCannotBeShown;
       }
     });
+    if (_selected != null) {
+      // Once the row is laid out.
+      WidgetsBinding.instance.addPostFrameCallback((_) => _centre(0));
+    }
+  }
+
+  /// Whether the confirm may act on [folder] of the level shown, see
+  /// [_selected]: an album, where an album is looked for.
+  bool _selectable(FolderInfo folder) =>
+      widget.targetIsAlbum &&
+      !widget.targetIsCollection &&
+      !widget.requireContribute &&
+      folder.kind == FolderKind.album;
+
+  /// Brings the row of [_selected] to the middle of the list, see issue
+  /// #279. The list lays out only the rows near what it shows, so a row far
+  /// down is walked towards a screenful at a time until it is there.
+  void _centre(int attempt) {
+    if (!mounted || _selected == null || _searchShown) {
+      return;
+    }
+    var row = _selectedRow.currentContext;
+    if (row != null) {
+      Scrollable.ensureVisible(row, alignment: 0.5);
+      return;
+    }
+    if (!_scroll.hasClients || attempt >= 200) {
+      return;
+    }
+    var position = _scroll.position;
+    var next = (position.pixels + position.viewportDimension).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    if (next == position.pixels) {
+      return;
+    }
+    _scroll.jumpTo(next);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _centre(attempt + 1));
+  }
+
+  /// What every way to another level does first: a selection, and one still
+  /// to come, belong to the level the picker opened on.
+  void _leaving() {
+    _moved = true;
+    _toSelect = null;
   }
 
   void _enter(String name) {
+    _leaving();
     setState(() => _path = [..._path, name]);
     _load();
   }
 
   void _up() {
+    _leaving();
     setState(() => _path = _path.sublist(0, _path.length - 1));
     _load();
+  }
+
+  /// The folder the confirm acts on: the album selected, else the folder
+  /// shown.
+  List<String> get _target {
+    var selected = _selected;
+    return selected == null ? _path : [..._path, selected.name];
   }
 
   /// Whether the folder shown says what it is at all.
@@ -930,9 +1074,10 @@ class FolderPickerState extends State<FolderPicker> {
   /// target of an addition and never the target of a move.
   bool get _mayConfirm =>
       _known &&
-      (widget.targetIsCollection
-          ? _collection
-          : _leaf == widget.targetIsAlbum && !_collection && !_search) &&
+      (_selected != null ||
+          (widget.targetIsCollection
+              ? _collection
+              : _leaf == widget.targetIsAlbum && !_collection && !_search)) &&
       !_contributeMissing;
 
   /// Whether the album shown refuses what [FolderPicker.requireContribute]
@@ -1019,7 +1164,7 @@ class FolderPickerState extends State<FolderPicker> {
                 const SizedBox(height: 8),
                 // The folder the confirm acts on, while searching too.
                 Text(
-                  _path.isEmpty ? l10n.pickerTopLevel : _path.join(" / "),
+                  _target.isEmpty ? l10n.pickerTopLevel : _target.join(" / "),
                   key: const Key("picker-path"),
                   style: Theme.of(context).textTheme.titleSmall,
                 ),
@@ -1049,10 +1194,14 @@ class FolderPickerState extends State<FolderPicker> {
             // A folder of the wrong kind cannot be picked; the line in the
             // list says why, see issue #113.
             onPressed: _mayConfirm
-                ? () => Navigator.of(context)
-                    .pop(PickedTarget(_path, title: _album?.title ?? ""))
+                ? () => Navigator.of(context).pop(
+                      PickedTarget(
+                        _target,
+                        title: _selected?.title ?? _album?.title ?? "",
+                      ),
+                    )
                 : null,
-            child: Text(widget.confirmLabel(_path)),
+            child: Text(widget.confirmLabel(_target)),
           ),
         ],
       ),
@@ -1142,6 +1291,7 @@ class FolderPickerState extends State<FolderPicker> {
       return scrolls ? SingleChildScrollView(child: text) : text;
     }
     return ListView(
+      controller: _scroll,
       shrinkWrap: true,
       physics: scrolls ? null : const NeverScrollableScrollPhysics(),
       children: [
@@ -1182,7 +1332,10 @@ class FolderPickerState extends State<FolderPicker> {
           ),
         // Why this folder cannot be confirmed: an image belongs in an album,
         // and this is a folder of folders, see issue #113.
-        if (!_leaf && widget.targetIsAlbum && !widget.targetIsCollection)
+        if (!_leaf &&
+            _selected == null &&
+            widget.targetIsAlbum &&
+            !widget.targetIsCollection)
           ListTile(
             key: const Key("picker-needs-album"),
             leading: const Icon(Icons.photo_library_outlined),
@@ -1196,19 +1349,27 @@ class FolderPickerState extends State<FolderPicker> {
             onTap: _createAlbum,
           ),
         for (var folder in _folders)
-          _highlight.row(
-            folder,
-            ListTile(
-              key: Key("picker-folder-${folder.name}"),
-              selected: _highlight.isHighlighted(folder),
-              selectedTileColor: PickHighlight.color(context),
-              leading: Icon(folderIcon(folder.kind)),
-              title: Text(folderLine(folder)),
-              onTap: () => _enter(folder.name),
-            ),
-          ),
+          _highlight.row(folder, _folderRow(context, folder)),
       ],
     );
+  }
+
+  /// The row of [folder] of the level shown; the album the confirm acts on
+  /// ([_selected]) stands out and is marked.
+  Widget _folderRow(BuildContext context, FolderInfo folder) {
+    var selected = folder.name == _selected?.name;
+    var tile = ListTile(
+      key: Key("picker-folder-${folder.name}"),
+      selected: selected || _highlight.isHighlighted(folder),
+      selectedTileColor: PickHighlight.color(context),
+      leading: Icon(folderIcon(folder.kind)),
+      title: Text(folderLine(folder)),
+      trailing: selected
+          ? const Icon(Icons.check, key: Key("picker-selected"))
+          : null,
+      onTap: () => _enter(folder.name),
+    );
+    return selected ? KeyedSubtree(key: _selectedRow, child: tile) : tile;
   }
 
   /// Asks what the new album is called and leaves the picker with it.

@@ -139,8 +139,23 @@ DateTime? listingDateOf(List<String> path) =>
 List<FolderInfo> sortedFolders(
   List<FolderInfo> folders, {
   DateTime? listingDate,
+}) =>
+    _sorted(folders, oldestFirst: listingDate != null);
+
+/// The folders of a level of the folder picker in the order it shows them,
+/// see issue #279: the oldest first at every level — the root and a year
+/// alike — the undated behind them by name.
+///
+/// The picker is looked through for where photographs belong, and reads
+/// through time; the listing's start page opens on the latest year instead
+/// ([shownFolders]).
+List<FolderInfo> pickerFolders(List<FolderInfo> folders) =>
+    _sorted(folders, oldestFirst: true);
+
+List<FolderInfo> _sorted(
+  List<FolderInfo> folders, {
+  required bool oldestFirst,
 }) {
-  var oldestFirst = listingDate != null;
   var result = List.of(folders);
   result.sort((a, b) {
     var aDated = a.effectiveDate != 0;

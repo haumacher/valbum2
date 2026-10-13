@@ -8430,9 +8430,26 @@ public class ImageServlet extends HttpServlet {
 	public static final String FOLDERS_BAD_LIMIT = "The number of folders asked for cannot be read.";
 
 	/**
+	 * The parameter carrying a day, in milliseconds since the epoch: then the albums nearest to it
+	 * are answered instead of the ones matching a text, see issue #279 and
+	 * {@link FolderFinder#nearest(PathInfo, long, String, int, java.util.function.Predicate, java.util.function.Predicate)}.
+	 */
+	public static final String FOLDERS_NEAR_PARAMETER = "near";
+
+	/**
+	 * The parameter carrying the album, below the folder asked, a move takes its photographs out of,
+	 * see {@link #FOLDERS_NEAR_PARAMETER}.
+	 */
+	public static final String FOLDERS_SOURCE_PARAMETER = "from";
+
+	/** The message an unreadable day is refused with. */
+	public static final String FOLDERS_BAD_NEAR = "The day to look near cannot be read.";
+
+	/**
 	 * Answers <code>&lt;folder&gt;/?type=folders&amp;q=&lt;text&gt;</code>: the albums and folders
 	 * below the folder whose title, name or date matches the text, best first, see {@link FolderFinder}
-	 * and issue #261.
+	 * and issue #261; with <code>&amp;near=&lt;millis&gt;</code> the albums nearest to that day
+	 * instead, see {@link #FOLDERS_NEAR_PARAMETER}.
 	 *
 	 * <p>
 	 * Members only, as the search of issue #227 ({@link #maySearch(Caller)}): the picker that asks
@@ -8463,6 +8480,21 @@ public class ImageServlet extends HttpServlet {
 				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, FOLDERS_BAD_LIMIT);
 				return;
 			}
+		}
+		String nearText = context.getParameter(FOLDERS_NEAR_PARAMETER);
+		if (nearText != null && !nearText.isEmpty()) {
+			// The album a move suggests, issue #279: one the caller may see and may add to.
+			long near;
+			try {
+				near = Long.parseLong(nearText);
+			} catch (NumberFormatException ex) {
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, FOLDERS_BAD_NEAR);
+				return;
+			}
+			serveJsonObject(context.response(),
+				_folderFinder.nearest(folder, near, context.getParameter(FOLDERS_SOURCE_PARAMETER), limit,
+					path -> _auth.mayView(caller, path), path -> _auth.mayContribute(caller, path)));
+			return;
 		}
 		serveJsonObject(context.response(), _folderFinder.find(folder, context.getParameter(FOLDERS_TEXT_PARAMETER),
 			limit, path -> _auth.mayView(caller, path)));

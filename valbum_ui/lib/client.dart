@@ -2025,6 +2025,35 @@ class VAlbumClient {
     return FolderMatches.read(JsonReader.fromString(response.body));
   }
 
+  /// The album of the caller's space nearest to [day], the one a move of
+  /// photographs taken that day suggests, see issue #279
+  /// (`?type=folders&near=<millis>`): an album whose photographs span the day,
+  /// else the one whose time lies nearest to it.
+  ///
+  /// Only an album the caller may see and may add to is answered, and never
+  /// [source] — the album the photographs come from — while there is any
+  /// other. No match where nothing is dated. A refusal is thrown with the
+  /// server's own sentence.
+  Future<FolderMatches> nearestAlbum(
+    DateTime day, {
+    List<String> source = const [],
+  }) async {
+    var from = source.isEmpty
+        ? ""
+        : "&from=${Uri.encodeQueryComponent(source.join("/"))}";
+    var url = "${folderUrl(const [])}?type=folders"
+        "&near=${day.millisecondsSinceEpoch}&limit=1$from";
+    var response = await _http.get(Uri.parse(url), headers: authHeaders);
+    if (response.statusCode >= 300) {
+      throw failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingAsking("'$url'"),
+      );
+    }
+    return FolderMatches.read(JsonReader.fromString(response.body));
+  }
+
   /// The photograph's own description at [imageUrl] (`<album>/<name>`, for a
   /// photograph found by a search its path below the folder searched):
   /// `GET <imageUrl>?type=json`, its faces, tags and full places included.

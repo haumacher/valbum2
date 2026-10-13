@@ -976,7 +976,7 @@ class InboxContentState extends State<InboxContent>
       names: [for (var image in chosen) image.thumbnailName],
       subject: ImageSubject(chosen.length),
       delegate: widget.albumState.navigator.delegate,
-      albumDate: newAlbumDay(chosen),
+      takenOn: earliestTaken(chosen),
       cover: cover,
       onMoved: () {
         if (!mounted) {

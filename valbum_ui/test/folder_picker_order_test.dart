@@ -1,7 +1,6 @@
-/// The folder picker lists a level in the order the listing itself shows it
-/// (issue #270): the oldest first in a dated folder, the newest first in an
-/// undated one, the undated behind them by name — whatever order the server
-/// sent.
+/// The folder picker lists every level the oldest first, the undated behind
+/// them by name (issue #279) — whatever order the server sent, and unlike the
+/// listing, whose undated levels show the newest first (issue #270).
 library;
 
 import 'package:flutter/material.dart';
@@ -87,8 +86,7 @@ Future<List<String>> rows(WidgetTester tester) async {
 }
 
 void main() {
-  testWidgets('follows the order of the listing on every level',
-      (tester) async {
+  testWidgets('the oldest first on every level', (tester) async {
     var client = VAlbumClient(
       dataUrl: serverDataUrl,
       httpClient: MockClient((request) async => scrambled(request)),
@@ -96,8 +94,8 @@ void main() {
     await pumpSection(tester, client: client);
     await tapKey(tester, uploadTargetChooseKey);
 
-    expect(await rows(tester), ["2025", "2024", "2023", "Trips"],
-        reason: "the root opens on the latest year");
+    expect(await rows(tester), ["2023", "2024", "2025", "Trips"],
+        reason: "the root too, unlike the start page of the listing");
 
     await tapKey(tester, const Key("picker-folder-2025"));
     expect(await rows(tester), ["Jan", "Jul", "Dec", "Misc"],
@@ -105,7 +103,7 @@ void main() {
 
     await tapKey(tester, const Key("picker-up"));
     await tapKey(tester, const Key("picker-folder-Trips"));
-    expect(await rows(tester), ["Snow", "Lake", "Somewhere"],
-        reason: "an undated folder keeps the newest first");
+    expect(await rows(tester), ["Lake", "Snow", "Somewhere"],
+        reason: "an undated folder as well");
   });
 }

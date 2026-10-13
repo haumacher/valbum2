@@ -216,6 +216,39 @@ public class TestFolderFinder extends ShareTestCase {
 		assertEquals(before, fingerprint(_base));
 	}
 
+	// --- The album a move suggests, issue #279. ---
+
+	public void testTheAlbumNearestToADay() throws Exception {
+		assertEquals(Arrays.asList(SharingFixture.ZOO), paths(near("2024-05-03", null, SharingFixture.ALICE)));
+		assertEquals("Not the album the photos come from.", Arrays.asList(ROMANTIK),
+			paths(near("2024-05-03", SharingFixture.ZOO, SharingFixture.ALICE)));
+	}
+
+	public void testNothingIsSuggestedToWhoMayNotAdd() throws Exception {
+		assertTrue("Dave may only look.", paths(near("2024-05-03", null, SharingFixture.DAVE)).isEmpty());
+	}
+
+	public void testAnUnreadableDayIsRefused() throws Exception {
+		Map<String, String> parameters = new HashMap<>();
+		parameters.put("type", ImageServlet.FOLDERS_TYPE);
+		parameters.put(ImageServlet.FOLDERS_NEAR_PARAMETER, "yesterday");
+		FakeResponse response = getWithParameters("/", SharingFixture.ALICE, parameters);
+		assertEquals(HttpServletResponse.SC_BAD_REQUEST, response.status());
+		assertEquals(ImageServlet.FOLDERS_BAD_NEAR, errorMessage(response));
+	}
+
+	private FolderMatches near(String day, String source, String token) throws Exception {
+		Map<String, String> parameters = new HashMap<>();
+		parameters.put("type", ImageServlet.FOLDERS_TYPE);
+		parameters.put(ImageServlet.FOLDERS_NEAR_PARAMETER, Long.toString(
+			java.time.LocalDate.parse(day).atTime(12, 0).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()));
+		parameters.put(ImageServlet.FOLDERS_LIMIT_PARAMETER, "1");
+		if (source != null) {
+			parameters.put(ImageServlet.FOLDERS_SOURCE_PARAMETER, source);
+		}
+		return FolderMatches.readFolderMatches(reader(body(getWithParameters("/", token, parameters))));
+	}
+
 	// --- Helpers. ---
 
 	// --- Probes. ---
