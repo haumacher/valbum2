@@ -1034,5 +1034,7 @@
   "overviewLinkWithdrawn": "Der Übersichts-Link wurde zurückgezogen.",
   "contactOverviewIssued": "Übersichts-Link gesendet am {day}",
   "contactOverviewOpened": "Übersichts-Link geöffnet am {day}",
-  "identifyAskOverviewAgain": "Bitten Sie eine Person, die Fotos mit Ihnen geteilt hat, Ihnen Ihren eigenen Link zu dieser Übersicht zu senden."
+  "identifyAskOverviewAgain": "Bitten Sie eine Person, die Fotos mit Ihnen geteilt hat, Ihnen Ihren eigenen Link zu dieser Übersicht zu senden.",
+  "noOtherImageWithoutCamera": "Es gibt kein weiteres Bild ohne Kameradaten",
+  "selectAllWithoutCamera": "Alle Bilder ohne Kameradaten auswählen"
 }

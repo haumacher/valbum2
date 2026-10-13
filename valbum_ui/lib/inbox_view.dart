@@ -434,6 +434,27 @@ class InboxContentState extends State<InboxContent>
         _anchor = null;
       });
 
+  /// Adds every photograph of the camera group of [reference] to the
+  /// selection (issue #274, the album's #78): the same camera, or — for a
+  /// photograph without camera data — every other one without any.
+  ///
+  /// Gathered from what the inbox shows ([images]), so a trashed photograph
+  /// is never selected unseen; *added* to the selection, never replacing it.
+  void selectSameCamera(ImagePart reference) {
+    var added = [
+      for (var image in images)
+        if (inSameCameraGroup(image, reference) && !isSelected(image)) image,
+    ];
+    if (added.isEmpty) {
+      showMessage(nothingElseFromCamera(_l10n, reference));
+      return;
+    }
+    setState(() {
+      _selection.addAll(added);
+      _anchor = added.last;
+    });
+  }
+
   /// Makes [image] the whole selection and the anchor of a following
   /// shift-click — what a secondary click on a tile outside the selection
   /// does before its menu opens (issue #222, the album's rule of #156).
@@ -1354,7 +1375,8 @@ class InboxTileState extends State<InboxTile> {
         ),
       );
 
-  /// The selection box and the rotations, which write at once.
+  /// The selection box, the camera group (issue #274) and the rotations,
+  /// which write at once.
   Widget topBar() => toolbar([
         toolButton(
           selected ? Icons.check_box : Icons.check_box_outline_blank,
@@ -1363,6 +1385,15 @@ class InboxTileState extends State<InboxTile> {
           active: selected,
           key: const Key("inbox-select"),
         ),
+        // Everything of this camera, or everything without camera data, as on
+        // the album's tile (issue #274); not on a file that cannot be read.
+        if (image.hasPicture)
+          toolButton(
+            selectSameCameraIcon(image),
+            selectSameCameraLabel(_l10n, image),
+            () => inbox.selectSameCamera(image),
+            key: const Key("inbox-select-camera"),
+          ),
         if (inbox.mayWrite) ...[
           toolButton(
             Icons.rotate_right,

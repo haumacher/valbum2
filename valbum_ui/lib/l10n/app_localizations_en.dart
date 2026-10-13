@@ -1321,6 +1321,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noOtherImageFromCamera => 'No other image from this camera';
 
   @override
+  String get noOtherImageWithoutCamera => 'No other image without camera data';
+
+  @override
   String get nothingToAdjust => 'Nothing to adjust';
 
   @override
@@ -1456,6 +1459,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get selectAllFromCamera => 'Select all from this camera';
+
+  @override
+  String get selectAllWithoutCamera => 'Select all without camera data';
 
   @override
   String get adjustRecordingTimeAction => 'Adjust recording time…';

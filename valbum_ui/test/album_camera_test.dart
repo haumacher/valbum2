@@ -10,7 +10,8 @@ import 'util/l10n.dart';
 
 // Issue #78: an album fed from a phone and a camera is gathered device by
 // device. `ImagePart.camera` is the label the server derived from the EXIF
-// make and model; an empty label matches nothing.
+// make and model; an empty label is a group of its own, "no camera data"
+// (issue #274).
 
 const String canon = "Canon EOS 5D";
 const String phone = "SAMSUNG SM-G991B";
@@ -131,12 +132,15 @@ void main() {
           isEmpty);
     });
 
-    test('are nothing at all for an image without a label', () {
+    test('are the images without a label for an image without one', () {
       // A video without make and model in its container, and an image of an
-      // album written before the field existed: an empty label never matches
-      // another empty one.
-      expect(sameCamera(info, clip), isEmpty);
-      expect(sameCamera(info, image("old.jpg", 5000)), isEmpty);
+      // album written before the field existed: the empty label is a group of
+      // its own (issue #274), which gathers the one camera-less part here.
+      expect(sameCamera(info, clip), {clip});
+      expect(sameCamera(info, image("old.jpg", 5000)), {clip});
+      // ... and nothing of a camera.
+      expect(
+          sameCamera(info, clip).intersection(sameCamera(info, cam1)), isEmpty);
     });
 
     test('are found for a reference that is itself inside a group', () {
@@ -150,6 +154,13 @@ void main() {
       await withFakeImageHttp(() async {
         await pumpEditMode(tester, twoCameras(), select: "cam1.jpg");
         expect(albumState(tester).selection, hasLength(1));
+        expect(
+            tester
+                .widget<IconButton>(find.ancestor(
+                    of: tool("cam1.jpg", Icons.photo_camera),
+                    matching: find.byType(IconButton)))
+                .tooltip,
+            "Select all from this camera");
 
         await tester.tap(tool("cam1.jpg", Icons.photo_camera));
         await tester.pumpAndSettle();
@@ -167,15 +178,88 @@ void main() {
       });
     });
 
-    testWidgets('is not offered where the camera is unknown', (tester) async {
+    testWidgets('reads "without camera data" where the camera is unknown',
+        (tester) async {
       await withFakeImageHttp(() async {
         await pumpEditMode(tester, twoCameras(), select: "clip.mp4");
 
-        // The video says nothing about where it came from, so there is
-        // nothing to gather — the tool is not offered rather than refused.
+        // The video says nothing about where it came from: the tool gathers
+        // the others that say nothing either (issue #274), under its own
+        // label and icon.
         expect(tool("clip.mp4", Icons.photo_camera), findsNothing);
-        // The other tools of the tile are there.
-        expect(tool("clip.mp4", Icons.more_time), findsOneWidget);
+        var without = tool("clip.mp4", Icons.no_photography);
+        expect(without, findsOneWidget);
+        expect(
+            tester
+                .widget<IconButton>(find.ancestor(
+                    of: without, matching: find.byType(IconButton)))
+                .tooltip,
+            "Select all without camera data");
+
+        // The only camera-less part of this album is the video itself.
+        await tester.tap(without);
+        await tester.pumpAndSettle();
+        expect(find.text("No other image without camera data"), findsOneWidget);
+        expect(namesOf(albumState(tester).selection), ["clip.mp4"]);
+      });
+    });
+
+    testWidgets('gathers exactly the parts without camera data, adding them',
+        (tester) async {
+      var mixed = AlbumInfo(
+        path: "",
+        title: "Gemischt",
+        parts: [
+          image("cam1.jpg", 1000, camera: canon),
+          image("wa1.jpg", 2000),
+          // A video carries its camera like a photograph: not camera-less.
+          image("phone.mp4", 2500, camera: phone, kind: ImageKind.video),
+          ImageGroup(
+            images: [
+              image("cam2.jpg", 3000, camera: canon),
+              image("wa2.jpg", 3100),
+            ],
+            representative: 0,
+          ),
+          // A video whose container says nothing is camera-less.
+          image("raw.mp4", 4000, kind: ImageKind.video),
+        ],
+      ).toString();
+
+      await withFakeImageHttp(() async {
+        await pumpEditMode(tester, mixed, select: "cam1.jpg");
+        await ctrlTapTile(tester, "wa1.jpg");
+        expect(namesOf(albumState(tester).selection), ["cam1.jpg", "wa1.jpg"]);
+
+        await tester.tap(tool("wa1.jpg", Icons.no_photography));
+        await tester.pumpAndSettle();
+
+        // Added to what was selected; the grouped one joins as the image.
+        expect(namesOf(albumState(tester).selection),
+            ["cam1.jpg", "raw.mp4", "wa1.jpg", "wa2.jpg"]);
+
+        // The camera's tool still gathers the camera alone, on top.
+        await tester.tap(tool("cam1.jpg", Icons.photo_camera));
+        await tester.pumpAndSettle();
+        expect(namesOf(albumState(tester).selection),
+            ["cam1.jpg", "cam2.jpg", "raw.mp4", "wa1.jpg", "wa2.jpg"]);
+      });
+    });
+
+    testWidgets('is not offered on a file that cannot be read', (tester) async {
+      var broken = AlbumInfo(
+        path: "",
+        title: "Kaputt",
+        parts: [
+          image("wa1.jpg", 1000),
+          ImagePart(name: "bad.jpg", date: 2000, broken: "Not a JPEG file"),
+        ],
+      ).toString();
+
+      await withFakeImageHttp(() async {
+        await pumpEditMode(tester, broken, select: "bad.jpg");
+        expect(tool("bad.jpg", Icons.no_photography), findsNothing);
+        expect(tool("bad.jpg", Icons.photo_camera), findsNothing);
       });
     });
 

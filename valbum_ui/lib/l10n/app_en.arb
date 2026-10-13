@@ -2165,6 +2165,11 @@
     "description": "Said when no further image of the album was taken with the same camera",
     "x-translated": "e47d3a89"
   },
+  "noOtherImageWithoutCamera": "No other image without camera data",
+  "@noOtherImageWithoutCamera": {
+    "description": "Said when no further image of the album or inbox lacks camera data (no EXIF make and model)",
+    "x-translated": "811ad63c"
+  },
   "nothingToAdjust": "Nothing to adjust",
   "@nothingToAdjust": {
     "description": "Said when a recording time correction would change nothing",
@@ -2385,6 +2390,11 @@
   "@selectAllFromCamera": {
     "description": "Tooltip of the tool adding every image of the same camera to the selection",
     "x-translated": "2e0baf87"
+  },
+  "selectAllWithoutCamera": "Select all without camera data",
+  "@selectAllWithoutCamera": {
+    "description": "Tooltip of the tool on an image without camera data (no EXIF make and model), adding every other image without camera data to the selection",
+    "x-translated": "3ed451aa"
   },
   "adjustRecordingTimeAction": "Adjust recording time…",
   "@adjustRecordingTimeAction": {

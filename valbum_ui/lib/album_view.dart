@@ -172,6 +172,10 @@ enum LeaveEdit {
   stay,
 }
 
+/// The icon of the action gathering the camera group of [image] (issue #274).
+IconData selectSameCameraIcon(ImagePart image) =>
+    image.camera.isEmpty ? Icons.no_photography : Icons.photo_camera;
+
 class AlbumContent extends StatefulWidget {
   final VAlbumState albumState;
   final AlbumInfo album;
@@ -932,10 +936,11 @@ class AlbumContentState extends State<AlbumContent>
     });
   }
 
-  /// Adds every image of one camera to the selection (issue #78).
+  /// Adds every image of one camera to the selection (issues #78 and #274).
   ///
   /// An album fed from a phone and a camera is gathered device by device: the
-  /// images carrying the same [ImagePart.camera] label as [reference] are
+  /// images carrying the same [ImagePart.camera] label as [reference] — or,
+  /// for a reference without one, every image without camera data — are
   /// *added* to what is selected, never replacing it, so a second call on an
   /// image of another camera collects that one too. A grouped image joins the
   /// selection as the image, see [sameCamera].
@@ -949,7 +954,7 @@ class AlbumContentState extends State<AlbumContent>
         if (!selection.contains(part)) part,
     ];
     if (added.isEmpty) {
-      showMessage(_l10n.noOtherImageFromCamera);
+      showMessage(nothingElseFromCamera(_l10n, reference));
       return;
     }
     setState(() {
@@ -4085,13 +4090,13 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
         ],
       ],
       // Everything one device contributed, in one gesture — the selection the
-      // recording time correction below then works on, see issue #78. An
-      // image whose camera is unknown has nothing to gather, so the tool is
-      // not offered on it rather than refusing the tap.
-      if (image.camera.isNotEmpty && image.hasPicture)
+      // recording time correction below then works on, see issue #78; on an
+      // image without camera data, everything else without any (#274). A
+      // file that cannot be read is not offered it (#253).
+      if (image.hasPicture)
         toolButton(
-          Icons.photo_camera,
-          _l10n.selectAllFromCamera,
+          selectSameCameraIcon(image),
+          selectSameCameraLabel(_l10n, image),
           () => album.selectSameCamera(image),
         ),
       // A camera whose clock is off files its photos in the wrong place; the

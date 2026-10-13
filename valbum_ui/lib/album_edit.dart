@@ -895,8 +895,7 @@ List<ImagePart> selectedImages(AlbumInfo album, Set<AlbumPart> selection) {
 /// representative alone: a group hides the alternatives that did not make
 /// it, and a download takes what the album shows. An alternative is
 /// downloaded by itself, from the viewer or where it was chosen on its own.
-List<ImagePart> downloadedImages(
-    AlbumInfo album, Set<AlbumPart> selection) {
+List<ImagePart> downloadedImages(AlbumInfo album, Set<AlbumPart> selection) {
   var chosen = Set<AlbumPart>.identity()..addAll(selection);
   var result = <ImagePart>[];
   for (var part in album.parts) {
@@ -919,18 +918,25 @@ List<ImagePart> downloadedImages(
   return result;
 }
 
-/// The images of the album that were taken by the same camera as [reference]
-/// (issue #78).
+/// Whether [image] belongs to the camera group of [reference] (issues #78 and
+/// #274), the one rule the album and the inbox gather by.
+///
+/// The group key is [ImagePart.camera], a label the server derived from the
+/// EXIF make and model (or the container of a video), compared exactly: the
+/// app does not guess. An empty label is a group of its own — "no camera
+/// data": WhatsApp images, screenshots, edited exports, a video whose
+/// container says nothing, a part written before the field existed.
+bool inSameCameraGroup(ImagePart image, ImagePart reference) =>
+    image.camera == reference.camera;
+
+/// The images of the album in the camera group of [reference] (issues #78 and
+/// #274), see [inSameCameraGroup].
 ///
 /// The parts to *add* to the selection, so that one gesture gathers everything
 /// one device contributed to an album that was fed from several — the
-/// selection the recording time adjustment of issue #77 then acts on.
-///
-/// [ImagePart.camera] is a label the server derived from the EXIF make and
-/// model, and it is only ever compared for equality: an image whose label is
-/// empty (a video, an original without the tags, a part written before the
-/// field existed) matches nothing at all, not even another image without a
-/// label. The reference itself is part of the answer where it carries one.
+/// selection the recording time adjustment of issue #77 then acts on — or
+/// everything that came without camera data at all. The reference itself is
+/// part of the answer.
 ///
 /// An image inside an [ImageGroup] joins the answer *as the image*, not as its
 /// group: that is how a selection names a group member everywhere else (see
@@ -940,18 +946,14 @@ List<ImagePart> downloadedImages(
 /// follows says how many images it applies to.
 Set<AlbumPart> sameCamera(AlbumInfo album, ImagePart reference) {
   var result = Set<AlbumPart>.identity();
-  var label = reference.camera;
-  if (label.isEmpty) {
-    return result;
-  }
   for (var part in album.parts) {
     if (part is ImagePart) {
-      if (part.camera == label) {
+      if (inSameCameraGroup(part, reference)) {
         result.add(part);
       }
     } else if (part is ImageGroup) {
       for (var image in part.images) {
-        if (image.camera == label) {
+        if (inSameCameraGroup(image, reference)) {
           result.add(image);
         }
       }
@@ -959,6 +961,20 @@ Set<AlbumPart> sameCamera(AlbumInfo album, ImagePart reference) {
   }
   return result;
 }
+
+/// The label of the action gathering the camera group of [image] (issue
+/// #274): its camera, or the photographs without camera data.
+String selectSameCameraLabel(AppLocalizations l10n, ImagePart image) =>
+    image.camera.isEmpty
+        ? l10n.selectAllWithoutCamera
+        : l10n.selectAllFromCamera;
+
+/// What is said when the camera group of [image] has nothing left to add to
+/// the selection (issues #78 and #274).
+String nothingElseFromCamera(AppLocalizations l10n, ImagePart image) =>
+    image.camera.isEmpty
+        ? l10n.noOtherImageWithoutCamera
+        : l10n.noOtherImageFromCamera;
 
 /// The image the recording time adjustment is stated relative to (issue #77).
 ///

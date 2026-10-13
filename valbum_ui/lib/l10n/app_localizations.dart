@@ -2270,6 +2270,12 @@ abstract class AppLocalizations {
   /// **'No other image from this camera'**
   String get noOtherImageFromCamera;
 
+  /// Said when no further image of the album or inbox lacks camera data (no EXIF make and model)
+  ///
+  /// In en, this message translates to:
+  /// **'No other image without camera data'**
+  String get noOtherImageWithoutCamera;
+
   /// Said when a recording time correction would change nothing
   ///
   /// In en, this message translates to:
@@ -2479,6 +2485,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Select all from this camera'**
   String get selectAllFromCamera;
+
+  /// Tooltip of the tool on an image without camera data (no EXIF make and model), adding every other image without camera data to the selection
+  ///
+  /// In en, this message translates to:
+  /// **'Select all without camera data'**
+  String get selectAllWithoutCamera;
 
   /// Tooltip of the tool correcting the recording time of the selection
   ///

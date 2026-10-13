@@ -1339,6 +1339,10 @@ class AppLocalizationsDe extends AppLocalizations {
       'Es gibt kein weiteres Bild von dieser Kamera';
 
   @override
+  String get noOtherImageWithoutCamera =>
+      'Es gibt kein weiteres Bild ohne Kameradaten';
+
+  @override
   String get nothingToAdjust => 'Es gibt nichts anzupassen';
 
   @override
@@ -1478,6 +1482,9 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get selectAllFromCamera => 'Alle Bilder dieser Kamera auswählen';
+
+  @override
+  String get selectAllWithoutCamera => 'Alle Bilder ohne Kameradaten auswählen';
 
   @override
   String get adjustRecordingTimeAction => 'Aufnahmezeit anpassen…';
