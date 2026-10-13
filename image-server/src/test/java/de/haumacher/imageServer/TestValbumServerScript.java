@@ -166,6 +166,19 @@ public class TestValbumServerScript extends TestCase {
 		assertEquals("48", env.get("VALBUM_GEONAMES_MEMORY"));
 	}
 
+	/** The embedder of content search is configured through the environment, see issue #257. */
+	public void testTheEmbedderSettingsReachTheServerThroughItsEnvironment() throws Exception {
+		if (noShell()) {
+			return;
+		}
+		configure("VALBUM_EMBEDDER_DIR=/var/cache/valbum/embedder\nVALBUM_EMBEDDER_PRECISION=int8");
+		run(Map.of("VALBUM_EMBEDDER_URL", "http://127.0.0.1:8091/"));
+		Map<String, String> env = environment();
+		assertEquals("/var/cache/valbum/embedder", env.get("VALBUM_EMBEDDER_DIR"));
+		assertEquals("int8", env.get("VALBUM_EMBEDDER_PRECISION"));
+		assertEquals("http://127.0.0.1:8091/", env.get("VALBUM_EMBEDDER_URL"));
+	}
+
 	public void testTheEnvironmentWinsForTheMailSettingsToo() throws Exception {
 		if (noShell()) {
 			return;
@@ -211,7 +224,9 @@ public class TestValbumServerScript extends TestCase {
 		ServerEnvironment.SMTP_PORT, ServerEnvironment.SMTP_USER, ServerEnvironment.SMTP_PASSWORD,
 		ServerEnvironment.SMTP_FROM, ServerEnvironment.SMTP_TLS, ServerEnvironment.GEONAMES_DIR,
 		ServerEnvironment.GEONAMES_MEMORY, ServerEnvironment.CACHE_MEMORY,
-		ServerEnvironment.INDEX_MEMORY);
+		ServerEnvironment.INDEX_MEMORY,
+		de.haumacher.imageServer.content.EmbedderSettings.DIR, de.haumacher.imageServer.content.EmbedderSettings.PORT,
+		de.haumacher.imageServer.content.EmbedderSettings.PRECISION, de.haumacher.imageServer.content.EmbedderSettings.URL);
 
 	/** The environment the fake <code>java</code> was started with. */
 	private Map<String, String> environment() throws Exception {

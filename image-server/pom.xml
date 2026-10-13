@@ -488,6 +488,29 @@
 
 	<build>
 		<finalName>${project.artifactId}</finalName>
+
+		<resources>
+			<resource>
+				<directory>${project.basedir}/src/main/resources</directory>
+			</resource>
+			<!--
+				The embedder service of content search (issue #257) travels inside the JAR and is
+				unpacked by the server when a space first asks for it, see
+				de.haumacher.imageServer.content.PythonService: one copy of the code for the Debian
+				package, the container and a plain 'java -jar'. Its tests stay out.
+			-->
+			<resource>
+				<directory>${project.basedir}/src/embedder</directory>
+				<targetPath>de/haumacher/imageServer/content/embedder</targetPath>
+				<includes>
+					<include>embedder.py</include>
+					<include>model.json</include>
+					<include>requirements.txt</include>
+					<include>setup-venv</include>
+				</includes>
+			</resource>
+		</resources>
+
 		<plugins>
 			<!--
 				Bundle the Flutter web build (if it was built) into the server JAR, so that the

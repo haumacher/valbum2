@@ -8,3 +8,6 @@ list any new variable.
 (`ResourceCache.BYTES_PER_PART` per photo); the inotify watches stay bounded by `MAX_FOLDERS` (#245).
 `VALBUM_INDEX_MEMORY` (megabytes, default a sixteenth of the heap) is H2's page cache of the space
 indexes (#264), shared equally among the spaces and applied with `SET CACHE_SIZE` after they opened.
+
+`VALBUM_EMBEDDER_DIR`, `_PORT`, `_PRECISION`, `_URL` (content search, #257) are read by
+`EmbedderSettings` for `ServerEnvironment`.

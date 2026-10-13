@@ -3,6 +3,7 @@
  */
 package de.haumacher.imageServer;
 
+import de.haumacher.imageServer.content.EmbedderSettings;
 import de.haumacher.imageServer.mail.EmailProofs;
 import de.haumacher.imageServer.mail.MailSettings;
 import de.haumacher.imageServer.mail.SmtpMailer;
@@ -61,6 +62,8 @@ import java.util.regex.Pattern;
  * <li><code>VALBUM_INDEX_MEMORY</code>: how many megabytes of heap the page caches of the spaces'
  * indexes may take, all spaces together, a sixteenth of the heap by default, see
  * {@link de.haumacher.imageServer.index.SpaceIndex#setBudget(long)} and issue #264.</li>
+ * <li><code>VALBUM_EMBEDDER_DIR</code>, <code>_PORT</code>, <code>_PRECISION</code>, <code>_URL</code>:
+ * the embedder of content search, see {@link EmbedderSettings} and issue #257.</li>
  * </ul>
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
@@ -132,7 +135,8 @@ public final class ServerEnvironment {
 	 * test builds a server with; a real start reads the environment, where the gazetteer is on by
 	 * default).
 	 */
-	public static final ServerEnvironment NONE = new ServerEnvironment(null, null, List.of(), false, null, 0, 0, 0);
+	public static final ServerEnvironment NONE =
+		new ServerEnvironment(null, null, List.of(), false, null, 0, 0, 0, EmbedderSettings.NONE);
 
 	/** Thrown for a setting the server cannot run with; the message names the variable. */
 	public static final class Invalid extends Exception {
@@ -159,8 +163,10 @@ public final class ServerEnvironment {
 
 	private final long _indexMemory;
 
+	private final EmbedderSettings _embedder;
+
 	private ServerEnvironment(String publicUrl, MailSettings mail, List<OidcProvider> providers, boolean places,
-			String geonamesDir, long geonamesMemory, long cacheMemory, long indexMemory) {
+			String geonamesDir, long geonamesMemory, long cacheMemory, long indexMemory, EmbedderSettings embedder) {
 		_publicUrl = publicUrl;
 		_mail = mail;
 		_providers = Collections.unmodifiableList(providers);
@@ -169,6 +175,12 @@ public final class ServerEnvironment {
 		_geonamesMemory = geonamesMemory;
 		_cacheMemory = cacheMemory;
 		_indexMemory = indexMemory;
+		_embedder = embedder;
+	}
+
+	/** Where and how the embedder of content search runs, see issue #257. */
+	public EmbedderSettings getEmbedder() {
+		return _embedder;
 	}
 
 	/**
@@ -291,7 +303,8 @@ public final class ServerEnvironment {
 	public static ServerEnvironment read(Map<String, String> env) throws Invalid {
 		return new ServerEnvironment(publicUrl(value(env, PUBLIC_URL)), mail(env), providers(env), true,
 			geonamesDir(value(env, GEONAMES_DIR)), megabytes(GEONAMES_MEMORY, value(env, GEONAMES_MEMORY)),
-			megabytes(CACHE_MEMORY, value(env, CACHE_MEMORY)), megabytes(INDEX_MEMORY, value(env, INDEX_MEMORY)));
+			megabytes(CACHE_MEMORY, value(env, CACHE_MEMORY)), megabytes(INDEX_MEMORY, value(env, INDEX_MEMORY)),
+			EmbedderSettings.read(env));
 	}
 
 	private static String geonamesDir(String value) throws Invalid {

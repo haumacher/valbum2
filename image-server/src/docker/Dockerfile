@@ -51,9 +51,13 @@ FROM ${BASE} AS runtime
 # highgui (#182), and check-libraries fails should that ever change.
 #
 # check-libraries (the 'check' target below) proves the closure inside the built image.
+#
+# python3-venv (Python 3.12 of noble, some 30 MB) is what content search needs to make the
+# environment of its embedder service (#257) - on the volume, the first time a space asks for it,
+# like the Debian package; the 2 GB of model and the Python packages never go into the image.
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends \
-		libxcb1 libxcb-shm0 libxcb-shape0 libxcb-xfixes0 libasound2t64 \
+		libxcb1 libxcb-shm0 libxcb-shape0 libxcb-xfixes0 libasound2t64 python3-venv \
 	&& rm -rf /var/lib/apt/lists/*
 
 COPY --chmod=755 deb/valbum-server /usr/bin/valbum-server

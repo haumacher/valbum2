@@ -76,8 +76,12 @@ public class TestDebianPackageProbe extends TestCase {
 		Map<String, String> fields = fields(read(CONTROL));
 		TreeSet<String> recommended = new TreeSet<>();
 		for (String alternatives : fields.get("Recommends").split(",")) {
-			// The first alternative is the current name, the others are older ones.
-			recommended.add(packages(alternatives).get(0));
+			// The first alternative is the current name, the others are older ones. The remedy is
+			// that of the renditions, the libraries; python3-venv is content search's (#257).
+			String name = packages(alternatives).get(0);
+			if (name.startsWith("lib")) {
+				recommended.add(name);
+			}
 		}
 		assertTrue("The xcb libraries the bundled libavdevice links must be recommended: " + recommended,
 			recommended.containsAll(List.of("libxcb1", "libxcb-shm0", "libxcb-shape0", "libxcb-xfixes0")));

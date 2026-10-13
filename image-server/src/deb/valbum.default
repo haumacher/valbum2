@@ -128,6 +128,27 @@ VALBUM_SPACES=auto
 #
 #   VALBUM_INDEX_MEMORY=64
 
+# Content search - finding photos by what they show ("flowers", "Blumen im
+# Regen") - compares them with the model EmbeddingGemma 2 (Apache-2.0), run on
+# this server by a small Python service on 127.0.0.1; no photo leaves it.
+# Nothing happens until a space asks for it. Then the server makes a Python
+# environment (python3-venv, Python 3.12 or newer, 64-bit only; about 50 MB of
+# packages from PyPI) and downloads the model from huggingface.co (about 1.8 GB
+# for fp32, 0.5 GB for int8) into VALBUM_EMBEDDER_DIR, by default the hidden
+# folder .embedder inside VALBUM_BASEPATH. The service needs about 2 GB of memory
+# (fp32; 1.1 GB for int8) while it works and ends after 15 minutes without work.
+#
+# A server without internet access takes the model files placed there by hand
+# (into embeddinggemma-2-ONNX@daa72c51/, under their names in the repository),
+# and the Python packages from the folder wheels/ beside it; see the README.
+# VALBUM_EMBEDDER_URL names a service that runs on its own instead - then
+# nothing is downloaded or started here.
+#
+#   VALBUM_EMBEDDER_DIR=/var/cache/valbum/embedder
+#   VALBUM_EMBEDDER_PRECISION=int8
+#   VALBUM_EMBEDDER_PORT=8091
+#   VALBUM_EMBEDDER_URL=http://127.0.0.1:8091/
+
 # Further server arguments, appended to the ones above. The most useful one is
 # a fixed sign-in code for the administrator of a space that nobody has signed
 # into yet; without it the server makes a fresh one at every start and prints it

@@ -399,6 +399,7 @@ public class Main {
 		System.out.println(placesReport(_environment, _basePath.toPath()));
 		System.out.println(cacheReport(_environment));
 		System.out.println(indexReport(_environment));
+		System.out.println(_environment.getEmbedder().report(_basePath.toPath()));
 		System.out.println("Spaces: " + spaces.getMode().protocolName());
 		if (spaces.getMode() == SpaceMode.MULTI && spaces.getSpaces().isEmpty()) {
 			System.out.println("  (no folder below the base folder carries .valbum/space.json; "

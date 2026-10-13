@@ -155,6 +155,9 @@ The `.deb` reads `/etc/default/valbum`; Docker takes the same variables from `en
 | `VALBUM_GEONAMES_MEMORY` | Megabytes of place names kept in memory | an eighth of the heap | an eighth of the heap |
 | `VALBUM_CACHE_MEMORY` | Megabytes of albums kept in memory, all spaces together | an eighth of the heap | an eighth of the heap |
 | `VALBUM_INDEX_MEMORY` | Megabytes of the spaces' indexes (`.valbum/index`) kept in memory, all spaces together | a sixteenth of the heap | a sixteenth of the heap |
+| `VALBUM_EMBEDDER_DIR` | Where [content search](#content-search-in-preparation) keeps its model and Python environment | `<VALBUM_BASEPATH>/.embedder` | `/photos/.embedder` |
+| `VALBUM_EMBEDDER_PRECISION` | `fp32` (exact) or `int8` (half the memory) | `fp32` | `fp32` |
+| `VALBUM_EMBEDDER_PORT` / `_URL` | The port of its service on `127.0.0.1` / a service of its own instead | any free port / none | any free port / none |
 
 On the `.deb`, point it at your photos and restart:
 
@@ -382,6 +385,40 @@ for a new space). Processing your family's faces is your decision, not a default
 - Faces are shown to signed-in members only, never through a share link or to the public.
 - What describes a face for recognition never leaves the server.
 
+### Content search (in preparation)
+
+A coming version finds photos by what they show: "flowers", "Blumen im Regen". The server runs the
+model [EmbeddingGemma 2](https://huggingface.co/google/embeddinggemma-2) (Apache-2.0) itself; no
+photo leaves it. Nothing is downloaded or started until a space asks for it.
+
+- **Needs** a 64-bit machine (x86-64, or ARM such as a Raspberry Pi 5), Python 3.12 or newer with
+  `python3-venv` (the `.deb` recommends it, the image has it), about 2.2 GB of disk in
+  `VALBUM_EMBEDDER_DIR` and, while it works, about 2 GB of memory (`int8`: 1.1 GB, 0.7 GB of disk).
+  The service ends after 15 minutes without work.
+- **First use** downloads about 50 MB of Python packages from PyPI and the model from Hugging Face,
+  each file checked against its pinned SHA-256.
+- **Without internet**, prepare the folder on another machine and copy it over:
+
+  ```
+  D=embeddinggemma-2-ONNX@daa72c51
+  for f in tokenizer.json onnx/model.onnx onnx/model.onnx_data onnx/vision_encoder.onnx onnx/vision_encoder.onnx_data; do
+    curl -fL --create-dirs -o "$D/$f" "https://huggingface.co/onnx-community/embeddinggemma-2-ONNX/resolve/daa72c51243991dfcaf9f9137d2c573d8f7790c0/$f"
+  done
+  pip download --no-deps --only-binary=:all: --require-hashes --platform manylinux_2_28_aarch64 \
+    --platform manylinux2014_aarch64 --python-version 3.13 -d wheels -r requirements.txt
+  ```
+
+  (`int8`: the files `onnx/model_quantized.onnx…` and `onnx/vision_encoder_quantized.onnx…`; for
+  x86-64 `…_x86_64`; `requirements.txt` is in
+  [`image-server/src/embedder`](image-server/src/embedder).) Then put `$D` and `wheels` into
+  `VALBUM_EMBEDDER_DIR`.
+- **Check it, and measure the machine** (prepares everything, then times a query and the given
+  photos):
+
+  ```
+  sudo -u valbum sh -c 'set -a; . /etc/default/valbum; java -cp /usr/share/valbum/valbum.jar de.haumacher.imageServer.content.EmbedderCheck --basepath "$VALBUM_BASEPATH" /path/to/some/*.jpg'
+  ```
+
 ## Administration
 
 `valbum-admin` runs the server's one-time jobs. It stops the server, runs the job as the server's
@@ -498,7 +535,8 @@ VAlbum hält Deine Photos und Videos auf eigener Hardware — Raspberry Pi, NAS 
 Linux-Rechner — und zeigt sie auf allen Geräten, ohne Cloud-Anbieter. Jeder Ordner mit Photos ist ein
 Album. Die Android-App lädt neue Photos in ein Eingangs-Album; Freigabe-Links, Einladungen,
 Sichtbarkeitsstufen, Gesichtserkennung (nur auf Wunsch) und mehrere getrennte Bibliotheken
-("Spaces") auf einem Server gehören dazu.
+("Spaces") auf einem Server gehören dazu. Die Suche nach Bildinhalten ("Blumen im Regen") ist in
+Vorbereitung; sie läuft ganz auf dem eigenen Server (siehe [Content search](#content-search-in-preparation)).
 
 Deine Photos werden nie verändert. Titel, Bewertungen und Reihenfolge stehen in kleinen Dateien
 neben den Photos. Gelöscht wird nur, wenn ein Administrator die als "Trash" bewerteten Photos eines

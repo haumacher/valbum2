@@ -1,0 +1,68 @@
+#!/bin/sh
+#
+# Creates the Python environment of the embedder service of issue #257.
+#
+#     setup-venv <target> <requirements.txt> [<wheel folder>]
+#
+# The server runs this the first time a space asks for content search, never before - nothing is
+# installed for a library that does not use it. The packages are exactly those of requirements.txt,
+# each checked against its SHA-256 (pip --require-hashes --no-deps); from PyPI, or, where the wheel
+# folder holds files, from there only (--no-index): the offline install, see the README.
+#
+# Built beside the target and moved into its place when complete, so an interrupted run leaves
+# nothing half-made that the server would take for an environment. Says on stderr what is missing
+# (Python, its venv module, a wheel for this machine) and exits non-zero.
+set -eu
+
+if [ $# -lt 2 ]; then
+	echo "usage: setup-venv <target> <requirements.txt> [<wheel folder>]" >&2
+	exit 2
+fi
+TARGET=$1
+REQUIREMENTS=$2
+WHEELS=${3:-}
+PYTHON=${PYTHON:-python3}
+
+if ! command -v "$PYTHON" >/dev/null 2>&1; then
+	echo "setup-venv: no '$PYTHON' found; content search needs Python 3.12 or newer ('apt install python3-venv')." >&2
+	exit 1
+fi
+if ! "$PYTHON" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 12) else 1)'; then
+	echo "setup-venv: $("$PYTHON" -V 2>&1) is too old; content search needs Python 3.12 or newer." >&2
+	exit 1
+fi
+case "$(uname -m)" in
+	x86_64|aarch64) ;;
+	*)
+		echo "setup-venv: content search needs a 64-bit x86 or ARM machine; there is no onnxruntime for '$(uname -m)'." >&2
+		exit 1
+		;;
+esac
+
+WORK="$TARGET.tmp"
+rm -rf "$WORK"
+mkdir -p "$(dirname "$TARGET")"
+if ! "$PYTHON" -m venv "$WORK"; then
+	rm -rf "$WORK"
+	echo "setup-venv: '$PYTHON -m venv' failed; on Debian and Ubuntu install python3-venv." >&2
+	exit 1
+fi
+
+set -- --no-deps --only-binary=:all: --require-hashes --disable-pip-version-check --no-input --no-cache-dir
+if [ -n "$WHEELS" ] && [ -d "$WHEELS" ] && [ -n "$(ls -A "$WHEELS" 2>/dev/null)" ]; then
+	echo "setup-venv: installing from $WHEELS, without the network." >&2
+	set -- "$@" --no-index --find-links "$WHEELS"
+fi
+if ! "$WORK/bin/python" -m pip install "$@" -r "$REQUIREMENTS" >&2; then
+	rm -rf "$WORK"
+	echo "setup-venv: the packages could not be installed (no network, or no wheel for this machine in the folder)." >&2
+	exit 1
+fi
+if ! "$WORK/bin/python" -I -c 'import numpy, onnxruntime, tokenizers, PIL' >&2; then
+	rm -rf "$WORK"
+	echo "setup-venv: the packages were installed but do not load." >&2
+	exit 1
+fi
+rm -rf "$TARGET"
+mv "$WORK" "$TARGET"
+echo "setup-venv: ready in $TARGET." >&2

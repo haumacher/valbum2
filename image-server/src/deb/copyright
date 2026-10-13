@@ -25,3 +25,11 @@ Comment:
  face models and others) keep their own licences; the face models'
  sources, hashes and licences are listed in the NOTICE.txt beside them inside the
  jar.
+ .
+ Content search (issue #257) downloads, only when a space asks for it, the model
+ EmbeddingGemma 2 (google/embeddinggemma-2 in the ONNX export
+ onnx-community/embeddinggemma-2-ONNX, Apache-2.0) and the Python packages of its
+ service, each pinned with its SHA-256 in requirements.txt inside the jar:
+ numpy (BSD-3-Clause), onnxruntime (MIT), flatbuffers (Apache-2.0), packaging
+ (Apache-2.0 or BSD-2-Clause), protobuf (BSD-3-Clause), tokenizers (Apache-2.0)
+ and pillow (MIT-CMU). None of them is part of this package.
