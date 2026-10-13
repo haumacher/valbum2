@@ -314,6 +314,25 @@ public class FolderPipeline {
 		default void runFile(File file, Pass pass) throws InterruptedException {
 			// Nothing of one file.
 		}
+
+		/**
+		 * Forgets what the step keeps about the folder at the given path (relative to the space
+		 * root, <code>/</code>-separated) and everything below it: the folder is gone, see
+		 * {@link FolderPipeline#gone(String)}; nothing by default. Called on the pipeline's thread,
+		 * outside its lock.
+		 */
+		default void gone(String path) {
+			// Nothing kept.
+		}
+
+		/**
+		 * Forgets what the step keeps about every folder but the given ones (paths relative to the
+		 * space root): a complete walk found exactly these, see
+		 * {@link FolderPipeline#retain(Set)}; nothing by default. Called outside the pipeline's lock.
+		 */
+		default void retain(Set<String> paths) {
+			// Nothing kept.
+		}
 	}
 
 	/** What the fast lane makes of each uploaded file, pass by pass, see issue #258. */
@@ -1165,7 +1184,7 @@ public class FolderPipeline {
 		if (!baseline && before != null) {
 			for (String path : before.keySet()) {
 				if (!now.containsKey(path)) {
-					gone(path);
+					vanished(path);
 				}
 			}
 		}
@@ -1242,6 +1261,21 @@ public class FolderPipeline {
 	private static String parentOf(String path) {
 		int slash = path.lastIndexOf('/');
 		return slash < 0 ? "" : path.substring(0, slash);
+	}
+
+	/**
+	 * Forgets a folder that is gone, see {@link #gone(String)}, and tells every step
+	 * ({@link Step#gone(String)}).
+	 */
+	void vanished(String path) {
+		gone(path);
+		for (Step step : byStage()) {
+			try {
+				step.gone(path);
+			} catch (RuntimeException ex) {
+				LOG.log(Level.WARNING, "Step '" + step.name() + "' cannot forget '" + path + "': " + ex.getMessage(), ex);
+			}
+		}
 	}
 
 	/**
@@ -1434,7 +1468,7 @@ public class FolderPipeline {
 		}
 		if (!folder.isDirectory()) {
 			// Gone meanwhile: deleted, or moved by hand to where it is new and noticed.
-			gone(path);
+			vanished(path);
 			return;
 		}
 		String fingerprint = fingerprint(Arrays.asList(folder));
@@ -2175,13 +2209,26 @@ public class FolderPipeline {
 			&& record._fingerprint.equals(fingerprint(Arrays.asList(folder)));
 	}
 
-	/** Forgets the records of folders that are gone or no part of the walked library. */
-	public synchronized void retain(Set<String> paths) {
-		if (_records.keySet().removeIf(path -> !paths.contains(path))) {
-			_dirty = true;
+	/**
+	 * Forgets the records of folders that are gone or no part of the walked library, and tells
+	 * every step ({@link Step#retain(Set)}).
+	 */
+	public void retain(Set<String> paths) {
+		synchronized (this) {
+			if (_records.keySet().removeIf(path -> !paths.contains(path))) {
+				_dirty = true;
+			}
+			_known.retainAll(paths);
+			_settled.retainAll(paths);
 		}
-		_known.retainAll(paths);
-		_settled.retainAll(paths);
+		for (Step step : byStage()) {
+			try {
+				step.retain(paths);
+			} catch (RuntimeException ex) {
+				LOG.log(Level.WARNING, "Step '" + step.name() + "' cannot forget the folders not walked: "
+					+ ex.getMessage(), ex);
+			}
+		}
 	}
 
 	/**

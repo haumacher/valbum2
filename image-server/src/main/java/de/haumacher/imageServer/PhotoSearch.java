@@ -10,10 +10,7 @@ import de.haumacher.imageServer.faces.PeopleStore;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.AlbumKind;
 import de.haumacher.imageServer.shared.model.AlbumPart;
-import de.haumacher.imageServer.shared.model.FaceState;
-import de.haumacher.imageServer.shared.model.FaceTag;
 import de.haumacher.imageServer.shared.model.ImageGroup;
-import de.haumacher.imageServer.shared.model.ImageKind;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.LabelName;
 import de.haumacher.imageServer.shared.model.PlaceInfo;
@@ -37,11 +34,11 @@ import de.haumacher.imageServer.shared.model.SearchText;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
 import java.util.function.Function;
 
@@ -205,156 +202,29 @@ public final class PhotoSearch {
 		return result;
 	}
 
-	/**
-	 * What the search asks of one photograph, see issue #227: everything a criterion reads, and
-	 * nothing else, so that the {@link SearchIndex} can keep it for every photograph of a space.
-	 *
-	 * <p>
-	 * Built by {@link #of(ImagePart, Interner)} from the photograph as the cache holds it &mdash; for
-	 * the index and for the scan alike, so both answer exactly the same. Never changed afterwards.
-	 * </p>
-	 */
-	public static final class Photo {
-		static final String[] NONE = new String[0];
+	/** A photograph the search found. */
+	public static final class Match {
+		final long _id;
 
-		static final int[] NO_PLACES = new int[0];
+		final PathInfo _folder;
+
+		final String _relative;
 
 		final String _name;
 
 		final long _date;
 
-		/** The person ids of the confirmed faces, as the tags store them (merges not resolved). */
-		final String[] _persons;
-
-		final String[] _labels;
-
-		/** The GeoNames ids of the place tags, every level. */
-		final int[] _places;
-
-		final String _camera;
-
-		final boolean _video;
-
-		final byte _rating;
-
-		final byte _privacy;
-
-		final String _comment;
-
-		Photo(String name, long date, String[] persons, String[] labels, int[] places, String camera,
-				boolean video, int rating, int privacy, String comment) {
-			_name = name;
-			_date = date;
-			_persons = persons;
-			_labels = labels;
-			_places = places;
-			_camera = camera;
-			_video = video;
-			_rating = (byte) rating;
-			_privacy = (byte) privacy;
-			_comment = comment;
-		}
-
-		/** The photograph's file name in its album. */
-		public String getName() {
-			return _name;
-		}
-
-		/** When it was taken, <code>0</code> for unknown. */
-		public long getDate() {
-			return _date;
-		}
-
-		/** Its camera, the empty string for none. */
-		public String getCamera() {
-			return _camera;
-		}
-
-		/** Its labels. */
-		public List<String> getLabels() {
-			return Arrays.asList(_labels);
-		}
-
-		/** The persons of its confirmed faces, each the survivor of every merge. */
-		public Set<String> persons(PeopleStore people) {
-			Set<String> result = new HashSet<>();
-			for (String person : _persons) {
-				result.add(FaceTags.person(person, people));
-			}
-			return result;
-		}
-
-		/** Whether it is in the trash, which no search ever finds. */
-		boolean isTrash() {
-			return _rating == Ratings.TRASH;
-		}
-
-		/** What the search asks of the given photograph. */
-		static Photo of(ImagePart image, Interner strings) {
-			List<String> persons = new ArrayList<>();
-			for (FaceTag tag : image.getTags()) {
-				if (tag.getState() == FaceState.CONFIRMED && !tag.getPerson().isEmpty()) {
-					persons.add(strings.intern(tag.getPerson()));
-				}
-			}
-			List<LabelName> labelNames = image.getLabels();
-			String[] labels = labelNames.isEmpty() ? NONE : new String[labelNames.size()];
-			for (int n = 0; n < labels.length; n++) {
-				labels[n] = strings.intern(labelNames.get(n).getName());
-			}
-			int[] places = NO_PLACES;
-			if (image.getPlaces() != null && !image.getPlaces().getTags().isEmpty()) {
-				List<PlaceTag> tags = image.getPlaces().getTags();
-				places = new int[tags.size()];
-				for (int n = 0; n < places.length; n++) {
-					places[n] = tags.get(n).getGeonameId();
-				}
-			}
-			String comment = image.getComment() == null ? "" : image.getComment();
-			return new Photo(image.getName(), image.getDate(),
-				persons.isEmpty() ? NONE : persons.toArray(new String[persons.size()]), labels, places,
-				strings.intern(image.getCamera() == null ? "" : image.getCamera()), image.getKind() != ImageKind.IMAGE,
-				image.getRating(), image.getPrivacy(), comment.isEmpty() ? "" : comment);
-		}
-	}
-
-	/** Shares the strings many photographs carry (person ids, labels, cameras). */
-	public interface Interner {
-		/** The one instance of the given string. */
-		String intern(String value);
-
-		/** No sharing: for a scan that throws its photographs away. */
-		Interner NONE = value -> value;
-	}
-
-	/** What the search asks of an album: its texts and where it lies. */
-	public static final class Album {
-		final String _title;
-
-		final String _subTitle;
-
-		/** The folder relative to the root of the space, <code>/</code>-separated. */
-		final String _path;
-
-		Album(String title, String subTitle, String path) {
-			_title = title == null ? "" : title;
-			_subTitle = subTitle == null ? "" : subTitle;
-			_path = path;
-		}
-	}
-
-	/** A photograph the search found. */
-	public static final class Match {
-		final PathInfo _folder;
-
-		final String _relative;
-
-		final Photo _photo;
-
-		Match(PathInfo folder, String relative, Photo photo) {
+		Match(long id, PathInfo folder, String relative, String name, long date) {
+			_id = id;
 			_folder = folder;
 			_relative = relative;
-			_photo = photo;
+			_name = name;
+			_date = date;
+		}
+
+		/** The row of the photograph in the {@link SearchIndex}, see {@link SearchIndex#facets}. */
+		public long getId() {
+			return _id;
 		}
 
 		/** The album the photograph lies in. */
@@ -369,140 +239,17 @@ public final class PhotoSearch {
 
 		/** The photograph's file name in its album. */
 		public String getName() {
-			return _photo._name;
+			return _name;
 		}
 
-		/** What the search knows of the photograph. */
-		public Photo getPhoto() {
-			return _photo;
+		/** When it was taken, <code>0</code> for unknown. */
+		public long getDate() {
+			return _date;
 		}
-	}
-
-	/** What a criterion is asked about: one photograph in its album. */
-	interface Test {
-		boolean test(Photo photo, Album album);
-	}
-
-	/**
-	 * The given query as a test of a photograph; the query must have passed {@link #refusal}.
-	 *
-	 * @param people
-	 *        The register of the space, through whose merges persons are compared; <code>null</code>
-	 *        compares the ids as they stand.
-	 */
-	static Test matcher(SearchQuery query, PeopleStore people) {
-		SearchCriterion root = query == null ? null : query.getRoot();
-		return root == null ? (photo, album) -> true : compile(root, people);
-	}
-
-	private static Test compile(SearchCriterion criterion, PeopleStore people) {
-		if (criterion == null) {
-			return (photo, album) -> false;
-		}
-		if (criterion instanceof SearchAnd) {
-			Test[] all = compileAll(((SearchAnd) criterion).getCriteria(), people);
-			return (photo, album) -> {
-				for (Test test : all) {
-					if (!test.test(photo, album)) {
-						return false;
-					}
-				}
-				return true;
-			};
-		}
-		if (criterion instanceof SearchOr) {
-			Test[] any = compileAll(((SearchOr) criterion).getCriteria(), people);
-			return (photo, album) -> {
-				for (Test test : any) {
-					if (test.test(photo, album)) {
-						return true;
-					}
-				}
-				return false;
-			};
-		}
-		if (criterion instanceof SearchNot) {
-			Test inner = compile(((SearchNot) criterion).getCriterion(), people);
-			return (photo, album) -> !inner.test(photo, album);
-		}
-		if (criterion instanceof SearchPerson) {
-			// Every id that names the person: the survivor and everybody merged into them.
-			Set<String> ids = idsOf(((SearchPerson) criterion).getPerson(), people);
-			return (photo, album) -> {
-				for (String person : photo._persons) {
-					if (ids.contains(person)) {
-						return true;
-					}
-				}
-				return false;
-			};
-		}
-		if (criterion instanceof SearchDate) {
-			long from = ((SearchDate) criterion).getFrom();
-			long to = ((SearchDate) criterion).getTo();
-			return (photo, album) -> {
-				long date = photo._date;
-				return date != 0 && (from == 0 || date >= from) && (to == 0 || date < to);
-			};
-		}
-		if (criterion instanceof SearchPlace) {
-			int id = ((SearchPlace) criterion).getGeonameId();
-			return (photo, album) -> {
-				for (int place : photo._places) {
-					if (place == id) {
-						return true;
-					}
-				}
-				return false;
-			};
-		}
-		if (criterion instanceof SearchLabel) {
-			String label = ((SearchLabel) criterion).getLabel();
-			return (photo, album) -> {
-				for (String carried : photo._labels) {
-					if (carried.equals(label)) {
-						return true;
-					}
-				}
-				return false;
-			};
-		}
-		if (criterion instanceof SearchRating) {
-			int min = ((SearchRating) criterion).getMin();
-			return (photo, album) -> photo._rating >= min;
-		}
-		if (criterion instanceof SearchMedia) {
-			boolean video = ((SearchMedia) criterion).isVideo();
-			return (photo, album) -> photo._video == video;
-		}
-		if (criterion instanceof SearchText) {
-			String text = ((SearchText) criterion).getText().trim().toLowerCase(Locale.ROOT);
-			return (photo, album) -> text.isEmpty() || contains(photo._comment, text)
-				|| contains(album._title, text) || contains(album._subTitle, text);
-		}
-		if (criterion instanceof SearchCamera) {
-			String camera = ((SearchCamera) criterion).getCamera();
-			return (photo, album) -> !camera.isEmpty() && camera.equals(photo._camera);
-		}
-		if (criterion instanceof SearchFolder) {
-			String path = trimSlashes(((SearchFolder) criterion).getPath());
-			return (photo, album) -> path.isEmpty() || album._path.equals(path)
-				|| album._path.startsWith(path + "/");
-		}
-		// Never reached for a query that passed refusal(SearchQuery).
-		return (photo, album) -> false;
-	}
-
-	private static Test[] compileAll(List<SearchCriterion> criteria, PeopleStore people) {
-		Test[] result = new Test[criteria.size()];
-		for (int n = 0; n < result.length; n++) {
-			result[n] = compile(criteria.get(n), people);
-		}
-		return result;
 	}
 
 	/** Every id that resolves to the person the given id names, see {@link FaceTags#person}. */
-	private static Set<String> idsOf(String id, PeopleStore people) {
+	static Set<String> idsOf(String id, PeopleStore people) {
 		Set<String> result = new HashSet<>();
 		if (id == null || id.isEmpty()) {
 			return result;
@@ -516,11 +263,7 @@ public final class PhotoSearch {
 		return result;
 	}
 
-	private static boolean contains(String value, String lowerCaseText) {
-		return value != null && !value.isEmpty() && value.toLowerCase(Locale.ROOT).contains(lowerCaseText);
-	}
-
-	private static String trimSlashes(String path) {
+	static String trimSlashes(String path) {
 		return path == null ? "" : path.replaceAll("^/+|/+$", "");
 	}
 
@@ -536,37 +279,27 @@ public final class PhotoSearch {
 	 * </p>
 	 *
 	 * <p>
-	 * Asked of the {@link SearchIndex} where it is complete, else of the albums themselves &mdash;
-	 * the same answer, only slower.
+	 * Asked of the {@link SearchIndex} of the space (issue #264), which answers what it holds: the
+	 * albums are not asked.
 	 * </p>
 	 *
 	 * @param scope
 	 *        The folder to search below, in the coordinates of its space.
 	 * @param query
-	 *        What to look for; must have passed {@link #refusal(SearchQuery)}.
-	 * @param albums
-	 *        The folder as the cache holds it, see {@link ResourceCache#lookup(PathInfo)}.
-	 * @param index
-	 *        The index of the space, <code>null</code> for none.
+	 *        What to look for; must have passed {@link #refusal(SearchQuery)}; <code>null</code> for
+	 *        everything.
+	 * @param visibility
+	 *        What the caller may be shown at all, see {@link SearchIndex.Visibility}.
 	 */
-	public static List<Match> find(PathInfo scope, SearchQuery query, Function<PathInfo, Resource> albums,
-			PeopleStore people, SearchIndex index) {
-		Test test = matcher(query, people);
-		List<Match> result = index != null && index.isComplete() ? index.find(scope, test) : scan(scope, test, albums);
-		result.sort(ORDER);
-		return result;
-	}
-
-	/** {@link #find(PathInfo, SearchQuery, Function, PeopleStore, SearchIndex)} without an index. */
-	public static List<Match> find(PathInfo scope, SearchQuery query, Function<PathInfo, Resource> albums,
-			PeopleStore people) {
-		return find(scope, query, albums, people, null);
+	public static List<Match> find(PathInfo scope, SearchQuery query, SearchIndex index, PeopleStore people,
+			SearchIndex.Visibility visibility) {
+		return index.find(scope, query, people, visibility);
 	}
 
 	/** By date, a photograph without one last, then by path. */
 	public static final Comparator<Match> ORDER = (a, b) -> {
-		long da = a._photo._date;
-		long db = b._photo._date;
+		long da = a._date;
+		long db = b._date;
 		if (da != db) {
 			if (da == 0) {
 				return 1;
@@ -578,56 +311,6 @@ public final class PhotoSearch {
 		}
 		return a._relative.compareTo(b._relative);
 	};
-
-	/** The search asking every album below the folder, see {@link #find}. */
-	static List<Match> scan(PathInfo scope, Test test, Function<PathInfo, Resource> albums) {
-		List<Match> result = new ArrayList<>();
-		walk(scope, "", test, albums, result);
-		return result;
-	}
-
-	private static void walk(PathInfo folder, String prefix, Test test, Function<PathInfo, Resource> albums,
-			List<Match> result) {
-		File dir = folder.toFile();
-		File[] children = dir.listFiles();
-		if (children == null) {
-			return;
-		}
-		boolean holdsFiles = false;
-		List<String> folders = new ArrayList<>();
-		for (File child : children) {
-			if (!isLibraryEntry(child.getName())) {
-				continue;
-			}
-			if (child.isDirectory()) {
-				folders.add(child.getName());
-			} else {
-				holdsFiles = true;
-			}
-		}
-		AlbumInfo album = albumAt(folder, holdsFiles, albums);
-		if (album != null) {
-			if (holdsNoFiles(album)) {
-				// A collection or a saved search: nothing of its own, nothing below it.
-				return;
-			}
-			Album texts = albumOf(album, folder);
-			for (ImagePart image : images(album)) {
-				if (de.haumacher.imageServer.cache.BrokenParts.isBroken(image)) {
-					// A file that cannot be read is no photograph to find, see issue #253.
-					continue;
-				}
-				Photo photo = Photo.of(image, Interner.NONE);
-				if (!photo.isTrash() && test.test(photo, texts)) {
-					result.add(new Match(folder, prefix + photo._name, photo));
-				}
-			}
-		}
-		folders.sort(null);
-		for (String child : folders) {
-			walk(folder.child(child), prefix + child + "/", test, albums, result);
-		}
-	}
 
 	/** Whether a directory entry of the given name is part of the library at all. */
 	static boolean isLibraryEntry(String name) {
@@ -647,11 +330,6 @@ public final class PhotoSearch {
 		}
 		Resource resource = albums.apply(folder);
 		return resource instanceof AlbumInfo ? (AlbumInfo) resource : null;
-	}
-
-	/** What the search asks of the given album at the given folder. */
-	static Album albumOf(AlbumInfo album, PathInfo folder) {
-		return new Album(album.getTitle(), album.getSubTitle(), folder.relativePath());
 	}
 
 	/** The photographs of the given album, the members of a group one by one. */
@@ -675,7 +353,7 @@ public final class PhotoSearch {
 	 * @return The album the photograph lies in where it matches, <code>null</code> otherwise.
 	 */
 	public static PathInfo matching(PathInfo scope, String relative, SearchQuery query,
-			Function<PathInfo, Resource> albums, PeopleStore people) {
+			Function<PathInfo, Resource> albums, PeopleStore people, SearchIndex index) {
 		List<String> segments = segments(relative);
 		if (segments == null) {
 			return null;
@@ -697,7 +375,7 @@ public final class PhotoSearch {
 		if (image == null || image.getRating() == Ratings.TRASH) {
 			return null;
 		}
-		return matcher(query, people).test(Photo.of(image, Interner.NONE), albumOf(album, folder)) ? folder : null;
+		return index.matches(folder, name, query, people) ? folder : null;
 	}
 
 	/**
@@ -718,12 +396,9 @@ public final class PhotoSearch {
 		return result;
 	}
 
-	/** The labels of the given photographs, each once, sorted. */
-	public static List<LabelName> labelsOf(Iterable<Photo> photos) {
-		java.util.TreeSet<String> names = new java.util.TreeSet<>();
-		for (Photo photo : photos) {
-			names.addAll(photo.getLabels());
-		}
+	/** The given labels, each once, sorted. */
+	public static List<LabelName> labelsOf(Collection<String> labels) {
+		java.util.TreeSet<String> names = new java.util.TreeSet<>(labels);
 		List<LabelName> result = new ArrayList<>();
 		for (String name : names) {
 			result.add(LabelName.create().setName(name));

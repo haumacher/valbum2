@@ -220,12 +220,13 @@ public class TestSpaceIndex extends ShareTestCase {
 	public void testTheBudgetIsTheCacheOfH2() throws Exception {
 		ImageServlet servlet = servlet();
 		assertEquals(SpaceIndex.defaultBudget(), servlet.index().store().getBudget());
-		assertEquals(Long.valueOf(SpaceIndex.defaultBudget() / 1024), cacheSize(servlet.index()));
+		// H2's share: Lucene's buffer of new documents takes a quarter, see SpaceIndex.
+		assertEquals(Long.valueOf(SpaceIndex.cacheBudget(SpaceIndex.defaultBudget()) / 1024), cacheSize(servlet.index()));
 
 		servlet.setIndexMemory(8L * 1024 * 1024);
 
 		assertEquals(8L * 1024 * 1024, servlet.index().store().getBudget());
-		assertEquals("H2 counts its cache in kilobytes.", Long.valueOf(8 * 1024), cacheSize(servlet.index()));
+		assertEquals("H2 counts its cache in kilobytes.", Long.valueOf(6 * 1024), cacheSize(servlet.index()));
 	}
 
 	// --- Written through. ---

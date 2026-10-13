@@ -122,9 +122,10 @@ VALBUM_SPACES=auto
 #   VALBUM_CACHE_MEMORY=256
 
 # Each space keeps an index of its photos in .valbum/index (where every photo
-# is, by its contents). It is rebuilt from the albums when missing, so it need
-# not be backed up. At most VALBUM_INDEX_MEMORY megabytes of it are held in
-# memory, for all spaces together (a sixteenth of the heap by default).
+# is, by its contents, and what the search asks of it). It is rebuilt from the
+# albums when missing, so it need not be backed up. At most VALBUM_INDEX_MEMORY
+# megabytes of it are held in memory, for all spaces together (a sixteenth of
+# the heap by default); less makes a search slower, not wrong.
 #
 #   VALBUM_INDEX_MEMORY=64
 

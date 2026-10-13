@@ -33,6 +33,9 @@
 		-->
 		<assembly.finalName>${project.artifactId}</assembly.finalName>
 
+		<!-- Apache Lucene, the full-text index of issue #264. -->
+		<lucene.version>10.5.1</lucene.version>
+
 		<!-- The Flutter web build to bundle into the server JAR, if it exists. -->
 		<webapp.dir>${project.basedir}/../valbum_ui/build/web</webapp.dir>
 
@@ -382,6 +385,22 @@
 			<groupId>com.h2database</groupId>
 			<artifactId>h2</artifactId>
 			<version>2.4.240</version>
+		</dependency>
+
+		<!-- The full-text half of the index of issue #264: Apache Lucene (Apache-2.0, which the AGPL
+		     server may link), pure Java, in .valbum/index/lucene/ beside H2. The core and the
+		     analysers of the common languages (German and English stemming, accent folding); the
+		     analysers are built from their classes, never through Lucene's SPI, whose service files
+		     the server JAR would merge wrongly. -->
+		<dependency>
+			<groupId>org.apache.lucene</groupId>
+			<artifactId>lucene-core</artifactId>
+			<version>${lucene.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.lucene</groupId>
+			<artifactId>lucene-analysis-common</artifactId>
+			<version>${lucene.version}</version>
 		</dependency>
 
 		<!-- The mailed code of issue #199, the only mail the server sends: Jakarta Mail through its

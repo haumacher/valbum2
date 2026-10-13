@@ -14,7 +14,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import junit.framework.TestCase;
 
@@ -177,9 +176,39 @@ public class TestResourceCacheMemory extends TestCase {
 
 	// --- Helpers. ---
 
+	/**
+	 * Every photograph of the library as the given cache answers its album: what a search once
+	 * read, album by album; the search asks the index of the space now (issue #264), so the walk
+	 * is the test's own.
+	 */
 	private List<String> search(ResourceCache cache) {
-		return PhotoSearch.find(new PathInfo(_root), null, cache::lookup, null).stream()
-			.map(match -> match.getRelative()).sorted().collect(Collectors.toList());
+		List<String> result = new ArrayList<>();
+		walk(cache, _root.toFile(), "", result);
+		result.sort(null);
+		return result;
+	}
+
+	private void walk(ResourceCache cache, File folder, String prefix, List<String> result) {
+		File[] children = folder.listFiles();
+		if (children == null) {
+			return;
+		}
+		boolean holdsFiles = false;
+		for (File child : children) {
+			if (child.getName().startsWith(".")) {
+				continue;
+			}
+			if (child.isDirectory()) {
+				walk(cache, child, prefix + child.getName() + "/", result);
+			} else {
+				holdsFiles = true;
+			}
+		}
+		if (holdsFiles && cache.lookup(path(folder)) instanceof AlbumInfo album) {
+			for (de.haumacher.imageServer.shared.model.ImagePart image : PhotoSearch.images(album)) {
+				result.add(prefix + image.getName());
+			}
+		}
 	}
 
 	/** A library of the given number of albums of three photographs, in ten year folders. */

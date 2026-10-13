@@ -36,6 +36,7 @@ import de.haumacher.imageServer.faces.FaceIndex;
 import de.haumacher.imageServer.faces.FaceTags;
 import de.haumacher.imageServer.faces.Faces;
 import de.haumacher.imageServer.faces.PeopleStore;
+import de.haumacher.imageServer.index.SpaceIndex;
 import de.haumacher.imageServer.mail.EmailProofs;
 import de.haumacher.imageServer.oidc.OidcLogins;
 import de.haumacher.imageServer.oidc.OidcProvider;
@@ -713,6 +714,12 @@ public class ImageServlet extends HttpServlet {
 	 */
 	private final HashIndex _index;
 
+	/**
+	 * The index of this space in <code>.valbum/index/</code> (issue #264): opened once with the
+	 * servlet, shared by the hash index and the search, closed by {@link #destroy()}.
+	 */
+	private final SpaceIndex _spaceIndex;
+
 	/** What the search of issue #227 asks of every photograph of the space, see {@link SearchIndex}. */
 	private final SearchIndex _searchIndex;
 
@@ -905,7 +912,8 @@ public class ImageServlet extends HttpServlet {
 			config == null ? null : config.getZone());
 		_privacy = new PrivacyFilter(_cache);
 		_auth = auth;
-		_index = new HashIndex(_basePath);
+		_spaceIndex = SpaceIndex.open(_basePath);
+		_index = new HashIndex(_basePath, _spaceIndex);
 		// What a folder holds is found out in the background, first of all, see issue #253. A file
 		// that cannot be read is a broken part of its album and is named in the status of the
 		// background work (issue #252); where no background runs (a test's servlet), the request
@@ -915,10 +923,10 @@ public class ImageServlet extends HttpServlet {
 		_collections = new PhotoCollections(_basePath, _index);
 		_faces = new FaceIndex(_basePath, facesEnabled);
 		_reanalysis = new Reanalysis(_cache, _space.isEmpty() ? basePath.getName() : _space);
-		_searchIndex = new SearchIndex(_basePath, this::lookupOrSkip, () -> {
+		_searchIndex = new SearchIndex(_basePath, _spaceIndex, this::lookupOrSkip, () -> {
 			Places places = _cache.places();
 			return places == null ? -1 : places.epoch();
-		});
+		}, _cache::hasBackground);
 		_index.pipeline().addStep(_searchIndex);
 		String noFaces = _faces.unavailability();
 		if (noFaces != null) {
@@ -957,7 +965,7 @@ public class ImageServlet extends HttpServlet {
 	 * sixteenth of the heap.
 	 */
 	public void setIndexMemory(long bytes) {
-		_index.store().setBudget(bytes);
+		_spaceIndex.setBudget(bytes);
 	}
 
 	/**
@@ -985,6 +993,11 @@ public class ImageServlet extends HttpServlet {
 	/** What the search of issue #227 asks of every photograph of this space. */
 	public SearchIndex searchIndex() {
 		return _searchIndex;
+	}
+
+	/** The index of this space, see issue #264. */
+	public SpaceIndex spaceIndex() {
+		return _spaceIndex;
 	}
 
 	/** The gazetteer of this space, <code>null</code> for none. */
@@ -1056,6 +1069,8 @@ public class ImageServlet extends HttpServlet {
 		if (_placesStep != null) {
 			_placesStep.close();
 		}
+		// After every user of it: the background is down, and the search hears of no write more.
+		_spaceIndex.close();
 		try {
 			_cache.close();
 		} catch (IOException ex) {
@@ -1087,6 +1102,9 @@ public class ImageServlet extends HttpServlet {
 			servePut(request, response);
 		} catch (ResourceCache.UnreadableSidecar ex) {
 			refuseUnreadable(request, response, ex);
+		} finally {
+			// What this request wrote is in the search before it returns, see SearchIndex.
+			_searchIndex.writeThrough();
 		}
 	}
 
@@ -1096,6 +1114,9 @@ public class ImageServlet extends HttpServlet {
 			servePost(request, response);
 		} catch (ResourceCache.UnreadableSidecar ex) {
 			refuseUnreadable(request, response, ex);
+		} finally {
+			// What this request wrote is in the search before it returns, see SearchIndex.
+			_searchIndex.writeThrough();
 		}
 	}
 
@@ -2148,8 +2169,8 @@ public class ImageServlet extends HttpServlet {
 
 		// A moved file announces itself through the sidecar it is written into; a moved *folder*
 		// does not, so both trees are read again, see issue #118.
-		_index.treeChanged(source.toFile());
-		_index.treeChanged(target.toFile());
+		treeChanged(source.toFile());
+		treeChanged(target.toFile());
 
 		serveJsonObject(context.response(), result);
 	}
@@ -2504,7 +2525,7 @@ public class ImageServlet extends HttpServlet {
 
 		// What went into the trash is gone from the album; the index reads the folder again, see
 		// issue #118.
-		_index.treeChanged(folder.toFile());
+		treeChanged(folder.toFile());
 
 		serveJsonObject(context.response(), result);
 	}
@@ -3013,7 +3034,7 @@ public class ImageServlet extends HttpServlet {
 
 		if (!result.getOutcomes().isEmpty()) {
 			// What was purged is gone from the album; the index reads the folder again, see #118.
-			_index.treeChanged(folder.toFile());
+			treeChanged(folder.toFile());
 		}
 
 		serveJsonObject(context.response(), result);
@@ -5941,9 +5962,9 @@ public class ImageServlet extends HttpServlet {
 			_cache.invalidate(resourcePath);
 			// A renamed folder announces nothing to the hash index; the references of a
 			// collection find its photographs there only once it is read again, see issue #221.
-			_index.treeChanged(target.toFile());
+			treeChanged(target.toFile());
 			// And the old path holds nothing any more: its rows go in the same step, see #264.
-			_index.treeChanged(resourcePath.toFile());
+			treeChanged(resourcePath.toFile());
 		}
 		if (sourceEdits != null) {
 			writeSources(sourceEdits, caller);
@@ -6374,6 +6395,16 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	/**
+	 * Tells the hash index (issue #118) and the search (issue #227) that a move, a delete, a purge
+	 * or a rename rearranged the tree at the given folder: both read it again in the same step, see
+	 * issue #264.
+	 */
+	private void treeChanged(File folder) {
+		_index.treeChanged(folder);
+		_searchIndex.treeChanged(folder);
+	}
+
+	/**
 	 * Writes the given bytes as the <code>index.json</code> of the given folder.
 	 *
 	 * <p>
@@ -6404,11 +6435,12 @@ public class ImageServlet extends HttpServlet {
 
 		tmpFile.renameTo(indexFile);
 
-		// The one writer of a sidecar tells the search of issue #227, see SearchIndex.
-		SearchIndex.sidecarWritten(directory);
-
-		// And the record of what the folder holds, which a move or a delete changed, see issue #253.
+		// The record of what the folder holds, which a move or a delete changed, see issue #253.
 		AnalysisRecord.sidecarWritten(directory);
+
+		// The one writer of a sidecar tells the search of issue #227, which reads the folder before
+		// the request returns, see SearchIndex#writeThrough().
+		SearchIndex.sidecarWritten(directory);
 
 		// And the background, which makes what an edit asks for (a cut preview, a face crop), see
 		// issue #256.
@@ -8102,14 +8134,24 @@ public class ImageServlet extends HttpServlet {
 	 *        name; <code>null</code> where nobody asks.
 	 */
 	private List<ImagePart> searchMatches(PathInfo scope, SearchQuery query, Caller caller, int viewAs,
-			Map<String, PhotoSearch.Photo> stored) {
+			Map<String, PhotoSearch.Match> stored) {
+		// What the photograph's own fields hide from this caller is not looked for at all, see
+		// SearchIndex.Visibility; the album decides the rest, as below.
+		SearchIndex.Visibility visibility = new SearchIndex.Visibility(Math.min(_auth.clearance(caller, scope), viewAs),
+			caller.isShareLink() ? caller.getShare().getMinRating() : Ratings.MIN, _auth.photoLabel(caller));
 		return searchMatches(scope, query, (folder, names) -> sourceAlbum(folder, caller, viewAs, names),
-			Faces.maySee(_auth, caller, viewAs), stored);
+			Faces.maySee(_auth, caller, viewAs), visibility, stored);
 	}
 
 	/**
 	 * {@link #searchMatches(PathInfo, SearchQuery, Caller, int, Map)} with the albums as somebody is
 	 * answered them.
+	 *
+	 * <p>
+	 * The {@link SearchIndex} picks the photographs (issue #264); each is answered as its own album
+	 * answers it to the caller, so that a photograph the index holds stale is shown late, never one
+	 * that must not be.
+	 * </p>
 	 *
 	 * @param sources
 	 *        The album of a folder as the caller is answered it there, <code>null</code> where they
@@ -8119,8 +8161,8 @@ public class ImageServlet extends HttpServlet {
 	 */
 	private List<ImagePart> searchMatches(PathInfo scope, SearchQuery query,
 			java.util.function.BiFunction<PathInfo, Set<String>, AlbumInfo> sources, boolean member,
-			Map<String, PhotoSearch.Photo> stored) {
-		List<PhotoSearch.Match> found = PhotoSearch.find(scope, query, this::lookupOrSkip, _people, _searchIndex);
+			SearchIndex.Visibility visibility, Map<String, PhotoSearch.Match> stored) {
+		List<PhotoSearch.Match> found = PhotoSearch.find(scope, query, _searchIndex, _people, visibility);
 		// Each album is asked once, for its matches alone: what its filters and its faces cost is
 		// paid for what is answered, not for the whole album.
 		Map<PathInfo, Set<String>> matched = new LinkedHashMap<>();
@@ -8153,7 +8195,7 @@ public class ImageServlet extends HttpServlet {
 				: null);
 			result.add(answer);
 			if (stored != null) {
-				stored.put(match.getRelative(), match.getPhoto());
+				stored.put(match.getRelative(), match);
 			}
 		}
 		return result;
@@ -8300,36 +8342,34 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 		PathInfo scope = PhotoSearch.isSearch(_cache.lookup(folder)) ? searchScope(folder) : folder;
-		Map<String, PhotoSearch.Photo> stored = new LinkedHashMap<>();
+		Map<String, PhotoSearch.Match> stored = new LinkedHashMap<>();
 		List<ImagePart> shown = searchMatches(scope, null, caller, Privacy.PRIVATE, stored);
 
+		// The persons, cameras and labels of exactly the photographs the caller is shown, read off
+		// their rows in the index, see issue #264.
+		List<Long> ids = new ArrayList<>(shown.size());
+		for (ImagePart image : shown) {
+			PhotoSearch.Match match = stored.get(image.getName());
+			if (match != null) {
+				ids.add(Long.valueOf(match.getId()));
+			}
+		}
+		SearchIndex.Facets facets = _searchIndex.facets(ids);
 		SearchOptions options = SearchOptions.create();
 		java.util.TreeMap<String, de.haumacher.imageServer.shared.model.Person> persons = new java.util.TreeMap<>();
-		java.util.TreeSet<String> cameras = new java.util.TreeSet<>();
-		List<PhotoSearch.Photo> labelled = new ArrayList<>();
-		for (ImagePart image : shown) {
-			PhotoSearch.Photo original = stored.get(image.getName());
-			if (original == null) {
-				continue;
+		for (String stamped : facets._persons) {
+			// The survivor of every merge, see FaceTags#person.
+			PeopleStore.Entry person = _people.resolve(de.haumacher.imageServer.faces.FaceTags.person(stamped, _people));
+			if (person != null) {
+				persons.putIfAbsent(person.getName().toLowerCase(Locale.ROOT) + "\u0000" + person.getId(),
+					de.haumacher.imageServer.shared.model.Person.create().setId(person.getId()).setName(person.getName()));
 			}
-			for (String id : original.persons(_people)) {
-				PeopleStore.Entry person = _people.resolve(id);
-				if (person != null) {
-					persons.putIfAbsent(person.getName().toLowerCase(Locale.ROOT) + "\u0000" + person.getId(),
-						de.haumacher.imageServer.shared.model.Person.create().setId(person.getId())
-							.setName(person.getName()));
-				}
-			}
-			if (!original.getCamera().isEmpty()) {
-				cameras.add(original.getCamera());
-			}
-			labelled.add(original);
 		}
 		options.setPersons(new ArrayList<>(persons.values()));
-		for (String camera : cameras) {
+		for (String camera : facets._cameras) {
 			options.addCamera(de.haumacher.imageServer.shared.model.CameraName.create().setName(camera));
 		}
-		options.setLabels(PhotoSearch.labelsOf(labelled));
+		options.setLabels(PhotoSearch.labelsOf(facets._labels));
 
 		// The place names in the caller's language, as the photographs are answered them.
 		AlbumInfo named = AlbumInfo.create().setParts(new ArrayList<>(shown));
@@ -8441,7 +8481,8 @@ public class ImageServlet extends HttpServlet {
 		String relative = path.toFile().toPath().toAbsolutePath().normalize().toString();
 		String base = search.toFile().toPath().toAbsolutePath().normalize().toString();
 		relative = relative.substring(base.length() + 1).replace(File.separatorChar, '/');
-		PathInfo folder = PhotoSearch.matching(searchScope(search), relative, query, this::lookupOrSkip, _people);
+		PathInfo folder = PhotoSearch.matching(searchScope(search), relative, query, this::lookupOrSkip, _people,
+			_searchIndex);
 		if (folder == null) {
 			LOG.warning("No photograph of the saved search at '" + context.request().getPathInfo() + "'.");
 			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, PhotoSearch.NO_MATCH);
@@ -8489,7 +8530,8 @@ public class ImageServlet extends HttpServlet {
 			if (PhotoSearch.refusal(query) != null) {
 				return null;
 			}
-			PathInfo source = PhotoSearch.matching(searchScope(folder), name, query, this::lookupOrSkip, _people);
+			PathInfo source = PhotoSearch.matching(searchScope(folder), name, query, this::lookupOrSkip, _people,
+				_searchIndex);
 			return source == null ? null : source.child(segments.get(segments.size() - 1));
 		}
 		PathInfo result = folder;
@@ -8643,7 +8685,7 @@ public class ImageServlet extends HttpServlet {
 			}
 			Resource answer = _privacy.filter(shown, folder, clearance, minRating, "");
 			return answer instanceof AlbumInfo ? (AlbumInfo) answer : null;
-		}, true, null);
+		}, true, new SearchIndex.Visibility(clearance, minRating, label), null);
 		AlbumInfo found = AlbumInfo.create()
 			.setKind(de.haumacher.imageServer.shared.model.AlbumKind.SEARCH)
 			.setTitle(search.getTitle())

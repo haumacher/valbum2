@@ -21,14 +21,16 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Every test of {@link TestSavedSearch} again, the search asking the {@link SearchIndex} of issue
- * #227 instead of the albums: built once after every (re)start of the server and kept current by
- * what the tests then change, so each expectation of the scan holds for the index too.
+ * Every test of {@link TestSavedSearch} again, the {@link SearchIndex} of issue #227 built once
+ * after every (re)start of the server as the background builds it, and kept current by what the
+ * tests then change, so each expectation holds for an index built ahead as for one filled on the
+ * request.
  *
  * <p>
- * And what keeps the index current: a write of the server is seen by the next search (a rating, a
- * label, a tagged face, a move, a delete), a folder copied in by hand is indexed by the step of the
- * background work, and a removed folder is gone.
+ * And what keeps the index current where no search does the background's work (issue #264): a
+ * write of the server is seen by the next search (a rating, a label, a tagged face, a move, a
+ * delete), a folder copied in by hand is indexed by the step of the background work, and a removed
+ * folder is gone.
  * </p>
  */
 @SuppressWarnings("javadoc")
@@ -40,9 +42,13 @@ public class TestSavedSearchIndexed extends TestSavedSearch {
 		servlet().searchIndex().build();
 	}
 
+	/**
+	 * The index of the servlet, which from now on hears only of what the server writes, as while
+	 * the background of a server is idle: no search does the background's work.
+	 */
 	private SearchIndex index() throws Exception {
 		SearchIndex index = servlet().searchIndex();
-		assertTrue("The search asks the index.", index.isComplete());
+		index.setSyncOnRequest(Boolean.FALSE);
 		return index;
 	}
 
@@ -52,10 +58,71 @@ public class TestSavedSearchIndexed extends TestSavedSearch {
 			and(SearchLabel.create().setLabel("Holiday")), and(SearchRating.create().setMin(1)))) {
 			for (String folder : Arrays.asList("", "Trips", LAKE, "Family")) {
 				PathInfo scope = folder.isEmpty() ? new PathInfo(_base) : new PathInfo(_base, Path.of(folder));
-				assertEquals(relatives(PhotoSearch.find(scope, query, servlet().cache()::lookup, null)),
-					relatives(PhotoSearch.find(scope, query, servlet().cache()::lookup, null, index)));
+				assertEquals(scan(scope, query), relatives(PhotoSearch.find(scope, query, index, null,
+					SearchIndex.Visibility.ALL)));
 			}
 		}
+	}
+
+	/**
+	 * What a scan of the albums below the given folder answers the given query of a single
+	 * criterion (all of the persons, a label, a rating): the search before issue #264, kept here as
+	 * the measure of the index.
+	 */
+	private List<String> scan(PathInfo scope, SearchQuery query) throws Exception {
+		List<PhotoSearch.Match> found = new ArrayList<>();
+		scan(scope, "", query, found);
+		found.sort(PhotoSearch.ORDER);
+		return relatives(found);
+	}
+
+	private void scan(PathInfo folder, String prefix, SearchQuery query, List<PhotoSearch.Match> found)
+			throws Exception {
+		File[] children = folder.toFile().listFiles();
+		if (children == null) {
+			return;
+		}
+		List<String> folders = new ArrayList<>();
+		for (File child : children) {
+			if (child.isDirectory() && !child.getName().startsWith(".")) {
+				folders.add(child.getName());
+			}
+		}
+		if (new File(folder.toFile(), "index.json").isFile()
+			&& servlet().cache().lookup(folder) instanceof de.haumacher.imageServer.shared.model.AlbumInfo album
+			&& !PhotoSearch.holdsNoFiles(album)) {
+			for (de.haumacher.imageServer.shared.model.ImagePart image : PhotoSearch.images(album)) {
+				if (image.getRating() != de.haumacher.imageServer.auth.Ratings.TRASH && accepts(query, image)) {
+					found.add(new PhotoSearch.Match(0, folder, prefix + image.getName(), image.getName(), image.getDate()));
+				}
+			}
+		}
+		for (String child : folders) {
+			scan(folder.child(child), prefix + child + "/", query, found);
+		}
+	}
+
+	private static boolean accepts(SearchQuery query, de.haumacher.imageServer.shared.model.ImagePart image) {
+		for (de.haumacher.imageServer.shared.model.SearchCriterion criterion : ((de.haumacher.imageServer.shared.model.SearchAnd) query
+			.getRoot()).getCriteria()) {
+			if (criterion instanceof de.haumacher.imageServer.shared.model.SearchPerson person) {
+				if (image.getTags().stream().noneMatch(tag -> tag.getPerson().equals(person.getPerson())
+					&& tag.getState() == de.haumacher.imageServer.shared.model.FaceState.CONFIRMED)) {
+					return false;
+				}
+			} else if (criterion instanceof SearchLabel label) {
+				if (image.getLabels().stream().noneMatch(name -> name.getName().equals(label.getLabel()))) {
+					return false;
+				}
+			} else if (criterion instanceof SearchRating rating) {
+				if (image.getRating() < rating.getMin()) {
+					return false;
+				}
+			} else {
+				fail("Not a criterion of this test: " + criterion);
+			}
+		}
+		return true;
 	}
 
 	public void testARatingWrittenIsSeen() throws Exception {
@@ -113,7 +180,7 @@ public class TestSavedSearchIndexed extends TestSavedSearch {
 			post("/Family/", "{\"names\":[{\"name\":\"2024 Garden\"}]}", SharingFixture.ALICE, delete).status());
 		List<String> deleted = search("/", and(person(_anne)));
 		assertTrue(deleted.toString(), deleted.stream().noneMatch(name -> name.startsWith("Family/")));
-		assertFalse(index().folders().containsKey("Family/2024 Garden"));
+		assertNull("Its rows are gone.", index().photosOf("Family/2024 Garden"));
 	}
 
 	public void testAFolderCopiedInIsIndexedByTheStep() throws Exception {
@@ -121,30 +188,33 @@ public class TestSavedSearchIndexed extends TestSavedSearch {
 		SharingFixture.album(_base, "Trips/2025 Snow", "Snow", part("snow.jpg", day(2025, 1, 1), "", _anne, _philipp),
 			"snow.jpg");
 		File snow = _base.resolve("Trips/2025 Snow").toFile();
-		assertFalse(index.folders().containsKey("Trips/2025 Snow"));
+		assertNull(index.photosOf("Trips/2025 Snow"));
+		assertFalse("A search does not find it before the background did.",
+			search("/", and(person(_anne))).contains("Trips/2025 Snow/snow.jpg"));
 
 		index.run(snow);
 
-		SearchIndex.Folder folder = index.folders().get("Trips/2025 Snow");
-		assertNotNull("Indexed without any search.", folder);
-		assertEquals("snow.jpg", folder._photos[0].getName());
+		assertEquals("Indexed without any search.", Arrays.asList("snow.jpg"), index.photosOf("Trips/2025 Snow"));
+		assertTrue(search("/", and(person(_anne))).contains("Trips/2025 Snow/snow.jpg"));
 	}
 
 	public void testARemovedFolderIsGone() throws Exception {
 		SearchIndex index = index();
-		assertTrue(index.folders().containsKey(GARDEN));
+		assertNotNull(index.photosOf(GARDEN));
 		TestPlaceTags.delete(_base.resolve("Family"));
 
 		index.run(_base.resolve("Family").toFile());
 
-		assertFalse(index.folders().containsKey(GARDEN));
-		assertFalse(index.folders().containsKey("Family"));
+		assertNull(index.photosOf(GARDEN));
+		assertNull(index.photosOf("Family"));
 		assertTrue(search("/", and(person(_anne))).stream().noneMatch(name -> name.startsWith("Family/")));
 	}
 
 	public void testAFolderRemovedByHandIsNeverFound() throws Exception {
 		index();
 		TestPlaceTags.delete(_base.resolve(GARDEN));
+		// The index still holds its rows: the album, gone, hides them, see ImageServlet#searchMatches.
+		assertNotNull(servlet().searchIndex().photosOf(GARDEN));
 		assertTrue(search("/", and(person(_anne))).stream().noneMatch(name -> name.startsWith("Family/")));
 		assertFalse(Files.exists(_base.resolve(GARDEN)));
 	}

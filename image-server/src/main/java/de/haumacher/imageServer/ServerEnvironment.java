@@ -59,8 +59,8 @@ import java.util.regex.Pattern;
  * <li><code>VALBUM_CACHE_MEMORY</code>: how many megabytes of heap the albums held in memory may
  * take, all spaces together, an eighth of the heap by default, see
  * {@link de.haumacher.imageServer.cache.ResourceCache#setBudget(long)} and issue #245.</li>
- * <li><code>VALBUM_INDEX_MEMORY</code>: how many megabytes of heap the page caches of the spaces'
- * indexes may take, all spaces together, a sixteenth of the heap by default, see
+ * <li><code>VALBUM_INDEX_MEMORY</code>: how many megabytes of heap the spaces' indexes may take (H2's
+ * page cache and Lucene's buffer), all spaces together, a sixteenth of the heap by default, see
  * {@link de.haumacher.imageServer.index.SpaceIndex#setBudget(long)} and issue #264.</li>
  * <li><code>VALBUM_EMBEDDER_DIR</code>, <code>_PORT</code>, <code>_PRECISION</code>, <code>_URL</code>:
  * the embedder of content search, see {@link EmbedderSettings} and issue #257.</li>

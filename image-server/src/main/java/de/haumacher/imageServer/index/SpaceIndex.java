@@ -16,6 +16,7 @@ import java.sql.Statement;
 import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import org.apache.lucene.search.IndexSearcher;
 import org.h2.api.ErrorCode;
 import org.h2.jdbcx.JdbcConnectionPool;
 
@@ -49,8 +50,24 @@ import org.h2.jdbcx.JdbcConnectionPool;
  * </p>
  *
  * <p>
- * <b>Memory.</b> H2's page cache is the heap this index takes, bounded by {@link #setBudget(long)}
- * (<code>VALBUM_INDEX_MEMORY</code>, all spaces together), {@link #defaultBudget()} by default.
+ * <b>Two stores, one index.</b> What H2 cannot index &mdash; the words of titles, descriptions,
+ * labels and place names &mdash; lives beside it in a Lucene index ({@link TextIndex}, in
+ * <code>{@value TextIndex#DIRECTORY_NAME}/</code>), written in the same step through
+ * {@link #writeText(TextWrite)} and read through {@link #searchText(TextRead, Object)}. Lucene
+ * holds the text of rows H2 numbers, so it is stamped with the generation of the database, a
+ * random id written when the database was created: a text index of another generation (H2 was
+ * rebuilt) or schema is emptied, one Lucene cannot read is deleted. Lucene commits now and then,
+ * not with every write; each text write carries a sequence number stored in H2 and in Lucene's
+ * commit, so that the rows whose text a killed process lost are known ({@link #textSince()}) and
+ * read again by the background.
+ * </p>
+ *
+ * <p>
+ * <b>Memory.</b> H2's page cache and Lucene's buffer of new documents are the heap this index
+ * takes, bounded by {@link #setBudget(long)} (<code>VALBUM_INDEX_MEMORY</code>, all spaces
+ * together), {@link #defaultBudget()} by default: a quarter of it, at most
+ * {@link #MAX_TEXT_BUFFER}, is Lucene's buffer, the rest H2's cache. Lucene reads its files through
+ * memory mapping, which takes the operating system's page cache, not the heap.
  * </p>
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
@@ -62,6 +79,9 @@ public final class SpaceIndex implements AutoCloseable {
 	/** The folder below {@value UserStore#DIRECTORY_NAME} the index lives in. */
 	public static final String DIRECTORY_NAME = "index";
 
+	/** The folder in {@link #DIRECTORY_NAME} the text index keeps its files in, see {@link TextIndex}. */
+	public static final String TEXT_DIRECTORY_NAME = TextIndex.DIRECTORY_NAME;
+
 	/** The name of the H2 database in {@link #DIRECTORY_NAME}: its files start with it. */
 	public static final String DATABASE_NAME = "index";
 
@@ -69,7 +89,13 @@ public final class SpaceIndex implements AutoCloseable {
 	 * The schema this build writes. A database stamped with anything else is deleted and built
 	 * again from the sidecars; bump it with every change of the tables below.
 	 */
-	public static final int SCHEMA = 1;
+	public static final int SCHEMA = 2;
+
+	/** The key of the generation in the meta table, see {@link TextIndex}. */
+	public static final String GENERATION_KEY = "generation";
+
+	/** The most of the budget Lucene's buffer of new documents takes, see {@link SpaceIndex}. */
+	public static final long MAX_TEXT_BUFFER = 16L * 1024 * 1024;
 
 	/** The key of the schema stamp in the meta table. */
 	public static final String SCHEMA_KEY = "schema";
@@ -94,6 +120,35 @@ public final class SpaceIndex implements AutoCloseable {
 		void run(Connection connection) throws SQLException;
 	}
 
+	/** Runs one transaction on the writer's connection that also changes the text index. */
+	public interface TextWrite {
+
+		/**
+		 * Writes through the given connection, and says what the text index is to be changed by
+		 * once that is committed.
+		 *
+		 * @param sequence
+		 *        The sequence number of this write, to be stored with every row whose text it
+		 *        changes, see {@link SpaceIndex#textSince()}.
+		 * @return The change of the text index, <code>null</code> for none.
+		 */
+		TextChange run(Connection connection, long sequence) throws SQLException;
+	}
+
+	/** A change of the text index, see {@link TextWrite}. */
+	public interface TextChange {
+
+		/** Applies the change to the given writer. */
+		void apply(org.apache.lucene.index.IndexWriter writer) throws java.io.IOException;
+	}
+
+	/** Reads the text index. */
+	public interface TextRead<T> {
+
+		/** Reads through the given searcher. */
+		T run(IndexSearcher searcher) throws java.io.IOException;
+	}
+
 	private final Path _directory;
 
 	private final String _label;
@@ -109,6 +164,12 @@ public final class SpaceIndex implements AutoCloseable {
 	private volatile boolean _closed;
 
 	private long _budget;
+
+	/** The full-text half, see {@link SpaceIndex}; <code>null</code> where nothing could be opened. */
+	private TextIndex _text;
+
+	/** What {@link #textSince()} answers. */
+	private long _textSince;
 
 	private SpaceIndex(Path directory, String label, long budget) {
 		_directory = directory;
@@ -173,15 +234,79 @@ public final class SpaceIndex implements AutoCloseable {
 	 */
 	public void setBudget(long bytes) {
 		long budget = Math.max(MIN_BUDGET, bytes);
+		TextIndex text;
 		synchronized (this) {
 			_budget = budget;
+			text = _text;
+		}
+		if (text != null) {
+			text.setBuffer(textBuffer(budget));
 		}
 		write(connection -> {
 			// SET takes no parameter; the number is ours, never a user's.
 			try (Statement statement = connection.createStatement()) {
-				statement.execute("SET CACHE_SIZE " + cacheKilobytes(budget));
+				statement.execute("SET CACHE_SIZE " + cacheKilobytes(cacheBudget(budget)));
 			}
 		});
+	}
+
+	/**
+	 * Holds H2's page cache to its budget after a read that walked more pages than it holds, see
+	 * <code>faq/search-index.md</code>: H2 evicts a page by keeping it weakly, and a read of it before
+	 * the next collection takes it back without evicting another, so a cache read through again and
+	 * again grows beyond any size it was given. Where it holds more than twice its size (H2's own
+	 * count, in megabytes), it is emptied; at most once a second.
+	 */
+	public void trimCache() {
+		long now = System.currentTimeMillis();
+		synchronized (this) {
+			if (now - _lastTrim < TRIM_MILLIS || _closed) {
+				return;
+			}
+			_lastTrim = now;
+		}
+		long[] cache = read(connection -> {
+			long[] result = new long[2];
+			try (PreparedStatement select = connection.prepareStatement(
+				"SELECT SETTING_NAME, SETTING_VALUE FROM INFORMATION_SCHEMA.SETTINGS WHERE SETTING_NAME IN (?, ?)")) {
+				select.setString(1, "info.CACHE_SIZE");
+				select.setString(2, "info.CACHE_MAX_SIZE");
+				try (ResultSet rows = select.executeQuery()) {
+					while (rows.next()) {
+						result[rows.getString(1).equals("info.CACHE_SIZE") ? 0 : 1] = Long.parseLong(rows.getString(2));
+					}
+				}
+			}
+			return result;
+		}, null);
+		if (cache == null || cache[0] <= 2 * cache[1] + 1) {
+			return;
+		}
+		long budget;
+		synchronized (this) {
+			budget = _budget;
+		}
+		// Setting the size empties the cache, see FileStore#setCacheSize.
+		write(connection -> {
+			try (Statement statement = connection.createStatement()) {
+				statement.execute("SET CACHE_SIZE " + cacheKilobytes(cacheBudget(budget)));
+			}
+		});
+	}
+
+	/** How often {@link #trimCache()} looks at most. */
+	private static final long TRIM_MILLIS = 1000;
+
+	private long _lastTrim;
+
+	/** Lucene's share of the given budget, see {@link SpaceIndex}. */
+	public static long textBuffer(long budget) {
+		return Math.min(MAX_TEXT_BUFFER, budget / 4);
+	}
+
+	/** H2's share of the given budget, see {@link SpaceIndex}. */
+	public static long cacheBudget(long budget) {
+		return Math.max(MIN_BUDGET, budget - textBuffer(budget));
 	}
 
 	/** How many bytes of heap H2's page cache of this index may take, see {@link #setBudget(long)}. */
@@ -244,21 +369,194 @@ public final class SpaceIndex implements AutoCloseable {
 	}
 
 	/**
+	 * Runs one transaction on the writer's connection that also changes the text index, one writer
+	 * at a time: H2 first, and once that is committed, Lucene.
+	 *
+	 * @return Whether both were changed. Where H2 fails, nothing is; where Lucene fails after H2
+	 *         was committed, the rows of this write carry a sequence number the text index never
+	 *         reached, which {@link #textSince()} tells after the next start, and the caller learns
+	 *         it here to read them again.
+	 */
+	public boolean writeText(TextWrite write) {
+		TextIndex text;
+		synchronized (this) {
+			text = _text;
+		}
+		if (text == null) {
+			return false;
+		}
+		// The text index is shared by the indexes of one space in this process: its sequence is
+		// the order of the writes of all of them.
+		synchronized (text) {
+			synchronized (this) {
+				if (_writer == null || _closed) {
+					return false;
+				}
+				TextChange change;
+				try {
+					long sequence = nextSequence();
+					change = write.run(_writer, sequence);
+					_writer.commit();
+					try {
+						if (change != null) {
+							text.apply(sequence, change::apply, SCHEMA);
+						}
+					} finally {
+						// After the commit: a reader that saw this version sees what was written.
+						text.written();
+					}
+					return true;
+				} catch (SQLException | RuntimeException ex) {
+					LOG.log(Level.WARNING, "Cannot write the index of '" + _label + "': " + ex.getMessage(), ex);
+					try {
+						_writer.rollback();
+					} catch (SQLException rollback) {
+						LOG.log(Level.FINE, "Rollback failed: " + rollback.getMessage(), rollback);
+					}
+					return false;
+				} catch (java.io.IOException ex) {
+					LOG.log(Level.WARNING, "Cannot write the text index of '" + _label + "': " + ex.getMessage(), ex);
+					return false;
+				}
+			}
+		}
+	}
+
+	private long nextSequence() throws SQLException {
+		try (Statement statement = _writer.createStatement();
+				ResultSet result = statement.executeQuery("SELECT NEXT VALUE FOR text_seq")) {
+			result.next();
+			return result.getLong(1);
+		}
+	}
+
+	/**
+	 * Runs a read of the text index.
+	 *
+	 * @return What the read answered; the given fallback where the index cannot be read, see
+	 *         {@link #read(Read, Object)}.
+	 */
+	public <T> T searchText(TextRead<T> read, T fallback) {
+		TextIndex text;
+		synchronized (this) {
+			text = _text;
+		}
+		if (text == null || _closed) {
+			return fallback;
+		}
+		try {
+			return text.search(read);
+		} catch (java.io.IOException | RuntimeException ex) {
+			if (!_closed) {
+				LOG.log(Level.WARNING, "Cannot read the text index of '" + _label + "': " + ex.getMessage(), ex);
+			}
+			return fallback;
+		}
+	}
+
+	/**
+	 * A number that changes with every {@link #writeText(TextWrite) text write} of the indexes of
+	 * this space in this process, after it was committed: what a reader computed from the index
+	 * stays true while this number does not change.
+	 */
+	public long version() {
+		TextIndex text;
+		synchronized (this) {
+			text = _text;
+		}
+		return text == null ? 0 : text.version();
+	}
+
+	/**
+	 * The sequence number of the last {@link #writeText(TextWrite) text write} whose text the text
+	 * index held when this index was opened: every row stamped with a higher one lost its text
+	 * (a process killed before Lucene committed it, a text index rebuilt) and is to be read again.
+	 * <code>0</code> for a text index that holds nothing.
+	 */
+	public synchronized long textSince() {
+		return _textSince;
+	}
+
+	/** Whether the text index is kept on disk, see {@link #isPersistent()}. */
+	public synchronized boolean isTextPersistent() {
+		return _text != null && _text.isPersistent();
+	}
+
+	/** Commits what the text index was given, for a test that restarts without closing. */
+	public void flushText() {
+		TextIndex text;
+		synchronized (this) {
+			text = _text;
+		}
+		if (text != null) {
+			text.flush(SCHEMA);
+		}
+	}
+
+	/**
 	 * Gives the database back: its files are closed and unlocked once no other index of the same
-	 * space in this process holds them (a test's second servlet over the same folder).
+	 * space in this process holds them (a test's second servlet over the same folder). The text
+	 * index commits what it was given.
 	 */
 	@Override
-	public synchronized void close() {
-		if (_closed) {
-			return;
+	public void close() {
+		TextIndex text;
+		synchronized (this) {
+			if (_closed) {
+				return;
+			}
+			_closed = true;
+			text = _text;
+			_text = null;
 		}
-		_closed = true;
-		disconnect();
+		// Outside this index's lock: a text write takes the text index's lock first.
+		if (text != null) {
+			text.release(SCHEMA);
+		}
+		synchronized (this) {
+			disconnect();
+		}
 	}
 
 	// --- Opening. ---
 
 	private synchronized void start() {
+		startDatabase();
+		openText();
+	}
+
+	/** Opens the text index beside the database, tied to its generation, see {@link SpaceIndex}. */
+	private void openText() {
+		if (_writer == null) {
+			return;
+		}
+		String generation;
+		try {
+			generation = generation();
+		} catch (SQLException ex) {
+			LOG.log(Level.WARNING, "The index of '" + _label + "' has no generation: " + ex.getMessage(), ex);
+			return;
+		}
+		_text = TextIndex.acquire(_persistent ? _directory.resolve(TextIndex.DIRECTORY_NAME) : null, _label);
+		_text.setBuffer(textBuffer(_budget));
+		_textSince = _text.attach(generation, SCHEMA);
+	}
+
+	private String generation() throws SQLException {
+		try (PreparedStatement statement = _writer.prepareStatement("SELECT val FROM meta WHERE name = ?")) {
+			statement.setString(1, GENERATION_KEY);
+			try (ResultSet result = statement.executeQuery()) {
+				if (!result.next()) {
+					throw new SQLException("No generation.");
+				}
+				return result.getString(1);
+			}
+		} finally {
+			_writer.commit();
+		}
+	}
+
+	private void startDatabase() {
 		String url = fileUrl();
 		if (url != null) {
 			try {
@@ -326,7 +624,11 @@ public final class SpaceIndex implements AutoCloseable {
 	private String settings() {
 		// No file trace (the log says what fails), no shutdown hook of H2's own (the servlet closes
 		// the index, and the hook would close it under the requests of a server still shutting down).
-		return ";CACHE_SIZE=" + cacheKilobytes(_budget) + ";TRACE_LEVEL_FILE=0;DB_CLOSE_ON_EXIT=FALSE";
+		// Lazy results: a reader streams its rows instead of holding them all (a search reads the ids of
+		// every photograph of a folder), see #connect(String) for the writer.
+		// No CACHE_SIZE here: every connection of the pool opened later would set it back to what it
+		// was when the index opened, see #connect(String).
+		return ";TRACE_LEVEL_FILE=0;DB_CLOSE_ON_EXIT=FALSE;LAZY_QUERY_EXECUTION=TRUE";
 	}
 
 	private void openInMemory() {
@@ -348,6 +650,12 @@ public final class SpaceIndex implements AutoCloseable {
 		pool.setMaxConnections(READERS + 1);
 		_pool = pool;
 		_writer = pool.getConnection();
+		try (Statement statement = _writer.createStatement()) {
+			// The writer changes what it reads: its results are whole before it writes.
+			statement.execute("SET LAZY_QUERY_EXECUTION FALSE");
+			// The cache of the database, set once; SET takes no parameter, the number is ours.
+			statement.execute("SET CACHE_SIZE " + cacheKilobytes(cacheBudget(_budget)));
+		}
 		_writer.setAutoCommit(false);
 	}
 
@@ -445,6 +753,14 @@ public final class SpaceIndex implements AutoCloseable {
 	 * in, which is the order lookups answer in.</li>
 	 * <li><code>hashes</code>: per folder, each content hash (32 bytes of SHA-256) with the name of
 	 * one file holding it; found by hash for a lookup, by folder when a folder is read again.</li>
+	 * <li>The search of issue #227, see <code>SearchIndex</code>: <code>albums</code>, every folder
+	 * the search read, with the stamps it was read at, and the sequence number of its last text
+	 * write (<code>text_seq</code>, see {@link #textSince()}); <code>photos</code>, a row per
+	 * photograph with what a criterion asks of it (the date, the rating, the privacy, the camera,
+	 * whether it is a video); <code>photo_hashes</code>, a hash of all of it and of its text, which
+	 * tells whether it changed; <code>photo_persons</code>, <code>photo_labels</code> and <code>photo_places</code>,
+	 * the person ids of its confirmed faces, its labels and the GeoNames ids of its places, each
+	 * found by its value. Its text is in Lucene, a document per photograph keyed by the row's id.</li>
 	 * </ul>
 	 */
 	private void createSchema() throws SQLException {
@@ -455,10 +771,39 @@ public final class SpaceIndex implements AutoCloseable {
 			statement.execute("CREATE TABLE hashes (folder BIGINT NOT NULL REFERENCES folders(id) ON DELETE CASCADE, "
 				+ "hash BINARY(32) NOT NULL, name VARCHAR NOT NULL, PRIMARY KEY (folder, hash))");
 			statement.execute("CREATE INDEX hashes_by_hash ON hashes(hash)");
+
+			statement.execute("CREATE SEQUENCE text_seq");
+			statement.execute("CREATE TABLE albums (id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY, "
+				+ "path VARCHAR NOT NULL UNIQUE, folder_stamp BIGINT NOT NULL, sidecar_stamp BIGINT NOT NULL, "
+				+ "record_stamp BIGINT NOT NULL, waiting_epoch BIGINT NOT NULL, closed BOOLEAN NOT NULL, "
+				+ "text_seq BIGINT NOT NULL)");
+			statement.execute("CREATE INDEX albums_by_seq ON albums(text_seq)");
+			statement.execute("CREATE TABLE photos (id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY, "
+				+ "album BIGINT NOT NULL REFERENCES albums(id) ON DELETE CASCADE, name VARCHAR NOT NULL, "
+				+ "taken BIGINT NOT NULL, rating TINYINT NOT NULL, privacy TINYINT NOT NULL, camera VARCHAR NOT NULL, "
+				+ "video BOOLEAN NOT NULL, UNIQUE (album, name))");
+			// Read when a folder is written only: kept out of the rows every search walks.
+			statement.execute("CREATE TABLE photo_hashes (photo BIGINT PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE, "
+				+ "row_hash BIGINT NOT NULL, text_hash BIGINT NOT NULL)");
+			statement.execute("CREATE INDEX photos_by_taken ON photos(taken)");
+			statement.execute("CREATE INDEX photos_by_rating ON photos(rating)");
+			statement.execute("CREATE INDEX photos_by_camera ON photos(camera)");
+			statement.execute("CREATE TABLE photo_persons (photo BIGINT NOT NULL REFERENCES photos(id) ON DELETE CASCADE, "
+				+ "person VARCHAR NOT NULL, PRIMARY KEY (photo, person))");
+			statement.execute("CREATE INDEX photo_persons_by_person ON photo_persons(person)");
+			statement.execute("CREATE TABLE photo_labels (photo BIGINT NOT NULL REFERENCES photos(id) ON DELETE CASCADE, "
+				+ "label VARCHAR NOT NULL, PRIMARY KEY (photo, label))");
+			statement.execute("CREATE INDEX photo_labels_by_label ON photo_labels(label)");
+			statement.execute("CREATE TABLE photo_places (photo BIGINT NOT NULL REFERENCES photos(id) ON DELETE CASCADE, "
+				+ "place INT NOT NULL, PRIMARY KEY (photo, place))");
+			statement.execute("CREATE INDEX photo_places_by_place ON photo_places(place)");
 		}
 		try (PreparedStatement statement = _writer.prepareStatement("INSERT INTO meta (name, val) VALUES (?, ?)")) {
 			statement.setString(1, SCHEMA_KEY);
 			statement.setString(2, String.valueOf(SCHEMA));
+			statement.executeUpdate();
+			statement.setString(1, GENERATION_KEY);
+			statement.setString(2, UUID.randomUUID().toString());
 			statement.executeUpdate();
 		}
 		_writer.commit();

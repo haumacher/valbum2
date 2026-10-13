@@ -1,0 +1,28 @@
+# The search answers from the index, and H2's cache is no hard bound
+
+The search of #227 asks `SearchIndex` (#264): rows per photograph in the space's H2 database
+(date, rating, privacy, camera, kind, persons, labels, places), and its words in a Lucene index
+beside it, `.valbum/index/lucene/`, keyed by the row's id. A query answers what the index holds —
+no sidecar is read and no stamp compared on the request. The album of every match still filters it
+(`PrivacyFilter`), so a stale row shows a photo late, never one it must not.
+
+- **Write-through is a mark plus a drain.** `storeSidecar` and the analysis record call
+  `SearchIndex.sidecarWritten(folder)`, which only marks the folder: they run under folder locks
+  that the cache lookup of a re-read could take again. The mark is drained by
+  `SearchIndex#writeThrough()` in the `finally` of `doPut`/`doPost` and before every search; a
+  move, delete, purge or rename of folders calls `treeChanged` directly. A new writer of a
+  sidecar needs no more than `storeSidecar`.
+- **Outside changes wait for the background**, the `search` step of the `FolderPipeline` (stamps of
+  the folder, `index.json`, `.vacache/analysis.json`, and the gazetteer epoch for photos waiting
+  for places). A servlet without a background (tests, tools) does that work on the request
+  (`setSyncOnRequest(false)` holds a test to the write-through).
+- **Lucene belongs to one H2 database.** It is stamped with H2's random `generation`; another one
+  empties it. Lucene commits at most every 2 s: each text write carries a sequence number
+  (`albums.text_seq`), and on open the albums beyond Lucene's committed number are read again
+  (`SpaceIndex#textSince`). The analysers are built from their classes: the server JAR unpacks every
+  dependency, and Lucene's SPI service files of core and analysis-common overwrite each other.
+- **H2 pitfalls.** `CACHE_SIZE` in the JDBC URL is applied again by every connection the pool opens
+  later, undoing `SET CACHE_SIZE` — it is set once on the writer. H2's page cache evicts a page by
+  holding it weakly and takes it back on the next read without evicting another, so reads alone
+  grow it past its size; `SpaceIndex#trimCache()` empties it after a search when it holds more than
+  twice its size. An array parameter holds at most 65 536 values; ids go in chunks of `IN (?, …)`.

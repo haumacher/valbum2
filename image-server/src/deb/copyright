@@ -21,8 +21,8 @@ License: AGPL-3.0-or-later
 Comment:
  The libraries bundled in /usr/share/valbum/valbum.jar (Jetty, FFmpeg, OpenCV,
  the JPEG XL decoder JXLatte (MIT, its notice in META-INF/jxlatte/LICENSE inside
- the jar), the H2 database (MPL-2.0 or EPL-1.0, used under the MPL-2.0), the
- face models and others) keep their own licences; the face models'
+ the jar), the H2 database (MPL-2.0 or EPL-1.0, used under the MPL-2.0), Apache
+ Lucene (Apache-2.0), the face models and others) keep their own licences; the face models'
  sources, hashes and licences are listed in the NOTICE.txt beside them inside the
  jar.
  .

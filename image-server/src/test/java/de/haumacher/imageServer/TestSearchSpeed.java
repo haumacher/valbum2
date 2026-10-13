@@ -8,13 +8,17 @@ import static de.haumacher.imageServer.TestImageServletPut.request;
 import de.haumacher.imageServer.TestImageServletPut.FakeResponse;
 import de.haumacher.imageServer.auth.AuthMode;
 import de.haumacher.imageServer.auth.AuthService;
+import de.haumacher.imageServer.index.SpaceIndex;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.model.SearchAnd;
 import de.haumacher.imageServer.shared.model.SearchCriterion;
 import de.haumacher.imageServer.shared.model.SearchDate;
+import de.haumacher.imageServer.shared.model.SearchLabel;
+import de.haumacher.imageServer.shared.model.SearchNot;
 import de.haumacher.imageServer.shared.model.SearchPerson;
 import de.haumacher.imageServer.shared.model.SearchQuery;
+import de.haumacher.imageServer.shared.model.SearchText;
 import de.haumacher.msgbuf.json.JsonReader;
 import de.haumacher.msgbuf.server.io.ReaderAdapter;
 import jakarta.servlet.http.HttpServletResponse;
@@ -27,17 +31,21 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import junit.framework.TestCase;
 
 /**
- * How long a search of issue #227 takes on a generated library, measured rather than guessed.
+ * How long a search of issue #227 takes on a generated library, measured rather than guessed, and
+ * what its index costs in heap (issue #264).
  *
  * <p>
  * The normal run measures a small library (30 albums of 50 photographs) and only checks that the
- * search answers. <code>-Dvalbum.searchSpeed=true</code> measures the library the issue names, 300
- * albums of 50 photographs, and prints the times: the first search (every album read into the cache
- * from its sidecar), and then a selective and a broad search once everything is cached.
+ * search answers. <code>-Dvalbum.searchAlbums=2000</code> measures 100 000 photographs and prints
+ * the times: the build of the index (every album read into the cache from its sidecar), the heap
+ * the index holds once reopened and asked, and four queries &mdash; selective, broad, a text and a
+ * label without a person &mdash; asked of the index alone and of the servlet, which then answers
+ * each match as its album does.
  * </p>
  */
 @SuppressWarnings("javadoc")
@@ -79,7 +87,7 @@ public class TestSearchSpeed extends TestCase {
 					.append("\",\"width\":4000,\"height\":3000,\"date\":").append(date)
 					.append(",\"camera\":\"Camera ").append(a % 3).append("\",\"labels\":[{\"name\":\"Label ")
 					.append(p % 5).append("\"}],\"comment\":\"Photo ").append(p).append(" of album ").append(a)
-					.append("\"").append(tags).append("}]");
+					.append(p % 10 == 0 ? ", the lakes at sunset" : "").append("\"").append(tags).append("}]");
 			}
 			Files.write(album.resolve("index.json"),
 				("[\"AlbumInfo\",{\"title\":\"Album " + a + "\",\"parts\":[" + parts + "]}]").getBytes(StandardCharsets.UTF_8));
@@ -89,7 +97,9 @@ public class TestSearchSpeed extends TestCase {
 
 	@Override
 	protected void tearDown() throws Exception {
-		_servlet.destroy();
+		if (_servlet != null) {
+			_servlet.destroy();
+		}
 		TestPlaceTags.delete(_base);
 		super.tearDown();
 	}
@@ -99,56 +109,79 @@ public class TestSearchSpeed extends TestCase {
 			// The later half of the library.
 			SearchDate.create().setFrom(START + ALBUMS * PHOTOS / 2 * STEP));
 		SearchQuery broad = and();
+		SearchQuery text = and(SearchText.create().setText("Lake"));
+		SearchQuery label = and(SearchLabel.create().setLabel("Label 3"),
+			SearchNot.create().setCriterion(SearchPerson.create().setPerson("anne")));
+		List<SearchQuery> queries = Arrays.asList(selective, broad, text, label);
+		List<String> names = Arrays.asList("selective", "broad", "text", "label without person");
 		PathInfo root = new PathInfo(_base);
 
-		// Before the index: every album asked.
-		long cold = time(selective);
-		long scanned = Long.MAX_VALUE;
-		for (int n = 0; n < 2; n++) {
-			long begin = System.nanoTime();
-			PhotoSearch.find(root, selective, _servlet.cache()::lookup, null);
-			scanned = Math.min(scanned, (System.nanoTime() - begin) / 1_000_000);
-		}
-
-		// The index, and what it costs.
-		SearchIndex index = _servlet.searchIndex();
+		// The build: every album read into the cache and the index, as the background's first walk.
 		long begin = System.nanoTime();
-		index.build();
+		_servlet.searchIndex().build();
 		long built = (System.nanoTime() - begin) / 1_000_000;
-		assertTrue(index.isComplete());
-		// The heap of an index: a second one built over the same library, the cache left as the
-		// first build left it.
-		long heapBefore = heap();
-		SearchIndex second = new SearchIndex(_base, _servlet.cache()::lookup, () -> -1);
-		second.build();
-		long heap = heap() - heapBefore;
-		assertEquals(ALBUMS * PHOTOS, second.size()[1]);
-		second.close();
+		assertEquals(ALBUMS * PHOTOS, _servlet.searchIndex().size()[1]);
+		_servlet.destroy();
+		_servlet = null;
 
-		long first = time(selective);
-		long warm = Long.MAX_VALUE;
-		for (int n = 0; n < 3; n++) {
-			warm = Math.min(warm, time(selective));
+		// The heap of the index: reopened as after a restart, asked every query, the album cache
+		// left out (nothing here reads an album).
+		long heapBefore = heap();
+		SpaceIndex store = SpaceIndex.open(_base);
+		// VALBUM_INDEX_MEMORY in megabytes, see SpaceIndex#setBudget(long).
+		long budget = Long.getLong("valbum.indexMemory", 0).longValue() * 1024 * 1024;
+		if (budget > 0) {
+			store.setBudget(budget);
 		}
-		long all = Long.MAX_VALUE;
-		for (int n = 0; n < 3; n++) {
-			all = Math.min(all, time(broad));
+		SearchIndex index = new SearchIndex(_base, store, path -> null, () -> -1, () -> true);
+		int[] counts = new int[queries.size()];
+		long[] indexTimes = new long[queries.size()];
+		for (int q = 0; q < queries.size(); q++) {
+			indexTimes[q] = Long.MAX_VALUE;
+			for (int n = 0; n < 5; n++) {
+				begin = System.nanoTime();
+				counts[q] = PhotoSearch.find(root, queries.get(q), index, null, SearchIndex.Visibility.ALL).size();
+				indexTimes[q] = Math.min(indexTimes[q], (System.nanoTime() - begin) / 1_000);
+			}
 		}
-		long lookup = Long.MAX_VALUE;
-		for (int n = 0; n < 3; n++) {
-			begin = System.nanoTime();
-			PhotoSearch.find(root, selective, _servlet.cache()::lookup, null, index);
-			lookup = Math.min(lookup, (System.nanoTime() - begin) / 1_000_000);
+		long heap = heap() - heapBefore;
+		// H2 keeps more pages than its cache holds while a search reads them again and again; the
+		// index trims it after a search, at most once a second, see SpaceIndex#trimCache().
+		Thread.sleep(1100);
+		PhotoSearch.find(root, selective, index, null, SearchIndex.Visibility.ALL);
+		long rest = heap() - heapBefore;
+		assertEquals("Read from disk, not built again.", 0, index.reads());
+		index.close();
+		store.close();
+
+		// And through the servlet, which answers every match as its album does.
+		_servlet = new ImageServlet(_base.toFile(), new AuthService(AuthMode.OFF, _base));
+		long[] servletTimes = new long[queries.size()];
+		for (int q = 0; q < queries.size(); q++) {
+			long first = time(queries.get(q));
+			servletTimes[q] = first;
+			for (int n = 0; n < 2; n++) {
+				servletTimes[q] = Math.min(servletTimes[q], time(queries.get(q)));
+			}
+			assertEquals(names.get(q), counts[q], count(queries.get(q)));
 		}
-		int found = count(selective);
-		int everything = count(broad);
-		System.out.println("Search over " + ALBUMS + " albums x " + PHOTOS + " photos: without index first " + cold
-			+ " ms, scan " + scanned + " ms; index built in " + built + " ms, " + heap / 1024 + " KB heap; then "
-			+ found + " matches first " + first + " ms, cached " + warm + " ms (index lookup " + lookup + " ms); all "
-			+ everything + " photos " + all + " ms.");
-		assertEquals(ALBUMS * PHOTOS, everything);
-		assertTrue(found > 0);
-		assertEquals(found, PhotoSearch.find(root, selective, _servlet.cache()::lookup, null).size());
+
+		StringBuilder report = new StringBuilder("Search over " + ALBUMS + " albums x " + PHOTOS + " photos: index built in "
+			+ built + " ms; reopened and asked, " + heap / 1024 + " KB heap, " + rest / 1024 + " KB at rest (budget "
+			+ budget(budget) / 1024 + " KB).");
+		for (int q = 0; q < queries.size(); q++) {
+			report.append("\n  ").append(names.get(q)).append(": ").append(counts[q]).append(" matches, index ")
+				.append(indexTimes[q] / 1000.0).append(" ms, servlet ").append(servletTimes[q]).append(" ms");
+		}
+		System.out.println(report);
+		assertEquals(ALBUMS * PHOTOS, counts[1]);
+		assertTrue(counts[0] > 0);
+		assertEquals("Every tenth photograph speaks of lakes.", ALBUMS * PHOTOS / 10, counts[2]);
+		assertTrue(counts[3] > 0);
+	}
+
+	private static long budget(long set) {
+		return set > 0 ? set : SpaceIndex.defaultBudget();
 	}
 
 	private static long heap() throws InterruptedException {

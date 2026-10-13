@@ -459,7 +459,7 @@ public class Main {
 
 	/** What a start-up says about the memory of the spaces' indexes, see issue #264. */
 	static String indexReport(ServerEnvironment environment) {
-		return "Index: H2 in <space>/" + UserStore.DIRECTORY_NAME + "/"
+		return "Index: H2 and Lucene in <space>/" + UserStore.DIRECTORY_NAME + "/"
 			+ de.haumacher.imageServer.index.SpaceIndex.DIRECTORY_NAME + ", rebuilt from the albums when missing or "
 			+ "unreadable, at most " + environment.indexBudget() / (1024 * 1024) + " MB of it in memory ("
 			+ ServerEnvironment.INDEX_MEMORY + ")";

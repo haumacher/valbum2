@@ -317,13 +317,17 @@ public abstract class FacesTestCase extends TestCase {
 		return new JsonReader(new ReaderAdapter(new StringReader(json)));
 	}
 
-	/** The SHA-256 of every file of the tree that is not inside a cache directory, by path. */
+	/**
+	 * The SHA-256 of every file of the tree that is not inside a cache directory, by path; the
+	 * index of the space (issue #264) left out, which the server writes as it reads.
+	 */
 	protected Map<String, String> hashes() throws Exception {
 		Map<String, String> result = new LinkedHashMap<>();
 		try (Stream<Path> files = Files.walk(_base)) {
 			for (Path path : (Iterable<Path>) files.sorted()::iterator) {
 				String relative = _base.relativize(path).toString();
-				if (relative.contains(PreviewCache.CACHE_DIRECTORY_NAME) || Files.isDirectory(path)) {
+				if (relative.contains(PreviewCache.CACHE_DIRECTORY_NAME) || Files.isDirectory(path)
+					|| path.startsWith(de.haumacher.imageServer.index.SpaceIndex.directoryOf(_base))) {
 					continue;
 				}
 				result.put(relative, hash(path));

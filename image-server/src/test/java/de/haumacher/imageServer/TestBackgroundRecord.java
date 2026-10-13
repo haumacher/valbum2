@@ -337,8 +337,10 @@ public class TestBackgroundRecord extends SpaceTestCase {
 
 		FolderInfo tile = entry(listing(get("/Library/", "json", TOKEN)), "Only broken");
 		assertNull("No picture to show.", tile.getIndexPicture());
-		assertTrue(PhotoSearch.find(new PathInfo(_base, Path.of("Library")), null, servlet().cache()::lookup, null)
-			.isEmpty());
+		// The search step of the background, see SearchIndex.
+		servlet().searchIndex().build();
+		assertTrue(PhotoSearch.find(new PathInfo(_base, Path.of("Library")), null, servlet().searchIndex(), null,
+			SearchIndex.Visibility.ALL).isEmpty());
 	}
 
 	/**

@@ -26,5 +26,8 @@ every folder before the catch-up of #236 (previews, cover, faces, places, then v
 because the sync waits for a complete index. Every `.hashes.json` read-modify-write runs under one lock per
 folder in `HashCache`, so the face pass, an upload and the hash pass never hash twice or lose entries.
 
+The `SpaceIndex` is opened once by the `ImageServlet` and shared with the search (`search-index.md`),
+closed by its `destroy()`; a `HashIndex(Path)` of a tool opens its own.
+
 H2 is opened with the `async:` file system: a plain `FileChannel` is closed by `Thread.interrupt()`,
 and the pipeline thread is interrupted at every shutdown.

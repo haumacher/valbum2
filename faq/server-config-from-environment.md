@@ -6,8 +6,10 @@ value refuses the start. `valbum-server`, `/etc/default/valbum` (mode 640) and `
 list any new variable.
 `VALBUM_CACHE_MEMORY` (megabytes, default an eighth of the heap) bounds the album cache by weight
 (`ResourceCache.BYTES_PER_PART` per photo); the inotify watches stay bounded by `MAX_FOLDERS` (#245).
-`VALBUM_INDEX_MEMORY` (megabytes, default a sixteenth of the heap) is H2's page cache of the space
-indexes (#264), shared equally among the spaces and applied with `SET CACHE_SIZE` after they opened.
+`VALBUM_INDEX_MEMORY` (megabytes, default a sixteenth of the heap) is the heap of the space indexes
+(#264), shared equally among the spaces: a quarter (at most 16 MB) is Lucene's buffer of new
+documents, the rest H2's page cache, applied with `SET CACHE_SIZE` on the writer — never in the
+JDBC URL, see `search-index.md`.
 
 `VALBUM_EMBEDDER_DIR`, `_PORT`, `_PRECISION`, `_URL` (content search, #257) are read by
 `EmbedderSettings` for `ServerEnvironment`.
