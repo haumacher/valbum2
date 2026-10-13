@@ -101,6 +101,9 @@ class KeyboardScrollState extends State<KeyboardScroll> {
   /// The focus node of the page, for the tests.
   FocusNode get focusNode => _focus;
 
+  /// Whether the page has been on the screen, see [build].
+  bool _shown = false;
+
   @override
   void dispose() {
     _focus.dispose();
@@ -191,6 +194,13 @@ class KeyboardScrollState extends State<KeyboardScroll> {
   @override
   Widget build(BuildContext context) {
     var controller = this.controller;
+    // A page built beneath another one without ever being shown — the album
+    // beneath a search opened by its address (issue #259), beneath a viewer
+    // opened by a deep link — is not laid out, so its scroll view, built
+    // while it is laid out, is not there yet: a thumb shown for good would
+    // look for its position in vain. It is shown from the first time the
+    // page is (its tickers on), and stays.
+    _shown = _shown || TickerMode.valuesOf(context).enabled;
     Widget scrolled = ScrollConfiguration(
       // The one scrollbar is the one below; the platform's automatic one
       // would be drawn a second time over it.
@@ -217,7 +227,7 @@ class KeyboardScrollState extends State<KeyboardScroll> {
         onPointerDown: _regainFocus,
         child: Scrollbar(
           controller: controller,
-          thumbVisibility: scrollbarAlwaysVisible,
+          thumbVisibility: scrollbarAlwaysVisible && _shown,
           interactive: true,
           child: scrolled,
         ),

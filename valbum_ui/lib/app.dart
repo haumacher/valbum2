@@ -1804,6 +1804,7 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
   /// it at once, and the route is kept without them — the session holds
   /// them from then on, and [currentConfiguration] writes them back.
   VAlbumRoute _arrive(VAlbumRoute target) {
+    _forgetSearchOrigins(target);
     if (target is SearchRoute) {
       var query = target.query;
       if (query == null) {
@@ -1894,7 +1895,11 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
   /// Returns whether there was one — not whether the view actually moved: an
   /// album being edited may still ask, and the answer arrives later, see [go].
   bool goUp() {
-    var target = _route.up;
+    var route = _route;
+    // The search view is left to the level it sits on, which is where it was
+    // opened from even after it was widened to the whole library (issue
+    // #259).
+    var target = route is SearchRoute ? _levels(route).first : route.up;
     if (target == null) {
       return false;
     }
@@ -2108,7 +2113,16 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
   /// mounted while the next one is shown, and ascending is a pop that finds
   /// the level below exactly as it was left — the album's tiles with their
   /// thumbnails held live and its scroll offset untouched, see issue #93.
-  static List<VAlbumRoute> levelsOf(VAlbumRoute route) => switch (route) {
+  ///
+  /// The search view, and a viewer opened from it, sit on the folder searched
+  /// — or on [searchOrigin] where the search was widened to the whole library
+  /// from an album, which stays beneath it, see [searchOriginOf] and issue
+  /// #259.
+  static List<VAlbumRoute> levelsOf(
+    VAlbumRoute route, {
+    List<String>? searchOrigin,
+  }) =>
+      switch (route) {
         ListingOrAlbumRoute() => [route],
         // A viewer opened from the overview of the photographs in several
         // albums sits on the overview, which stays mounted beneath it and is
@@ -2121,7 +2135,7 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
         // A viewer opened from the search view sits on it, and the search
         // view on its folder, see issue #227.
         ImageRoute(fromSearch: true, albumPath: var folder) => [
-            ListingOrAlbumRoute(folder),
+            ListingOrAlbumRoute(searchOrigin ?? folder),
             SearchRoute(folder),
             route,
           ],
@@ -2164,7 +2178,7 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
           ],
         // The search view sits on the folder it searches, see issue #227.
         SearchRoute(albumPath: var folder) => [
-            ListingOrAlbumRoute(folder),
+            ListingOrAlbumRoute(searchOrigin ?? folder),
             route,
           ],
         // The overview of the photographs in several albums sits on the start
@@ -2174,6 +2188,36 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
             route,
           ],
       };
+
+  /// The levels of [route] as this delegate shows them, see [levelsOf].
+  List<VAlbumRoute> _levels(VAlbumRoute route) =>
+      levelsOf(route, searchOrigin: searchOriginOf(route));
+
+  /// The album or folder the search [route] shows was widened from (issue
+  /// #259): it stays beneath the search of the whole library and is where
+  /// the search is left to, see [SearchSession.origin]; `null` for any other
+  /// route, and for a search entered any other way.
+  List<String>? searchOriginOf(VAlbumRoute route) {
+    if (route is SearchRoute || route.fromSearch) {
+      return _searchSessions[_pathKey(route.albumPath)]?.origin;
+    }
+    return null;
+  }
+
+  /// Forgets the origin of every widened search that [target] leaves, see
+  /// [searchOriginOf]: the search of the library entered anew — from its own
+  /// icon on the start page, by the browser's history, by a reload — sits on
+  /// the start page again.
+  void _forgetSearchOrigins(VAlbumRoute target) {
+    var kept = target is SearchRoute || target.fromSearch
+        ? _pathKey(target.albumPath)
+        : null;
+    for (var entry in _searchSessions.entries) {
+      if (entry.key != kept) {
+        entry.value.origin = null;
+      }
+    }
+  }
 
   /// Watches what sits on top of the pages, see [popRoute].
   final _ImperativeRoutes _imperative = _ImperativeRoutes();
@@ -2235,7 +2279,7 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
     if (page is! _LevelPage) {
       return;
     }
-    var levels = levelsOf(_route);
+    var levels = _levels(_route);
     if (levels.length < 2 || levels.last != page.level) {
       return;
     }
@@ -2252,7 +2296,7 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
       child: Navigator(
         key: navigatorKey,
         observers: [_imperative, ..._observers],
-        pages: [for (var level in levelsOf(_route)) _pageOf(level)],
+        pages: [for (var level in _levels(_route)) _pageOf(level)],
         onDidRemovePage: _pageRemoved,
       ),
     );

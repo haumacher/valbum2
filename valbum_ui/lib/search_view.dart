@@ -85,6 +85,15 @@ class SearchSession extends ChangeNotifier {
   /// The saved search being edited, as it was opened.
   AlbumInfo? editedAlbum;
 
+  /// The album or folder this search of the whole library was widened from
+  /// ([SearchViewState.widen]), `null` for a search entered any other way.
+  ///
+  /// It stays beneath the search, mounted as it was left, and the way back
+  /// returns to it — not to the start page, which the search was never
+  /// opened from (issue #259). The router forgets it once the search is
+  /// left, see `VAlbumRouterDelegate.searchOriginOf`.
+  List<String>? origin;
+
   /// The query of a location this screen cannot show (issue #243), as it was
   /// written; `null` while the location said nothing of the kind.
   ///
@@ -648,13 +657,16 @@ class SearchViewState extends State<SearchView> {
 
   /// Searches the whole library for the criteria chosen here (issue #249):
   /// the search view of the root, a step of the history of its own, so that
-  /// the way back returns to the search of the album.
+  /// the browser's back button returns to the search of the album. It sits
+  /// on the album, not on the start page: the back arrow leaves the search
+  /// to where it was opened from (issue #259).
   void widen() {
     var navigator = widget.albumState.navigator;
     var wide = navigator.delegate.searchSession(const []);
     if (wide.edited != null) {
       wide.endEdit();
     }
+    wide.origin = [...path];
     var query = session.addressQuery;
     if (query == null) {
       // Nothing chosen here: nothing chosen there either, whatever the
