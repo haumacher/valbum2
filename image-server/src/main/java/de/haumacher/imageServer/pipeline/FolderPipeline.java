@@ -627,6 +627,9 @@ public class FolderPipeline {
 
 	private boolean _tickScheduled;
 
+	/** How many of the pipeline's own tasks run right now, see {@link #running(Runnable)}. */
+	private int _running;
+
 	private boolean _dirty;
 
 	private long _written;
@@ -831,9 +834,9 @@ public class FolderPipeline {
 		STARTED.add(this);
 		// The first look at the folders, before anything else runs: what changes from now on is
 		// what the next sweep finds.
-		_executor.execute(() -> sweep(true));
+		_executor.execute(() -> running(() -> sweep(true)));
 		long every = Math.max(1, _sweepMillis);
-		_executor.scheduleWithFixedDelay(() -> sweep(false), every, every, TimeUnit.MILLISECONDS);
+		_executor.scheduleWithFixedDelay(() -> running(() -> sweep(false)), every, every, TimeUnit.MILLISECONDS);
 		return true;
 	}
 
@@ -986,9 +989,28 @@ public class FolderPipeline {
 		return false;
 	}
 
-	/** Whether nothing waits; called while synchronized. */
+	/** Whether nothing waits and nothing runs; called while synchronized. */
 	private boolean idle() {
-		return _pending.isEmpty() && _photoQueue.isEmpty() && _unitQueue.isEmpty() && !hasUrgent() && !_workScheduled;
+		return _running == 0 && _pending.isEmpty() && _photoQueue.isEmpty() && _unitQueue.isEmpty() && !hasUrgent()
+			&& !_workScheduled;
+	}
+
+	/**
+	 * Runs one of the pipeline's own tasks (a sweep, a tick, a piece of work), counted in
+	 * {@link #_running}: a task has taken its folder out of the queues before it works on it, and
+	 * is not idle until it is done, see issue #266.
+	 */
+	private void running(Runnable task) {
+		synchronized (this) {
+			_running++;
+		}
+		try {
+			task.run();
+		} finally {
+			synchronized (this) {
+				_running--;
+			}
+		}
 	}
 
 	// --- The sweep. ---
@@ -1078,13 +1100,14 @@ public class FolderPipeline {
 	 * the guarantee for everything else: a library copied in while nobody browses is hashed and
 	 * prepared all the same. A folder's modification time changes when an entry is added to it,
 	 * removed or renamed in it; a folder whose time moved since the last sweep is noticed (with the
-	 * usual quiet period), a new folder is noticed with everything below it, and a folder that is
-	 * gone is forgotten ({@link #gone(String)}).
+	 * usual quiet period) unless its photographs are still what its record was made of (the time
+	 * moved over the background's own files, issue #266), a new folder is noticed with everything
+	 * below it, and a folder that is gone is forgotten ({@link #gone(String)}).
 	 * </p>
 	 *
 	 * <p>
 	 * Cheap: one <code>stat</code> per folder; a folder is listed only when its time moved, and no
-	 * file is ever opened or even looked at here. Runs on the pipeline's thread; a round that falls
+	 * file is ever opened here. Runs on the pipeline's thread; a round that falls
 	 * while requests are being served is left out, as everything in the background gives way to
 	 * them. The first look at start-up never waits: it is the baseline the walk is compared with. A
 	 * file changed in place (written over
@@ -1131,7 +1154,7 @@ public class FolderPipeline {
 							// New, and everything below it with it.
 							notice(folder, true);
 						}
-					} else {
+					} else if (!asRecorded(folder, path)) {
 						notice(folder, false);
 					}
 				}
@@ -1153,6 +1176,21 @@ public class FolderPipeline {
 		synchronized (this) {
 			persist(false);
 		}
+	}
+
+	/**
+	 * Whether the photographs of the given folder are exactly what its record was made of: its time
+	 * moved over something that is no part of the library, mostly what the background itself
+	 * wrote there (a <code>.vacache</code>, the hashes of an album), see issue #266. The watch
+	 * ignores such an entry by its name; the sweep, which sees only the folder's time, asks the
+	 * record. A folder never recorded is noticed.
+	 */
+	private boolean asRecorded(File folder, String path) {
+		Record record;
+		synchronized (this) {
+			record = _records.get(path);
+		}
+		return record != null && record._fingerprint.equals(fingerprint(Arrays.asList(folder)));
 	}
 
 	/**
@@ -1252,13 +1290,38 @@ public class FolderPipeline {
 			long due = System.currentTimeMillis() + _quietMillis;
 			Pending pending = _pending.get(path);
 			if (pending == null) {
+				pending = pendingTreeAbove(path);
+			}
+			if (pending == null) {
 				_pending.put(path, new Pending(folder, tree, due));
 			} else {
+				// A folder that waits already, or lies in a tree that waits as a whole: one more
+				// quiet period for it, and worked on once, see issue #266.
 				pending._due = due;
 				pending._tree |= tree;
 			}
+			if (tree) {
+				// What waits below a tree is worked on with it.
+				String prefix = path.isEmpty() ? "" : path + "/";
+				_pending.keySet().removeIf(other -> other.startsWith(prefix) && !other.equals(path));
+			}
 			schedule(_quietMillis);
 		}
+	}
+
+	/**
+	 * The pending tree the given folder lies in, the one closest above it; <code>null</code> for
+	 * none. Called while synchronized.
+	 */
+	private Pending pendingTreeAbove(String path) {
+		while (!path.isEmpty()) {
+			path = parentOf(path);
+			Pending pending = _pending.get(path);
+			if (pending != null && pending._tree) {
+				return pending;
+			}
+		}
+		return null;
 	}
 
 	/** Schedules the next look at the pending folders; called while synchronized. */
@@ -1267,7 +1330,7 @@ public class FolderPipeline {
 			return;
 		}
 		try {
-			_executor.schedule(this::tick, Math.max(0, delay), TimeUnit.MILLISECONDS);
+			_executor.schedule(() -> running(this::tick), Math.max(0, delay), TimeUnit.MILLISECONDS);
 			_tickScheduled = true;
 		} catch (RejectedExecutionException ex) {
 			// Stopping.
@@ -1864,10 +1927,10 @@ public class FolderPipeline {
 		try {
 			long delay = _photoQueue.isEmpty() && !hasUrgent() ? _unitsAfter - System.currentTimeMillis() : 0;
 			if (delay > 0) {
-				_delayedWork = _executor.schedule(this::work, delay, TimeUnit.MILLISECONDS);
+				_delayedWork = _executor.schedule(() -> running(this::work), delay, TimeUnit.MILLISECONDS);
 			} else {
 				_delayedWork = null;
-				_executor.execute(this::work);
+				_executor.execute(() -> running(this::work));
 			}
 			_workScheduled = true;
 		} catch (RejectedExecutionException ex) {

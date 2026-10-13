@@ -189,6 +189,38 @@ public class TestFolderPipeline extends TestCase {
 		}
 	}
 
+	/**
+	 * A folder of a tree copied in that the watch saw change (it watches the new folders while the
+	 * copy still writes) waits with the tree, and is worked on once, see issue #266.
+	 */
+	public void testAFolderNoticedInsideATreeThatWaitsIsWorkedOnOnce() throws Exception {
+		FolderPipeline pipeline = new FolderPipeline(_root, "test");
+		Counting step = new Counting("count", false);
+		pipeline.addStep(step);
+		pipeline.setQuietMillis(300);
+		pipeline.start();
+		try {
+			File copied = new File(_root.toFile(), "Copied");
+			File inner = new File(copied, "Inner");
+			assertTrue(inner.mkdirs());
+			Files.write(new File(inner, "x.jpg").toPath(), new byte[] { 1, 2, 3 });
+			File other = new File(_root.toFile(), "Other/Inner");
+			assertTrue(other.mkdirs());
+			Files.write(new File(other, "y.jpg").toPath(), new byte[] { 1, 2, 3 });
+
+			// The tree first, a folder in it a moment later; and the other way round.
+			pipeline.notice(copied, true);
+			pipeline.notice(other, false);
+			Thread.sleep(150);
+			pipeline.notice(inner, false);
+			pipeline.notice(other.getParentFile(), true);
+			assertTrue(pipeline.awaitIdle(30_000));
+			assertEquals("Each folder of the two trees once.", 4, step._runs.get());
+		} finally {
+			pipeline.shutdown();
+		}
+	}
+
 	public void testNothingIsNoticedBeforeTheStart() throws Exception {
 		FolderPipeline pipeline = new FolderPipeline(_root, "test");
 		Counting step = new Counting("count", false);

@@ -176,6 +176,68 @@ public class TestSweep extends TestCase {
 		}
 	}
 
+	/**
+	 * A folder whose time moved over what the background wrote into it (a <code>.vacache</code>,
+	 * the hashes of an album) is not worked on again; one whose photographs changed is, see issue
+	 * #266.
+	 */
+	public void testTheBackgroundsOwnFilesAreNoChangeOfAFolder() throws Exception {
+		File album = new File(_root.toFile(), "2020/Trip");
+		assertTrue(album.mkdirs());
+		Files.write(new File(album, "a.jpg").toPath(), new byte[] { 1 });
+		FolderPipeline pipeline = new FolderPipeline(_root, "test");
+		AtomicInteger runs = new AtomicInteger();
+		pipeline.addStep(new FolderPipeline.Step() {
+			@Override
+			public String name() {
+				return "count";
+			}
+
+			@Override
+			public boolean trustsRecord() {
+				return false;
+			}
+
+			@Override
+			public FolderPipeline.Outcome run(File folder) {
+				runs.incrementAndGet();
+				return FolderPipeline.Outcome.DONE;
+			}
+		});
+		pipeline.setQuietMillis(50);
+		pipeline.setSweepMillis(3_600_000);
+		pipeline.process(album);
+		pipeline.process(album.getParentFile());
+		pipeline.process(_root.toFile());
+		assertEquals(3, runs.get());
+		pipeline.start();
+		try {
+			assertTrue(pipeline.awaitIdle(10_000));
+
+			assertTrue(new File(album, ".vacache").mkdir());
+			Files.write(new File(album, ".hashes.json").toPath(), new byte[] { 1 });
+			assertTrue(new File(_root.toFile(), ".upload").mkdir());
+			moved(album);
+			moved(_root.toFile());
+			pipeline.execute(() -> pipeline.sweep(false));
+			assertTrue(pipeline.awaitIdle(10_000));
+			assertEquals("Nothing of the library changed.", 3, runs.get());
+
+			Files.write(new File(album, "b.jpg").toPath(), new byte[] { 2 });
+			moved(album);
+			pipeline.execute(() -> pipeline.sweep(false));
+			assertTrue(pipeline.awaitIdle(10_000));
+			assertEquals("A photograph added.", 4, runs.get());
+		} finally {
+			pipeline.shutdown();
+		}
+	}
+
+	/** Moves the time of the given folder on, as a coarse clock of the file system would. */
+	private static void moved(File folder) {
+		assertTrue(folder.setLastModified(folder.lastModified() + 2_000));
+	}
+
 	private static String read(FolderPipeline pipeline) throws Exception {
 		return new String(Files.readAllBytes(pipeline.getFile().toPath()), StandardCharsets.UTF_8);
 	}
