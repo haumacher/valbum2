@@ -27,6 +27,7 @@ import 'recipient_send.dart';
 import 'resource.dart';
 import 'selectable.dart';
 import 'settings.dart';
+import 'shares_view.dart' show openShares;
 import 'sign_in_options.dart' show showSignInOptions;
 import 'urls.dart';
 
@@ -160,8 +161,7 @@ const Key deviceCodeLinkKey = Key("settings.deviceCode.link");
 const Key deviceCodeCopyKey = Key("settings.deviceCode.copy");
 
 /// What the link is for, said beside it.
-String deviceCodeLinkAdvice(AppLocalizations l10n) =>
-    l10n.deviceCodeLinkAdvice;
+String deviceCodeLinkAdvice(AppLocalizations l10n) => l10n.deviceCodeLinkAdvice;
 
 /// The key of the "Backup code" line of the devices section (issue #92).
 const Key backupCodeStateKey = Key("settings.backupCode.state");
@@ -225,7 +225,8 @@ const Key memberSignInsKey = Key("settings.signIns");
 String signInsSummary(AppLocalizations l10n, ContactSignIns signIns) {
   var parts = <String>[
     if (signIns.authenticator.isNotEmpty) l10n.authenticatorHeading,
-    if (signIns.passkeys.isNotEmpty) l10n.contactPasskeyCount(signIns.passkeys.length),
+    if (signIns.passkeys.isNotEmpty)
+      l10n.contactPasskeyCount(signIns.passkeys.length),
     for (var address in signIns.addresses) address.value,
   ];
   return parts.isEmpty
@@ -476,17 +477,14 @@ class DevicesSectionState extends State<DevicesSection> {
         if (problem != null)
           sectionProblem(context, problem, const Key("settings.devices.error")),
         if (devices != null && problem == null && devices.isEmpty)
-          Text(l10n.noDeviceSignedIn,
-              key: const Key("settings.devices.empty")),
+          Text(l10n.noDeviceSignedIn, key: const Key("settings.devices.empty")),
         for (var device in devices ?? const <DeviceEntry>[])
           ListTile(
             key: Key("device-${device.id}"),
             contentPadding: EdgeInsets.zero,
             leading: Icon(device.current ? Icons.smartphone : Icons.devices),
             title: Text(
-              device.current
-                  ? l10n.thisDeviceNamed(device.name)
-                  : device.name,
+              device.current ? l10n.thisDeviceNamed(device.name) : device.name,
             ),
             subtitle: Text(
               device.created.isEmpty
@@ -551,9 +549,7 @@ class DevicesSectionState extends State<DevicesSection> {
     return [
       const SizedBox(height: 16),
       Text(
-        made.isEmpty
-            ? noBackupCode(l10n)
-            : backupCodeMade(l10n, dayOf(made)),
+        made.isEmpty ? noBackupCode(l10n) : backupCodeMade(l10n, dayOf(made)),
         key: backupCodeStateKey,
       ),
       const SizedBox(height: 8),
@@ -1305,7 +1301,8 @@ class PermissionDialogState extends State<PermissionDialog> {
                   child: Text(
                     refusal,
                     key: const Key("permission-refusal"),
-                    style: TextStyle(color: Theme.of(context).colorScheme.error),
+                    style:
+                        TextStyle(color: Theme.of(context).colorScheme.error),
                   ),
                 ),
             ],
@@ -1419,16 +1416,15 @@ class PeopleRow {
   String get role => user?.role ?? invitation!.role;
   String get clearance => user?.clearance ?? invitation!.clearance;
   bool get mayShare => user?.mayShare ?? invitation!.mayShare;
-  String get recipient =>
-      (user?.recipient ?? "").trim().isNotEmpty
-          ? user!.recipient.trim()
-          : (invitation?.recipient ?? "").trim();
-  String get invitedBy =>
-      (user?.invitedBy ?? "").isNotEmpty
-          ? user!.invitedBy
-          : invitation?.invitedBy ?? "";
-  String get created =>
-      (user?.created ?? "").isNotEmpty ? user!.created : invitation?.created ?? "";
+  String get recipient => (user?.recipient ?? "").trim().isNotEmpty
+      ? user!.recipient.trim()
+      : (invitation?.recipient ?? "").trim();
+  String get invitedBy => (user?.invitedBy ?? "").isNotEmpty
+      ? user!.invitedBy
+      : invitation?.invitedBy ?? "";
+  String get created => (user?.created ?? "").isNotEmpty
+      ? user!.created
+      : invitation?.created ?? "";
 }
 
 /// The rows of the people list: every user once, and every open invitation
@@ -1575,8 +1571,7 @@ class PeopleSectionState extends State<PeopleSection> {
         if (problem != null)
           sectionProblem(context, problem, const Key("settings.people.error")),
         if (!_loading && problem == null && rows.isEmpty)
-          Text(l10n.noOpenInvitations,
-              key: const Key("settings.people.empty")),
+          Text(l10n.noOpenInvitations, key: const Key("settings.people.empty")),
         for (var row in rows) _tile(l10n, row),
         const SizedBox(height: 8),
         OutlinedButton.icon(
@@ -1961,8 +1956,7 @@ class ContactsSectionState extends State<ContactsSection> {
               context, problem, const Key("settings.contacts.error")),
         if (contacts != null && contacts.isEmpty && problem == null)
           Text(l10n.noContacts, key: const Key("settings.contacts.empty")),
-        for (var contact in contacts ?? const <Contact>[])
-          _tile(l10n, contact),
+        for (var contact in contacts ?? const <Contact>[]) _tile(l10n, contact),
       ],
     );
   }
@@ -1994,7 +1988,8 @@ class ContactsSectionState extends State<ContactsSection> {
                       child: Icon(
                         Icons.verified,
                         size: 14,
-                        key: Key("contact-proven-${contact.id}-${address.value}"),
+                        key: Key(
+                            "contact-proven-${contact.id}-${address.value}"),
                       ),
                     ),
                   ),
@@ -2019,6 +2014,12 @@ class ContactsSectionState extends State<ContactsSection> {
           key: Key("contact-rename-${contact.id}"),
           value: () => _rename(contact),
           child: Text(l10n.contactRename),
+        ),
+        // What is shared with them, on the shares screen (issue #269).
+        PopupMenuItem(
+          key: Key("contact-shares-${contact.id}"),
+          value: () => _shares(contact),
+          child: Text(l10n.contactSharesEntry),
         ),
         PopupMenuItem(
           key: Key("contact-sessions-${contact.id}"),
@@ -2089,10 +2090,7 @@ class ContactsSectionState extends State<ContactsSection> {
       _busy = false;
       _contacts = [
         for (var shown in _contacts ?? const <Contact>[])
-          if (shown.id != contact.id)
-            shown
-          else if (answer != null)
-            answer,
+          if (shown.id != contact.id) shown else if (answer != null) answer,
       ];
     });
   }
@@ -2142,6 +2140,24 @@ class ContactsSectionState extends State<ContactsSection> {
     });
     if (withdrawn) {
       messenger?.showSnackBar(SnackBar(content: Text(done)));
+    }
+  }
+
+  /// Opens the shares screen narrowed to [contact] (issue #269).
+  Future<void> _shares(Contact contact) async {
+    var client = widget.client;
+    if (client == null) {
+      return;
+    }
+    await openShares(
+      context,
+      client: client,
+      person: contact.id,
+      personName: contact.name,
+    );
+    // What was changed there shows in the counts and sessions here.
+    if (mounted) {
+      await _load();
     }
   }
 
@@ -2232,7 +2248,8 @@ String contactDetails(AppLocalizations l10n, Contact contact) {
     if (contact.blocked.isNotEmpty) l10n.shutOutEverywhereMark,
     l10n.contactSessionCount(live.length),
     if (contact.authenticator.isNotEmpty) l10n.contactAuthenticatorMark,
-    if (contact.passkeys.isNotEmpty) l10n.contactPasskeyCount(contact.passkeys.length),
+    if (contact.passkeys.isNotEmpty)
+      l10n.contactPasskeyCount(contact.passkeys.length),
     if (contact.uploads > 0) l10n.photosAdded(contact.uploads),
     // The contact's own overview link (issue #267): sent, and opened.
     if (contact.overviewOpened.isNotEmpty)
@@ -2410,8 +2427,8 @@ class _ContactSessionsDialogState extends State<ContactSessionsDialog> {
       _problem = null;
     });
     try {
-      var answer = await widget.client
-          .endContactSession(_contact.id, session: session);
+      var answer =
+          await widget.client.endContactSession(_contact.id, session: session);
       if (!mounted) {
         return;
       }
@@ -2598,7 +2615,8 @@ class UserSignInsDialog extends StatelessWidget {
               .where((entry) => entry.name == user.name)
               .firstOrNull;
           return changed == null
-              ? HeldSignIns(name: user.name, authenticator: "", passkeys: const [])
+              ? HeldSignIns(
+                  name: user.name, authenticator: "", passkeys: const [])
               : HeldSignIns.ofUser(changed);
         },
       );
@@ -2723,8 +2741,8 @@ class _HeldSignInsDialogState extends State<HeldSignInsDialog> {
                   dense: true,
                   leading: const Icon(Icons.pin_outlined),
                   title: Text(l10n.authenticatorHeading),
-                  subtitle: Text(
-                      l10n.authenticatorActiveSince(dayOf(authenticator))),
+                  subtitle:
+                      Text(l10n.authenticatorActiveSince(dayOf(authenticator))),
                   trailing: TextButton(
                     key: Key("$_p-sign-in-totp-remove"),
                     onPressed: _busy ? null : () => _remove("totp"),
@@ -2740,8 +2758,9 @@ class _HeldSignInsDialogState extends State<HeldSignInsDialog> {
                   title: Text(address.value),
                   trailing: TextButton(
                     key: Key("$_p-sign-in-address-remove-${address.value}"),
-                    onPressed:
-                        _busy ? null : () => _remove("email", id: address.value),
+                    onPressed: _busy
+                        ? null
+                        : () => _remove("email", id: address.value),
                     child: Text(l10n.remove),
                   ),
                 ),

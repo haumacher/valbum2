@@ -31,6 +31,7 @@ import 'resource.dart';
 import 'rights.dart';
 import 'selectable.dart';
 import 'share_session.dart' show ratingFloorLabel, ratingName;
+import 'shares_view.dart' show openShares;
 import 'urls.dart';
 
 /// Whether this caller may hand out a link to the folder at [path]
@@ -308,6 +309,21 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
     }
   }
 
+  /// Opens the shares screen narrowed to this folder, and reads the links
+  /// again when it is left: they may have been changed there (issue #269).
+  Future<void> _openShares() async {
+    var name = widget.label ?? _albumName;
+    await openShares(
+      context,
+      client: widget.client,
+      album: ownerPath,
+      albumName: name.replaceAll(RegExp(r"^'|'$"), ""),
+    );
+    if (mounted) {
+      await _load();
+    }
+  }
+
   /// Which of its three states the dialog is in, see [_actions].
   _LinkDialogState get _state => _created != null
       ? _LinkDialogState.result
@@ -343,6 +359,7 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
                         ..._linkSection(context),
                         const Divider(),
                         ..._newLinkTile(),
+                        ..._allSharesTile(),
                       ],
                   },
                 ),
@@ -552,53 +569,12 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
 
   /// What a link shows and how long it lives, in one paragraph.
   String _describe(AppLocalizations l10n, ShareLink link) {
-    var parts = [
-      // The type of the link first (issue #203): anonymous, personal and
-      // open, or sent to selected contacts — which it stays when every
-      // recipient was deleted from the contacts.
-      if (link.type != ShareType.personal)
-        l10n.linkAnonymous
-      else if (link.recipients.isNotEmpty)
-        l10n.linkRecipientCount(link.recipients.length)
-      else if (link.addressed)
-        l10n.linkTypeSelected
-      else
-        l10n.linkPersonalOpen,
-      _rightsOf(l10n, link),
-      link.expires.isEmpty
-          ? l10n.linkNeverExpires
-          : l10n.expiresOnDay(_day(link.expires)),
-      link.maxPrivacy >= privacyMembers
-          ? l10n.linkUpToMembers
-          : l10n.linkPublicOnly,
-      ratingFloorLabel(l10n, link.minRating),
-      if (link.photoLabel.isNotEmpty) l10n.linkShowsLabel(link.photoLabel),
-    ];
-    var text = parts.join(" · ");
+    var text = linkSummary(l10n, link);
     if (_inherited(link)) {
       return "$text\n${l10n.linkInheritedFrom(_pathLabel(l10n, link.path))}";
     }
     return text;
   }
-
-  /// The rights of a link, as the list shows them.
-  ///
-  /// The words are `rights.dart`'s own: a right is named there once, for
-  /// every screen that shows one.
-  String _rightsOf(AppLocalizations l10n, ShareLink link) {
-    var names = [
-      for (var right in allRights)
-        if (link.rights.any((held) => held.name == right))
-          rightLabel(l10n, right),
-    ];
-    return names.isEmpty ? rightLabel(l10n, rightView) : names.join(", ");
-  }
-
-  /// The day of an ISO-8601 instant, in the viewer's own time zone.
-  ///
-  /// The instant itself is the server's business; what the author of a link
-  /// wants to read is the day it runs out.
-  String _day(String instant) => dayOf(instant);
 
   /// The entry opening the form of a new link.
   List<Widget> _newLinkTile() => [
@@ -609,6 +585,19 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
           leading: const Icon(Icons.add_link),
           title: Text(AppLocalizations.of(context)!.newLinkTile),
           onTap: _busy ? null : _openForm,
+        ),
+      ];
+
+  /// The entry leading to every link of the space sharing this folder, on
+  /// the shares screen, which also changes a link in place (issue #269).
+  List<Widget> _allSharesTile() => [
+        ListTile(
+          key: const Key("share-link-all"),
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          leading: const Icon(Icons.manage_search),
+          title: Text(AppLocalizations.of(context)!.sharesOfAlbum),
+          onTap: _busy ? null : _openShares,
         ),
       ];
 
@@ -1176,6 +1165,64 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
     setState(() => _busy = false);
     await _load();
   }
+}
+
+/// What a link is and shows, and how long it lives, in one line: the words
+/// of the share dialog's list, and of the shares screen (issue #269).
+///
+/// An expired link says when it ran out, where a live one says when it will;
+/// "expired" is decided against [now], the device's clock by default.
+String linkSummary(AppLocalizations l10n, ShareLink link, {DateTime? now}) {
+  var parts = [
+    // The type of the link first (issue #203): anonymous, personal and
+    // open, or sent to selected contacts — which it stays when every
+    // recipient was deleted from the contacts.
+    if (link.type != ShareType.personal)
+      l10n.linkAnonymous
+    else if (link.recipients.isNotEmpty)
+      l10n.linkRecipientCount(link.recipients.length)
+    else if (link.addressed)
+      l10n.linkTypeSelected
+    else
+      l10n.linkPersonalOpen,
+    linkRights(l10n, link),
+    link.expires.isEmpty
+        ? l10n.linkNeverExpires
+        : linkExpired(link, now: now)
+            // The day it ran out, see issue #269.
+            ? l10n.linkExpiredOn(dayOf(link.expires))
+            : l10n.expiresOnDay(dayOf(link.expires)),
+    link.maxPrivacy >= privacyMembers
+        ? l10n.linkUpToMembers
+        : l10n.linkPublicOnly,
+    ratingFloorLabel(l10n, link.minRating),
+    if (link.photoLabel.isNotEmpty) l10n.linkShowsLabel(link.photoLabel),
+  ];
+  return parts.join(" · ");
+}
+
+/// Whether [link]'s lifetime has run out at [now] (the device's clock by
+/// default); an expiry the app cannot read counts as run out, as the server
+/// counts it.
+bool linkExpired(ShareLink link, {DateTime? now}) {
+  if (link.expires.isEmpty) {
+    return false;
+  }
+  var at = DateTime.tryParse(link.expires);
+  return at == null || !at.isAfter(now ?? DateTime.now());
+}
+
+/// The rights of a link, as the lists show them.
+///
+/// The words are `rights.dart`'s own: a right is named there once, for every
+/// screen that shows one.
+String linkRights(AppLocalizations l10n, ShareLink link) {
+  var names = [
+    for (var right in allRights)
+      if (link.rights.any((held) => held.name == right))
+        rightLabel(l10n, right),
+  ];
+  return names.isEmpty ? rightLabel(l10n, rightView) : names.join(", ");
 }
 
 /// What the link list says about a recipient of a personal link (issue

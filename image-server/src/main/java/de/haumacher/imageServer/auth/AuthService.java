@@ -310,6 +310,11 @@ public class AuthService {
 		"The expiry of a share link is an ISO-8601 instant such as '2026-12-24T00:00:00Z', "
 			+ "or empty for a link that never expires.";
 
+	/** The message an edit setting a share link's expiry into the past is refused with, see issue #269. */
+	public static final String SHARE_EXPIRY_PAST =
+		"A share link cannot be changed to expire in the past. Choose a later day, or no expiry at all; "
+			+ "to close the link now, delete it.";
+
 	/** The message a request naming a share link this server does not have is refused with. */
 	public static final String SHARE_UNKNOWN = "There is no share link of that id on this album.";
 
@@ -1440,6 +1445,31 @@ public class AuthService {
 	}
 
 	/**
+	 * Takes the given contact off the recipients of the given addressed link, see issue #269.
+	 *
+	 * <p>
+	 * Their own link is from then on a token nobody issued ({@link ShareStore#removeRecipient}), and
+	 * the sessions they opened through this link end where the space admits them nowhere else &mdash;
+	 * the rule of a deleted link, {@link #endSessionsOf}; otherwise those sessions stay and simply no
+	 * longer open this link.
+	 * </p>
+	 *
+	 * @return Whether the contact was a recipient of the link.
+	 */
+	public boolean removeRecipient(ShareStore.Link link, ContactStore.Contact contact) throws IOException {
+		if (_shares == null || !_shares.removeRecipient(link.getId(), contact.getId())) {
+			return false;
+		}
+		if (_contacts != null && !admittedElsewhere(contact)) {
+			int ended = _contacts.endSessions(contact.getId(), link.getId());
+			if (ended > 0) {
+				LOG.info("Ended " + ended + " session(s) of " + contact + " opened through " + link + ".");
+			}
+		}
+		return true;
+	}
+
+	/**
 	 * Ends the contact sessions opened through the given deleted link, of every contact the space
 	 * admits nowhere else, see issues #217 and #267.
 	 *
@@ -2158,6 +2188,14 @@ public class AuthService {
 	/** The message a request naming a clearance this build does not know is refused with. */
 	public static String clearanceRefused(String clearance) {
 		return "Unknown clearance '" + clearance + "'; use one of " + Clearances.names() + ".";
+	}
+
+	/**
+	 * The message an edit giving a share link a right its editor does not hold is refused with, see
+	 * issue #269.
+	 */
+	public static String shareRightNotHeld(String right) {
+		return "You cannot give this link '" + right + "': you may not do that yourself.";
 	}
 
 	/** The message a share link showing more than its maker may see is refused with. */

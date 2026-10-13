@@ -358,6 +358,9 @@ public class ImageServlet extends HttpServlet {
 	/** The type of the space-level overview of the photographs in several albums, see issue #220. */
 	public static final String DUPLICATES_TYPE = "duplicates";
 
+	/** The type of the list of every share link of the space, see issue #269. */
+	public static final String SPACE_SHARES_TYPE = "space-shares";
+
 	/** The type of the progress of the background work of the space, see issue #236. */
 	public static final String CATCH_UP_TYPE = "catch-up";
 
@@ -1299,6 +1302,10 @@ public class ImageServlet extends HttpServlet {
 
 		if ("shares".equals(type)) {
 			serveShares(context, caller, location);
+			return;
+		}
+		if (SPACE_SHARES_TYPE.equals(type)) {
+			serveSpaceShares(context, caller, location);
 			return;
 		}
 		if ("reanalyze".equals(type)) {
@@ -3921,32 +3928,17 @@ public class ImageServlet extends HttpServlet {
 		if (request == null) {
 			return;
 		}
-
-		Set<String> rights = new LinkedHashSet<>();
-		for (de.haumacher.imageServer.shared.model.RightName right : request.getRights()) {
-			String name = right.getName();
-			if (Rights.EDIT.equals(name)) {
-				LOG.warning("Refusing a share link that would allow editing.");
-				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.SHARE_EDIT_REFUSED);
-				return;
-			}
-			if (!Rights.isKnown(name)) {
-				LOG.warning("Refusing a share link with the unknown right '" + name + "'.");
-				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.unknownRight(name));
-				return;
-			}
-			rights.add(name);
-		}
-		if (rights.isEmpty()) {
-			// A link that allows nothing would be a link to nothing; looking is the least it does.
-			rights.add(Rights.VIEW);
-		}
-
-		int maxPrivacy = request.getMaxPrivacy();
-		if (maxPrivacy < Privacy.PUBLIC || maxPrivacy > Privacy.PRIVATE) {
-			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.SHARE_PRIVACY_REFUSED);
+		LinkOptions options = linkOptions(context, request);
+		if (options == null) {
 			return;
 		}
+		Set<String> rights = options._rights;
+		int maxPrivacy = options._maxPrivacy;
+		int minRating = options._minRating;
+		String expires = options._expires;
+		String label = options._label;
+		String photoLabel = options._photoLabel;
+
 		// Nobody hands out more than they hold, and it is said rather than quietly trimmed: a link
 		// answered with a lower limit than the one asked for would be a link its maker believes
 		// shows more than it does, see issue #84.
@@ -3956,39 +3948,8 @@ public class ImageServlet extends HttpServlet {
 			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.shareAboveClearance(clearance));
 			return;
 		}
-		int minRating = request.getMinRating();
-		if (!Ratings.isKnown(minRating)) {
-			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.SHARE_RATING_REFUSED);
+		if (!photoLabel.isEmpty() && !labelOfAlbum(context, location.getPath(), photoLabel)) {
 			return;
-		}
-		String expires = request.getExpires() == null ? "" : request.getExpires().trim();
-		if (!expires.isEmpty()) {
-			try {
-				expires = java.time.Instant.parse(expires).toString();
-			} catch (java.time.DateTimeException ex) {
-				LOG.warning("Refusing the share link expiry '" + expires + "': " + ex.getMessage());
-				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.SHARE_EXPIRY_REFUSED);
-				return;
-			}
-		}
-		String label = request.getLabel() == null ? "" : request.getLabel().trim();
-		String photoLabel = request.getPhotoLabel() == null ? "" : request.getPhotoLabel();
-		if (!photoLabel.isEmpty()) {
-			// Labels belong to one album (issue #213): a link to a folder of folders showing "a
-			// label" would show whatever photographs happen to carry a label of that spelling in
-			// any album below, today's and tomorrow's, which nobody decided.
-			Resource target = _cache.lookup(location.getPath());
-			if (!(target instanceof AlbumInfo)) {
-				LOG.warning("Refusing a label filter on the folder '" + context.request().getPathInfo() + "'.");
-				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, Labels.LABEL_NEEDS_ALBUM);
-				return;
-			}
-			if (!Labels.of((AlbumInfo) target).contains(photoLabel)) {
-				LOG.warning("Refusing the unknown label '" + photoLabel + "' at '" + context.request().getPathInfo()
-					+ "'.");
-				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, Labels.unknownLabel(photoLabel));
-				return;
-			}
 		}
 
 		boolean personal = request.getType() == de.haumacher.imageServer.shared.model.ShareType.PERSONAL;
@@ -4065,6 +4026,101 @@ public class ImageServlet extends HttpServlet {
 			result.addRecipient(recipientLink(context, contact, issued.getTokens().get(contact.getId())));
 		}
 		serveJsonObject(context.response(), result);
+	}
+
+	/**
+	 * The options of a share link as a request gives them, see {@link #linkOptions}: what
+	 * <code>?action=share</code> creates a link with and <code>?action=edit-share</code> changes it
+	 * to (issue #269).
+	 */
+	private static final class LinkOptions {
+		Set<String> _rights;
+
+		int _maxPrivacy;
+
+		int _minRating;
+
+		String _expires;
+
+		String _label;
+
+		String _photoLabel;
+	}
+
+	/**
+	 * Reads the options of the given request, each checked on its own; <code>null</code> where one
+	 * is refused (the response is complete). Whether the caller may give them is the question of
+	 * the endpoint.
+	 */
+	private static LinkOptions linkOptions(Context context, ShareLink request) throws IOException {
+		LinkOptions result = new LinkOptions();
+		Set<String> rights = new LinkedHashSet<>();
+		for (de.haumacher.imageServer.shared.model.RightName right : request.getRights()) {
+			String name = right.getName();
+			if (Rights.EDIT.equals(name)) {
+				LOG.warning("Refusing a share link that would allow editing.");
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.SHARE_EDIT_REFUSED);
+				return null;
+			}
+			if (!Rights.isKnown(name)) {
+				LOG.warning("Refusing a share link with the unknown right '" + name + "'.");
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.unknownRight(name));
+				return null;
+			}
+			rights.add(name);
+		}
+		if (rights.isEmpty()) {
+			// A link that allows nothing would be a link to nothing; looking is the least it does.
+			rights.add(Rights.VIEW);
+		}
+		result._rights = rights;
+
+		result._maxPrivacy = request.getMaxPrivacy();
+		if (result._maxPrivacy < Privacy.PUBLIC || result._maxPrivacy > Privacy.PRIVATE) {
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.SHARE_PRIVACY_REFUSED);
+			return null;
+		}
+		result._minRating = request.getMinRating();
+		if (!Ratings.isKnown(result._minRating)) {
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.SHARE_RATING_REFUSED);
+			return null;
+		}
+		String expires = request.getExpires() == null ? "" : request.getExpires().trim();
+		if (!expires.isEmpty()) {
+			try {
+				expires = java.time.Instant.parse(expires).toString();
+			} catch (java.time.DateTimeException ex) {
+				LOG.warning("Refusing the share link expiry '" + expires + "': " + ex.getMessage());
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.SHARE_EXPIRY_REFUSED);
+				return null;
+			}
+		}
+		result._expires = expires;
+		result._label = request.getLabel() == null ? "" : request.getLabel().trim();
+		result._photoLabel = request.getPhotoLabel() == null ? "" : request.getPhotoLabel();
+		return result;
+	}
+
+	/**
+	 * Whether the given label is one of the album at the given folder, which a link showing its
+	 * photographs needs; answers the refusal where not.
+	 */
+	private boolean labelOfAlbum(Context context, PathInfo folder, String photoLabel) throws IOException {
+		// Labels belong to one album (issue #213): a link to a folder of folders showing "a
+		// label" would show whatever photographs happen to carry a label of that spelling in
+		// any album below, today's and tomorrow's, which nobody decided.
+		Resource target = _cache.lookup(folder);
+		if (!(target instanceof AlbumInfo)) {
+			LOG.warning("Refusing a label filter on the folder '" + folder + "'.");
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, Labels.LABEL_NEEDS_ALBUM);
+			return false;
+		}
+		if (!Labels.of((AlbumInfo) target).contains(photoLabel)) {
+			LOG.warning("Refusing the unknown label '" + photoLabel + "' at '" + folder + "'.");
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, Labels.unknownLabel(photoLabel));
+			return false;
+		}
+		return true;
 	}
 
 	/** The link of one recipient as it is answered once, see issue #198. */
@@ -4467,10 +4523,8 @@ public class ImageServlet extends HttpServlet {
 			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.SHARING_REFUSED);
 			return null;
 		}
-		ShareStore.Link link = id == null || id.isEmpty() ? null : _auth.getShares().get(id.trim());
-		if (link == null || !link.covers(location.getOwner(), location.getOwnerPath()) || !mine(caller, link)) {
-			LOG.warning("Refusing a request about the unknown share link '" + id + "'.");
-			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, AuthService.SHARE_UNKNOWN);
+		ShareStore.Link link = reachedLink(context, caller, location, id);
+		if (link == null) {
 			return null;
 		}
 		if (!link.isPersonal()) {
@@ -4839,13 +4893,8 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 		String id = request.getId() == null ? "" : request.getId().trim();
-		ShareStore shares = _auth.getShares();
-		ShareStore.Link link = id.isEmpty() ? null : shares.get(id);
-		if (link == null || !link.covers(location.getOwner(), location.getOwnerPath()) || !mine(caller, link)) {
-			// A link of somebody else's, or of no folder above this one, is a link this request
-			// never saw: it is told that there is none, not whose it is.
-			LOG.warning("Refusing to delete the unknown share link '" + id + "'.");
-			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, AuthService.SHARE_UNKNOWN);
+		ShareStore.Link link = reachedLink(context, caller, location, id);
+		if (link == null) {
 			return;
 		}
 
@@ -4853,6 +4902,229 @@ public class ImageServlet extends HttpServlet {
 		_auth.deleteLink(link.getId());
 		LOG.info("Deleted the share link " + link + ".");
 		serveJsonObject(context.response(), ShareLinkList.create().addLink(wire));
+	}
+
+	/**
+	 * The link of the given id that a request at the given location may name, <code>null</code> where
+	 * the refusal was answered.
+	 *
+	 * <p>
+	 * A link of somebody else's, or of no folder above this one, is a link this request never saw:
+	 * it is told that there is none, not whose it is (issue #84). From the root of the space every
+	 * link of the space is reached, which is where the shares of the space are listed and managed
+	 * (issue #269).
+	 * </p>
+	 */
+	private ShareStore.Link reachedLink(Context context, Caller caller, Location location, String id)
+			throws IOException {
+		String name = id == null ? "" : id.trim();
+		ShareStore.Link link = name.isEmpty() || _auth.getShares() == null ? null : _auth.getShares().get(name);
+		if (link == null || !reaches(location, link) || !mine(caller, link)) {
+			LOG.warning("Refusing a request about the unknown share link '" + name + "'.");
+			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, AuthService.SHARE_UNKNOWN);
+			return null;
+		}
+		return link;
+	}
+
+	/**
+	 * Whether a request at the given location reaches the given link: a link on the folder or on a
+	 * folder above it, and at the root of the space every link of the space (issue #269).
+	 */
+	private static boolean reaches(Location location, ShareStore.Link link) {
+		return link.covers(location.getOwner(), location.getOwnerPath())
+			|| (location.getOwnerPath().isEmpty() && link.getOwner().equals(location.getOwner()));
+	}
+
+	/**
+	 * Answers every share link of the space at <code>&lt;data&gt;/?type=space-shares</code>, see issue
+	 * #269: what is shared with whom.
+	 *
+	 * <p>
+	 * An administrator is answered every link of the space, a member who may share the links they
+	 * handed out ({@link #mine}), and a member without the share flag is refused with the reason.
+	 * Expired links are answered too, marked by their expiry; a deleted one is gone (issue #217).
+	 * Each link carries what the listing of a folder carries, and its folder's title, the labels of
+	 * its album and the photographs added through it. No answer ever carries a token.
+	 * </p>
+	 */
+	private void serveSpaceShares(Context context, Caller caller, Location location) throws IOException {
+		if (!caller.isPaired()) {
+			unauthorized(context, caller, false);
+			return;
+		}
+		if (!_auth.mayShareLinks(caller)) {
+			LOG.warning("Refusing the share links of the space to '" + caller.getUserName() + "'.");
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.SHARING_REFUSED);
+			return;
+		}
+		ShareLinkList result = ShareLinkList.create();
+		ShareStore shares = _auth.getShares();
+		if (shares != null) {
+			Contributions.Counts counts = null;
+			for (ShareStore.Link link : shares.getLinks()) {
+				if (link.getOwner().equals(location.getOwner()) && mine(caller, link)) {
+					if (counts == null) {
+						counts = contributions().count();
+					}
+					result.addLink(spaceShare(link, counts));
+				}
+			}
+		}
+		serveJsonObject(context.response(), result);
+	}
+
+	/** One link as <code>?type=space-shares</code> lists it, see issue #269. */
+	private ShareLink spaceShare(ShareStore.Link link, Contributions.Counts counts) {
+		ShareLink result = onTheWire(link, counts)
+			.setTitle(SharePreview.linkTitle(_cache, _basePath, link))
+			.setUploads(counts.ofLink(link.getId()));
+		for (String label : labelsOf(link)) {
+			result.addAlbumLabel(de.haumacher.imageServer.shared.model.LabelName.create().setName(label));
+		}
+		return result;
+	}
+
+	/** The labels of the album the given link shares, empty for a folder of folders or one gone. */
+	private java.util.Collection<String> labelsOf(ShareStore.Link link) {
+		if (!LibraryFiles.isLibraryPath(link.getPath())) {
+			return java.util.Collections.emptyList();
+		}
+		try {
+			PathInfo folder = link.getPath().isEmpty() ? new PathInfo(_basePath)
+				: new PathInfo(_basePath, java.nio.file.Paths.get(link.getPath()));
+			Resource resource = folder.isDirectory() ? _cache.lookup(folder) : null;
+			return resource instanceof AlbumInfo ? Labels.of((AlbumInfo) resource)
+				: java.util.Collections.<String> emptyList();
+		} catch (RuntimeException ex) {
+			// A folder whose sidecar cannot be read offers no label, see issue #254.
+			return java.util.Collections.emptyList();
+		}
+	}
+
+	/**
+	 * Changes the options of a share link in place at <code>&lt;folder&gt;/?action=edit-share</code>,
+	 * see issue #269.
+	 *
+	 * <p>
+	 * The body is a {@link ShareLink} naming the link by its id and giving every option as it
+	 * should be: its label, expiry, rights, privacy ceiling, rating floor and the label whose
+	 * photographs it shows. The token stays the same, and the next request through the link is
+	 * answered with what it allows now. Who may: the maker of the link and an administrator, as for
+	 * deleting it. What is refused, with the reason: a right the editor may not use themself, a
+	 * privacy ceiling above their clearance, an expiry in the past, and a label the album does not
+	 * have &mdash; each only where it changes, so that what a link already had never blocks an edit
+	 * of something else. Answered with the link as <code>?type=space-shares</code> lists it.
+	 * </p>
+	 */
+	private void editShare(Context context) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		Location location = resolve(context, caller);
+		if (location == null) {
+			return;
+		}
+		if (!caller.isPaired()) {
+			unauthorized(context, caller, true);
+			return;
+		}
+		if (!_auth.mayShareLinks(caller)) {
+			LOG.warning("Refusing to edit a share link of '" + location.getOwner() + "'.");
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, AuthService.SHARING_REFUSED);
+			return;
+		}
+		ShareLink request = readShareLink(context);
+		if (request == null) {
+			return;
+		}
+		ShareStore.Link link = reachedLink(context, caller, location, request.getId());
+		if (link == null) {
+			return;
+		}
+		LinkOptions options = linkOptions(context, request);
+		if (options == null) {
+			return;
+		}
+
+		// Nobody hands out more than they hold (issue #84): a right the link did not have is one the
+		// editor gives, and only one they hold themself.
+		Set<String> held = _auth.rights(caller, location.getPath());
+		for (String right : Rights.closure(options._rights)) {
+			if (!link.getRights().contains(right) && !held.contains(right)) {
+				LOG.warning("Refusing to give the share link " + link + " '" + right + "'.");
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.shareRightNotHeld(right));
+				return;
+			}
+		}
+		int clearance = _auth.clearance(caller, location.getPath());
+		if (options._maxPrivacy != link.getMaxPrivacy() && options._maxPrivacy > clearance) {
+			LOG.warning("Refusing to let the share link " + link + " show more than its editor may see.");
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.shareAboveClearance(clearance));
+			return;
+		}
+		if (!options._expires.isEmpty() && !options._expires.equals(link.getExpires())
+			&& !java.time.Instant.parse(options._expires).isAfter(java.time.Instant.now())) {
+			LOG.warning("Refusing to let the share link " + link + " expire in the past.");
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.SHARE_EXPIRY_PAST);
+			return;
+		}
+		if (!options._photoLabel.isEmpty() && !options._photoLabel.equals(link.getPhotoLabel())) {
+			Location folder;
+			try {
+				folder = _auth.resolve(caller, _basePath, link.getPath());
+			} catch (AuthService.PathRefused ex) {
+				errorInfo(context, ex.getStatus(), ex.getMessage());
+				return;
+			}
+			if (!labelOfAlbum(context, folder.getPath(), options._photoLabel)) {
+				return;
+			}
+		}
+
+		_auth.getShares().edit(link.getId(), options._label, options._expires, options._maxPrivacy,
+			options._minRating, options._rights, options._photoLabel);
+		LOG.info("Edited the share link " + link + " to " + link.getRights() + ", by '" + caller.getUserName() + "'.");
+		serveJsonObject(context.response(),
+			ShareLinkList.create().addLink(spaceShare(link, contributions().count())));
+	}
+
+	/**
+	 * Takes one recipient off an addressed personal link at
+	 * <code>&lt;folder&gt;/?action=remove-recipient</code>, see issue #269.
+	 *
+	 * <p>
+	 * Their own link is from then on a token nobody issued and the link no longer admits them,
+	 * while every other recipient's link keeps working ({@link AuthService#removeRecipient}).
+	 * Answered with the link as <code>?type=space-shares</code> lists it.
+	 * </p>
+	 */
+	private void removeRecipient(Context context) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		Location location = resolve(context, caller);
+		if (location == null) {
+			return;
+		}
+		de.haumacher.imageServer.shared.model.RecipientRemove request;
+		try {
+			request = de.haumacher.imageServer.shared.model.RecipientRemove.readRecipientRemove(new JsonReader(
+				new ReaderAdapter(new InputStreamReader(new ByteArrayInputStream(readBody(context.request())),
+					StandardCharsets.UTF_8))));
+		} catch (IOException | RuntimeException ex) {
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PersonalLinks.UNREADABLE);
+			return;
+		}
+		ShareStore.Link link = managedLink(context, caller, location, request.getLink());
+		if (link == null) {
+			return;
+		}
+		ContactStore.Contact contact = _auth.getContacts().get(request.getContact());
+		if (contact == null || link.recipient(contact.getId()) == null
+			|| !_auth.removeRecipient(link, contact)) {
+			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, PersonalLinks.NOT_A_RECIPIENT);
+			return;
+		}
+		LOG.info("Took " + contact + " off the share link " + link + ", by '" + caller.getUserName() + "'.");
+		serveJsonObject(context.response(),
+			ShareLinkList.create().addLink(spaceShare(link, contributions().count())));
 	}
 
 	/**
@@ -5530,6 +5802,14 @@ public class ImageServlet extends HttpServlet {
 		}
 		if ("shut-out".equals(action)) {
 			shutOut(context);
+			return;
+		}
+		if ("edit-share".equals(action)) {
+			editShare(context);
+			return;
+		}
+		if ("remove-recipient".equals(action)) {
+			removeRecipient(context);
 			return;
 		}
 		if ("block-contact".equals(action)) {

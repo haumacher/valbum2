@@ -32,6 +32,7 @@ import 'diagnostics.dart';
 import 'invitation.dart';
 import 'l10n/app_localizations.dart';
 import 'manage_view.dart';
+import 'shares_view.dart' show SharesSection;
 import 'offline.dart';
 import 'platform.dart';
 import 'resource.dart';
@@ -1573,6 +1574,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
       ..._devicesSection(),
       ..._inviteSection(l10n),
       ..._contactsSection(),
+      ..._sharesSection(),
       ..._catchUpSection(),
     ];
   }
@@ -1724,6 +1726,20 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
         mayManage: role == roleAdmin || (identity?.mayShare ?? false),
       ),
     ];
+  }
+
+  /// What is shared with whom (issue #269): offered to whoever may share
+  /// links — an administrator, or a member with the share flag — the very
+  /// people the server answers the list to.
+  List<Widget> _sharesSection() {
+    var client = _managementClient();
+    var role = identity?.role ?? "";
+    if (!widget.settings.signedIn ||
+        client == null ||
+        !(role == roleAdmin || (identity?.mayShare ?? false))) {
+      return const [];
+    }
+    return [SharesSection(client: client)];
   }
 
   /// The client the management sections talk to: the *saved* server, with the

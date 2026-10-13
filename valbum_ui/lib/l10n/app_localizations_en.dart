@@ -4129,4 +4129,164 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get newsEntryGone =>
       'This news is no longer there: its photos were moved or deleted, or they arrived more than 90 days ago.';
+
+  @override
+  String get sharesHeading => 'Shares';
+
+  @override
+  String get sharesLead =>
+      'What is shared with whom: the links you handed out, and for an administrator every link of the space. Delete a link, take a person off it, or change what it shows.';
+
+  @override
+  String get sharesOpen => 'Show shares';
+
+  @override
+  String get sharesByAlbum => 'By album';
+
+  @override
+  String get sharesByPerson => 'By person';
+
+  @override
+  String get sharesFilter => 'Filter by album, person or label';
+
+  @override
+  String get sharesShowExpired => 'Show expired links';
+
+  @override
+  String get sharesNone => 'Nothing is shared yet.';
+
+  @override
+  String get sharesNoMatch => 'No link matches.';
+
+  @override
+  String sharesExpiredHidden(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count expired links are hidden.',
+      one: '1 expired link is hidden.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get sharesAnyone => 'Anyone with the link';
+
+  @override
+  String get sharesNobody => 'Nobody any more';
+
+  @override
+  String sharesScopeAlbum(String name) {
+    return 'Album: $name';
+  }
+
+  @override
+  String sharesScopePerson(String name) {
+    return 'Person: $name';
+  }
+
+  @override
+  String linkExpiredOn(String day) {
+    return 'Expired on $day';
+  }
+
+  @override
+  String linkSharedBy(String name, String day) {
+    return 'Shared by $name on $day';
+  }
+
+  @override
+  String linkSharedOn(String day) {
+    return 'Shared on $day';
+  }
+
+  @override
+  String get linkAlbumGone => 'The shared folder is gone';
+
+  @override
+  String get editLinkEntry => 'Edit…';
+
+  @override
+  String get editLinkTitle => 'Change the link';
+
+  @override
+  String get editLinkNote =>
+      'The address of the link stays the same; the change applies from the next visit on.';
+
+  @override
+  String expiryAsNow(String day) {
+    return 'As now: $day';
+  }
+
+  @override
+  String get editLinkLessTitle => 'Show less through this link?';
+
+  @override
+  String get editLinkLessMessage =>
+      'Whoever holds this link will see or be allowed less from their next visit on.';
+
+  @override
+  String get editLinkConfirm => 'Change';
+
+  @override
+  String get linkChanged =>
+      'The link was changed. It applies from the next visit on.';
+
+  @override
+  String get linkDeletedDone =>
+      'The link was deleted. Its address no longer opens anything.';
+
+  @override
+  String get recipientRenew => 'Send a new link';
+
+  @override
+  String recipientRenewTitle(String name) {
+    return 'Send $name a new link?';
+  }
+
+  @override
+  String get recipientRenewMessage =>
+      'The link this person has now stops working at once. You send the new one yourself.';
+
+  @override
+  String get recipientRemove => 'Take off this link';
+
+  @override
+  String recipientRemoveTitle(String name) {
+    return 'Take $name off this link?';
+  }
+
+  @override
+  String get recipientRemoveMessage =>
+      'Their own link stops working at once; everybody else keeps theirs. The person stays a contact of the space.';
+
+  @override
+  String recipientRemoved(String name) {
+    return 'Taken off the link: $name';
+  }
+
+  @override
+  String shutOutTitle(String name) {
+    return 'Shut $name out of this link?';
+  }
+
+  @override
+  String get shutOutMessage =>
+      'They can no longer open this link, and the browsers they opened it in are signed out. You can let them in again.';
+
+  @override
+  String shutOutDone(String name) {
+    return 'Shut out of the link: $name';
+  }
+
+  @override
+  String letInDone(String name) {
+    return 'May open the link again: $name';
+  }
+
+  @override
+  String get sharesOfAlbum => 'All shares…';
+
+  @override
+  String get contactSharesEntry => 'Shares…';
 }

@@ -2979,6 +2979,14 @@ message GroupRename {
  * </p>
  *
  * <p>
+ * Sent to <code>&lt;folder&gt;/?action=edit-share</code> to change the options of the link of the
+ * given {@link #id} in place (issue #269): {@link #label}, {@link #expires}, {@link #rights},
+ * {@link #maxPrivacy}, {@link #minRating} and {@link #photoLabel} are replaced by what the request
+ * says, everything else is ignored. The token stays the same, and the next request through the
+ * link sees the new options. Answered with the link as {@link ShareLinkList} lists it.
+ * </p>
+ *
+ * <p>
  * The token is never part of this message: it is answered exactly once, in a
  * {@link ShareLinkCreated}, and the server stores nothing but its hash.
  * </p>
@@ -3083,6 +3091,25 @@ message ShareLink {
 	 * other link.
 	 */
 	repeated LinkVisitor visitors;
+
+	/**
+	 * The title of the shared folder, empty where it has none or is gone; answered by
+	 * <code>&lt;data&gt;/?type=space-shares</code> only, see issue #269.
+	 */
+	string title;
+
+	/**
+	 * How many photographs were added through the link that the space still holds, by whoever
+	 * came in through it; answered by <code>&lt;data&gt;/?type=space-shares</code> only, see
+	 * issue #269 and {@link LinkVisitor#uploads}.
+	 */
+	int uploads;
+
+	/**
+	 * The labels of the shared album, which {@link #photoLabel} may be edited to; empty for a folder
+	 * of folders. Answered by <code>&lt;data&gt;/?type=space-shares</code> only, see issue #269.
+	 */
+	repeated LabelName albumLabels;
 }
 
 /**
@@ -3110,6 +3137,13 @@ message LinkVisitor {
 
 	/** When the contact was shut out of this link, empty while they are not. */
 	string shutOut;
+
+	/**
+	 * Whether the link lets the contact in now: not shut out of it, not shut out of the space, and
+	 * the link still open to them &mdash; the rule of the overview of issue #267, regardless of
+	 * the link's expiry. What the "by person" view of the shares of issue #269 groups by.
+	 */
+	bool admitted;
 }
 
 /**
@@ -3221,6 +3255,9 @@ message ShareRecipient {
 	 * {@link LinkVisitor#uploads} and issue #203.
 	 */
 	int uploads;
+
+	/** Whether the link lets the recipient in now, see {@link LinkVisitor#admitted} and issue #269. */
+	bool admitted;
 }
 
 /**
@@ -3427,6 +3464,25 @@ message ShareResend {
 	string link;
 
 	/** The id of the contact to send again to; a recipient of the link. */
+	string contact;
+}
+
+/**
+ * Taking one recipient off an addressed personal link, <code>&lt;folder&gt;/?action=remove-recipient</code>
+ * (issue #269).
+ *
+ * <p>
+ * The recipient's own link and its voided predecessors are from then on tokens this server never
+ * issued, and their visits of the link are forgotten; the link stays addressed, the contact stays
+ * a contact of the space, and what they uploaded keeps its attribution. Answered with the link as
+ * {@link ShareLinkList} lists it.
+ * </p>
+ */
+message RecipientRemove {
+	/** The id of the share link. */
+	string link;
+
+	/** The id of the contact to take off it; a recipient of the link. */
 	string contact;
 }
 

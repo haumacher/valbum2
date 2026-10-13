@@ -2731,6 +2731,47 @@ class VAlbumClient {
     return ShareLinkList.read(JsonReader.fromString(response));
   }
 
+  /// Every share link of the space (issue #269): all of them for an
+  /// administrator, the caller's own for a member who may share, expired ones
+  /// included; a member without the share flag is refused with the reason.
+  /// Each carries its folder's title, the labels of its album and how many
+  /// photos came in through it — never a token.
+  Future<ShareLinkList> spaceShares() async {
+    var url = "${folderUrl(const [])}?type=space-shares";
+    var response = await _http.get(Uri.parse(url), headers: authHeaders);
+    if (response.statusCode >= 300) {
+      throw failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingAsking("'$url'"),
+      );
+    }
+    return ShareLinkList.read(JsonReader.fromString(response.body));
+  }
+
+  /// Changes the options of the share link [link] names by its id, in place
+  /// (issue #269): its label, expiry, rights, privacy ceiling, rating floor
+  /// and the label whose photos it shows, each as given. The token stays the
+  /// same. Asked at the root of the space, which reaches every link of it;
+  /// answers the link as [spaceShares] lists it.
+  Future<ShareLinkList> editShare(ShareLink link) async {
+    var url = "${folderUrl(const [])}?action=edit-share";
+    var response = await _postJson(url, link);
+    return ShareLinkList.read(JsonReader.fromString(response));
+  }
+
+  /// Takes [contact] off the recipients of the addressed link [link] (issue
+  /// #269): their own link stops working, every other recipient's keeps
+  /// working; answers the link as [spaceShares] lists it.
+  Future<ShareLinkList> removeRecipient(String link, String contact) async {
+    var url = "${folderUrl(const [])}?action=remove-recipient";
+    var response = await _postBody(
+      url,
+      _jsonOf(RecipientRemove(link: link, contact: contact).writeContent),
+    );
+    return ShareLinkList.read(JsonReader.fromString(response));
+  }
+
   /// Shuts the contact out of every link of the space, or lets them in again
   /// (issue #198's `block-contact`); answers the contact.
   Future<Contact> blockContact(String contact, bool shutOut) => _postContact(

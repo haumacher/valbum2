@@ -12,6 +12,14 @@ package de.haumacher.imageServer.shared.model;
  * </p>
  *
  * <p>
+ * Sent to <code>&lt;folder&gt;/?action=edit-share</code> to change the options of the link of the
+ * given {@link #getId()} in place (issue #269): {@link #getLabel()}, {@link #getExpires()}, {@link #getRights()},
+ * {@link #getMaxPrivacy()}, {@link #getMinRating()} and {@link #getPhotoLabel()} are replaced by what the request
+ * says, everything else is ignored. The token stays the same, and the next request through the
+ * link sees the new options. Answered with the link as {@link ShareLinkList} lists it.
+ * </p>
+ *
+ * <p>
  * The token is never part of this message: it is answered exactly once, in a
  * {@link ShareLinkCreated}, and the server stores nothing but its hash.
  * </p>
@@ -73,6 +81,15 @@ public class ShareLink extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getVisitors() */
 	private static final String VISITORS__PROP = "visitors";
 
+	/** @see #getTitle() */
+	private static final String TITLE__PROP = "title";
+
+	/** @see #getUploads() */
+	private static final String UPLOADS__PROP = "uploads";
+
+	/** @see #getAlbumLabels() */
+	private static final String ALBUM_LABELS__PROP = "albumLabels";
+
 	private String _id = "";
 
 	private String _label = "";
@@ -102,6 +119,12 @@ public class ShareLink extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private boolean _addressed = false;
 
 	private final java.util.List<de.haumacher.imageServer.shared.model.LinkVisitor> _visitors = new java.util.ArrayList<>();
+
+	private String _title = "";
+
+	private int _uploads = 0;
+
+	private final java.util.List<de.haumacher.imageServer.shared.model.LabelName> _albumLabels = new java.util.ArrayList<>();
 
 	/**
 	 * Creates a {@link ShareLink} instance.
@@ -518,6 +541,92 @@ public class ShareLink extends de.haumacher.msgbuf.data.AbstractDataObject {
 		_visitors.remove(value);
 	}
 
+	/**
+	 * The title of the shared folder, empty where it has none or is gone; answered by
+	 * <code>&lt;data&gt;/?type=space-shares</code> only, see issue #269.
+	 */
+	public final String getTitle() {
+		return _title;
+	}
+
+	/**
+	 * @see #getTitle()
+	 */
+	public de.haumacher.imageServer.shared.model.ShareLink setTitle(String value) {
+		internalSetTitle(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getTitle()} without chain call utility. */
+	protected final void internalSetTitle(String value) {
+		_title = value;
+	}
+
+	/**
+	 * How many photographs were added through the link that the space still holds, by whoever
+	 * came in through it; answered by <code>&lt;data&gt;/?type=space-shares</code> only, see
+	 * issue #269 and {@link LinkVisitor#getUploads()}.
+	 */
+	public final int getUploads() {
+		return _uploads;
+	}
+
+	/**
+	 * @see #getUploads()
+	 */
+	public de.haumacher.imageServer.shared.model.ShareLink setUploads(int value) {
+		internalSetUploads(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getUploads()} without chain call utility. */
+	protected final void internalSetUploads(int value) {
+		_uploads = value;
+	}
+
+	/**
+	 * The labels of the shared album, which {@link #getPhotoLabel()} may be edited to; empty for a folder
+	 * of folders. Answered by <code>&lt;data&gt;/?type=space-shares</code> only, see issue #269.
+	 */
+	public final java.util.List<de.haumacher.imageServer.shared.model.LabelName> getAlbumLabels() {
+		return _albumLabels;
+	}
+
+	/**
+	 * @see #getAlbumLabels()
+	 */
+	public de.haumacher.imageServer.shared.model.ShareLink setAlbumLabels(java.util.List<? extends de.haumacher.imageServer.shared.model.LabelName> value) {
+		internalSetAlbumLabels(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getAlbumLabels()} without chain call utility. */
+	protected final void internalSetAlbumLabels(java.util.List<? extends de.haumacher.imageServer.shared.model.LabelName> value) {
+		if (value == null) throw new IllegalArgumentException("Property 'albumLabels' cannot be null.");
+		_albumLabels.clear();
+		_albumLabels.addAll(value);
+	}
+
+	/**
+	 * Adds a value to the {@link #getAlbumLabels()} list.
+	 */
+	public de.haumacher.imageServer.shared.model.ShareLink addAlbumLabel(de.haumacher.imageServer.shared.model.LabelName value) {
+		internalAddAlbumLabel(value);
+		return this;
+	}
+
+	/** Implementation of {@link #addAlbumLabel(de.haumacher.imageServer.shared.model.LabelName)} without chain call utility. */
+	protected final void internalAddAlbumLabel(de.haumacher.imageServer.shared.model.LabelName value) {
+		_albumLabels.add(value);
+	}
+
+	/**
+	 * Removes a value from the {@link #getAlbumLabels()} list.
+	 */
+	public final void removeAlbumLabel(de.haumacher.imageServer.shared.model.LabelName value) {
+		_albumLabels.remove(value);
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.ShareLink readShareLink(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.ShareLink result = new de.haumacher.imageServer.shared.model.ShareLink();
@@ -575,6 +684,16 @@ public class ShareLink extends de.haumacher.msgbuf.data.AbstractDataObject {
 			x.writeTo(out);
 		}
 		out.endArray();
+		out.name(TITLE__PROP);
+		out.value(getTitle());
+		out.name(UPLOADS__PROP);
+		out.value(getUploads());
+		out.name(ALBUM_LABELS__PROP);
+		out.beginArray();
+		for (de.haumacher.imageServer.shared.model.LabelName x : getAlbumLabels()) {
+			x.writeTo(out);
+		}
+		out.endArray();
 	}
 
 	@Override
@@ -612,6 +731,16 @@ public class ShareLink extends de.haumacher.msgbuf.data.AbstractDataObject {
 				in.beginArray();
 				while (in.hasNext()) {
 					addVisitor(de.haumacher.imageServer.shared.model.LinkVisitor.readLinkVisitor(in));
+				}
+				in.endArray();
+			}
+			break;
+			case TITLE__PROP: setTitle(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case UPLOADS__PROP: setUploads(in.nextInt()); break;
+			case ALBUM_LABELS__PROP: {
+				in.beginArray();
+				while (in.hasNext()) {
+					addAlbumLabel(de.haumacher.imageServer.shared.model.LabelName.readLabelName(in));
 				}
 				in.endArray();
 			}

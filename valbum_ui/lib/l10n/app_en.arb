@@ -6859,5 +6859,287 @@
   "@newsEntryGone": {
     "description": "Shown instead of the photos of an entry of the bell (issue #268) that was opened by its address (a bookmark, a reload) but no longer exists. Address the reader formally (German: 'Sie', never 'du').",
     "x-translated": "98bfcc36"
+  },
+  "sharesHeading": "Shares",
+  "@sharesHeading": {
+    "description": "Heading of the section of the server settings and title of the screen listing what is shared with whom (issue #269). A noun, German 'Freigaben'.",
+    "x-translated": "97f3744a"
+  },
+  "sharesLead": "What is shared with whom: the links you handed out, and for an administrator every link of the space. Delete a link, take a person off it, or change what it shows.",
+  "@sharesLead": {
+    "description": "Explains the shares section of the server settings (issue #269). Address the reader formally (German: 'Sie', never 'du').",
+    "x-translated": "d28b2ff6"
+  },
+  "sharesOpen": "Show shares",
+  "@sharesOpen": {
+    "description": "Button of the shares section opening the screen of all share links (issue #269).",
+    "x-translated": "838471f2"
+  },
+  "sharesByAlbum": "By album",
+  "@sharesByAlbum": {
+    "description": "Choice of the shares screen: group the links by the album they share (issue #269).",
+    "x-translated": "8f7c1369"
+  },
+  "sharesByPerson": "By person",
+  "@sharesByPerson": {
+    "description": "Choice of the shares screen: group the links by the person they let in (issue #269).",
+    "x-translated": "efd1fcdd"
+  },
+  "sharesFilter": "Filter by album, person or label",
+  "@sharesFilter": {
+    "description": "Label of the field narrowing the list of share links (issue #269).",
+    "x-translated": "98e6da08"
+  },
+  "sharesShowExpired": "Show expired links",
+  "@sharesShowExpired": {
+    "description": "Switch of the shares screen: also list links whose lifetime has run out (issue #269).",
+    "x-translated": "a035fc53"
+  },
+  "sharesNone": "Nothing is shared yet.",
+  "@sharesNone": {
+    "description": "The shares screen when there is no share link at all (issue #269).",
+    "x-translated": "7d02947c"
+  },
+  "sharesNoMatch": "No link matches.",
+  "@sharesNoMatch": {
+    "description": "The shares screen when the filter leaves no link (issue #269).",
+    "x-translated": "f1370128"
+  },
+  "sharesExpiredHidden": "{count, plural, =1{1 expired link is hidden.} other{{count} expired links are hidden.}}",
+  "@sharesExpiredHidden": {
+    "description": "Under the list of share links: how many expired links the switch hides (issue #269).",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "2"
+      }
+    },
+    "x-translated": "56545dac"
+  },
+  "sharesAnyone": "Anyone with the link",
+  "@sharesAnyone": {
+    "description": "Group of the shares screen by person: the links whoever holds them may open (anonymous and personalized links) (issue #269).",
+    "x-translated": "e3bc3d6e"
+  },
+  "sharesNobody": "Nobody any more",
+  "@sharesNobody": {
+    "description": "Group of the shares screen by person: links sent to selected contacts that let nobody in any more, every recipient being removed or shut out (issue #269).",
+    "x-translated": "f6e9c7e7"
+  },
+  "sharesScopeAlbum": "Album: {name}",
+  "@sharesScopeAlbum": {
+    "description": "Chip on the shares screen: only the links sharing this album are shown; tapping its cross shows all again (issue #269).",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Zoo"
+      }
+    },
+    "x-translated": "9e3f3082"
+  },
+  "sharesScopePerson": "Person: {name}",
+  "@sharesScopePerson": {
+    "description": "Chip on the shares screen: only the links letting this person in are shown (issue #269).",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Tante Petra"
+      }
+    },
+    "x-translated": "976ced34"
+  },
+  "linkExpiredOn": "Expired on {day}",
+  "@linkExpiredOn": {
+    "description": "On the shares screen: a link whose lifetime ran out on that day (issue #269). German 'Abgelaufen am {day}'.",
+    "placeholders": {
+      "day": {
+        "type": "String",
+        "example": "May 3, 2026"
+      }
+    },
+    "x-translated": "d7bb49e3"
+  },
+  "linkSharedBy": "Shared by {name} on {day}",
+  "@linkSharedBy": {
+    "description": "On the shares screen: who handed the link out and when (issue #269).",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "alice"
+      },
+      "day": {
+        "type": "String",
+        "example": "May 3, 2026"
+      }
+    },
+    "x-translated": "1937c0d2"
+  },
+  "linkSharedOn": "Shared on {day}",
+  "@linkSharedOn": {
+    "description": "On the shares screen: when a link was handed out whose maker is not recorded (issue #269).",
+    "placeholders": {
+      "day": {
+        "type": "String",
+        "example": "May 3, 2026"
+      }
+    },
+    "x-translated": "e12d43ea"
+  },
+  "linkAlbumGone": "The shared folder is gone",
+  "@linkAlbumGone": {
+    "description": "On the shares screen: the folder a link points at does not exist any more (issue #269).",
+    "x-translated": "6d51f376"
+  },
+  "editLinkEntry": "Edit…",
+  "@editLinkEntry": {
+    "description": "Button on the shares screen opening the dialog changing a link's options (issue #269).",
+    "x-translated": "c6157043"
+  },
+  "editLinkTitle": "Change the link",
+  "@editLinkTitle": {
+    "description": "Title of the dialog changing a share link's options in place (issue #269).",
+    "x-translated": "73549bf5"
+  },
+  "editLinkNote": "The address of the link stays the same; the change applies from the next visit on.",
+  "@editLinkNote": {
+    "description": "Note in the dialog changing a share link (issue #269). Address the reader formally (German: 'Sie', never 'du').",
+    "x-translated": "4bec8065"
+  },
+  "expiryAsNow": "As now: {day}",
+  "@expiryAsNow": {
+    "description": "Choice of the expiry of a link being edited: keep the expiry it has (issue #269).",
+    "placeholders": {
+      "day": {
+        "type": "String",
+        "example": "May 3, 2026"
+      }
+    },
+    "x-translated": "f8e310c9"
+  },
+  "editLinkLessTitle": "Show less through this link?",
+  "@editLinkLessTitle": {
+    "description": "Title of the question asked before a change that takes something away from whoever holds the link (issue #269).",
+    "x-translated": "5f0f63c6"
+  },
+  "editLinkLessMessage": "Whoever holds this link will see or be allowed less from their next visit on.",
+  "@editLinkLessMessage": {
+    "description": "The question asked before a change that takes something away from a link (issue #269). Address the reader formally (German: 'Sie', never 'du').",
+    "x-translated": "2dcb9b1b"
+  },
+  "editLinkConfirm": "Change",
+  "@editLinkConfirm": {
+    "description": "Button confirming a change of a link that takes something away (issue #269).",
+    "x-translated": "47fbfb16"
+  },
+  "linkChanged": "The link was changed. It applies from the next visit on.",
+  "@linkChanged": {
+    "description": "Said after a link's options were changed (issue #269).",
+    "x-translated": "cb92cd5a"
+  },
+  "linkDeletedDone": "The link was deleted. Its address no longer opens anything.",
+  "@linkDeletedDone": {
+    "description": "Said after a link was deleted on the shares screen (issue #269).",
+    "x-translated": "f2cde979"
+  },
+  "recipientRenew": "Send a new link",
+  "@recipientRenew": {
+    "description": "Menu entry for a recipient of a personal link: issue a fresh link of their own, the old one stops working (issue #269).",
+    "x-translated": "79a10a10"
+  },
+  "recipientRenewTitle": "Send {name} a new link?",
+  "@recipientRenewTitle": {
+    "description": "Title of the question before a recipient's link is renewed (issue #269).",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Tante Petra"
+      }
+    },
+    "x-translated": "a8da86e5"
+  },
+  "recipientRenewMessage": "The link this person has now stops working at once. You send the new one yourself.",
+  "@recipientRenewMessage": {
+    "description": "The question before a recipient's link is renewed (issue #269). Address the reader formally (German: 'Sie', never 'du').",
+    "x-translated": "f56e5795"
+  },
+  "recipientRemove": "Take off this link",
+  "@recipientRemove": {
+    "description": "Menu entry for a recipient of a personal link: remove them from the link (issue #269).",
+    "x-translated": "21b922bb"
+  },
+  "recipientRemoveTitle": "Take {name} off this link?",
+  "@recipientRemoveTitle": {
+    "description": "Title of the question before a recipient is removed from a link (issue #269).",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Tante Petra"
+      }
+    },
+    "x-translated": "62787ed3"
+  },
+  "recipientRemoveMessage": "Their own link stops working at once; everybody else keeps theirs. The person stays a contact of the space.",
+  "@recipientRemoveMessage": {
+    "description": "The question before a recipient is removed from a link (issue #269). Address the reader formally (German: 'Sie', never 'du').",
+    "x-translated": "a381c7b7"
+  },
+  "recipientRemoved": "Taken off the link: {name}",
+  "@recipientRemoved": {
+    "description": "Said after a recipient was removed from a link (issue #269).",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Tante Petra"
+      }
+    },
+    "x-translated": "b4d047fe"
+  },
+  "shutOutTitle": "Shut {name} out of this link?",
+  "@shutOutTitle": {
+    "description": "Title of the question before a contact is shut out of one link (issue #269).",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Tante Petra"
+      }
+    },
+    "x-translated": "2f6b9ee4"
+  },
+  "shutOutMessage": "They can no longer open this link, and the browsers they opened it in are signed out. You can let them in again.",
+  "@shutOutMessage": {
+    "description": "The question before a contact is shut out of one link (issue #269). Address the reader formally (German: 'Sie', never 'du').",
+    "x-translated": "83ed12cf"
+  },
+  "shutOutDone": "Shut out of the link: {name}",
+  "@shutOutDone": {
+    "description": "Said after a contact was shut out of a link (issue #269).",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Tante Petra"
+      }
+    },
+    "x-translated": "f67f7bb"
+  },
+  "letInDone": "May open the link again: {name}",
+  "@letInDone": {
+    "description": "Said after a contact was let into a link again (issue #269).",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Tante Petra"
+      }
+    },
+    "x-translated": "82781390"
+  },
+  "sharesOfAlbum": "All shares…",
+  "@sharesOfAlbum": {
+    "description": "Button of the share dialog of an album opening the shares screen filtered to that album (issue #269).",
+    "x-translated": "70a7ea98"
+  },
+  "contactSharesEntry": "Shares…",
+  "@contactSharesEntry": {
+    "description": "Menu entry of a contact opening the shares screen filtered to that person (issue #269).",
+    "x-translated": "43fb549f"
   }
 }

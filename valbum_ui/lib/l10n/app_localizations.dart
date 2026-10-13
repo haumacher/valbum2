@@ -6434,6 +6434,246 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'This news is no longer there: its photos were moved or deleted, or they arrived more than 90 days ago.'**
   String get newsEntryGone;
+
+  /// Heading of the section of the server settings and title of the screen listing what is shared with whom (issue #269). A noun, German 'Freigaben'.
+  ///
+  /// In en, this message translates to:
+  /// **'Shares'**
+  String get sharesHeading;
+
+  /// Explains the shares section of the server settings (issue #269). Address the reader formally (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'What is shared with whom: the links you handed out, and for an administrator every link of the space. Delete a link, take a person off it, or change what it shows.'**
+  String get sharesLead;
+
+  /// Button of the shares section opening the screen of all share links (issue #269).
+  ///
+  /// In en, this message translates to:
+  /// **'Show shares'**
+  String get sharesOpen;
+
+  /// Choice of the shares screen: group the links by the album they share (issue #269).
+  ///
+  /// In en, this message translates to:
+  /// **'By album'**
+  String get sharesByAlbum;
+
+  /// Choice of the shares screen: group the links by the person they let in (issue #269).
+  ///
+  /// In en, this message translates to:
+  /// **'By person'**
+  String get sharesByPerson;
+
+  /// Label of the field narrowing the list of share links (issue #269).
+  ///
+  /// In en, this message translates to:
+  /// **'Filter by album, person or label'**
+  String get sharesFilter;
+
+  /// Switch of the shares screen: also list links whose lifetime has run out (issue #269).
+  ///
+  /// In en, this message translates to:
+  /// **'Show expired links'**
+  String get sharesShowExpired;
+
+  /// The shares screen when there is no share link at all (issue #269).
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing is shared yet.'**
+  String get sharesNone;
+
+  /// The shares screen when the filter leaves no link (issue #269).
+  ///
+  /// In en, this message translates to:
+  /// **'No link matches.'**
+  String get sharesNoMatch;
+
+  /// Under the list of share links: how many expired links the switch hides (issue #269).
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 expired link is hidden.} other{{count} expired links are hidden.}}'**
+  String sharesExpiredHidden(int count);
+
+  /// Group of the shares screen by person: the links whoever holds them may open (anonymous and personalized links) (issue #269).
+  ///
+  /// In en, this message translates to:
+  /// **'Anyone with the link'**
+  String get sharesAnyone;
+
+  /// Group of the shares screen by person: links sent to selected contacts that let nobody in any more, every recipient being removed or shut out (issue #269).
+  ///
+  /// In en, this message translates to:
+  /// **'Nobody any more'**
+  String get sharesNobody;
+
+  /// Chip on the shares screen: only the links sharing this album are shown; tapping its cross shows all again (issue #269).
+  ///
+  /// In en, this message translates to:
+  /// **'Album: {name}'**
+  String sharesScopeAlbum(String name);
+
+  /// Chip on the shares screen: only the links letting this person in are shown (issue #269).
+  ///
+  /// In en, this message translates to:
+  /// **'Person: {name}'**
+  String sharesScopePerson(String name);
+
+  /// On the shares screen: a link whose lifetime ran out on that day (issue #269). German 'Abgelaufen am {day}'.
+  ///
+  /// In en, this message translates to:
+  /// **'Expired on {day}'**
+  String linkExpiredOn(String day);
+
+  /// On the shares screen: who handed the link out and when (issue #269).
+  ///
+  /// In en, this message translates to:
+  /// **'Shared by {name} on {day}'**
+  String linkSharedBy(String name, String day);
+
+  /// On the shares screen: when a link was handed out whose maker is not recorded (issue #269).
+  ///
+  /// In en, this message translates to:
+  /// **'Shared on {day}'**
+  String linkSharedOn(String day);
+
+  /// On the shares screen: the folder a link points at does not exist any more (issue #269).
+  ///
+  /// In en, this message translates to:
+  /// **'The shared folder is gone'**
+  String get linkAlbumGone;
+
+  /// Button on the shares screen opening the dialog changing a link's options (issue #269).
+  ///
+  /// In en, this message translates to:
+  /// **'Edit…'**
+  String get editLinkEntry;
+
+  /// Title of the dialog changing a share link's options in place (issue #269).
+  ///
+  /// In en, this message translates to:
+  /// **'Change the link'**
+  String get editLinkTitle;
+
+  /// Note in the dialog changing a share link (issue #269). Address the reader formally (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'The address of the link stays the same; the change applies from the next visit on.'**
+  String get editLinkNote;
+
+  /// Choice of the expiry of a link being edited: keep the expiry it has (issue #269).
+  ///
+  /// In en, this message translates to:
+  /// **'As now: {day}'**
+  String expiryAsNow(String day);
+
+  /// Title of the question asked before a change that takes something away from whoever holds the link (issue #269).
+  ///
+  /// In en, this message translates to:
+  /// **'Show less through this link?'**
+  String get editLinkLessTitle;
+
+  /// The question asked before a change that takes something away from a link (issue #269). Address the reader formally (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'Whoever holds this link will see or be allowed less from their next visit on.'**
+  String get editLinkLessMessage;
+
+  /// Button confirming a change of a link that takes something away (issue #269).
+  ///
+  /// In en, this message translates to:
+  /// **'Change'**
+  String get editLinkConfirm;
+
+  /// Said after a link's options were changed (issue #269).
+  ///
+  /// In en, this message translates to:
+  /// **'The link was changed. It applies from the next visit on.'**
+  String get linkChanged;
+
+  /// Said after a link was deleted on the shares screen (issue #269).
+  ///
+  /// In en, this message translates to:
+  /// **'The link was deleted. Its address no longer opens anything.'**
+  String get linkDeletedDone;
+
+  /// Menu entry for a recipient of a personal link: issue a fresh link of their own, the old one stops working (issue #269).
+  ///
+  /// In en, this message translates to:
+  /// **'Send a new link'**
+  String get recipientRenew;
+
+  /// Title of the question before a recipient's link is renewed (issue #269).
+  ///
+  /// In en, this message translates to:
+  /// **'Send {name} a new link?'**
+  String recipientRenewTitle(String name);
+
+  /// The question before a recipient's link is renewed (issue #269). Address the reader formally (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'The link this person has now stops working at once. You send the new one yourself.'**
+  String get recipientRenewMessage;
+
+  /// Menu entry for a recipient of a personal link: remove them from the link (issue #269).
+  ///
+  /// In en, this message translates to:
+  /// **'Take off this link'**
+  String get recipientRemove;
+
+  /// Title of the question before a recipient is removed from a link (issue #269).
+  ///
+  /// In en, this message translates to:
+  /// **'Take {name} off this link?'**
+  String recipientRemoveTitle(String name);
+
+  /// The question before a recipient is removed from a link (issue #269). Address the reader formally (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'Their own link stops working at once; everybody else keeps theirs. The person stays a contact of the space.'**
+  String get recipientRemoveMessage;
+
+  /// Said after a recipient was removed from a link (issue #269).
+  ///
+  /// In en, this message translates to:
+  /// **'Taken off the link: {name}'**
+  String recipientRemoved(String name);
+
+  /// Title of the question before a contact is shut out of one link (issue #269).
+  ///
+  /// In en, this message translates to:
+  /// **'Shut {name} out of this link?'**
+  String shutOutTitle(String name);
+
+  /// The question before a contact is shut out of one link (issue #269). Address the reader formally (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'They can no longer open this link, and the browsers they opened it in are signed out. You can let them in again.'**
+  String get shutOutMessage;
+
+  /// Said after a contact was shut out of a link (issue #269).
+  ///
+  /// In en, this message translates to:
+  /// **'Shut out of the link: {name}'**
+  String shutOutDone(String name);
+
+  /// Said after a contact was let into a link again (issue #269).
+  ///
+  /// In en, this message translates to:
+  /// **'May open the link again: {name}'**
+  String letInDone(String name);
+
+  /// Button of the share dialog of an album opening the shares screen filtered to that album (issue #269).
+  ///
+  /// In en, this message translates to:
+  /// **'All shares…'**
+  String get sharesOfAlbum;
+
+  /// Menu entry of a contact opening the shares screen filtered to that person (issue #269).
+  ///
+  /// In en, this message translates to:
+  /// **'Shares…'**
+  String get contactSharesEntry;
 }
 
 class _AppLocalizationsDelegate

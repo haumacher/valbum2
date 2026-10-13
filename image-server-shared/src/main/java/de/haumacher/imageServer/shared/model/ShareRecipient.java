@@ -49,6 +49,9 @@ public class ShareRecipient extends de.haumacher.msgbuf.data.AbstractDataObject 
 	/** @see #getUploads() */
 	private static final String UPLOADS__PROP = "uploads";
 
+	/** @see #isAdmitted() */
+	private static final String ADMITTED__PROP = "admitted";
+
 	private String _contact = "";
 
 	private String _name = "";
@@ -66,6 +69,8 @@ public class ShareRecipient extends de.haumacher.msgbuf.data.AbstractDataObject 
 	private String _lastSeen = "";
 
 	private int _uploads = 0;
+
+	private boolean _admitted = false;
 
 	/**
 	 * Creates a {@link ShareRecipient} instance.
@@ -280,6 +285,26 @@ public class ShareRecipient extends de.haumacher.msgbuf.data.AbstractDataObject 
 		_uploads = value;
 	}
 
+	/**
+	 * Whether the link lets the recipient in now, see {@link LinkVisitor#isAdmitted()} and issue #269.
+	 */
+	public final boolean isAdmitted() {
+		return _admitted;
+	}
+
+	/**
+	 * @see #isAdmitted()
+	 */
+	public de.haumacher.imageServer.shared.model.ShareRecipient setAdmitted(boolean value) {
+		internalSetAdmitted(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #isAdmitted()} without chain call utility. */
+	protected final void internalSetAdmitted(boolean value) {
+		_admitted = value;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.ShareRecipient readShareRecipient(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.ShareRecipient result = new de.haumacher.imageServer.shared.model.ShareRecipient();
@@ -317,6 +342,8 @@ public class ShareRecipient extends de.haumacher.msgbuf.data.AbstractDataObject 
 		out.value(getLastSeen());
 		out.name(UPLOADS__PROP);
 		out.value(getUploads());
+		out.name(ADMITTED__PROP);
+		out.value(isAdmitted());
 	}
 
 	@Override
@@ -338,6 +365,7 @@ public class ShareRecipient extends de.haumacher.msgbuf.data.AbstractDataObject 
 			case FIRST_OPENED__PROP: setFirstOpened(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case LAST_SEEN__PROP: setLastSeen(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case UPLOADS__PROP: setUploads(in.nextInt()); break;
+			case ADMITTED__PROP: setAdmitted(in.nextBoolean()); break;
 			default: super.readField(in, field);
 		}
 	}

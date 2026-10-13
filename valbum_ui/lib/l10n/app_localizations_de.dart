@@ -4184,4 +4184,165 @@ class AppLocalizationsDe extends AppLocalizations {
   @override
   String get newsEntryGone =>
       'Diese Meldung ist nicht mehr vorhanden: Die Fotos wurden verschoben oder gelöscht, oder sie sind vor mehr als 90 Tagen eingegangen.';
+
+  @override
+  String get sharesHeading => 'Freigaben';
+
+  @override
+  String get sharesLead =>
+      'Was mit wem geteilt ist: die Links, die Sie verteilt haben, und für einen Administrator jeder Link des Bereichs. Löschen Sie einen Link, nehmen Sie eine Person davon herunter oder ändern Sie, was er zeigt.';
+
+  @override
+  String get sharesOpen => 'Freigaben anzeigen';
+
+  @override
+  String get sharesByAlbum => 'Nach Album';
+
+  @override
+  String get sharesByPerson => 'Nach Person';
+
+  @override
+  String get sharesFilter => 'Nach Album, Person oder Label filtern';
+
+  @override
+  String get sharesShowExpired => 'Abgelaufene Links anzeigen';
+
+  @override
+  String get sharesNone => 'Es wurde noch nichts geteilt.';
+
+  @override
+  String get sharesNoMatch => 'Kein Link passt.';
+
+  @override
+  String sharesExpiredHidden(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count abgelaufene Links werden ausgeblendet.',
+      one: '1 abgelaufener Link wird ausgeblendet.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get sharesAnyone => 'Jeder, der den Link hat';
+
+  @override
+  String get sharesNobody => 'Niemand mehr';
+
+  @override
+  String sharesScopeAlbum(String name) {
+    return 'Album: $name';
+  }
+
+  @override
+  String sharesScopePerson(String name) {
+    return 'Person: $name';
+  }
+
+  @override
+  String linkExpiredOn(String day) {
+    return 'Abgelaufen am $day';
+  }
+
+  @override
+  String linkSharedBy(String name, String day) {
+    return 'Geteilt von $name am $day';
+  }
+
+  @override
+  String linkSharedOn(String day) {
+    return 'Geteilt am $day';
+  }
+
+  @override
+  String get linkAlbumGone =>
+      'Der freigegebene Ordner ist nicht mehr vorhanden';
+
+  @override
+  String get editLinkEntry => 'Bearbeiten…';
+
+  @override
+  String get editLinkTitle => 'Link ändern';
+
+  @override
+  String get editLinkNote =>
+      'Die Adresse des Links bleibt unverändert; die Änderung gilt ab dem nächsten Besuch.';
+
+  @override
+  String expiryAsNow(String day) {
+    return 'Wie bisher: $day';
+  }
+
+  @override
+  String get editLinkLessTitle => 'Über diesen Link weniger anzeigen?';
+
+  @override
+  String get editLinkLessMessage =>
+      'Wer diesen Link hat, sieht oder darf ab dem nächsten Besuch weniger.';
+
+  @override
+  String get editLinkConfirm => 'Ändern';
+
+  @override
+  String get linkChanged =>
+      'Der Link wurde geändert. Die Änderung gilt ab dem nächsten Besuch.';
+
+  @override
+  String get linkDeletedDone =>
+      'Der Link wurde gelöscht. Über seine Adresse lässt sich nichts mehr öffnen.';
+
+  @override
+  String get recipientRenew => 'Neuen Link senden';
+
+  @override
+  String recipientRenewTitle(String name) {
+    return 'Soll $name ein neuer Link gesendet werden?';
+  }
+
+  @override
+  String get recipientRenewMessage =>
+      'Der Link, über den diese Person bisher zugreifen konnte, funktioniert ab sofort nicht mehr. Sie senden den neuen Link selbst.';
+
+  @override
+  String get recipientRemove => 'Von diesem Link entfernen';
+
+  @override
+  String recipientRemoveTitle(String name) {
+    return 'Soll $name aus diesem Link entfernt werden?';
+  }
+
+  @override
+  String get recipientRemoveMessage =>
+      'Der eigene Link dieser Person funktioniert sofort nicht mehr; alle anderen behalten ihren. Die Person bleibt ein Kontakt des Bereichs.';
+
+  @override
+  String recipientRemoved(String name) {
+    return 'Aus dem Link entfernt: $name';
+  }
+
+  @override
+  String shutOutTitle(String name) {
+    return 'Soll $name von diesem Link ausgesperrt werden?';
+  }
+
+  @override
+  String get shutOutMessage =>
+      'Die Person kann diesen Link nicht mehr öffnen, und die Browser, in denen sie ihn geöffnet hat, werden abgemeldet. Sie können sie wieder zulassen.';
+
+  @override
+  String shutOutDone(String name) {
+    return 'Vom Link ausgesperrt: $name';
+  }
+
+  @override
+  String letInDone(String name) {
+    return 'Darf den Link wieder öffnen: $name';
+  }
+
+  @override
+  String get sharesOfAlbum => 'Alle Freigaben…';
+
+  @override
+  String get contactSharesEntry => 'Freigaben…';
 }

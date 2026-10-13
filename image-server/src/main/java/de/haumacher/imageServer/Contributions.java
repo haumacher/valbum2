@@ -82,6 +82,19 @@ public class Contributions {
 		public int of(String subject, String link) {
 			return _counts.getOrDefault(key(subject, link), 0);
 		}
+
+		/**
+		 * How many photographs were added through the share link of the given id, by whoever came
+		 * in through it, see issue #269.
+		 *
+		 * <p>
+		 * The uploads of its contacts, recorded with the link, and those made with the link's own
+		 * token, whose subject is the link itself (<code>token:&lt;id&gt;</code>, issue #53).
+		 * </p>
+		 */
+		public int ofLink(String link) {
+			return _counts.getOrDefault(key("", link), 0) + _counts.getOrDefault("token:" + link, 0);
+		}
 	}
 
 	/** Creates the {@link Contributions} of the space rooted at the given folder. */
@@ -146,6 +159,8 @@ public class Contributions {
 			counts.merge(subject, 1, Integer::sum);
 			if (!attribution.getLink().isEmpty()) {
 				counts.merge(key(subject, attribution.getLink()), 1, Integer::sum);
+				// Whoever it was, for the link's own count, see issue #269.
+				counts.merge(key("", attribution.getLink()), 1, Integer::sum);
 			}
 		}
 		Folder result = new Folder(modified, size, counts);

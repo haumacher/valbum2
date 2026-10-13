@@ -33,6 +33,9 @@ public class LinkVisitor extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getShutOut() */
 	private static final String SHUT_OUT__PROP = "shutOut";
 
+	/** @see #isAdmitted() */
+	private static final String ADMITTED__PROP = "admitted";
+
 	private String _contact = "";
 
 	private String _name = "";
@@ -44,6 +47,8 @@ public class LinkVisitor extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private int _uploads = 0;
 
 	private String _shutOut = "";
+
+	private boolean _admitted = false;
 
 	/**
 	 * Creates a {@link LinkVisitor} instance.
@@ -176,6 +181,28 @@ public class LinkVisitor extends de.haumacher.msgbuf.data.AbstractDataObject {
 		_shutOut = value;
 	}
 
+	/**
+	 * Whether the link lets the contact in now: not shut out of it, not shut out of the space, and
+	 * the link still open to them &mdash; the rule of the overview of issue #267, regardless of
+	 * the link's expiry. What the "by person" view of the shares of issue #269 groups by.
+	 */
+	public final boolean isAdmitted() {
+		return _admitted;
+	}
+
+	/**
+	 * @see #isAdmitted()
+	 */
+	public de.haumacher.imageServer.shared.model.LinkVisitor setAdmitted(boolean value) {
+		internalSetAdmitted(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #isAdmitted()} without chain call utility. */
+	protected final void internalSetAdmitted(boolean value) {
+		_admitted = value;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.LinkVisitor readLinkVisitor(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.LinkVisitor result = new de.haumacher.imageServer.shared.model.LinkVisitor();
@@ -203,6 +230,8 @@ public class LinkVisitor extends de.haumacher.msgbuf.data.AbstractDataObject {
 		out.value(getUploads());
 		out.name(SHUT_OUT__PROP);
 		out.value(getShutOut());
+		out.name(ADMITTED__PROP);
+		out.value(isAdmitted());
 	}
 
 	@Override
@@ -214,6 +243,7 @@ public class LinkVisitor extends de.haumacher.msgbuf.data.AbstractDataObject {
 			case LAST_SEEN__PROP: setLastSeen(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case UPLOADS__PROP: setUploads(in.nextInt()); break;
 			case SHUT_OUT__PROP: setShutOut(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case ADMITTED__PROP: setAdmitted(in.nextBoolean()); break;
 			default: super.readField(in, field);
 		}
 	}

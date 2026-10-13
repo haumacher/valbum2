@@ -294,23 +294,24 @@ public class ShareStore {
 
 		private String _path;
 
-		private final String _label;
+		// The options an edit changes (issue #269), read by every request through the link.
+		private volatile String _label;
 
-		private final String _expires;
+		private volatile String _expires;
 
-		private final int _maxPrivacy;
+		private volatile int _maxPrivacy;
 
-		private final int _minRating;
+		private volatile int _minRating;
 
 		private final String _created;
 
-		private final java.util.Set<String> _rights;
+		private volatile java.util.Set<String> _rights;
 
 		private final String _createdBy;
 
 		private String _type = ANONYMOUS;
 
-		private String _photoLabel = "";
+		private volatile String _photoLabel = "";
 
 		private final List<Recipient> _recipients = new ArrayList<>();
 
@@ -384,10 +385,9 @@ public class ShareStore {
 		 * Where this link points after its folder was renamed, see issue #130.
 		 *
 		 * <p>
-		 * The one thing about a link that ever changes, and it changes
-		 * nothing the link <em>allows</em>: the folder it was handed out on is the same folder,
-		 * spelled the way it is spelled now. What a link may do and show stays frozen at what it
-		 * was created with, see {@link ShareStore}.
+		 * It changes nothing the link <em>allows</em>: the folder it was handed out on is the same
+		 * folder, spelled the way it is spelled now. What a link may do and show changes only when
+		 * its maker or an administrator edits it, see {@link ShareStore#edit} and issue #269.
 		 * </p>
 		 */
 		void setPath(String path) {
@@ -454,9 +454,10 @@ public class ShareStore {
 		 * see issue #213.
 		 *
 		 * <p>
-		 * Frozen like {@link #getMinRating()}, with one exception: a rename of the label in the
-		 * album the link points at carries the link along ({@link ShareStore#relabel}), because
-		 * the link was handed out on those photographs and not on a spelling.
+		 * Changed like {@link #getMinRating()} by an edit of the link ({@link ShareStore#edit},
+		 * issue #269), and by a rename of the label in the album the link points at
+		 * ({@link ShareStore#relabel}), because the link was handed out on those photographs and
+		 * not on a spelling.
 		 * </p>
 		 */
 		public String getPhotoLabel() {
@@ -804,6 +805,59 @@ public class ShareStore {
 				+ "'.");
 		}
 		return changed;
+	}
+
+	/**
+	 * Changes the options of the given link in place, see issue #269.
+	 *
+	 * <p>
+	 * The token and the tokens of the recipients stay the same, and so do the link's folder, its
+	 * type, its recipients and who made it: the link is the same link, and the next request through
+	 * it is answered with what it allows now. The values are taken as given; whether the editor may
+	 * give them is the caller's question.
+	 * </p>
+	 *
+	 * @return The link, <code>null</code> if there is none of that id.
+	 */
+	public synchronized Link edit(String id, String label, String expires, int maxPrivacy, int minRating,
+			java.util.Collection<String> rights, String photoLabel) throws IOException {
+		Link link = get(id);
+		if (link == null) {
+			return null;
+		}
+		link._label = label == null ? "" : label;
+		link._expires = expires == null ? "" : expires;
+		link._maxPrivacy = maxPrivacy;
+		link._minRating = minRating;
+		link._rights = Rights.closure(rights);
+		link._photoLabel = photoLabel == null ? "" : photoLabel;
+		store();
+		return link;
+	}
+
+	/**
+	 * Takes the given contact off the recipients of the given addressed link, see issue #269.
+	 *
+	 * <p>
+	 * Their own link goes with its voided predecessors &mdash; from then on tokens nobody issued
+	 * &mdash; and so do their visits of the link, which no longer admits them; whether they were shut
+	 * out of it is kept, so that adding them again later does not let them in by surprise. The link
+	 * stays addressed, see {@link Link#isAddressed()}, and every other recipient's link keeps working.
+	 * </p>
+	 *
+	 * @return Whether the contact was a recipient of the link.
+	 */
+	public synchronized boolean removeRecipient(String linkId, String contact) throws IOException {
+		Link link = get(linkId);
+		Recipient recipient = link == null ? null : link.recipient(contact);
+		if (recipient == null) {
+			return false;
+		}
+		link._recipients.remove(recipient);
+		link._addressed = true;
+		link._visitors.remove(contact);
+		store();
+		return true;
 	}
 
 	/**

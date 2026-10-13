@@ -7594,6 +7594,14 @@ class GroupRename extends _JsonObject {
 ///  </p>
 /// 
 ///  <p>
+///  Sent to <code>&lt;folder&gt;/?action=edit-share</code> to change the options of the link of the
+///  given {@link #id} in place (issue #269): {@link #label}, {@link #expires}, {@link #rights},
+///  {@link #maxPrivacy}, {@link #minRating} and {@link #photoLabel} are replaced by what the request
+///  says, everything else is ignored. The token stays the same, and the next request through the
+///  link sees the new options. Answered with the link as {@link ShareLinkList} lists it.
+///  </p>
+/// 
+///  <p>
 ///  The token is never part of this message: it is answered exactly once, in a
 ///  {@link ShareLinkCreated}, and the server stores nothing but its hash.
 ///  </p>
@@ -7682,6 +7690,19 @@ class ShareLink extends _JsonObject {
 	///  other link.
 	List<LinkVisitor> visitors;
 
+	///  The title of the shared folder, empty where it has none or is gone; answered by
+	///  <code>&lt;data&gt;/?type=space-shares</code> only, see issue #269.
+	String title;
+
+	///  How many photographs were added through the link that the space still holds, by whoever
+	///  came in through it; answered by <code>&lt;data&gt;/?type=space-shares</code> only, see
+	///  issue #269 and {@link LinkVisitor#uploads}.
+	int uploads;
+
+	///  The labels of the shared album, which {@link #photoLabel} may be edited to; empty for a folder
+	///  of folders. Answered by <code>&lt;data&gt;/?type=space-shares</code> only, see issue #269.
+	List<LabelName> albumLabels;
+
 	/// Creates a ShareLink.
 	ShareLink({
 			this.id = "", 
@@ -7699,6 +7720,9 @@ class ShareLink extends _JsonObject {
 			this.photoLabel = "", 
 			this.addressed = false, 
 			this.visitors = const [], 
+			this.title = "", 
+			this.uploads = 0, 
+			this.albumLabels = const [], 
 	});
 
 	/// Parses a ShareLink from a string source.
@@ -7806,6 +7830,27 @@ class ShareLink extends _JsonObject {
 				}
 				break;
 			}
+			case "title": {
+				title = json.expectString();
+				break;
+			}
+			case "uploads": {
+				uploads = json.expectInt();
+				break;
+			}
+			case "albumLabels": {
+				json.expectArray();
+				albumLabels = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = LabelName.read(json);
+						if (value != null) {
+							albumLabels.add(value);
+						}
+					}
+				}
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -7870,6 +7915,19 @@ class ShareLink extends _JsonObject {
 			_element.writeContent(json);
 		}
 		json.endArray();
+
+		json.addKey("title");
+		json.addString(title);
+
+		json.addKey("uploads");
+		json.addNumber(uploads);
+
+		json.addKey("albumLabels");
+		json.startArray();
+		for (var _element in albumLabels) {
+			_element.writeContent(json);
+		}
+		json.endArray();
 	}
 
 }
@@ -7896,6 +7954,11 @@ class LinkVisitor extends _JsonObject {
 	///  When the contact was shut out of this link, empty while they are not.
 	String shutOut;
 
+	///  Whether the link lets the contact in now: not shut out of it, not shut out of the space, and
+	///  the link still open to them &mdash; the rule of the overview of issue #267, regardless of
+	///  the link's expiry. What the "by person" view of the shares of issue #269 groups by.
+	bool admitted;
+
 	/// Creates a LinkVisitor.
 	LinkVisitor({
 			this.contact = "", 
@@ -7904,6 +7967,7 @@ class LinkVisitor extends _JsonObject {
 			this.lastSeen = "", 
 			this.uploads = 0, 
 			this.shutOut = "", 
+			this.admitted = false, 
 	});
 
 	/// Parses a LinkVisitor from a string source.
@@ -7948,6 +8012,10 @@ class LinkVisitor extends _JsonObject {
 				shutOut = json.expectString();
 				break;
 			}
+			case "admitted": {
+				admitted = json.expectBool();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -7973,6 +8041,9 @@ class LinkVisitor extends _JsonObject {
 
 		json.addKey("shutOut");
 		json.addString(shutOut);
+
+		json.addKey("admitted");
+		json.addBool(admitted);
 	}
 
 }
@@ -8219,6 +8290,9 @@ class ShareRecipient extends _JsonObject {
 	///  {@link LinkVisitor#uploads} and issue #203.
 	int uploads;
 
+	///  Whether the link lets the recipient in now, see {@link LinkVisitor#admitted} and issue #269.
+	bool admitted;
+
 	/// Creates a ShareRecipient.
 	ShareRecipient({
 			this.contact = "", 
@@ -8230,6 +8304,7 @@ class ShareRecipient extends _JsonObject {
 			this.firstOpened = "", 
 			this.lastSeen = "", 
 			this.uploads = 0, 
+			this.admitted = false, 
 	});
 
 	/// Parses a ShareRecipient from a string source.
@@ -8295,6 +8370,10 @@ class ShareRecipient extends _JsonObject {
 				uploads = json.expectInt();
 				break;
 			}
+			case "admitted": {
+				admitted = json.expectBool();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -8333,6 +8412,9 @@ class ShareRecipient extends _JsonObject {
 
 		json.addKey("uploads");
 		json.addNumber(uploads);
+
+		json.addKey("admitted");
+		json.addBool(admitted);
 	}
 
 }
@@ -9188,6 +9270,71 @@ class ShareResend extends _JsonObject {
 
 	@override
 	String _jsonType() => "ShareResend";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "link": {
+				link = json.expectString();
+				break;
+			}
+			case "contact": {
+				contact = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("link");
+		json.addString(link);
+
+		json.addKey("contact");
+		json.addString(contact);
+	}
+
+}
+
+///  Taking one recipient off an addressed personal link, <code>&lt;folder&gt;/?action=remove-recipient</code>
+///  (issue #269).
+/// 
+///  <p>
+///  The recipient's own link and its voided predecessors are from then on tokens this server never
+///  issued, and their visits of the link are forgotten; the link stays addressed, the contact stays
+///  a contact of the space, and what they uploaded keeps its attribution. Answered with the link as
+///  {@link ShareLinkList} lists it.
+///  </p>
+class RecipientRemove extends _JsonObject {
+	///  The id of the share link.
+	String link;
+
+	///  The id of the contact to take off it; a recipient of the link.
+	String contact;
+
+	/// Creates a RecipientRemove.
+	RecipientRemove({
+			this.link = "", 
+			this.contact = "", 
+	});
+
+	/// Parses a RecipientRemove from a string source.
+	static RecipientRemove? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a RecipientRemove instance from the given reader.
+	static RecipientRemove read(JsonReader json) {
+		RecipientRemove result = RecipientRemove();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "RecipientRemove";
 
 	@override
 	void _readProperty(String key, JsonReader json) {

@@ -213,7 +213,8 @@ public final class PersonalLinks {
 				.setShutOut(link.shutOutAt(id))
 				.setFirstOpened(visit != null ? visit.getFirst() : recipient.getOpened())
 				.setLastSeen(visit != null ? visit.getLast() : "")
-				.setUploads(counts.of(subject(id), link.getId())));
+				.setUploads(counts.of(subject(id), link.getId()))
+				.setAdmitted(admitted(link, contact)));
 		}
 		for (java.util.Map.Entry<String, ShareStore.Visit> entry : link.getVisitors().entrySet()) {
 			String id = entry.getKey();
@@ -231,9 +232,19 @@ public final class PersonalLinks {
 				.setFirstSeen(entry.getValue().getFirst())
 				.setLastSeen(entry.getValue().getLast())
 				.setUploads(counts.of(contact.getSubject(), link.getId()))
-				.setShutOut(link.shutOutAt(id)));
+				.setShutOut(link.shutOutAt(id))
+				.setAdmitted(admitted(link, contact)));
 		}
 		return wire;
+	}
+
+	/**
+	 * Whether the given link lets the given contact in now, its expiry aside: the rule of the
+	 * overview of issue #267 ({@link AuthService#sharedWith}), by which the shares of issue #269 are
+	 * grouped by person. A contact deleted from the space is let in nowhere.
+	 */
+	public static boolean admitted(ShareStore.Link link, ContactStore.Contact contact) {
+		return contact != null && !contact.isBlocked() && link.admits(contact.getId());
 	}
 
 	/** How an attribution names a contact of the given id. */
