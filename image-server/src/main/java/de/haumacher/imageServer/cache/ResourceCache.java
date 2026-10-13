@@ -28,7 +28,6 @@ import de.haumacher.imageServer.shared.model.FolderResource;
 import de.haumacher.imageServer.shared.model.ImageGroup;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.ListingInfo;
-import de.haumacher.imageServer.shared.model.Orientation;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.model.ThumbnailInfo;
 import de.haumacher.imageServer.shared.util.AlbumUtil;
@@ -745,7 +744,10 @@ public class ResourceCache {
 				} catch (RuntimeException ex) {
 					sidecar = null;
 				}
-				if (!(sidecar instanceof AlbumInfo)) {
+				// The tile of an album that chose no cover is described from its record, see
+				// issue #260.
+				if (!(sidecar instanceof AlbumInfo) || (((AlbumInfo) sidecar).getKind() == AlbumKind.ALBUM
+					&& ((AlbumInfo) sidecar).getIndexPicture() == null)) {
 					recordInline(folder, false);
 				}
 			}
@@ -1141,10 +1143,18 @@ public class ResourceCache {
 					// Whether the tile stands out, read from the sidecar like the title, see
 					// issue #239.
 					folderInfo.setStarred(albumInfo.isStarred());
-					// A cropped photograph is shown cut, and the tile asks for its region, see
-					// ThumbnailInfo#getCrop() and issue #212.
-					folderInfo.setIndexPicture(de.haumacher.imageServer.Crops.withRegion(albumInfo,
-						albumInfo.getIndexPicture()));
+					ThumbnailInfo chosen = albumInfo.getIndexPicture();
+					if (chosen != null) {
+						// A cropped photograph is shown cut, and the tile asks for its region, see
+						// ThumbnailInfo#getCrop() and issue #212.
+						folderInfo.setIndexPicture(de.haumacher.imageServer.Crops.withRegion(albumInfo, chosen));
+					} else if (albumInfo.getKind() == AlbumKind.ALBUM) {
+						// An album that chose no cover is shown by the same rule as one without a
+						// sidecar, never by none: writing a sidecar (a star, a rating, a title) must
+						// not take the picture off its tile, see issue #260. A collection and a
+						// saved search are given theirs where they are answered.
+						folderInfo.setIndexPicture(defaultCover(folder, albumInfo));
+					}
 					return folderInfo;
 				}
 				else if (folderResource instanceof ListingInfo) {
@@ -1170,37 +1180,37 @@ public class ResourceCache {
 				return nameOnly(folder);
 			}
 			folderInfo.setKind(record.isEmpty() ? FolderKind.FOLDER : FolderKind.ALBUM);
-			ImagePart picture = null;
-			for (AnalysisRecord.Entry entry : record.entries()) {
-				if (entry.isAnalysed() && entry.getPart().getWidth() > 0 && entry.getPart().getHeight() > 0) {
-					picture = entry.getPart();
-					break;
-				}
-			}
+			// The album the folder is answered as (see #loadDir(PathInfo)), shown by the rule of
+			// an album that chose no cover, see issue #260.
+			AlbumInfo album = loadAlbum(AlbumInfo.create().setKind(Inboxes.kindOf(folder)), folder, record);
+			ImagePart picture = de.haumacher.imageServer.PrivacyFilter.defaultImage(album);
 			if (picture != null) {
-				double width = picture.getWidth();
-				double height = picture.getHeight();
-
-				double scale = width / height;
-				double ty;
-				if (scale < 1.0) {
-					scale = 1.0 / scale;
-					ty = (height - width) / height * 150;
-				} else {
-					ty = 0.0;
-				}
-
-				ThumbnailInfo thumbnail = ThumbnailInfo.create().setImage(picture.getName()).setScale(scale);
-				thumbnail.setTy(ty);
-				// A folder without a sidecar carries no stored rotation: the frame this crop was
-				// measured in is the one the server's own rendition has, which is the file upright
-				// (the analysis applies the EXIF orientation to the dimensions above). See
-				// ThumbnailInfo#getOrientation() and issue #115.
-				thumbnail.setOrientation(Orientation.IDENTITY);
-				folderInfo.setIndexPicture(thumbnail);
+				folderInfo.setIndexPicture(de.haumacher.imageServer.PrivacyFilter.defaultCover(album));
 			}
 			titleFromName(folderInfo, folderName, picture == null ? 0L : picture.getDate());
 			return folderInfo;
+		}
+
+		/**
+		 * The picture the tile of the given album shows where its sidecar chose none, see
+		 * {@link de.haumacher.imageServer.PrivacyFilter#defaultCover(AlbumInfo)} and issue #260.
+		 *
+		 * <p>
+		 * Read from the sidecar and the analysis record exactly as the album itself is (see
+		 * {@link #loadAlbum(AlbumInfo, File, AnalysisRecord)}), so the tile shows what opening the
+		 * album would show first: no image is opened, and nothing is written. A folder the
+		 * background has not recorded yet has no picture yet.
+		 * </p>
+		 *
+		 * @param sidecar
+		 *        The album's sidecar as just read; completed by its record here.
+		 */
+		private static ThumbnailInfo defaultCover(File folder, AlbumInfo sidecar) {
+			AnalysisRecord record = AnalysisRecord.read(folder);
+			if (record == null) {
+				return null;
+			}
+			return de.haumacher.imageServer.PrivacyFilter.defaultCover(loadAlbum(sidecar, folder, record));
 		}
 
 		/**

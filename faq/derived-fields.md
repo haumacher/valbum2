@@ -10,3 +10,8 @@ photos in the answer's own shell (`PhotoPlaces.localize`).
 `AlbumKind.COLLECTION` and `AlbumKind.SEARCH` are the exceptions: stored once at creation. A saved
 search stores its `query` (and title, date, star, picture) and never a part: its parts are found
 live and answered to the caller (`ImageServlet#searchAnswer`).
+
+The cover of an album that chose none (#260) is derived but never put into the album at all: only
+the tile (`FolderInfo.indexPicture`) carries it (`PrivacyFilter.defaultCover`). The album JSON
+answers `indexPicture` only where one was chosen — the app's cover editor saves back what it was
+answered, so a default answered there would be stored as a choice.

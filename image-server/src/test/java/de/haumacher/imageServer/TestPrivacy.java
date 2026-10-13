@@ -243,7 +243,9 @@ public class TestPrivacy extends TestCase {
 		FolderInfo folder = folder(listing(get(servlet(), "/", "json", null)), TRIP);
 
 		assertNotNull("The album is listed with a cover the caller may see.", folder.getIndexPicture());
-		assertEquals("c.jpg", folder.getIndexPicture().getImage());
+		// The first best-rated image the caller sees, the rule of an album that chose none (issue
+		// #260): the visible head of the third group.
+		assertEquals("g-best.jpg", folder.getIndexPicture().getImage());
 	}
 
 	public void testACoverAMemberMaySeeIsShownToAMemberOnly() throws Exception {
@@ -251,7 +253,8 @@ public class TestPrivacy extends TestCase {
 		String token = signIn();
 
 		assertEquals("a.jpg", folder(listing(get(servlet(), "/", "json", token)), TRIP).getIndexPicture().getImage());
-		assertEquals("b.jpg",
+		// The best-rated a member sees, see issue #260; never the private one.
+		assertEquals("g-best.jpg",
 			folder(listing(get(servlet(), "/", "json", token, "members")), TRIP).getIndexPicture().getImage());
 	}
 
@@ -267,7 +270,8 @@ public class TestPrivacy extends TestCase {
 	public void testTheAlbumsOwnCoverIsFilteredToo() throws Exception {
 		library();
 
-		assertEquals("c.jpg", album(get(servlet(), "/" + TRIP + "/", "json", null)).getIndexPicture().getImage());
+		assertEquals("Substituted by the rule of the listing, see issue #260.", "g-best.jpg",
+			album(get(servlet(), "/" + TRIP + "/", "json", null)).getIndexPicture().getImage());
 		assertNull(album(get(servlet(), "/Secret/", "json", null)).getIndexPicture());
 	}
 

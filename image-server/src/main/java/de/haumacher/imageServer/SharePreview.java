@@ -625,7 +625,11 @@ public class SharePreview implements ResourceServlet.PageDecorator, ResourceServ
 		return null;
 	}
 
-	/** The image the given album is shown by, <code>null</code> if it shows none. */
+	/**
+	 * The image the given album is shown by, <code>null</code> if it shows none: the one it chose,
+	 * else the one its tile shows by default, see {@link PrivacyFilter#defaultCover(AlbumInfo)} and
+	 * issue #260.
+	 */
 	private static ImagePart coverOf(AlbumInfo album) {
 		ThumbnailInfo indexPicture = album.getIndexPicture();
 		if (indexPicture != null) {
@@ -634,7 +638,7 @@ public class SharePreview implements ResourceServlet.PageDecorator, ResourceServ
 				return named;
 			}
 		}
-		return PrivacyFilter.firstImage(album);
+		return PrivacyFilter.defaultImage(album);
 	}
 
 	/** The image of the given name in the given album, <code>null</code> if it holds none. */

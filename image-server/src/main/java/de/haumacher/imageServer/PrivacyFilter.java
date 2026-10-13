@@ -124,8 +124,11 @@ public class PrivacyFilter {
 	 * under it is shown, see {@link FilteredHeadings} and issue #213: a section that shows nothing
 	 * is not a section of this view; a view that hides no photograph keeps every heading, empty ones
 	 * included. The album's own index picture follows the same rule as the
-	 * cover in a listing: if it names an image the caller must not see, the first visible image
-	 * takes its place, see {@link #cover(AlbumInfo, ThumbnailInfo, Set)}.
+	 * cover in a listing: if it names an image the caller must not see, the image the album would
+	 * be shown by had it chosen none takes its place, see {@link #cover(AlbumInfo, ThumbnailInfo, Set)}.
+	 * An album that chose none is answered without one, whoever asks: what the album answers is
+	 * what the author chose, and an editor that is answered a default would store it back as a
+	 * choice, see issue #260.
 	 * </p>
 	 */
 	AlbumInfo filterAlbum(AlbumInfo album, int clearance, int minRating, String label) {
@@ -185,15 +188,76 @@ public class PrivacyFilter {
 	 *        The index picture the album carries, <code>null</code> if it has none.
 	 * @param visibleNames
 	 *        The names of the images the caller may see.
-	 * @return The original index picture while it names a visible image, one built for the first
-	 *         visible image otherwise, <code>null</code> if there is no visible image at all.
+	 * @return The original index picture while it names a visible image, the
+	 *         {@link #defaultCover(AlbumInfo) default} of what the caller sees otherwise,
+	 *         <code>null</code> where the album chose none or the caller sees no image to stand for
+	 *         it.
 	 */
 	private static ThumbnailInfo cover(AlbumInfo filtered, ThumbnailInfo original, Set<String> visibleNames) {
-		if (original != null && visibleNames.contains(original.getImage())) {
+		if (original == null) {
+			// Nothing chosen, nothing answered: see issue #260.
+			return null;
+		}
+		if (visibleNames.contains(original.getImage())) {
 			return original;
 		}
-		ImagePart first = firstImage(filtered);
-		return first == null ? null : thumbnail(first);
+		ImagePart substitute = defaultImage(filtered);
+		return substitute == null ? null : thumbnail(substitute);
+	}
+
+	/**
+	 * The picture the given album is shown with where it chose none, see issue #260.
+	 *
+	 * <p>
+	 * One rule for every tile of an album that has no {@link AlbumInfo#getIndexPicture() index
+	 * picture} of its own, with a sidecar or without: its first best-rated image, the rule of issue
+	 * #153 by which the server picks a cover wherever it picks one (see
+	 * {@link #bestImage(Iterable)}). Among images nobody rated that is the image the album shows
+	 * first. It is derived from the album as the loader reads it &mdash; its sidecar and its
+	 * analysis record &mdash; whenever a tile is described, and never stored: the sidecar keeps
+	 * saying that nothing was chosen, so a rating, a new photograph or a star moves the tile along
+	 * with the album instead of freezing a guess.
+	 * </p>
+	 *
+	 * <p>
+	 * The image is framed by {@link #thumbnail(ImagePart)} and carries its crop as
+	 * {@link Crops#withRegion(AlbumInfo, ThumbnailInfo)} gives it, exactly as a chosen cover does.
+	 * A caller who may see less is shown the default of what they see, see
+	 * {@link #tileCover(AlbumInfo, int, int, String)}.
+	 * </p>
+	 *
+	 * @param album
+	 *        The album with every part the caller is shown.
+	 * @return The cover, <code>null</code> where the album holds no image to be one.
+	 */
+	public static ThumbnailInfo defaultCover(AlbumInfo album) {
+		ImagePart image = defaultImage(album);
+		return image == null ? null : Crops.withRegion(album, thumbnail(image));
+	}
+
+	/** The image {@link #defaultCover(AlbumInfo)} shows, <code>null</code> for none. */
+	public static ImagePart defaultImage(AlbumInfo album) {
+		return bestImage(album.getParts());
+	}
+
+	/**
+	 * The picture the tile of the given album shows to such a request: its chosen cover while the
+	 * request may see it, else the {@link #defaultCover(AlbumInfo) default} of what the request
+	 * sees, see issue #260.
+	 *
+	 * @param album
+	 *        The complete album as the cache holds it.
+	 * @return The cover with its crop, <code>null</code> where the request sees no image of the
+	 *         album.
+	 */
+	ThumbnailInfo tileCover(AlbumInfo album, int clearance, int minRating, String label) {
+		AlbumInfo visible = filterAlbum(album, clearance, minRating, label);
+		ThumbnailInfo chosen = visible.getIndexPicture();
+		if (chosen != null) {
+			// The region of a cropped photograph rides along, see issue #212.
+			return Crops.withRegion(album, chosen);
+		}
+		return defaultCover(visible);
 	}
 
 	/**
@@ -276,18 +340,6 @@ public class PrivacyFilter {
 		}
 	}
 
-	/** The image shown first in the given album, <code>null</code> if it shows none. */
-	static ImagePart firstImage(AlbumInfo album) {
-		for (AlbumPart part : album.getParts()) {
-			ImagePart image = shownImage(part);
-			if (image != null && !de.haumacher.imageServer.cache.BrokenParts.isBroken(image)) {
-				// A file that cannot be read has no picture to be a cover with, see issue #253.
-				return image;
-			}
-		}
-		return null;
-	}
-
 	/**
 	 * The first best-rated image among the given parts, <code>null</code> if they show none.
 	 *
@@ -339,9 +391,9 @@ public class PrivacyFilter {
 	}
 
 	/**
-	 * A {@link ThumbnailInfo} showing the given image, computed exactly as the one a listing builds
-	 * for a folder without a sidecar (see <code>ResourceCache.Loader#loadFolderInfo</code>): the
-	 * image is scaled to fill the square tile and a portrait image is shifted to its top.
+	 * A {@link ThumbnailInfo} showing the given image, the one a listing builds for an album that
+	 * chose no cover (see {@link #defaultCover(AlbumInfo)}): the image is scaled to fill the square
+	 * tile and a portrait image is shifted to its top.
 	 *
 	 * <p>
 	 * The frame is the one the image is <em>displayed</em> in: the crop is measured against the
@@ -488,12 +540,14 @@ public class PrivacyFilter {
 			unreadable = true;
 		}
 		if (!unreadable) {
-			if (!(sidecar instanceof AlbumInfo)) {
-				// No sidecar, no privacy: a folder the server described by itself holds public images.
+			if (sidecar instanceof ListingInfo) {
+				// A folder of folders holds no photograph of its own to hide.
 				return folder;
 			}
-			if (shown((AlbumInfo) sidecar, FolderCover.imageName(indexPicture.getImage()), clearance, minRating,
-				label)) {
+			// A folder without a sidecar holds photographs nobody edited: public and unrated, and
+			// so hidden only from a request with a rating floor or a label, see #shown.
+			AlbumInfo described = sidecar instanceof AlbumInfo ? (AlbumInfo) sidecar : AlbumInfo.create();
+			if (shown(described, FolderCover.imageName(indexPicture.getImage()), clearance, minRating, label)) {
 				return folder;
 			}
 		}
@@ -520,10 +574,11 @@ public class PrivacyFilter {
 		}
 		Resource album = _cache.lookup(childPath);
 		if (album instanceof AlbumInfo) {
-			ThumbnailInfo cover = filterAlbum((AlbumInfo) album, clearance, minRating, label).getIndexPicture();
+			// Chosen or not, a hidden cover is replaced by the rule a tile is given its default
+			// by, applied to what this request sees, see issue #260.
+			ThumbnailInfo cover = tileCover((AlbumInfo) album, clearance, minRating, label);
 			if (cover != null) {
-				// The region of a cropped photograph rides along, see issue #212.
-				result.setIndexPicture(Crops.withRegion((AlbumInfo) album, cover));
+				result.setIndexPicture(cover);
 			}
 		}
 		return result;

@@ -758,12 +758,21 @@ public class TestImageServletDelete extends TestCase {
 		return result.toString();
 	}
 
-	/** A fingerprint of every file below the given path: its name, and its bytes. */
+	/**
+	 * A fingerprint of every file below the given path: its name, and its bytes.
+	 *
+	 * <p>
+	 * The server's record of what the folder holds is left out: a servlet without a background
+	 * writes it when it lists the folder above, as the background would have (issues #253, #260).
+	 * </p>
+	 */
 	private static String fingerprint(Path root) throws Exception {
 		MessageDigest digest = MessageDigest.getInstance("SHA-256");
 		List<Path> files = new ArrayList<>();
 		try (Stream<Path> walk = Files.walk(root)) {
-			walk.filter(Files::isRegularFile).forEach(files::add);
+			walk.filter(Files::isRegularFile)
+				.filter(file -> !file.getFileName().toString().equals(de.haumacher.imageServer.cache.AnalysisRecord.FILE_NAME))
+				.forEach(files::add);
 		}
 		files.sort(Comparator.comparing(Path::toString));
 		for (Path file : files) {
