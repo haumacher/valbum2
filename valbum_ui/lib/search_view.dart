@@ -42,10 +42,7 @@
 /// turns into "Any of these", which finds what matches one of them.
 library;
 
-import 'package:flutter/foundation.dart'
-    show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import 'album_date.dart';
 import 'album_model.dart';
@@ -53,6 +50,7 @@ import 'album_view.dart';
 import 'app.dart';
 import 'client.dart';
 import 'downloads.dart';
+import 'filter_list.dart';
 import 'form_dialog.dart';
 import 'l10n/app_localizations.dart';
 import 'listing_view.dart' show splitPath;
@@ -1337,18 +1335,6 @@ class _ChooseManyDialogState<T> extends State<_ChooseManyDialog<T>> {
     );
   }
 
-  /// Escape in a filled filter clears it; in an empty one it leaves the
-  /// dialog as ever.
-  KeyEventResult _onFilterKey(FocusNode node, KeyEvent event) {
-    if (event is KeyDownEvent &&
-        event.logicalKey == LogicalKeyboardKey.escape &&
-        _filter.text.isNotEmpty) {
-      setState(_filter.clear);
-      return KeyEventResult.handled;
-    }
-    return KeyEventResult.ignored;
-  }
-
   @override
   Widget build(BuildContext context) {
     var l10n = AppLocalizations.of(context)!;
@@ -1403,22 +1389,13 @@ class _ChooseManyDialogState<T> extends State<_ChooseManyDialog<T>> {
                 : Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Focus(
-                        onKeyEvent: _onFilterKey,
-                        child: TextField(
-                          key: const Key("search-choose-filter"),
-                          controller: _filter,
-                          // Not on a phone, whose keyboard would cover the list.
-                          autofocus:
-                              defaultTargetPlatform != TargetPlatform.android &&
-                                  defaultTargetPlatform != TargetPlatform.iOS,
-                          decoration: InputDecoration(
-                            isDense: true,
-                            prefixIcon: const Icon(Icons.search),
-                            labelText: l10n.personsSearchLabel,
-                          ),
-                          onChanged: (_) => setState(() {}),
-                        ),
+                      // The one filter field of every chooser (issue #261):
+                      // Escape clears it, a phone's keyboard stays down.
+                      FilterField(
+                        fieldKey: const Key("search-choose-filter"),
+                        controller: _filter,
+                        label: l10n.personsSearchLabel,
+                        onChanged: (_) => setState(() {}),
                       ),
                       const SizedBox(height: 8),
                       Flexible(child: list),

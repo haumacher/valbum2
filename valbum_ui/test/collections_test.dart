@@ -345,6 +345,8 @@ void main() {
 
       // The picker opens above the album; a folder cannot be confirmed.
       expect(find.byKey(const Key("collection-picker")), findsOneWidget);
+      // With the search field of every folder picker (issue #261).
+      expect(find.byKey(const Key("picker-search")), findsOneWidget);
       expect(find.byKey(const Key("picker-needs-collection")), findsOneWidget);
       expect(
           tester
@@ -417,7 +419,8 @@ void main() {
         tester,
         image,
         client: space.client,
-        caller: const CallerInfo(userName: "anna", role: roleMember, space: "anna"),
+        caller:
+            const CallerInfo(userName: "anna", role: roleMember, space: "anna"),
         editPath: const ["album"],
       );
       await tester.tap(find.byKey(const Key("viewer-menu")));

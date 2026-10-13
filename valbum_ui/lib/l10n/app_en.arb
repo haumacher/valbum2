@@ -2714,6 +2714,64 @@
     "description": "Names the root of the library in the folder picker",
     "x-translated": "777058d0"
   },
+  "folderSearchLabel": "Find an album or folder",
+  "@folderSearchLabel": {
+    "description": "Label of the search field of the folder picker, which searches the whole library by title, folder name and date",
+    "x-translated": "832972c"
+  },
+  "folderSearchSearching": "Searching…",
+  "@folderSearchSearching": {
+    "description": "Shown in the folder picker while the server looks for the albums and folders that match what was typed",
+    "x-translated": "16a69772"
+  },
+  "folderSearchNothing": "No album or folder matches \"{text}\".",
+  "@folderSearchNothing": {
+    "description": "Shown in the folder picker when no album or folder matches what was typed",
+    "placeholders": {
+      "text": {
+        "type": "String",
+        "example": "Rome 2024"
+      }
+    },
+    "x-translated": "97378f7c"
+  },
+  "folderSearchMore": "Only the best {count} matches are shown. Type more to narrow them down.",
+  "@folderSearchMore": {
+    "description": "Shown below the results of the folder picker's search when more albums and folders matched than are shown",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "dd18da12"
+  },
+  "folderSearchFailed": "The search failed: {reason}",
+  "@folderSearchFailed": {
+    "description": "Shown in the folder picker when the server could not answer the search; the reason is the server's own sentence",
+    "placeholders": {
+      "reason": {
+        "type": "String",
+        "example": "Searching is for the members of this space."
+      }
+    },
+    "x-translated": "b7b3135c"
+  },
+  "folderSearchTopLevel": "In the top level",
+  "@folderSearchTopLevel": {
+    "description": "Second line of a search result of the folder picker that lies in the top level of the library",
+    "x-translated": "54d26dac"
+  },
+  "folderSearchIn": "In {path}",
+  "@folderSearchIn": {
+    "description": "Second line of a search result of the folder picker, naming the folder it lies in",
+    "placeholders": {
+      "path": {
+        "type": "String",
+        "example": "2024 / Italy"
+      }
+    },
+    "x-translated": "55218bee"
+  },
   "nothingToMove": "Nothing to move.",
   "@nothingToMove": {
     "description": "Refuses a move that names nothing",

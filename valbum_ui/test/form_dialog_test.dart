@@ -112,6 +112,10 @@ class FormCase {
   /// closes that one and leaves the outer dialog standing.
   final bool nested;
 
+  /// Whether [fill] types into the filter field of a chooser (issue #261):
+  /// the first Escape then clears the filter and the second one cancels.
+  final bool filters;
+
   const FormCase({
     required this.name,
     required this.dialog,
@@ -120,6 +124,7 @@ class FormCase {
     this.expectAnswer,
     this.afterPrimary,
     this.nested = false,
+    this.filters = false,
   });
 }
 
@@ -227,6 +232,7 @@ List<FormCase> formCases(List<http.Request> requests) => [
         fill: (tester) => typeInto(tester, find.byType(TextField), "ber"),
         primary: () => find.text("Berta"),
         expectAnswer: (answer) => expect((answer as Person).id, "p1"),
+        filters: true,
       ),
       FormCase(
         name: "FolderPicker",
@@ -329,6 +335,15 @@ void main() {
         var opened = await openForm(tester, form.dialog);
         await form.fill(tester);
 
+        if (form.filters) {
+          await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+          await tester.pumpAndSettle();
+          expect(opened.closed, isFalse,
+              reason: "Escape in a filled filter clears it (issue #261)");
+          expect(
+              tester.widget<TextField>(find.byType(TextField)).controller!.text,
+              isEmpty);
+        }
         await tester.sendKeyEvent(LogicalKeyboardKey.escape);
         await tester.pumpAndSettle();
 

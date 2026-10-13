@@ -648,6 +648,9 @@ public class ImageServlet extends HttpServlet {
 	private Path _basePath;
 	private ResourceCache _cache;
 
+	/** The search field of the folder picker, see issue #261 and {@link #FOLDERS_TYPE}. */
+	private final FolderFinder _folderFinder = new FolderFinder();
+
 	/** What the contributors of the space added, counted for the owner screens of issue #203. */
 	private Contributions _contributions;
 
@@ -1233,6 +1236,10 @@ public class ImageServlet extends HttpServlet {
 		}
 		if (SEARCH_OPTIONS_TYPE.equals(type)) {
 			serveSearchOptions(context, caller, resourcePath);
+			return;
+		}
+		if (FOLDERS_TYPE.equals(type)) {
+			serveFolderMatches(context, caller, resourcePath);
 			return;
 		}
 
@@ -8282,6 +8289,62 @@ public class ImageServlet extends HttpServlet {
 			.thenComparing(tag -> tag.getName().toLowerCase(Locale.ROOT)));
 		options.setPlaces(sorted);
 		serveJsonObject(context.response(), options);
+	}
+
+	// --- The search field of the folder picker, issue #261. ---
+
+	/** The value of <code>?type=</code> answering the folders below a folder that match a text. */
+	public static final String FOLDERS_TYPE = "folders";
+
+	/** The parameter carrying what was typed, see {@link #FOLDERS_TYPE}. */
+	public static final String FOLDERS_TEXT_PARAMETER = "q";
+
+	/** The parameter carrying how many matches are answered at most, see {@link FolderFinder#MAX_LIMIT}. */
+	public static final String FOLDERS_LIMIT_PARAMETER = "limit";
+
+	/** The message a request for the folders below something that is no folder is refused with. */
+	public static final String FOLDERS_NOT_A_FOLDER = "Folders are looked for below a folder.";
+
+	/** The message an unreadable limit is refused with. */
+	public static final String FOLDERS_BAD_LIMIT = "The number of folders asked for cannot be read.";
+
+	/**
+	 * Answers <code>&lt;folder&gt;/?type=folders&amp;q=&lt;text&gt;</code>: the albums and folders
+	 * below the folder whose title, name or date matches the text, best first, see {@link FolderFinder}
+	 * and issue #261.
+	 *
+	 * <p>
+	 * Members only, as the search of issue #227 ({@link #maySearch(Caller)}): the picker that asks
+	 * is the one of a move, of a collection, of an upload target and of a saved search, all of them
+	 * members' business. Only folders the caller may see are answered, the inbox never (it is no
+	 * tile of any listing). No picture is answered, so no photograph's privacy is touched.
+	 * </p>
+	 */
+	private void serveFolderMatches(Context context, Caller caller, PathInfo folder) throws IOException {
+		if (!maySearch(caller)) {
+			refuseSearch(context, caller);
+			return;
+		}
+		if (!folder.toFile().isDirectory() || Inboxes.isInbox(folder.toFile())) {
+			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, FOLDERS_NOT_A_FOLDER);
+			return;
+		}
+		if (!_auth.mayView(caller, folder)) {
+			refuse(context, caller, folder, Rights.VIEW, false);
+			return;
+		}
+		int limit = FolderFinder.DEFAULT_LIMIT;
+		String limitText = context.getParameter(FOLDERS_LIMIT_PARAMETER);
+		if (limitText != null && !limitText.isEmpty()) {
+			try {
+				limit = Integer.parseInt(limitText);
+			} catch (NumberFormatException ex) {
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, FOLDERS_BAD_LIMIT);
+				return;
+			}
+		}
+		serveJsonObject(context.response(), _folderFinder.find(folder, context.getParameter(FOLDERS_TEXT_PARAMETER),
+			limit, path -> _auth.mayView(caller, path)));
 	}
 
 	/**

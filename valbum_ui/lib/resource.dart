@@ -12631,3 +12631,142 @@ class CameraName extends _JsonObject {
 
 }
 
+///  The folders below a folder that match what was typed into the folder picker's search field, see
+///  issue #261 and <code>&lt;folder&gt;/?type=folders&amp;q=&lt;text&gt;</code>.
+/// 
+///  <p>
+///  Answered from what the server knows of every folder without opening an image &mdash; the
+///  sidecar, the folder name and what the background recorded &mdash;, limited to the folders the
+///  caller may see. Derived on every request, never stored.
+///  </p>
+class FolderMatches extends _JsonObject {
+	///  The matching folders, the best first, at most as many as were asked for.
+	List<FolderMatch> folders;
+
+	///  Whether more folders matched than {@link #folders} holds.
+	bool more;
+
+	/// Creates a FolderMatches.
+	FolderMatches({
+			this.folders = const [], 
+			this.more = false, 
+	});
+
+	/// Parses a FolderMatches from a string source.
+	static FolderMatches? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a FolderMatches instance from the given reader.
+	static FolderMatches read(JsonReader json) {
+		FolderMatches result = FolderMatches();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "FolderMatches";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "folders": {
+				json.expectArray();
+				folders = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = FolderMatch.read(json);
+						if (value != null) {
+							folders.add(value);
+						}
+					}
+				}
+				break;
+			}
+			case "more": {
+				more = json.expectBool();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("folders");
+		json.startArray();
+		for (var _element in folders) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+
+		json.addKey("more");
+		json.addBool(more);
+	}
+
+}
+
+///  One folder of {@link FolderMatches}.
+class FolderMatch extends _JsonObject {
+	///  The folder's path below the folder that was asked, its names separated by <code>/</code>,
+	///  never empty.
+	String path;
+
+	///  The folder as the listing above it shows its tile: its name, title, subtitle, date and kind,
+	///  never a picture.
+	FolderInfo? folder;
+
+	/// Creates a FolderMatch.
+	FolderMatch({
+			this.path = "", 
+			this.folder, 
+	});
+
+	/// Parses a FolderMatch from a string source.
+	static FolderMatch? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a FolderMatch instance from the given reader.
+	static FolderMatch read(JsonReader json) {
+		FolderMatch result = FolderMatch();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "FolderMatch";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "path": {
+				path = json.expectString();
+				break;
+			}
+			case "folder": {
+				folder = json.tryNull() ? null : FolderInfo.read(json);
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("path");
+		json.addString(path);
+
+		var _folder = folder;
+		if (_folder != null) {
+			json.addKey("folder");
+			_folder.writeContent(json);
+		}
+	}
+
+}
+

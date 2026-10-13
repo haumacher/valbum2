@@ -1964,6 +1964,31 @@ class VAlbumClient {
     return SearchOptions.read(JsonReader.fromString(response.body));
   }
 
+  /// The albums and folders below the folder at [path] whose title, folder
+  /// name or date matches [text], the best first: the search field of the
+  /// folder picker, see issue #261 (`?type=folders&q=<text>`).
+  ///
+  /// Only what the caller may see is answered, at most [limit] of it; the
+  /// answer says whether there was more. A refusal is thrown with the
+  /// server's own sentence.
+  Future<FolderMatches> findFolders(
+    List<String> path,
+    String text, {
+    int limit = 50,
+  }) async {
+    var url = "${folderUrl(path)}?type=folders"
+        "&q=${Uri.encodeQueryComponent(text)}&limit=$limit";
+    var response = await _http.get(Uri.parse(url), headers: authHeaders);
+    if (response.statusCode >= 300) {
+      throw failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingAsking("'$url'"),
+      );
+    }
+    return FolderMatches.read(JsonReader.fromString(response.body));
+  }
+
   /// The photograph's own description at [imageUrl] (`<album>/<name>`, for a
   /// photograph found by a search its path below the folder searched):
   /// `GET <imageUrl>?type=json`, its faces, tags and full places included.

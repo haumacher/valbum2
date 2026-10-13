@@ -4391,3 +4391,36 @@ message CameraName {
 	/** The label. */
 	string name;
 }
+
+/**
+ * The folders below a folder that match what was typed into the folder picker's search field, see
+ * issue #261 and <code>&lt;folder&gt;/?type=folders&amp;q=&lt;text&gt;</code>.
+ *
+ * <p>
+ * Answered from what the server knows of every folder without opening an image &mdash; the
+ * sidecar, the folder name and what the background recorded &mdash;, limited to the folders the
+ * caller may see. Derived on every request, never stored.
+ * </p>
+ */
+message FolderMatches {
+	/** The matching folders, the best first, at most as many as were asked for. */
+	repeated FolderMatch folders;
+
+	/** Whether more folders matched than {@link #folders} holds. */
+	bool more;
+}
+
+/** One folder of {@link FolderMatches}. */
+message FolderMatch {
+	/**
+	 * The folder's path below the folder that was asked, its names separated by <code>/</code>,
+	 * never empty.
+	 */
+	string path;
+
+	/**
+	 * The folder as the listing above it shows its tile: its name, title, subtitle, date and kind,
+	 * never a picture.
+	 */
+	FolderInfo folder;
+}

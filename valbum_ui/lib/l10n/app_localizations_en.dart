@@ -1674,6 +1674,35 @@ class AppLocalizationsEn extends AppLocalizations {
   String get pickerTopLevel => 'Top level';
 
   @override
+  String get folderSearchLabel => 'Find an album or folder';
+
+  @override
+  String get folderSearchSearching => 'Searching…';
+
+  @override
+  String folderSearchNothing(String text) {
+    return 'No album or folder matches \"$text\".';
+  }
+
+  @override
+  String folderSearchMore(int count) {
+    return 'Only the best $count matches are shown. Type more to narrow them down.';
+  }
+
+  @override
+  String folderSearchFailed(String reason) {
+    return 'The search failed: $reason';
+  }
+
+  @override
+  String get folderSearchTopLevel => 'In the top level';
+
+  @override
+  String folderSearchIn(String path) {
+    return 'In $path';
+  }
+
+  @override
   String get nothingToMove => 'Nothing to move.';
 
   @override

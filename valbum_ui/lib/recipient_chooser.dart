@@ -33,6 +33,7 @@ library;
 import 'package:flutter/material.dart';
 
 import 'client.dart';
+import 'filter_list.dart';
 import 'l10n/app_localizations.dart';
 import 'phone_contacts.dart';
 import 'photo_library.dart' show platformErrorText;
@@ -262,7 +263,8 @@ class RecipientChooserState extends State<RecipientChooser> {
               ],
             ),
         for (var picked in _picked)
-          ShareRecipient(name: picked.name, addresses: List.of(picked.addresses)),
+          ShareRecipient(
+              name: picked.name, addresses: List.of(picked.addresses)),
       ];
 
   void _changed() => widget.onChanged(recipients);
@@ -404,15 +406,16 @@ class RecipientChooserState extends State<RecipientChooser> {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        TextField(
-          key: const Key("recipient-search"),
+        // The one filter field of every chooser (issue #261): Escape clears
+        // it. It stands among the fields of the share dialog, which decides
+        // where the cursor starts.
+        FilterField(
+          fieldKey: const Key("recipient-search"),
           controller: _search,
           enabled: enabled,
-          decoration: InputDecoration(
-            isDense: true,
-            prefixIcon: const Icon(Icons.search),
-            hintText: l10n.recipientsSearch,
-          ),
+          label: l10n.recipientsSearch,
+          asHint: true,
+          autofocus: false,
           onChanged: (_) => setState(() {}),
         ),
         if (contacts == null)

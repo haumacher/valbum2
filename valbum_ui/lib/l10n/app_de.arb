@@ -1012,5 +1012,12 @@
   "brokenFileReason": "Vom Server angegebener Grund: {reason}",
   "brokenFileSize": "Dateigröße: {size}",
   "albumPreparing": "Dieses Album wird gerade vorbereitet. Die Fotos darin werden hier angezeigt, sobald der Server sie einliest.",
-  "albumStillPreparing": "Dieses Album wird noch vorbereitet. Die Fotos, die der Server noch nicht gelesen hat, werden hier angezeigt, sobald er sie liest."
+  "albumStillPreparing": "Dieses Album wird noch vorbereitet. Die Fotos, die der Server noch nicht gelesen hat, werden hier angezeigt, sobald er sie liest.",
+  "folderSearchLabel": "Ein Album oder einen Ordner suchen",
+  "folderSearchSearching": "Suche läuft…",
+  "folderSearchNothing": "Es gibt kein Album und keinen Ordner, der mit „{text}“ übereinstimmt.",
+  "folderSearchMore": "Es werden nur die besten {count} Treffer angezeigt. Geben Sie weitere Suchbegriffe ein, um die Auswahl einzugrenzen.",
+  "folderSearchFailed": "Die Suche ist fehlgeschlagen: {reason}",
+  "folderSearchTopLevel": "Auf der obersten Ebene",
+  "folderSearchIn": "In {path}"
 }

@@ -1697,6 +1697,35 @@ class AppLocalizationsDe extends AppLocalizations {
   String get pickerTopLevel => 'Oberste Ebene';
 
   @override
+  String get folderSearchLabel => 'Ein Album oder einen Ordner suchen';
+
+  @override
+  String get folderSearchSearching => 'Suche läuft…';
+
+  @override
+  String folderSearchNothing(String text) {
+    return 'Es gibt kein Album und keinen Ordner, der mit „$text“ übereinstimmt.';
+  }
+
+  @override
+  String folderSearchMore(int count) {
+    return 'Es werden nur die besten $count Treffer angezeigt. Geben Sie weitere Suchbegriffe ein, um die Auswahl einzugrenzen.';
+  }
+
+  @override
+  String folderSearchFailed(String reason) {
+    return 'Die Suche ist fehlgeschlagen: $reason';
+  }
+
+  @override
+  String get folderSearchTopLevel => 'Auf der obersten Ebene';
+
+  @override
+  String folderSearchIn(String path) {
+    return 'In $path';
+  }
+
+  @override
   String get nothingToMove => 'Es gibt nichts zu verschieben.';
 
   @override

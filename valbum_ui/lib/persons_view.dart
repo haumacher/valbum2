@@ -47,7 +47,6 @@ import 'dart:math';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart' hide Orientation;
-import 'package:flutter/widgets.dart' as widgets show Action;
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
@@ -57,6 +56,7 @@ import 'app.dart';
 import 'caller.dart';
 import 'client.dart';
 import 'drag_scroll.dart';
+import 'filter_list.dart';
 import 'form_dialog.dart';
 import 'l10n/app_localizations.dart';
 import 'not_ready.dart';
@@ -2277,21 +2277,6 @@ List<Person> byDisplayName(List<Person> people) {
   return result;
 }
 
-/// Moves the chooser's highlight one entry down, see issue #150.
-class _NextPerson extends Intent {
-  const _NextPerson();
-}
-
-/// Moves the chooser's highlight one entry up, see issue #150.
-class _PreviousPerson extends Intent {
-  const _PreviousPerson();
-}
-
-/// Picks what the chooser's highlight stands on, see issue #150.
-class _PickPerson extends Intent {
-  const _PickPerson();
-}
-
 /// The height of the chooser's content below which its list no longer has
 /// the room to scroll by itself, see [PersonChooser] and issue #178: the
 /// search field, the "New person" entry and two or three names.
@@ -2336,7 +2321,8 @@ class PersonChooser extends StatefulWidget {
 class _PersonChooserState extends State<PersonChooser> {
   final TextEditingController _search = TextEditingController();
 
-  /// Which of the remaining entries the keyboard stands on, `-1` for none.
+  /// Which of the remaining entries the keyboard stands on, see
+  /// [PickHighlight] and issue #261.
   ///
   /// Counted over both sections in the order they are shown (issue #150): the
   /// keyboard walks what is on the screen, not what the register holds. It
@@ -2344,40 +2330,17 @@ class _PersonChooserState extends State<PersonChooser> {
   /// pick that person on a stray `Enter` — and it is **reset by every change
   /// of the filter**, because a highlight left on an entry the filter removed
   /// would pick somebody nobody can see.
-  int _highlighted = -1;
+  late final PickHighlight<Person> _highlight =
+      PickHighlight<Person>(idOf: (person) => person.id)
+        ..addListener(_highlightMoved);
 
-  /// Where each shown row is, so that the highlighted one can be scrolled to.
-  final Map<String, GlobalKey> _rows = {};
-
-  /// The entries as they stand on the screen, filled by every build.
-  List<Person> _shown = const [];
+  void _highlightMoved() => setState(() {});
 
   @override
   void dispose() {
+    _highlight.dispose();
     _search.dispose();
     super.dispose();
-  }
-
-  /// Moves the highlight by [step], never past either end (issue #150).
-  void _move(int step) {
-    if (_shown.isEmpty) {
-      return;
-    }
-    var next = _highlighted < 0
-        ? (step > 0 ? 0 : _shown.length - 1)
-        : (_highlighted + step).clamp(0, _shown.length - 1);
-    setState(() => _highlighted = next);
-    // After the frame that marks it: the row may not be laid out before.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || _highlighted < 0 || _highlighted >= _shown.length) {
-        return;
-      }
-      var row = _rows[_shown[_highlighted].id]?.currentContext;
-      if (row != null) {
-        Scrollable.ensureVisible(row,
-            alignment: 0.5, duration: const Duration(milliseconds: 100));
-      }
-    });
   }
 
   /// What `Enter` does: pick the highlighted person, or create the typed one.
@@ -2386,11 +2349,12 @@ class _PersonChooserState extends State<PersonChooser> {
   /// name and pressing `Enter` is the "New person…" entry with that name —
   /// which is what somebody who has just typed a name nobody carries means.
   void _enter() {
-    if (_highlighted >= 0 && _highlighted < _shown.length) {
-      Navigator.of(context).pop(_shown[_highlighted]);
+    var highlighted = _highlight.current;
+    if (highlighted != null) {
+      Navigator.of(context).pop(highlighted);
       return;
     }
-    if (_shown.isEmpty &&
+    if (_highlight.shown.isEmpty &&
         widget.onCreate != null &&
         _search.text.trim().isNotEmpty) {
       _create();
@@ -2428,40 +2392,13 @@ class _PersonChooserState extends State<PersonChooser> {
       ],
     );
     // What the keyboard walks: the two sections, in the order they are drawn.
-    _shown = [...here, ...elsewhere];
-    // The arrows and `Enter` while the typing goes on: the idiom of Flutter's
-    // own autocomplete, because a single-line field answers neither (issue
-    // #150). `Escape` is the dialog's own and is not taken away here.
-    return Shortcuts(
-      shortcuts: const <ShortcutActivator, Intent>{
-        SingleActivator(LogicalKeyboardKey.arrowDown): _NextPerson(),
-        SingleActivator(LogicalKeyboardKey.arrowUp): _PreviousPerson(),
-        SingleActivator(LogicalKeyboardKey.enter): _PickPerson(),
-        SingleActivator(LogicalKeyboardKey.numpadEnter): _PickPerson(),
-      },
-      child: Actions(
-        actions: <Type, widgets.Action<Intent>>{
-          _NextPerson: CallbackAction<_NextPerson>(
-            onInvoke: (_) {
-              _move(1);
-              return null;
-            },
-          ),
-          _PreviousPerson: CallbackAction<_PreviousPerson>(
-            onInvoke: (_) {
-              _move(-1);
-              return null;
-            },
-          ),
-          _PickPerson: CallbackAction<_PickPerson>(
-            onInvoke: (_) {
-              _enter();
-              return null;
-            },
-          ),
-        },
-        child: _dialog(context, l10n, labels, here, elsewhere),
-      ),
+    _highlight.shown = [...here, ...elsewhere];
+    // `Escape` clears a filled filter and is the dialog's own otherwise, see
+    // [FilterField].
+    return PickKeys<Person>(
+      highlight: _highlight,
+      onEnter: (_) => _enter(),
+      child: _dialog(context, l10n, labels, here, elsewhere),
     );
   }
 
@@ -2511,18 +2448,21 @@ class _PersonChooserState extends State<PersonChooser> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (widget.notice != null) Text(widget.notice!),
-              TextField(
-                key: const Key("persons-search"),
+              FilterField(
+                fieldKey: const Key("persons-search"),
                 controller: _search,
-                decoration: InputDecoration(labelText: l10n.personsSearchLabel),
+                label: l10n.personsSearchLabel,
                 // A changed filter leaves the highlight nowhere, see
-                // [_highlighted].
-                onChanged: (_) => setState(() => _highlighted = -1),
+                // [_highlight].
+                highlight: _highlight,
+                onChanged: (_) => setState(() {}),
+                // On a phone too: naming a face is typing a name, see
+                // issue #150 — the one chooser whose field is the point.
                 autofocus: true,
                 onSubmitted: (_) => _enter(),
               ),
               const SizedBox(height: 8),
-              if (_shown.isEmpty && widget.people.isEmpty)
+              if (_highlight.shown.isEmpty && widget.people.isEmpty)
                 Text(l10n.personsNobodyYet, key: const Key("persons-nobody")),
               if (roomy) Flexible(child: list) else list,
               if (widget.onCreate != null)
@@ -2549,32 +2489,24 @@ class _PersonChooserState extends State<PersonChooser> {
 
   /// One person to pick, see issue #146 for the two names.
   Widget _pick(
-      BuildContext context, Person person, Map<String, String> labels) {
-    var highlighted = _highlighted >= 0 &&
-        _highlighted < _shown.length &&
-        _shown[_highlighted].id == person.id;
-    return KeyedSubtree(
-      // Only so that the highlighted row can be scrolled to; the marking
-      // itself is the tile's own, which paints it on the Material it stands
-      // on rather than behind a box of its own.
-      key: _rows.putIfAbsent(person.id, () => GlobalKey()),
-      child: ListTile(
-        selected: highlighted,
-        selectedTileColor:
-            Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
-        key: Key("persons-pick-${person.id}"),
-        title: Text(labels[person.id] ?? displayName(person)),
-        subtitle: person.nickname.trim().isEmpty
-            ? null
-            : Text(
-                person.name,
-                key: Key("persons-pick-name-${person.id}"),
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-        onTap: () => Navigator.of(context).pop(person),
-      ),
-    );
-  }
+          BuildContext context, Person person, Map<String, String> labels) =>
+      _highlight.row(
+        person,
+        ListTile(
+          selected: _highlight.isHighlighted(person),
+          selectedTileColor: PickHighlight.color(context),
+          key: Key("persons-pick-${person.id}"),
+          title: Text(labels[person.id] ?? displayName(person)),
+          subtitle: person.nickname.trim().isEmpty
+              ? null
+              : Text(
+                  person.name,
+                  key: Key("persons-pick-name-${person.id}"),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+          onTap: () => Navigator.of(context).pop(person),
+        ),
+      );
 
   /// What a section of the chooser is called, see issue #150.
   Widget _heading(BuildContext context, String text, Key key) => Padding(

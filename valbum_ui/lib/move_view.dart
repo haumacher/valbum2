@@ -5,12 +5,15 @@
 /// server answers is shown: every entry that did not move says why.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'album_date.dart';
 import 'app.dart';
 import 'caller.dart';
 import 'client.dart';
+import 'filter_list.dart';
 import 'form_dialog.dart';
 import 'l10n/app_localizations.dart';
 import 'listing_view.dart';
@@ -570,6 +573,28 @@ String folderLine(FolderInfo folder) {
   );
 }
 
+/// The icon the picker shows a folder of the given kind with.
+IconData folderIcon(FolderKind? kind) => switch (kind) {
+      FolderKind.collection => Icons.collections_bookmark_outlined,
+      FolderKind.search => Icons.saved_search,
+      _ => Icons.folder,
+    };
+
+/// Where a match of the picker's search lies, see issue #261: the names of
+/// the folders above it, as the picker's own path line spells a folder.
+String matchLocation(AppLocalizations l10n, String path) {
+  var segments = splitPath(path);
+  return segments.length <= 1
+      ? l10n.folderSearchTopLevel
+      : l10n
+          .folderSearchIn(segments.sublist(0, segments.length - 1).join(" / "));
+}
+
+/// The height of the picker's content below which its list no longer has
+/// the room to scroll by itself: the search field, the path line, the way up
+/// and two or three entries, see [FolderPicker] and issue #178.
+const double _roomyPickerHeight = 260;
+
 /// Browses the caller's own tree and returns what the move goes into, `null`
 /// when the dialog was left without picking anything.
 ///
@@ -587,6 +612,14 @@ String folderLine(FolderInfo folder) {
 /// [mayCreateAlbum] says the move is looking for one and the caller may add to
 /// the folder shown: it is not created here either — the [PickedTarget] it
 /// answers carries it, and the move creates it, see [moveWithPicker].
+///
+/// Above the tree stands the search field of issue #261, the one filter field
+/// of every chooser (see `filter_list.dart`): what is typed is looked for in
+/// the **whole space** — albums and folders by title, folder name and date —
+/// by the server ([VAlbumClient.findFolders]), and the matches stand as one
+/// flat list, each with the folder it lies in. Picking one shows that folder
+/// in the picker; whether it can be confirmed is decided there, by exactly
+/// the rules of a folder reached by browsing. An empty field is the tree.
 class FolderPicker extends StatefulWidget {
   final VAlbumClient client;
 
@@ -641,8 +674,44 @@ class FolderPicker extends StatefulWidget {
 }
 
 class FolderPickerState extends State<FolderPicker> {
+  /// How long the typing must rest before the server is asked, see #261.
+  static const Duration searchDelay = Duration(milliseconds: 300);
+
   /// The folder currently shown, relative to the root of the caller's space.
   late List<String> _path;
+
+  /// The search field of issue #261.
+  final TextEditingController _query = TextEditingController();
+
+  /// The entry the keyboard stands on: a folder of the level shown, or a
+  /// match of the search, see [PickHighlight].
+  late final PickHighlight<Object> _highlight = PickHighlight<Object>(
+    idOf: (entry) => switch (entry) {
+      FolderMatch match => "match:${match.path}",
+      FolderInfo folder => "folder:${folder.name}",
+      _ => entry,
+    },
+  )..addListener(_highlightMoved);
+
+  /// Waits for the typing to rest, see [searchDelay].
+  Timer? _searchDelay;
+
+  /// Counts the searches asked, so that an answer to text that has changed
+  /// since is dropped.
+  int _searchSerial = 0;
+
+  /// Whether a search is under way: said on the screen as long as it takes.
+  bool _searching = false;
+
+  /// What the server answered the last search, `null` before the first.
+  FolderMatches? _matches;
+
+  /// The text [_matches] answers.
+  String _matched = "";
+
+  /// Why the last search failed, the server's own words; `null` while all is
+  /// well.
+  String? _searchError;
 
   /// The folders of [_path], empty while it is loading, while it failed, and
   /// for an album (which has none).
@@ -678,7 +747,95 @@ class FolderPickerState extends State<FolderPicker> {
     _load();
   }
 
+  @override
+  void dispose() {
+    _searchDelay?.cancel();
+    _highlight.dispose();
+    _query.dispose();
+    super.dispose();
+  }
+
+  void _highlightMoved() => setState(() {});
+
+  /// Whether the search field holds anything: then the matches are shown,
+  /// otherwise the tree.
+  bool get _searchShown => _query.text.trim().isNotEmpty;
+
+  /// What the search field does on every change, see issue #261: the server
+  /// is asked once the typing rests; an emptied field is the tree again.
+  void _queryChanged(String text) {
+    _searchDelay?.cancel();
+    var asked = text.trim();
+    if (asked.isEmpty) {
+      setState(() {
+        _searchSerial++;
+        _searching = false;
+        _matches = null;
+        _searchError = null;
+      });
+      return;
+    }
+    setState(() {
+      _searching = true;
+      _searchError = null;
+    });
+    _searchDelay = Timer(searchDelay, () => _findFolders(asked));
+  }
+
+  Future<void> _findFolders(String text) async {
+    var serial = ++_searchSerial;
+    FolderMatches found;
+    try {
+      // The whole space, whatever level is shown.
+      found = await widget.client.findFolders(const [], text);
+    } catch (error) {
+      if (mounted && serial == _searchSerial) {
+        setState(() {
+          _searching = false;
+          _searchError = reasonOf(error);
+        });
+      }
+      return;
+    }
+    if (!mounted || serial != _searchSerial) {
+      return;
+    }
+    // Other entries than before: the highlight stands on none of them.
+    _highlight.reset();
+    setState(() {
+      _searching = false;
+      _matches = found;
+      _matched = text;
+    });
+  }
+
+  /// Shows the folder of a match: the tree again, at that folder.
+  void _goTo(FolderMatch match) {
+    _searchDelay?.cancel();
+    _query.clear();
+    setState(() {
+      _searchSerial++;
+      _searching = false;
+      _matches = null;
+      _searchError = null;
+      _path = splitPath(match.path);
+    });
+    _load();
+  }
+
+  /// What `Enter` does: enter the highlighted folder, or show the folder of
+  /// the highlighted match.
+  void _pick(Object? highlighted) {
+    if (highlighted is FolderMatch) {
+      _goTo(highlighted);
+    } else if (highlighted is FolderInfo) {
+      _enter(highlighted.name);
+    }
+  }
+
   Future<void> _load() async {
+    // Another level, other entries: the highlight stands on none of them.
+    _highlight.reset();
     setState(() {
       _loading = true;
       _error = null;
@@ -740,7 +897,8 @@ class FolderPickerState extends State<FolderPicker> {
   ///
   /// A collection holds references and no files (issue #221): it is the one
   /// target of an addition and never the target of a move.
-  bool get _mayConfirm => _known &&
+  bool get _mayConfirm =>
+      _known &&
       (widget.targetIsCollection
           ? _collection
           : _leaf == widget.targetIsAlbum && !_collection && !_search) &&
@@ -788,33 +946,67 @@ class FolderPickerState extends State<FolderPicker> {
   @override
   Widget build(BuildContext context) {
     var l10n = AppLocalizations.of(context)!;
-    return AlertDialog(
+    var searching = _searchShown;
+    // What the keyboard walks: the entries the list below the field shows.
+    _highlight.shown = searching
+        ? [...?_matches?.folders]
+        : _known
+            ? _folders
+            : const [];
+    return PickKeys<Object>(
+      highlight: _highlight,
+      onEnter: _pick,
+      child: AlertDialog(
         key: const Key("folder-picker"),
         title: Text(widget.title ?? l10n.moveToAction),
         content: SizedBox(
           width: 400,
-          height: 360,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                _path.isEmpty ? l10n.pickerTopLevel : _path.join(" / "),
-                key: const Key("picker-path"),
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
-              const Divider(),
-              // Always there, a failed level included: the way back up must
-              // not depend on what the current level answered.
-              if (_path.isNotEmpty)
-                ListTile(
-                  key: const Key("picker-up"),
-                  leading: const Icon(Icons.arrow_upward),
-                  title: Text(l10n.up),
-                  onTap: _up,
+          // The tree as tall as before the search field of issue #261 stood
+          // above it.
+          height: 420,
+          child: LayoutBuilder(builder: (context, constraints) {
+            // With room, the list scrolls by itself below the field. Where a
+            // phone's keyboard leaves the dialog too little for that, the
+            // whole content scrolls and the list is laid out in full, as in
+            // the person chooser (issue #178).
+            var roomy = constraints.maxHeight >= _roomyPickerHeight;
+            var list = searching
+                ? _results(context, scrolls: roomy)
+                : _body(context, scrolls: roomy);
+            var column = Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: roomy ? MainAxisSize.max : MainAxisSize.min,
+              children: [
+                FilterField(
+                  fieldKey: const Key("picker-search"),
+                  controller: _query,
+                  label: l10n.folderSearchLabel,
+                  highlight: _highlight,
+                  onChanged: _queryChanged,
+                  onSubmitted: (_) => _pick(_highlight.current),
                 ),
-              Expanded(child: _body(context)),
-            ],
-          ),
+                const SizedBox(height: 8),
+                // The folder the confirm acts on, while searching too.
+                Text(
+                  _path.isEmpty ? l10n.pickerTopLevel : _path.join(" / "),
+                  key: const Key("picker-path"),
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                const Divider(),
+                // Always there, a failed level included: the way back up
+                // must not depend on what the current level answered.
+                if (_path.isNotEmpty && !searching)
+                  ListTile(
+                    key: const Key("picker-up"),
+                    leading: const Icon(Icons.arrow_upward),
+                    title: Text(l10n.up),
+                    onTap: _up,
+                  ),
+                if (roomy) Expanded(child: list) else list,
+              ],
+            );
+            return roomy ? column : SingleChildScrollView(child: column);
+          }),
         ),
         actions: [
           TextButton(
@@ -832,10 +1024,81 @@ class FolderPickerState extends State<FolderPicker> {
             child: Text(widget.confirmLabel(_path)),
           ),
         ],
-      );
+      ),
+    );
   }
 
-  Widget _body(BuildContext context) {
+  /// The matches of the search field, see issue #261: each by the line the
+  /// tree names it with and the folder it lies in, the best first. A search
+  /// under way says so as long as it takes, a failed one says why.
+  Widget _results(BuildContext context, {required bool scrolls}) {
+    var l10n = AppLocalizations.of(context)!;
+    var matches = _matches;
+    var error = _searchError;
+    return ListView(
+      shrinkWrap: true,
+      physics: scrolls ? null : const NeverScrollableScrollPhysics(),
+      children: [
+        if (_searching)
+          ListTile(
+            key: const Key("picker-searching"),
+            leading: const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            title: Text(l10n.folderSearchSearching),
+          ),
+        if (error != null)
+          ListTile(
+            key: const Key("picker-search-error"),
+            leading: const Icon(Icons.error_outline),
+            title: Text(l10n.folderSearchFailed(error)),
+          ),
+        if (!_searching &&
+            error == null &&
+            matches != null &&
+            matches.folders.isEmpty)
+          ListTile(
+            key: const Key("picker-search-nothing"),
+            leading: const Icon(Icons.search_off),
+            title: Text(l10n.folderSearchNothing(_matched)),
+          ),
+        for (var match in matches?.folders ?? const <FolderMatch>[])
+          _highlight.row(
+            match,
+            ListTile(
+              key: Key("picker-match-${match.path}"),
+              selected: _highlight.isHighlighted(match),
+              selectedTileColor: PickHighlight.color(context),
+              leading: Icon(folderIcon(match.folder?.kind)),
+              title: Text(
+                match.folder == null
+                    ? splitPath(match.path).last
+                    : folderLine(match.folder!),
+              ),
+              subtitle: Text(
+                matchLocation(l10n, match.path),
+                key: Key("picker-match-in-${match.path}"),
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              onTap: () => _goTo(match),
+            ),
+          ),
+        if (matches != null && matches.more)
+          Padding(
+            padding: const EdgeInsets.all(8),
+            child: Text(
+              l10n.folderSearchMore(matches.folders.length),
+              key: const Key("picker-search-more"),
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _body(BuildContext context, {required bool scrolls}) {
     var l10n = AppLocalizations.of(context)!;
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
@@ -844,12 +1107,12 @@ class FolderPickerState extends State<FolderPicker> {
     if (error != null) {
       // The server's own reason, inside the dialog: the picker stays open, so
       // the way back up is still there.
-      return SingleChildScrollView(
-        child: Text(error, key: const Key("picker-error")),
-      );
+      var text = Text(error, key: const Key("picker-error"));
+      return scrolls ? SingleChildScrollView(child: text) : text;
     }
     return ListView(
       shrinkWrap: true,
+      physics: scrolls ? null : const NeverScrollableScrollPhysics(),
       children: [
         if (_leaf && !widget.targetIsCollection && !_collection)
           ListTile(
@@ -902,15 +1165,16 @@ class FolderPickerState extends State<FolderPicker> {
             onTap: _createAlbum,
           ),
         for (var folder in _folders)
-          ListTile(
-            key: Key("picker-folder-${folder.name}"),
-            leading: Icon(folder.kind == FolderKind.collection
-                ? Icons.collections_bookmark_outlined
-                : folder.kind == FolderKind.search
-                    ? Icons.saved_search
-                    : Icons.folder),
-            title: Text(folderLine(folder)),
-            onTap: () => _enter(folder.name),
+          _highlight.row(
+            folder,
+            ListTile(
+              key: Key("picker-folder-${folder.name}"),
+              selected: _highlight.isHighlighted(folder),
+              selectedTileColor: PickHighlight.color(context),
+              leading: Icon(folderIcon(folder.kind)),
+              title: Text(folderLine(folder)),
+              onTap: () => _enter(folder.name),
+            ),
           ),
       ],
     );

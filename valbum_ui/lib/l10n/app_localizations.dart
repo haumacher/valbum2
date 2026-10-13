@@ -2822,6 +2822,48 @@ abstract class AppLocalizations {
   /// **'Top level'**
   String get pickerTopLevel;
 
+  /// Label of the search field of the folder picker, which searches the whole library by title, folder name and date
+  ///
+  /// In en, this message translates to:
+  /// **'Find an album or folder'**
+  String get folderSearchLabel;
+
+  /// Shown in the folder picker while the server looks for the albums and folders that match what was typed
+  ///
+  /// In en, this message translates to:
+  /// **'Searching…'**
+  String get folderSearchSearching;
+
+  /// Shown in the folder picker when no album or folder matches what was typed
+  ///
+  /// In en, this message translates to:
+  /// **'No album or folder matches \"{text}\".'**
+  String folderSearchNothing(String text);
+
+  /// Shown below the results of the folder picker's search when more albums and folders matched than are shown
+  ///
+  /// In en, this message translates to:
+  /// **'Only the best {count} matches are shown. Type more to narrow them down.'**
+  String folderSearchMore(int count);
+
+  /// Shown in the folder picker when the server could not answer the search; the reason is the server's own sentence
+  ///
+  /// In en, this message translates to:
+  /// **'The search failed: {reason}'**
+  String folderSearchFailed(String reason);
+
+  /// Second line of a search result of the folder picker that lies in the top level of the library
+  ///
+  /// In en, this message translates to:
+  /// **'In the top level'**
+  String get folderSearchTopLevel;
+
+  /// Second line of a search result of the folder picker, naming the folder it lies in
+  ///
+  /// In en, this message translates to:
+  /// **'In {path}'**
+  String folderSearchIn(String path);
+
   /// Refuses a move that names nothing
   ///
   /// In en, this message translates to:

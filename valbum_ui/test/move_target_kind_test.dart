@@ -130,7 +130,12 @@ Future<void> openPicker(WidgetTester tester) async {
 }
 
 Future<void> enterFolder(WidgetTester tester, String name) async {
-  await tester.tap(find.byKey(Key("picker-folder-$name")));
+  // The search field of issue #261 stands above the tree: an entry further
+  // down is scrolled to, as a user would.
+  var entry = find.byKey(Key("picker-folder-$name"), skipOffstage: false);
+  await tester.ensureVisible(entry);
+  await tester.pumpAndSettle();
+  await tester.tap(entry);
   await tester.pumpAndSettle();
 }
 
@@ -159,6 +164,8 @@ void main() {
         await pumpSelection(tester, client);
         await openPicker(tester);
 
+        // With the search field of every folder picker (issue #261).
+        expect(find.byKey(const Key("picker-search")), findsOneWidget);
         // The top level is a folder of folders: nothing to confirm, and the
         // reason is on the screen.
         expect(find.text("Top level"), findsOneWidget);
@@ -236,8 +243,8 @@ void main() {
         expect(undated.subtitle, isNull);
 
         // No title: the name is what there is.
-        var untitled = tester
-            .widget<ListTile>(find.byKey(const Key("picker-folder-Inbox")));
+        var untitled = tester.widget<ListTile>(
+            find.byKey(const Key("picker-folder-Inbox"), skipOffstage: false));
         expect((untitled.title as Text).data, "Inbox");
       });
     });

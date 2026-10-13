@@ -147,6 +147,8 @@ void main() {
     expect(tester.widget<FolderPicker>(find.byType(FolderPicker)).initialPath,
         ["2024"],
         reason: "A saved search lies in a folder and looks below it.");
+    // With the search field of every folder picker (issue #261).
+    expect(find.byKey(const Key("picker-search")), findsOneWidget);
   });
 
   testWidgets('what is selected among the results is no selection of the album',
