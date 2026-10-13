@@ -224,15 +224,12 @@ class AlbumContentState extends State<AlbumContent>
   /// image or into the alternatives of a group and back finds the album still
   /// being edited, see [AlbumEditSession].
   ///
-  /// The results of the search view have a session of their own: the search
-  /// of an album (issue #249) stands on the album's path, and what is selected
-  /// among the results is no selection of the album beneath.
-  AlbumEditSession get session =>
-      widget.albumState.navigator.delegate.editSession(
-        isSearchView
-            ? [...widget.albumState.path, searchSegment]
-            : widget.albumState.path,
-      );
+  /// The results of the search view have a session of their own, kept under
+  /// [VAlbumState.statePath]: the search of an album (issue #249) stands on
+  /// the album's path, and what is selected among the results is no selection
+  /// of the album beneath (issue #265).
+  AlbumEditSession get session => widget.albumState.navigator.delegate
+      .editSession(widget.albumState.statePath);
 
   /// Whether the album is being edited *and* shown as its owner.
   ///
@@ -381,8 +378,10 @@ class AlbumContentState extends State<AlbumContent>
     // While this view is on the screen it is the one that answers what is to
     // become of the unsaved changes when the app leaves the album, see
     // [confirmLeave] and [VAlbumRouterDelegate.leaveAlbum] (issue #99).
+    // Under the key of this level, not the bare path: the results of the
+    // album's search must not take over the album's guard (issue #265).
     widget.albumState.navigator.delegate
-        .registerLeaveGuard(widget.albumState.path, _leaveGuard);
+        .registerLeaveGuard(widget.albumState.statePath, _leaveGuard);
   }
 
   @override
@@ -571,7 +570,7 @@ class AlbumContentState extends State<AlbumContent>
   @override
   void dispose() {
     widget.albumState.navigator.delegate
-        .unregisterLeaveGuard(widget.albumState.path, _leaveGuard);
+        .unregisterLeaveGuard(widget.albumState.statePath, _leaveGuard);
     _dragScroller.dispose();
     // The search view hides its bar while the select mode's is shown (issue
     // #243): results gone in the mode give it back, after the frame — the
@@ -1190,8 +1189,7 @@ class AlbumContentState extends State<AlbumContent>
       clearSelection();
       _layoutOrientation.clear();
     });
-    var path = widget.albumState.path;
-    widget.albumState.navigator.delegate.forget(path);
+    widget.albumState.navigator.delegate.forget(widget.albumState.statePath);
     if (reload) {
       widget.albumState.reload();
     }
@@ -2160,7 +2158,9 @@ class AlbumContentState extends State<AlbumContent>
     if (!widget.album.preparing) {
       return;
     }
-    widget.albumState.navigator.delegate.forget(widget.albumState.path);
+    // The results of a search are no resource of the album searched: under
+    // their own key there is nothing cached to forget (issue #265).
+    widget.albumState.navigator.delegate.forget(widget.albumState.statePath);
     widget.albumState.reload();
   }
 

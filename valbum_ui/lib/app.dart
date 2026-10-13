@@ -1733,6 +1733,9 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
   final Map<String, Future<Resource?>> _resources = {};
 
   /// The scroll offset of every album path visited, see [scrollOffset].
+  ///
+  /// This map, the edit sessions and the leave guards are keyed by the
+  /// [statePathOf] of a level, not by the path it shows alone (issue #265).
   final Map<String, double> _scrollOffsets = {};
 
   /// The edit session of every album being edited, see [editSession].
@@ -1913,6 +1916,10 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
   /// The album view at [path] answers from now on what is to become of its
   /// unsaved changes when the app leaves it (issue #99).
   ///
+  /// [path] is the view's [statePathOf], so that the results of the album's
+  /// search, which stand on the album's path, never take over the album's
+  /// guard nor take it away when they close (issue #265).
+  ///
   /// The delegate knows no [BuildContext] with a [Navigator] of its own, and
   /// the question is the album's anyway — it is the album that knows what was
   /// changed and how it is written back. The view registers itself while it
@@ -1978,9 +1985,15 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
     return _mayLeaveAlbumFor(target);
   }
 
+  /// The album left is the one the current route stands on — the lowest of
+  /// its levels, see [levelsOf] — and it is left only where [target] does
+  /// not stand on it as well: the search of an album, even widened to the
+  /// whole library, keeps the album mounted beneath it (issues #259, #265),
+  /// while going home from there takes it away, although the search of the
+  /// library shares the start page's path.
   FutureOr<bool> _mayLeaveAlbumFor(VAlbumRoute target) {
-    var path = _route.albumPath;
-    if (listEquals(path, target.albumPath)) {
+    var path = _levels(_route).first.albumPath;
+    if (listEquals(path, _levels(target).first.albumPath)) {
       return true;
     }
     return leaveAlbum(path);
@@ -2086,6 +2099,20 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
       _searchSessions.putIfAbsent(_pathKey(path), SearchSession.new);
 
   static String _pathKey(List<String> path) => path.join("/");
+
+  /// The path under which a view of [route] keeps its state with this
+  /// delegate: its scroll offset, its edit session and selection, its leave
+  /// guard, its cached resource (issue #265).
+  ///
+  /// That is the path of the album or listing the route shows — except for
+  /// the search view and a viewer opened from it: the search of an album
+  /// stands on the album's own path (issue #249), but what is chosen,
+  /// selected and scrolled there is never the album's, so it is kept below
+  /// the album, under the search view's own segment, which shadows no folder.
+  static List<String> statePathOf(VAlbumRoute route) =>
+      route is SearchRoute || route.fromSearch
+          ? [...route.albumPath, searchSegment]
+          : route.albumPath;
 
   /// The system back button (and the browser's, on the web) goes up.
   ///
@@ -2453,6 +2480,11 @@ class VAlbumState extends State<VAlbumView>
   VAlbumRoute get route => widget.route;
 
   List<String> get path => widget.route.albumPath;
+
+  /// The path this view's state is kept under with the router, see
+  /// [VAlbumRouterDelegate.statePathOf].
+  List<String> get statePath => VAlbumRouterDelegate.statePathOf(route);
+
   String get baseUrl => client.baseUrl(path);
 
   @override
@@ -2736,7 +2768,7 @@ class VAlbumState extends State<VAlbumView>
       );
     }
     var member = members.first;
-    var editing = navigator.delegate.editSession(path).editMode;
+    var editing = navigator.delegate.editSession(statePath).editMode;
     return GroupDetailView(
       client: client,
       baseUrl: baseUrl,
@@ -2746,7 +2778,7 @@ class VAlbumState extends State<VAlbumView>
       // image of it, see issue #80.
       editPath: path,
       editing: editing,
-      onEdited: () => navigator.delegate.editSession(path).dirty = true,
+      onEdited: () => navigator.delegate.editSession(statePath).dirty = true,
       onShowImage: (next) =>
           navigator.go(memberRoute.withMember(next.thumbnailName)),
       upTooltip: duplicatesUpTooltip,
@@ -2795,7 +2827,7 @@ class VAlbumState extends State<VAlbumView>
   /// its images.
   Widget _remembersScrollOffset(Widget content) => _ScrollMemory(
         delegate: navigator.delegate,
-        path: path,
+        path: statePath,
         child: content,
       );
 
@@ -2836,9 +2868,9 @@ class VAlbumState extends State<VAlbumView>
         // and whether it goes into the album's editing buffer instead. The
         // search view is looked at, never edited (issue #227).
         editPath: route.fromSearch ? null : path,
-        editing:
-            !route.fromSearch && navigator.delegate.editSession(path).editMode,
-        onEdited: () => navigator.delegate.editSession(path).dirty = true,
+        editing: !route.fromSearch &&
+            navigator.delegate.editSession(statePath).editMode,
+        onEdited: () => navigator.delegate.editSession(statePath).dirty = true,
         // Where a photo taken back out of this album lands is forgotten, so
         // that the target is fetched anew when it is next shown, see #134.
         delegate: navigator.delegate,
