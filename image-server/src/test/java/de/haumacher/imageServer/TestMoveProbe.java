@@ -163,8 +163,9 @@ public class TestMoveProbe extends TestCase {
 
 	/**
 	 * A photograph rated -2 is shown nowhere (#152), so it can stand for no album: neither when it
-	 * is the only thing that lands in an album without a cover (#153), nor when it is all that is
-	 * left after the cover moved away.
+	 * is the only thing that lands in an album created for the move (#153, #277), nor when it is
+	 * all that is left after the cover moved away. An album that existed before is never covered by
+	 * what is added to it (#277).
 	 */
 	public void testATrashedPhotographNeverBecomesACover() throws Exception {
 		write("A/a.jpg", jpeg(6, 4, Color.RED));
@@ -175,24 +176,24 @@ public class TestMoveProbe extends TestCase {
 			+ "[\"ImagePart\",{\"name\":\"a.jpg\",\"width\":6,\"height\":4,\"rating\":-2}]]}]")
 			.getBytes(StandardCharsets.UTF_8));
 		write("B/y.jpg", jpeg(4, 6, Color.BLUE));
-		write("C/z.jpg", jpeg(4, 6, Color.BLUE));
+		Files.createDirectories(_base.resolve("C"));
 		String owner = signIn();
 		ImageServlet servlet = servlet();
 
 		move(servlet, "/A/", "B", owner, "b.jpg");
 		assertNull("The cover left and only a trashed photograph stayed: no cover, rather than the trash.",
 			stored("A").getIndexPicture());
-		assertEquals("The landed photograph covers the album that had none.", "b.jpg",
-			stored("B").getIndexPicture().getImage());
+		assertNull("Adding to an album that existed never writes its cover (#277).", stored("B").getIndexPicture());
 
-		move(servlet, "/A/", "C", owner, "a.jpg");
+		moveIntoCreated(servlet, "/A/", "C", owner, "a.jpg");
 		assertNull("What lands as trash covers nothing.", stored("C").getIndexPicture());
 	}
 
 	/**
-	 * Among equally rated photographs the cover is the first of them in the order they land in —
-	 * "the first best-rated image from the selection" (the author, #153). Since issue #262 they land
-	 * by their dates, whatever order the request named them in.
+	 * Among equally rated photographs the cover of an album created for them is the first of them
+	 * in the order they land in — "the first best-rated image from the selection" (the author,
+	 * #153, #277). Since issue #262 they land by their dates, whatever order the request named
+	 * them in.
 	 */
 	public void testEquallyRatedPhotographsAreChosenByTheOrderTheyLandIn() throws Exception {
 		write("A/later.jpg", jpeg(6, 4, Color.RED));
@@ -201,11 +202,11 @@ public class TestMoveProbe extends TestCase {
 			+ "[\"ImagePart\",{\"name\":\"earlier.jpg\",\"width\":6,\"height\":4,\"rating\":1,\"date\":1000}],"
 			+ "[\"ImagePart\",{\"name\":\"later.jpg\",\"width\":6,\"height\":4,\"rating\":1,\"date\":2000}]]}]")
 			.getBytes(StandardCharsets.UTF_8));
-		write("B/y.jpg", jpeg(4, 6, Color.BLUE));
+		Files.createDirectories(_base.resolve("B"));
 		String owner = signIn();
 		ImageServlet servlet = servlet();
 
-		move(servlet, "/A/", "B", owner, "later.jpg", "earlier.jpg");
+		moveIntoCreated(servlet, "/A/", "B", owner, "later.jpg", "earlier.jpg");
 
 		AlbumInfo target = stored("B");
 		List<String> landed = new ArrayList<>(names(target));
@@ -275,8 +276,20 @@ public class TestMoveProbe extends TestCase {
 
 	private static MoveResult move(ImageServlet servlet, String pathInfo, String target, String token,
 			String... names) throws Exception {
+		return postMove(servlet, pathInfo, target, token, "", names);
+	}
+
+	/** A move into a target the dialog created for it, see issue #277. */
+	private static MoveResult moveIntoCreated(ImageServlet servlet, String pathInfo, String target, String token,
+			String... names) throws Exception {
+		return postMove(servlet, pathInfo, target, token, ",\"created\":{\"cover\":\"\"}", names);
+	}
+
+	private static MoveResult postMove(ImageServlet servlet, String pathInfo, String target, String token,
+			String extra, String... names) throws Exception {
 		String body = "{\"target\":\"" + target + "\",\"names\":["
-			+ Arrays.stream(names).map(n -> "{\"name\":\"" + n + "\"}").collect(Collectors.joining(",")) + "]}";
+			+ Arrays.stream(names).map(n -> "{\"name\":\"" + n + "\"}").collect(Collectors.joining(",")) + "]"
+			+ extra + "}";
 		Map<String, String> parameters = new HashMap<>();
 		parameters.put("action", "move");
 		FakeResponse response = new FakeResponse();

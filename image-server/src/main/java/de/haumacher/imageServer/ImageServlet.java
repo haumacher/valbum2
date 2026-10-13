@@ -61,6 +61,7 @@ import de.haumacher.imageServer.shared.model.ContactSessionEnd;
 import de.haumacher.imageServer.shared.model.ContactShutOut;
 import de.haumacher.imageServer.shared.model.ContentHash;
 import de.haumacher.imageServer.shared.model.CreateResult;
+import de.haumacher.imageServer.shared.model.CreatedTarget;
 import de.haumacher.imageServer.shared.model.Crop;
 import de.haumacher.imageServer.shared.model.DeviceCodeCreated;
 import de.haumacher.imageServer.shared.model.DeviceCodeRequest;
@@ -2160,9 +2161,10 @@ public class ImageServlet extends HttpServlet {
 
 		MoveResult result;
 		try {
-			// The photograph the move was opened on covers an album created for it, see issue #273.
-			MoveName cover = moveRequest.getCover();
-			result = moveService.move(source, target, names, cover == null ? null : cover.getName());
+			// Only an album created for the move is given a cover, see issues #273 and #277.
+			CreatedTarget created = moveRequest.getCreated();
+			result = moveService.move(source, target, names, created != null,
+				created == null ? null : created.getCover());
 		} catch (MoveRefused ex) {
 			LOG.warning("Refusing to move from '" + context.request().getPathInfo() + "': " + ex.getMessage());
 			errorInfo(context, ex.getStatus(), ex.getMessage());
@@ -2186,8 +2188,9 @@ public class ImageServlet extends HttpServlet {
 	 * the caller is shown that photograph in its album &mdash; anything else is answered
 	 * {@link #notInAlbum(String)} for that name, as a hidden photograph is not there for them. A
 	 * photograph is identified by its content hash; one the collection already references is not
-	 * added twice. A collection without a picture is covered by the best-rated of what arrived, as
-	 * an album is (issue #153). Nothing on disk changes but the collection's sidecar (and the hash
+	 * added twice. A collection created for what arrives ({@link MoveRequest#getCreated()}) is
+	 * covered by what arrived, as an album created for a move is, and adding never touches the
+	 * cover of one that existed before (issue #277). Nothing on disk changes but the collection's sidecar (and the hash
 	 * sidecar of an album whose photographs were not hashed yet).
 	 * </p>
 	 */
@@ -2271,6 +2274,8 @@ public class ImageServlet extends HttpServlet {
 		MoveResult result = MoveResult.create();
 		List<ImagePart> added = new ArrayList<>();
 		List<ImagePart> arrived = new ArrayList<>();
+		// Where every name of the request is referenced now, see issue #277.
+		Map<String, String> landedAs = new HashMap<>();
 		for (MoveName entry : request.getNames()) {
 			String name = entry.getName();
 			MoveOutcome outcome = MoveOutcome.create().setName(name);
@@ -2341,6 +2346,7 @@ public class ImageServlet extends HttpServlet {
 			String present = nameByHash.get(hash);
 			if (present != null) {
 				outcome.setNewName(present).setMessage(PhotoCollections.alreadyCollected(present));
+				landedAs.putIfAbsent(name, present);
 				continue;
 			}
 			String fileName = path.substring(path.lastIndexOf('/') + 1);
@@ -2353,6 +2359,7 @@ public class ImageServlet extends HttpServlet {
 			ImagePart landed = PhotoCollections.copy(part);
 			landed.setName(local);
 			arrived.add(landed);
+			landedAs.putIfAbsent(name, local);
 			outcome.setNewName(local);
 		}
 
@@ -2361,9 +2368,20 @@ public class ImageServlet extends HttpServlet {
 				stored.addPart(reference);
 			}
 			ThumbnailInfo cover = stored.getIndexPicture();
-			if (cover == null || PhotoCollections.referenceNamed(stored, cover.getImage()) == null) {
-				// The rule of issue #153: the best-rated of what arrived, in the order asked.
-				ImagePart best = PrivacyFilter.bestImage(arrived);
+			CreatedTarget created = request.getCreated();
+			if (created != null
+				&& (cover == null || PhotoCollections.referenceNamed(stored, cover.getImage()) == null)) {
+				// Only a collection created for what arrives is given a cover, by the rule an album
+				// created for a move is, see issue #277; adding never touches the cover of one
+				// that existed before.
+				String hintedName = created.getCover().isEmpty() ? null : landedAs.get(created.getCover());
+				ImagePart hinted = null;
+				for (ImagePart landed : arrived) {
+					if (landed.getName().equals(hintedName)) {
+						hinted = landed;
+					}
+				}
+				ImagePart best = PrivacyFilter.createdCover(arrived, hinted);
 				if (best != null) {
 					stored.setIndexPicture(PrivacyFilter.thumbnail(best));
 				}

@@ -28,14 +28,14 @@ public class MoveRequest extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getNames() */
 	private static final String NAMES__PROP = "names";
 
-	/** @see #getCover() */
-	private static final String COVER__PROP = "cover";
+	/** @see #getCreated() */
+	private static final String CREATED__PROP = "created";
 
 	private String _target = "";
 
 	private final java.util.List<de.haumacher.imageServer.shared.model.MoveName> _names = new java.util.ArrayList<>();
 
-	private de.haumacher.imageServer.shared.model.MoveName _cover = null;
+	private de.haumacher.imageServer.shared.model.CreatedTarget _created = null;
 
 	/**
 	 * Creates a {@link MoveRequest} instance.
@@ -125,46 +125,44 @@ public class MoveRequest extends de.haumacher.msgbuf.data.AbstractDataObject {
 	}
 
 	/**
-	 * The photograph to make the target's cover, see issue #273: one of the {@link #getNames()}, as it
-	 * is named in the addressed folder; absent for none.
+	 * Present where the target was created for this very request, in the dialog the request was
+	 * made from, see issues #273 and #277; absent for a target that existed before.
 	 *
 	 * <p>
-	 * The app sends it only for a move opened from the context menu of that photograph into an
-	 * album the folder picker has just created for it. The server applies it in the same step as
-	 * the move, under the name the photograph landed with (or, where it was set aside because the
-	 * target already held the identical file, the name of that copy), and only where the target
-	 * has no cover of its own: a chosen cover is never overridden. A hint naming nothing that
-	 * landed is ignored, and the target is covered as any album that receives images is.
+	 * The server cannot tell an album made a moment ago from one that has been there for years,
+	 * and the two are covered differently: adding photographs never touches the cover of an album
+	 * (or a collection) that existed before, whereas the one created for them is given its cover
+	 * by what arrived, see {@link CreatedTarget}.
 	 * </p>
 	 *
 	 * <p>
-	 * A message rather than a plain string so that it is absent from a request that has none: a
-	 * message field is written only where it is set, a string field always. Only a move reads it;
-	 * the collect, delete and zip requests that share this message never set it.
+	 * A message rather than a flag so that it is absent from a request that has none: a message
+	 * field is written only where it is set, a plain field always. A move and a collect read it;
+	 * the delete and zip requests that share this message never set it.
 	 * </p>
 	 */
-	public final de.haumacher.imageServer.shared.model.MoveName getCover() {
-		return _cover;
+	public final de.haumacher.imageServer.shared.model.CreatedTarget getCreated() {
+		return _created;
 	}
 
 	/**
-	 * @see #getCover()
+	 * @see #getCreated()
 	 */
-	public de.haumacher.imageServer.shared.model.MoveRequest setCover(de.haumacher.imageServer.shared.model.MoveName value) {
-		internalSetCover(value);
+	public de.haumacher.imageServer.shared.model.MoveRequest setCreated(de.haumacher.imageServer.shared.model.CreatedTarget value) {
+		internalSetCreated(value);
 		return this;
 	}
 
-	/** Internal setter for {@link #getCover()} without chain call utility. */
-	protected final void internalSetCover(de.haumacher.imageServer.shared.model.MoveName value) {
-		_cover = value;
+	/** Internal setter for {@link #getCreated()} without chain call utility. */
+	protected final void internalSetCreated(de.haumacher.imageServer.shared.model.CreatedTarget value) {
+		_created = value;
 	}
 
 	/**
-	 * Checks, whether {@link #getCover()} has a value.
+	 * Checks, whether {@link #getCreated()} has a value.
 	 */
-	public final boolean hasCover() {
-		return _cover != null;
+	public final boolean hasCreated() {
+		return _created != null;
 	}
 
 	/** Reads a new instance from the given reader. */
@@ -190,9 +188,9 @@ public class MoveRequest extends de.haumacher.msgbuf.data.AbstractDataObject {
 			x.writeTo(out);
 		}
 		out.endArray();
-		if (hasCover()) {
-			out.name(COVER__PROP);
-			getCover().writeTo(out);
+		if (hasCreated()) {
+			out.name(CREATED__PROP);
+			getCreated().writeTo(out);
 		}
 	}
 
@@ -208,7 +206,7 @@ public class MoveRequest extends de.haumacher.msgbuf.data.AbstractDataObject {
 				in.endArray();
 			}
 			break;
-			case COVER__PROP: setCover(de.haumacher.imageServer.shared.model.MoveName.readMoveName(in)); break;
+			case CREATED__PROP: setCreated(de.haumacher.imageServer.shared.model.CreatedTarget.readCreatedTarget(in)); break;
 			default: super.readField(in, field);
 		}
 	}

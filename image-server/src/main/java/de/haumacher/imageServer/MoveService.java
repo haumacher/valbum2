@@ -338,27 +338,31 @@ public class MoveService {
 	 *         If the request as a whole is impossible.
 	 */
 	public MoveResult move(PathInfo source, PathInfo target, List<String> names) throws MoveRefused, IOException {
-		return move(source, target, names, null);
+		return move(source, target, names, false, null);
 	}
 
 	/**
-	 * Moves the named entries of the source folder into the target folder and makes the given one
-	 * of them the target's cover, see issue #273.
+	 * Moves the named entries of the source folder into the target folder, and covers a target
+	 * that was created for this move, see issues #273 and #277.
 	 *
 	 * <p>
-	 * The cover hint is applied after the last entry was dealt with and before the target's
-	 * sidecar is written, so the move and the cover are one step and one sidecar write. It names
-	 * the photograph as it is named in the source folder and is followed to wherever it landed,
-	 * see {@link #coverHinted(AlbumInfo, String, Map)}; a target that has a cover of its own keeps
-	 * it.
+	 * Adding photographs never touches the cover of an album that existed before: it keeps the
+	 * cover it chose, and one that chose none goes on being shown by the default of issue #260.
+	 * Only an album created for the move is given a cover, after the last entry was dealt with and
+	 * before its sidecar is written, so the move and the cover are one step and one sidecar write,
+	 * see {@link #coverCreated(AlbumInfo, Set, String, Map)}.
 	 * </p>
 	 *
+	 * @param created
+	 *        Whether the target was created for this move, in the dialog it was asked from; the
+	 *        server cannot tell, the client says so.
 	 * @param coverHint
-	 *        The name of the entry to cover the target with, <code>null</code> or empty for none.
+	 *        The name of the entry the move was opened on, <code>null</code> or empty for none;
+	 *        only read where <code>created</code>.
 	 * @see #move(PathInfo, PathInfo, List)
 	 */
-	public MoveResult move(PathInfo source, PathInfo target, List<String> names, String coverHint)
-			throws MoveRefused, IOException {
+	public MoveResult move(PathInfo source, PathInfo target, List<String> names, boolean created,
+			String coverHint) throws MoveRefused, IOException {
 		File sourceFolder = source.toFile();
 		File targetFolder = target.toFile();
 		if (!sourceFolder.isDirectory()) {
@@ -399,7 +403,7 @@ public class MoveService {
 			targetTakesFolders, rule, target.isRoot(), groupsTravel, names);
 
 		// What the target held before, so that what lands there is told apart afterwards: a target
-		// without a cover is covered by one of those, see issue #153.
+		// created for this move is covered by one of those, see issue #277.
 		Set<AlbumPart> heldBefore = Collections.newSetFromMap(new IdentityHashMap<>());
 		heldBefore.addAll(targetAlbum.getParts());
 
@@ -461,8 +465,9 @@ public class MoveService {
 					sourceHashes.flush();
 				}
 				if (targetChanged) {
-					coverHinted(targetAlbum, coverHint, landedAs);
-					coverLanded(targetAlbum, heldBefore);
+					if (created) {
+						coverCreated(targetAlbum, heldBefore, coverHint, landedAs);
+					}
 					UpdateTransient.updateTransient(targetAlbum);
 					ImageServlet.storeSidecar(targetFolder, json(targetAlbum));
 					targetHashes.flush();
@@ -1143,8 +1148,8 @@ public class MoveService {
 	 * <p>
 	 * The cover of an album whose cover was moved away is the album's first best-rated image (see
 	 * {@link PrivacyFilter#bestImage(Iterable)}), the rule a cover is chosen by for an album that
-	 * receives images too (issue #153, {@link #coverLanded(AlbumInfo, Set)}); an album with no
-	 * image left has no cover. The new cover is framed in the frame its image is displayed in and
+	 * is created for a move too (issue #277, {@link #coverCreated(AlbumInfo, Set, String, Map)});
+	 * an album with no image left has no cover. The new cover is framed in the frame its image is displayed in and
 	 * says so, see {@link ThumbnailInfo#getOrientation()} and issue #115.
 	 * </p>
 	 */
@@ -1162,29 +1167,38 @@ public class MoveService {
 	}
 
 	/**
-	 * Gives an album that has just received images a cover, if it has none, see issue #153.
+	 * Gives an album that was created for this move its cover, see issues #273 and #277.
 	 *
 	 * <p>
-	 * The cover becomes the first best-rated image among the parts that landed (every part of the
-	 * album not in <code>heldBefore</code>, in the album's order, a group counting as its
-	 * representative), named by the name it landed under and framed by
-	 * {@link PrivacyFilter#thumbnail(ImagePart)} — the frame of issue #115, its orientation written
-	 * on it. This is what makes an album the move picker has just created (#114) show a picture in
-	 * the listing, whose tile shows a sidecar album's cover verbatim. An album whose cover names an
-	 * image it holds is left alone; a cover naming an image the album no longer holds counts as
-	 * none.
+	 * The rule of {@link PrivacyFilter#createdCover(Iterable, ImagePart)} among the parts that
+	 * landed (every part of the album not in <code>heldBefore</code>, in the album's order), each
+	 * named by the name it landed under. The hint names the photograph as it was named in the
+	 * source folder and is followed to the name it landed with after a collision, or — where it
+	 * was set aside because the album already held the identical file — to the copy that is there.
+	 * The cover is framed by {@link PrivacyFilter#thumbnail(ImagePart)}, the frame of issue #115
+	 * measured on the picture as it is shown, its crop applied (#212); the crop's region itself is
+	 * derived on every read and never stored, see {@link Crops#withRegion(AlbumInfo,
+	 * ThumbnailInfo)}.
+	 * </p>
+	 *
+	 * <p>
+	 * An album that has a live cover keeps it: a choice is never overridden.
 	 * </p>
 	 *
 	 * @param heldBefore
 	 *        The parts the album held before the move, compared by identity.
+	 * @param coverHint
+	 *        The source name of the photograph the move was opened on, <code>null</code> or empty
+	 *        for none.
+	 * @param landedAs
+	 *        Where every photograph of the request ended up, by its name in the source folder.
 	 */
-	private static void coverLanded(AlbumInfo album, Set<AlbumPart> heldBefore) {
+	private static void coverCreated(AlbumInfo album, Set<AlbumPart> heldBefore, String coverHint,
+			Map<String, String> landedAs) {
+		UpdateTransient.updateTransient(album);
 		ThumbnailInfo indexPicture = album.getIndexPicture();
-		if (indexPicture != null) {
-			UpdateTransient.updateTransient(album);
-			if (album.getImageByName().containsKey(indexPicture.getImage())) {
-				return;
-			}
+		if (indexPicture != null && album.getImageByName().containsKey(indexPicture.getImage())) {
+			return;
 		}
 		List<AlbumPart> landed = new ArrayList<>();
 		for (AlbumPart part : album.getParts()) {
@@ -1192,57 +1206,12 @@ public class MoveService {
 				landed.add(part);
 			}
 		}
-		ImagePart best = PrivacyFilter.bestImage(landed);
-		if (best != null) {
-			album.setIndexPicture(PrivacyFilter.thumbnail(best));
+		String hintedName = coverHint == null || coverHint.isEmpty() ? null : landedAs.get(coverHint);
+		ImagePart hinted = hintedName == null ? null : album.getImageByName().get(hintedName);
+		ImagePart cover = PrivacyFilter.createdCover(landed, hinted);
+		if (cover != null) {
+			album.setIndexPicture(PrivacyFilter.thumbnail(cover));
 		}
-	}
-
-	/**
-	 * Covers an album that has just received images with the photograph the move was asked for,
-	 * see issue #273.
-	 *
-	 * <p>
-	 * The hint names the photograph as it was named in the source folder; the cover names it as it
-	 * is named in the album now: under the name it landed with after a collision, or — where it
-	 * was set aside because the album already held the identical file — under the name of that
-	 * copy. It is framed by {@link PrivacyFilter#thumbnail(ImagePart)}, the frame of issue #115
-	 * measured on the picture as it is shown, its crop applied (#212); the crop's region itself is
-	 * derived on every read and never stored, see {@link Crops#withRegion(AlbumInfo,
-	 * ThumbnailInfo)}.
-	 * </p>
-	 *
-	 * <p>
-	 * Nothing happens where the album already has a live cover (a choice is never overridden), the
-	 * hint names nothing that reached the album, or the photograph could stand for no album at all
-	 * (trashed or unreadable, see {@link PrivacyFilter#bestImage(Iterable)}); the album is then
-	 * covered by the rule of {@link #coverLanded(AlbumInfo, Set)}.
-	 * </p>
-	 *
-	 * @param coverHint
-	 *        The source name of the photograph to cover the album with, <code>null</code> or empty
-	 *        for none.
-	 * @param landedAs
-	 *        Where every photograph of the request ended up, by its name in the source folder.
-	 */
-	private static void coverHinted(AlbumInfo album, String coverHint, Map<String, String> landedAs) {
-		if (coverHint == null || coverHint.isEmpty()) {
-			return;
-		}
-		String landed = landedAs.get(coverHint);
-		if (landed == null) {
-			return;
-		}
-		ThumbnailInfo indexPicture = album.getIndexPicture();
-		UpdateTransient.updateTransient(album);
-		if (indexPicture != null && album.getImageByName().containsKey(indexPicture.getImage())) {
-			return;
-		}
-		ImagePart image = album.getImageByName().get(landed);
-		if (image == null || PrivacyFilter.bestImage(Collections.singletonList(image)) == null) {
-			return;
-		}
-		album.setIndexPicture(PrivacyFilter.thumbnail(image));
 	}
 
 	/** The image an {@link ImageGroup} is shown by, <code>null</code> if it has none. */

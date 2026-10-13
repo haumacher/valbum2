@@ -1,8 +1,8 @@
-/// Tests of the cover hint of a move (issue #273): "Move to…" opened from the
-/// context menu of a photo, into an album the folder picker creates in the
-/// same dialog, tells the server that photo is the new album's cover. A move
-/// from the selection bar and a move into an album that already exists send
-/// no such hint.
+/// Tests of what a move tells the server about the cover (issues #273, #277):
+/// a move into an album the folder picker creates in the same dialog says so
+/// (`created`), from the context menu of a photo with that photo as the hint
+/// and from the selection bar without one. A move into an album that already
+/// exists says neither, and an existing album's cover is never touched.
 library;
 
 import 'package:flutter/gestures.dart';
@@ -108,11 +108,12 @@ void main() {
         movePost(requests).body,
         '{"target":"2026-03-01 Ausflug",'
         '"names":[{"name":"a.jpg"},{"name":"b.jpg"}],'
-        '"cover":{"name":"b.jpg"}}',
+        '"created":{"cover":"b.jpg"}}',
       );
     });
 
-    testWidgets('the selection bar, into a new album: no hint', (tester) async {
+    testWidgets('the selection bar, into a new album: created, without a hint',
+        (tester) async {
       var requests = <http.Request>[];
       await withFakeImageHttp(() async {
         await pumpInbox(tester, inboxServer, requests: requests);
@@ -126,12 +127,14 @@ void main() {
       expect(
         movePost(requests).body,
         '{"target":"2026-03-01 Ausflug",'
-        '"names":[{"name":"a.jpg"},{"name":"b.jpg"}]}',
+        '"names":[{"name":"a.jpg"},{"name":"b.jpg"}],'
+        '"created":{"cover":""}}',
       );
     });
 
-    testWidgets('the context menu of a photo, into an existing album: no hint',
-        (tester) async {
+    testWidgets(
+        'the context menu of a photo, into an existing album: neither created '
+        'nor a hint', (tester) async {
       var requests = <http.Request>[];
       await withFakeImageHttp(() async {
         await pumpInbox(tester, inboxServer, requests: requests);
@@ -177,11 +180,12 @@ void main() {
 
       var body = movePost(requests).body;
       expect(body, contains('"names":[{"name":"a.jpg"},{"name":"b.jpg"}]'));
-      expect(body, endsWith(',"cover":{"name":"b.jpg"}}'));
+      expect(body, endsWith(',"created":{"cover":"b.jpg"}}'));
     });
 
-    testWidgets('the context menu of a tile, into an existing album: no hint',
-        (tester) async {
+    testWidgets(
+        'the context menu of a tile, into an existing album: neither created '
+        'nor a hint', (tester) async {
       var requests = <http.Request>[];
       await withFakeImageHttp(() async {
         await pumpAlbumEditMode(tester, recordingClient(albumServer, requests));
@@ -192,7 +196,7 @@ void main() {
         await confirmPicker(tester);
       });
 
-      expect(movePost(requests).body, isNot(contains('"cover"')));
+      expect(movePost(requests).body, isNot(contains('"created"')));
     });
   });
 }

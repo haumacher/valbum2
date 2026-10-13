@@ -352,7 +352,10 @@ in a separate service, and abuse and law (the DSA, GDPR) come first. Open questi
   an original" by exactly one act: an administrator's purge of the photographs rated −2, pinned by a
   test that every other file is untouched. What still goes into `.valbum/trash/` — the album delete of
   #109 and a contributor's inbox delete — is #159's question. An album that receives images is covered by
-  the first best-rated one that landed, and never by a trashed one (#153, a probe's finding); the crop of
+  the first best-rated one that landed, and never by a trashed one (#153, a probe's finding) — **narrowed by
+  #277 (2026-10-13)**: only an album (or collection) created in the dialog of the move is covered, by its
+  first best-rated photo above normal, else the photo the move was opened on (#273), else the earliest;
+  adding never touches an existing album's cover; the crop of
   an album picture covers the square (#154); the edit-mode tile has a context menu (#156). **Faces**
   (#155): a face is marked by a drag in any direction or by a click, the server looks for it in the
   original and stores what it finds as a detection with its embedding, so a marked face gets a crop, a

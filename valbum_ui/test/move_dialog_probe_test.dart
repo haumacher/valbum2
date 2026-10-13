@@ -81,8 +81,9 @@ void main() {
     expect(Uri.decodeFull(put.url.toString()), "${k.dataUrl}/2001-01-01 Probe/");
     var post =
         requests.singleWhere((r) => r.url.queryParameters["action"] == "move");
+    // The album was created for the move, see issue #277.
     expect(post.body,
-        '{"target":"2001-01-01 Probe","names":[{"name":"a.jpg"},{"name":"g1.jpg"},{"name":"clip.mp4"}]}');
+        '{"target":"2001-01-01 Probe","names":[{"name":"a.jpg"},{"name":"g1.jpg"},{"name":"clip.mp4"}],"created":{"cover":""}}');
     expect(find.textContaining("Moved 3 images to '2001-01-01 Probe'."),
         findsOneWidget);
   });

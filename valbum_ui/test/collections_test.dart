@@ -389,7 +389,9 @@ void main() {
       var post = space.posts("collect").single;
       expect(space.requests.indexOf(post),
           greaterThan(space.requests.indexOf(put)));
-      expect(post.body, '{"target":"New","names":[{"name":"a.jpg"}]}');
+      // The collection was created for what is added, see issue #277.
+      expect(post.body,
+          '{"target":"New","names":[{"name":"a.jpg"}],"created":{"cover":""}}');
     });
 
     testWidgets("a move never goes into a collection", (tester) async {

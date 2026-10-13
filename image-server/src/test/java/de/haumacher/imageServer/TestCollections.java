@@ -101,7 +101,8 @@ public class TestCollections extends ShareTestCase {
 
 	public void testTheServerWritesNothingButReferences() throws Exception {
 		createCollection("Best of");
-		MoveResult result = moveResult(collect(ZOO, "/Best of", SharingFixture.ALICE, "public.jpg", "members.jpg"));
+		MoveResult result =
+			moveResult(collectIntoCreated(ZOO, "/Best of", SharingFixture.ALICE, "public.jpg", "members.jpg"));
 		assertEquals("public.jpg", outcome(result, "public.jpg").getNewName());
 		assertEquals("", outcome(result, "public.jpg").getMessage());
 
@@ -112,11 +113,35 @@ public class TestCollections extends ShareTestCase {
 		assertEquals(64, reference.getRef().getHash().length());
 		assertEquals(SharingFixture.ZOO + "/public.jpg", reference.getRef().getPath());
 		assertEquals("Nothing of the photograph is copied.", 0, reference.getWidth());
-		assertEquals("Covered by what arrived (#153).", "public.jpg", stored.getIndexPicture().getImage());
+		assertEquals("A collection created for them is covered by what arrived (#153, #277).", "public.jpg",
+			stored.getIndexPicture().getImage());
 		for (String file : files(_base.resolve("Best of"))) {
 			assertTrue("Nothing but the sidecar (and its backups) is in the folder: " + file,
 				file.startsWith("index.json"));
 		}
+	}
+
+	/**
+	 * A collection that existed before is never covered by what is added to it, see issue #277: it
+	 * goes on being shown by the first photograph its caller may see.
+	 */
+	public void testAddingToACollectionThatExistedWritesNoCover() throws Exception {
+		createCollection("Best of");
+		moveResult(collect(ZOO, "/Best of", SharingFixture.ALICE, "public.jpg", "members.jpg"));
+
+		assertNull("No cover is written into the sidecar.", stored("Best of").getIndexPicture());
+		assertEquals("The answer shows the first photograph.", "public.jpg",
+			album(get(BEST, "json", SharingFixture.ALICE)).getIndexPicture().getImage());
+	}
+
+	public void testAddingToACollectionWithACoverKeepsIt() throws Exception {
+		createCollection("Best of");
+		collectIntoCreated(ZOO, "/Best of", SharingFixture.ALICE, "public.jpg");
+		assertEquals("public.jpg", stored("Best of").getIndexPicture().getImage());
+
+		collectIntoCreated(ZOO, "/Best of", SharingFixture.ALICE, "members.jpg");
+
+		assertEquals("A live cover is never overridden.", "public.jpg", stored("Best of").getIndexPicture().getImage());
 	}
 
 	// --- Adding and removing. ---
@@ -313,7 +338,7 @@ public class TestCollections extends ShareTestCase {
 
 	public void testTheListingShowsACollectionWithAPictureItsCallerMaySee() throws Exception {
 		createCollection("Best of");
-		collect(ZOO, "/Best of", SharingFixture.ALICE, "members.jpg");
+		collectIntoCreated(ZOO, "/Best of", SharingFixture.ALICE, "members.jpg");
 
 		FolderInfo forAlice = entry(listing(get("/", "json", SharingFixture.ALICE)), "Best of");
 		assertEquals(FolderKind.COLLECTION, forAlice.getKind());
@@ -566,6 +591,16 @@ public class TestCollections extends ShareTestCase {
 		parameters.put("action", ImageServlet.COLLECT_ACTION);
 		// A target is spelled relative to the space, without the slashes of an address.
 		return post(pathInfo, body(target.replaceAll("^/+|/+$", ""), names), token, parameters);
+	}
+
+	/** Adds to a collection the dialog created for it, see issue #277. */
+	private FakeResponse collectIntoCreated(String pathInfo, String target, String token, String... names)
+			throws Exception {
+		Map<String, String> parameters = new HashMap<>();
+		parameters.put("action", ImageServlet.COLLECT_ACTION);
+		String body = body(target.replaceAll("^/+|/+$", ""), names);
+		body = body.substring(0, body.length() - 1) + ",\"created\":{\"cover\":\"\"}}";
+		return post(pathInfo, body, token, parameters);
 	}
 
 	private FakeResponse delete(String pathInfo, String token, String... names) throws Exception {

@@ -5676,30 +5676,28 @@ class MoveRequest extends _JsonObject {
 	///  </p>
 	List<MoveName> names;
 
-	///  The photograph to make the target's cover, see issue #273: one of the {@link #names}, as it
-	///  is named in the addressed folder; absent for none.
+	///  Present where the target was created for this very request, in the dialog the request was
+	///  made from, see issues #273 and #277; absent for a target that existed before.
 	/// 
 	///  <p>
-	///  The app sends it only for a move opened from the context menu of that photograph into an
-	///  album the folder picker has just created for it. The server applies it in the same step as
-	///  the move, under the name the photograph landed with (or, where it was set aside because the
-	///  target already held the identical file, the name of that copy), and only where the target
-	///  has no cover of its own: a chosen cover is never overridden. A hint naming nothing that
-	///  landed is ignored, and the target is covered as any album that receives images is.
+	///  The server cannot tell an album made a moment ago from one that has been there for years,
+	///  and the two are covered differently: adding photographs never touches the cover of an album
+	///  (or a collection) that existed before, whereas the one created for them is given its cover
+	///  by what arrived, see {@link CreatedTarget}.
 	///  </p>
 	/// 
 	///  <p>
-	///  A message rather than a plain string so that it is absent from a request that has none: a
-	///  message field is written only where it is set, a string field always. Only a move reads it;
-	///  the collect, delete and zip requests that share this message never set it.
+	///  A message rather than a flag so that it is absent from a request that has none: a message
+	///  field is written only where it is set, a plain field always. A move and a collect read it;
+	///  the delete and zip requests that share this message never set it.
 	///  </p>
-	MoveName? cover;
+	CreatedTarget? created;
 
 	/// Creates a MoveRequest.
 	MoveRequest({
 			this.target = "", 
 			this.names = const [], 
-			this.cover, 
+			this.created, 
 	});
 
 	/// Parses a MoveRequest from a string source.
@@ -5737,8 +5735,8 @@ class MoveRequest extends _JsonObject {
 				}
 				break;
 			}
-			case "cover": {
-				cover = json.tryNull() ? null : MoveName.read(json);
+			case "created": {
+				created = json.tryNull() ? null : CreatedTarget.read(json);
 				break;
 			}
 			default: super._readProperty(key, json);
@@ -5759,11 +5757,68 @@ class MoveRequest extends _JsonObject {
 		}
 		json.endArray();
 
-		var _cover = cover;
-		if (_cover != null) {
-			json.addKey("cover");
-			_cover.writeContent(json);
+		var _created = created;
+		if (_created != null) {
+			json.addKey("created");
+			_created.writeContent(json);
 		}
+	}
+
+}
+
+///  The target of a {@link MoveRequest} was created for it, see {@link MoveRequest#created}.
+/// 
+///  <p>
+///  The target is then given its cover in the same step as the photographs arrive, under the names
+///  they arrived with, and only where it has no cover yet: (1) the first best-rated photograph that
+///  arrived where its rating is above normal; else (2) the photograph of {@link #cover}; else (3)
+///  the first photograph that arrived in the order of their dates. A trashed or unreadable
+///  photograph never counts. Where the hinted photograph was set aside because the target already
+///  held the identical file, the copy that is there stands for it.
+///  </p>
+class CreatedTarget extends _JsonObject {
+	///  The photograph the request was opened on (the context menu of a photo, see issue #273): one
+	///  of {@link MoveRequest#names}, as it is named in the addressed folder; empty for none (the
+	///  selection bar has no photograph under the pointer).
+	String cover;
+
+	/// Creates a CreatedTarget.
+	CreatedTarget({
+			this.cover = "", 
+	});
+
+	/// Parses a CreatedTarget from a string source.
+	static CreatedTarget? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a CreatedTarget instance from the given reader.
+	static CreatedTarget read(JsonReader json) {
+		CreatedTarget result = CreatedTarget();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "CreatedTarget";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "cover": {
+				cover = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("cover");
+		json.addString(cover);
 	}
 
 }

@@ -112,12 +112,13 @@ String targetPath(List<String> target) => target.join("/");
 /// which is not necessarily the path it was asked for: a placement rule of
 /// the folder above files it into its year folder, see issue #48.
 ///
-/// [cover] is the photograph the move was opened on from its context menu,
-/// `null` for a move of the selection bar (no photo under the pointer). It is
-/// sent to the server only when the picker created the target album in this
-/// very dialog, and the server then makes that photograph the new album's
-/// cover, see issue #273 — a move into an album that already existed leaves
-/// its cover alone.
+/// An album the picker created in this very dialog is said to be so in the
+/// move request, and the server then gives it its cover from what arrives,
+/// see issue #277: the first best-rated photo above normal, else [cover],
+/// else the earliest. A move into an album that already existed never touches
+/// its cover. [cover] is the photograph the move was opened on from its
+/// context menu (issue #273), `null` for a move of the selection bar (no
+/// photo under the pointer).
 Future<void> moveWithPicker({
   required BuildContext context,
   required VAlbumClient client,
@@ -191,9 +192,9 @@ Future<void> moveWithPicker({
       source,
       targetPath(target),
       names,
-      // Only an album made for this move is covered by the photo it was
-      // opened on, see issue #273.
-      cover: created ? cover : null,
+      // Only an album made for this move is given a cover, see issue #277.
+      created: created,
+      cover: cover,
     );
   } catch (error) {
     // The server's own reason, as every other refused write shows it — and,
@@ -300,7 +301,14 @@ Future<void> collectWithPicker({
   }
   MoveResult result;
   try {
-    result = await client.collect(source, targetPath(target), names);
+    // Only a collection made for these photographs is given a cover by
+    // them, see issue #277.
+    result = await client.collect(
+      source,
+      targetPath(target),
+      names,
+      created: created != null,
+    );
   } catch (error) {
     showRefusal(messenger, error);
     return;

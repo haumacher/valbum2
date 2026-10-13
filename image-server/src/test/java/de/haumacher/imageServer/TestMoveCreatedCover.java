@@ -39,17 +39,18 @@ import javax.imageio.ImageIO;
 import junit.framework.TestCase;
 
 /**
- * Test case for the cover hint of a move, see issue #273: the photograph "Move to…" was opened on
- * covers the album the folder picker has just created for it.
+ * Test case for the cover of an album a move creates, see issues #273 and #277.
  *
  * <p>
- * Driven through the servlet's move endpoint, the sidecar read back from disk. The app sends the
- * hint only for a move from a photo's context menu into an album it created in the same dialog; a
- * test without a hint is the selection bar's move, or a move into an album that already existed.
+ * An album the folder picker created for the move (the request says so) is covered by the first
+ * best-rated photograph that landed if its rating is above normal, else by the photograph the move
+ * was opened on, else by the first that landed in date order. Adding photographs to an album that
+ * existed before never touches its cover. Driven through the servlet's move endpoint, the sidecar
+ * read back from disk.
  * </p>
  */
 @SuppressWarnings("javadoc")
-public class TestMoveCoverHint extends TestCase {
+public class TestMoveCreatedCover extends TestCase {
 
 	private Path _base;
 
@@ -72,17 +73,21 @@ public class TestMoveCoverHint extends TestCase {
 		super.tearDown();
 	}
 
-	/** An inbox of five photographs, the best-rated of which is not the third. */
-	private void inboxOfFive() throws IOException {
+	/**
+	 * An inbox of five photographs; the third is a portrait, the fourth the earliest. The second is
+	 * rated as given, every other one is normal.
+	 */
+	private void inboxOfFive(int secondRating) throws IOException {
 		image("Inbox/p1.jpg", 8, 6, Color.RED);
 		image("Inbox/p2.jpg", 8, 6, Color.GREEN);
 		image("Inbox/p3.jpg", 6, 8, Color.BLUE);
 		image("Inbox/p4.jpg", 8, 6, Color.YELLOW);
 		image("Inbox/p5.jpg", 8, 6, Color.CYAN);
 		sidecar("Inbox", "[\"AlbumInfo\",{\"kind\":\"INBOX\",\"title\":\"Inbox\",\"parts\":["
-			+ part("p1.jpg", 8, 6, "") + "," + part("p2.jpg", 8, 6, "\"rating\":2") + ","
-			+ part("p3.jpg", 6, 8, "") + "," + part("p4.jpg", 8, 6, "") + ","
-			+ part("p5.jpg", 8, 6, "") + "]}]");
+			+ part("p1.jpg", 8, 6, "\"date\":3000") + ","
+			+ part("p2.jpg", 8, 6, "\"date\":2000,\"rating\":" + secondRating) + ","
+			+ part("p3.jpg", 6, 8, "\"date\":5000") + "," + part("p4.jpg", 8, 6, "\"date\":1000") + ","
+			+ part("p5.jpg", 8, 6, "\"date\":4000") + "]}]");
 	}
 
 	/** The picker's "Create new album…" (#114): an empty album written by the sidecar PUT. */
@@ -92,69 +97,76 @@ public class TestMoveCoverHint extends TestCase {
 		assertNull("A new album has no cover.", album(name).getIndexPicture());
 	}
 
-	public void testTheHintedPhotoCoversTheNewAlbum() throws Exception {
-		inboxOfFive();
+	private static final String[] ALL = { "p1.jpg", "p2.jpg", "p3.jpg", "p4.jpg", "p5.jpg" };
+
+	// --- An album created for the move. ---
+
+	public void testABestRatingAboveNormalWinsOverTheHint() throws Exception {
+		inboxOfFive(2);
 		newAlbum("New");
 
-		MoveResult result = move("/Inbox/", "New", "p3.jpg", "p1.jpg", "p2.jpg", "p3.jpg", "p4.jpg", "p5.jpg");
+		moveIntoCreated("/Inbox/", "New", "p3.jpg", ALL);
 
-		assertEquals(Arrays.asList("p1.jpg", "p2.jpg", "p3.jpg", "p4.jpg", "p5.jpg"), newNames(result));
+		assertEquals("The first best-rated photo, its rating above normal.", "p2.jpg",
+			album("New").getIndexPicture().getImage());
+	}
+
+	public void testAllNormalTheHintedPhotoCovers() throws Exception {
+		inboxOfFive(0);
+		newAlbum("New");
+
+		MoveResult result = moveIntoCreated("/Inbox/", "New", "p3.jpg", ALL);
+
+		assertEquals(Arrays.asList(ALL), newNames(result));
 		ThumbnailInfo cover = album("New").getIndexPicture();
-		assertNotNull("The album is covered.", cover);
-		assertEquals("The photo the menu was opened on, not the best-rated one.", "p3.jpg", cover.getImage());
+		assertEquals("The photo the menu was opened on.", "p3.jpg", cover.getImage());
 		assertEquals("Framed like a default cover: a portrait fills the square.", 8.0 / 6, cover.getScale(), 1e-9);
 		assertEquals((8.0 - 6) / 8 * 150, cover.getTy(), 1e-9);
 		assertEquals(0.0, cover.getTx(), 1e-9);
 	}
 
-	public void testWithoutAHintTheBestRatedLandedPhotoCovers() throws Exception {
-		inboxOfFive();
+	public void testAllNormalWithoutAHintTheEarliestCovers() throws Exception {
+		inboxOfFive(0);
 		newAlbum("New");
 
-		// The selection bar's move: no photo under the pointer, no hint.
-		move("/Inbox/", "New", null, "p1.jpg", "p2.jpg", "p3.jpg", "p4.jpg", "p5.jpg");
+		// The selection bar's move into a new album: no photo under the pointer, no hint.
+		moveIntoCreated("/Inbox/", "New", "", ALL);
 
-		assertEquals("The rule of #153 is left as it was.", "p2.jpg", album("New").getIndexPicture().getImage());
+		assertEquals("The first photo in date order, not the first one named.", "p4.jpg",
+			album("New").getIndexPicture().getImage());
+	}
+
+	public void testARatingBelowNormalIsNoBestRatingAndTheTrashCoversNothing() throws Exception {
+		inboxOfFive(-1);
+		// The earliest photo is in the trash.
+		sidecar("Inbox", read(_base.resolve("Inbox/index.json")).replace("\"date\":1000", "\"date\":1000,\"rating\":-2"));
+		newAlbum("New");
+
+		moveIntoCreated("/Inbox/", "New", "", ALL);
+
+		assertEquals("The earliest that is not trashed; a rating below normal still counts.", "p2.jpg",
+			album("New").getIndexPicture().getImage());
+	}
+
+	public void testAHintNamingNothingThatMovedIsIgnored() throws Exception {
+		inboxOfFive(0);
+		newAlbum("New");
+
+		moveIntoCreated("/Inbox/", "New", "p4.jpg", "p1.jpg", "p3.jpg");
+
+		assertEquals("The earliest of what landed.", "p1.jpg", album("New").getIndexPicture().getImage());
 	}
 
 	public void testTheCoverFollowsTheNameTheHintedPhotoLandedWith() throws Exception {
-		inboxOfFive();
-		image("Trip/p3.jpg", 12, 9, Color.MAGENTA);
-		sidecar("Trip", "[\"AlbumInfo\",{\"title\":\"Trip\",\"parts\":[" + part("p3.jpg", 12, 9, "\"rating\":2") + "]}]");
+		inboxOfFive(0);
+		image("New/p3.jpg", 12, 9, Color.MAGENTA);
+		sidecar("New", "[\"AlbumInfo\",{\"title\":\"New\",\"parts\":[" + part("p3.jpg", 12, 9, "") + "]}]");
 
-		MoveResult result = move("/Inbox/", "Trip", "p3.jpg", "p2.jpg", "p3.jpg");
+		MoveResult result = moveIntoCreated("/Inbox/", "New", "p3.jpg", "p2.jpg", "p3.jpg");
 
 		assertEquals(Arrays.asList("p2.jpg", "p3-2.jpg"), newNames(result));
 		assertEquals("The hinted photo under the name it landed with, not the one that was there.", "p3-2.jpg",
-			album("Trip").getIndexPicture().getImage());
-	}
-
-	public void testAChosenCoverIsNeverOverridden() throws Exception {
-		inboxOfFive();
-		image("Trip/t.jpg", 12, 9, Color.MAGENTA);
-		sidecar("Trip", "[\"AlbumInfo\",{\"title\":\"Trip\","
-			+ "\"indexPicture\":{\"image\":\"t.jpg\",\"scale\":2.0,\"tx\":10.0,\"ty\":5.0},"
-			+ "\"parts\":[" + part("t.jpg", 12, 9, "") + "]}]");
-
-		move("/Inbox/", "Trip", "p3.jpg", "p1.jpg", "p3.jpg");
-
-		ThumbnailInfo cover = album("Trip").getIndexPicture();
-		assertEquals("t.jpg", cover.getImage());
-		assertEquals(2.0, cover.getScale(), 1e-9);
-		assertEquals(10.0, cover.getTx(), 1e-9);
-		assertEquals(5.0, cover.getTy(), 1e-9);
-	}
-
-	public void testAnExistingAlbumWithoutCoverIsLeftToTheRuleWithoutAHint() throws Exception {
-		inboxOfFive();
-		image("Trip/t.jpg", 12, 9, Color.MAGENTA);
-		sidecar("Trip", "[\"AlbumInfo\",{\"title\":\"Trip\",\"parts\":[" + part("t.jpg", 12, 9, "") + "]}]");
-
-		// Opened on p4.jpg, but the app sends no hint into an album it did not create in this dialog.
-		move("/Inbox/", "Trip", null, "p3.jpg", "p4.jpg");
-
-		assertEquals("Only the rule of #153 chooses: the first best-rated photo that landed.", "p3.jpg",
-			album("Trip").getIndexPicture().getImage());
+			album("New").getIndexPicture().getImage());
 	}
 
 	public void testAHintOnASetAsideDuplicateCoversWithTheCopyThatLanded() throws Exception {
@@ -163,11 +175,10 @@ public class TestMoveCoverHint extends TestCase {
 		write("Inbox/x-copy.jpg", same);
 		image("Inbox/y.jpg", 8, 6, Color.PINK);
 		sidecar("Inbox", "[\"AlbumInfo\",{\"kind\":\"INBOX\",\"title\":\"Inbox\",\"parts\":["
-			+ part("y.jpg", 8, 6, "\"rating\":2") + "," + part("x.jpg", 8, 6, "") + ","
-			+ part("x-copy.jpg", 8, 6, "") + "]}]");
+			+ part("y.jpg", 8, 6, "") + "," + part("x.jpg", 8, 6, "") + "," + part("x-copy.jpg", 8, 6, "") + "]}]");
 		newAlbum("New");
 
-		MoveResult result = move("/Inbox/", "New", "x-copy.jpg", "y.jpg", "x.jpg", "x-copy.jpg");
+		MoveResult result = moveIntoCreated("/Inbox/", "New", "x-copy.jpg", "y.jpg", "x.jpg", "x-copy.jpg");
 
 		assertEquals(Arrays.asList("y.jpg", "x.jpg", "x.jpg"), newNames(result));
 		assertEquals(MoveService.duplicate("x.jpg"), result.getOutcomes().get(2).getMessage());
@@ -176,15 +187,15 @@ public class TestMoveCoverHint extends TestCase {
 			album("New").getIndexPicture().getImage());
 	}
 
-	public void testTheCropOfTheHintedPhotoIsHonoured() throws Exception {
+	public void testTheCropOfTheCoverIsHonoured() throws Exception {
 		image("Inbox/a.jpg", 8, 6, Color.RED);
 		image("Inbox/b.jpg", 8, 6, Color.GREEN);
 		sidecar("Inbox", "[\"AlbumInfo\",{\"kind\":\"INBOX\",\"title\":\"Inbox\",\"parts\":["
-			+ part("a.jpg", 8, 6, "\"rating\":2") + ","
+			+ part("a.jpg", 8, 6, "") + ","
 			+ part("b.jpg", 8, 6, "\"crop\":{\"x\":0.25,\"y\":0.0,\"w\":0.5,\"h\":1.0}") + "]}]");
 		newAlbum("New");
 
-		move("/Inbox/", "New", "b.jpg", "a.jpg", "b.jpg");
+		moveIntoCreated("/Inbox/", "New", "b.jpg", "a.jpg", "b.jpg");
 
 		ThumbnailInfo cover = album("New").getIndexPicture();
 		assertEquals("b.jpg", cover.getImage());
@@ -202,12 +213,13 @@ public class TestMoveCoverHint extends TestCase {
 	}
 
 	public void testTheCoverSurvivesAReadWriteRoundTrip() throws Exception {
-		inboxOfFive();
+		inboxOfFive(0);
 		newAlbum("New");
-		move("/Inbox/", "New", "p3.jpg", "p1.jpg", "p3.jpg", "p5.jpg");
+		moveIntoCreated("/Inbox/", "New", "p3.jpg", "p1.jpg", "p3.jpg", "p5.jpg");
 
 		String stored = read(_base.resolve("New/index.json"));
-		assertEquals(withoutRights(stored), withoutRights(getJson("/New/")));
+		// What the GET answers is written back as the app's editor does; the album's derived date
+		// is answered and never stored.
 		FakeResponse written = put("/New/", withoutRights(getJson("/New/")));
 		assertTrue("Writing back failed: " + written.body(), written.status() < 300);
 
@@ -218,13 +230,46 @@ public class TestMoveCoverHint extends TestCase {
 		assertEquals(withoutRights(stored), withoutRights(read(_base.resolve("New/index.json"))));
 	}
 
-	public void testAHintNamingNothingThatMovedIsIgnored() throws Exception {
-		inboxOfFive();
-		newAlbum("New");
+	public void testACreatedTargetWithALiveCoverKeepsIt() throws Exception {
+		inboxOfFive(2);
+		image("New/t.jpg", 12, 9, Color.MAGENTA);
+		sidecar("New", "[\"AlbumInfo\",{\"title\":\"New\","
+			+ "\"indexPicture\":{\"image\":\"t.jpg\",\"scale\":2.0,\"tx\":10.0,\"ty\":5.0},"
+			+ "\"parts\":[" + part("t.jpg", 12, 9, "") + "]}]");
 
-		move("/Inbox/", "New", "p4.jpg", "p1.jpg", "p2.jpg");
+		moveIntoCreated("/Inbox/", "New", "p3.jpg", ALL);
 
-		assertEquals("The rule of #153 covers the album.", "p2.jpg", album("New").getIndexPicture().getImage());
+		assertEquals("A choice is never overridden.", "t.jpg", album("New").getIndexPicture().getImage());
+	}
+
+	// --- An album that existed before. ---
+
+	public void testAddingToAnAlbumWithoutCoverWritesNone() throws Exception {
+		inboxOfFive(2);
+		image("Trip/t.jpg", 12, 9, Color.MAGENTA);
+		sidecar("Trip", "[\"AlbumInfo\",{\"title\":\"Trip\",\"parts\":[" + part("t.jpg", 12, 9, "") + "]}]");
+
+		moveIntoExisting("/Inbox/", "Trip", ALL);
+
+		assertNull("The album goes on being shown by its default (#260).", album("Trip").getIndexPicture());
+		assertEquals("The tile shows the default of what the album holds now.", "p2.jpg",
+			tile("Trip").getImage().substring(tile("Trip").getImage().lastIndexOf('/') + 1));
+	}
+
+	public void testAddingToAnAlbumWithACoverKeepsIt() throws Exception {
+		inboxOfFive(2);
+		image("Trip/t.jpg", 12, 9, Color.MAGENTA);
+		sidecar("Trip", "[\"AlbumInfo\",{\"title\":\"Trip\","
+			+ "\"indexPicture\":{\"image\":\"t.jpg\",\"scale\":2.0,\"tx\":10.0,\"ty\":5.0},"
+			+ "\"parts\":[" + part("t.jpg", 12, 9, "") + "]}]");
+
+		moveIntoExisting("/Inbox/", "Trip", "p2.jpg", "p3.jpg");
+
+		ThumbnailInfo cover = album("Trip").getIndexPicture();
+		assertEquals("t.jpg", cover.getImage());
+		assertEquals(2.0, cover.getScale(), 1e-9);
+		assertEquals(10.0, cover.getTx(), 1e-9);
+		assertEquals(5.0, cover.getTy(), 1e-9);
 	}
 
 	// --- Helpers. ---
@@ -235,15 +280,25 @@ public class TestMoveCoverHint extends TestCase {
 	}
 
 	/**
-	 * Moves the given names out of the given folder.
+	 * Moves the given names into a target the dialog created for them.
 	 *
 	 * @param cover
-	 *        The cover hint of issue #273, <code>null</code> for a request without one.
+	 *        The photo the move was opened on (issue #273), empty for none.
 	 */
-	private MoveResult move(String pathInfo, String target, String cover, String... names) throws Exception {
+	private MoveResult moveIntoCreated(String pathInfo, String target, String cover, String... names)
+			throws Exception {
+		return move(pathInfo, target, ",\"created\":{\"cover\":\"" + cover + "\"}", names);
+	}
+
+	/** Moves the given names into a target that existed before: the request says nothing more. */
+	private MoveResult moveIntoExisting(String pathInfo, String target, String... names) throws Exception {
+		return move(pathInfo, target, "", names);
+	}
+
+	private MoveResult move(String pathInfo, String target, String extra, String... names) throws Exception {
 		String body = "{\"target\":\"" + target + "\",\"names\":["
 			+ Arrays.stream(names).map(n -> "{\"name\":\"" + n + "\"}").collect(Collectors.joining(",")) + "]"
-			+ (cover == null ? "" : ",\"cover\":{\"name\":\"" + cover + "\"}") + "}";
+			+ extra + "}";
 		Map<String, String> parameters = new HashMap<>();
 		parameters.put("action", "move");
 		FakeResponse response = new FakeResponse();

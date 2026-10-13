@@ -315,7 +315,9 @@ void main() {
       expect(
         post.body,
         '{"target":"2002/2002-03-03 Ausflug",'
-        '"names":[{"name":"a.jpg"},{"name":"b.jpg"}]}',
+        '"names":[{"name":"a.jpg"},{"name":"b.jpg"}],'
+        // The album was created for the move, see issue #277.
+        '"created":{"cover":""}}',
         reason: "the images follow the album to where the server filed it",
       );
       // Where the album landed is said, not passed over in silence.

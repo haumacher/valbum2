@@ -371,6 +371,63 @@ public class PrivacyFilter {
 	}
 
 	/**
+	 * The photograph that covers an album (or a collection) created for what has just arrived in
+	 * it, see issue #277.
+	 *
+	 * <p>
+	 * The author's rule, in this order: the first best-rated photograph that arrived (see
+	 * {@link #bestImage(Iterable)}) where its rating is above normal; else the hinted photograph,
+	 * the one "Move to…" was opened on (issue #273); else the first photograph that arrived in the
+	 * order of their dates, an undated one after every dated one and equal dates in the order
+	 * given. A photograph rated {@link Ratings#MIN} or unreadable counts for none of the three.
+	 * </p>
+	 *
+	 * <p>
+	 * Only ever applied to a target created in the dialog the photographs were sent from: adding
+	 * photographs never touches the cover of an album that existed before.
+	 * </p>
+	 *
+	 * @param arrived
+	 *        What arrived, in the target's order; a group counts as its representative.
+	 * @param hinted
+	 *        The hinted photograph as it is named in the target now, <code>null</code> for none.
+	 * @return The photograph to cover the target with, <code>null</code> where nothing can.
+	 */
+	static ImagePart createdCover(Iterable<? extends AlbumPart> arrived, ImagePart hinted) {
+		ImagePart best = bestImage(arrived);
+		if (best != null && best.getRating() > 0) {
+			return best;
+		}
+		if (hinted != null && canCover(hinted)) {
+			return hinted;
+		}
+		ImagePart first = null;
+		for (AlbumPart part : arrived) {
+			ImagePart image = shownImage(part);
+			if (image == null || !canCover(image)) {
+				continue;
+			}
+			if (first == null || earlier(image.getDate(), first.getDate())) {
+				first = image;
+			}
+		}
+		return first;
+	}
+
+	/** Whether the given date is before the other one, <code>0</code> (no date) after every date. */
+	private static boolean earlier(long date, long other) {
+		if (date == 0) {
+			return false;
+		}
+		return other == 0 || date < other;
+	}
+
+	/** Whether the given photograph can stand for an album at all, see {@link #bestImage(Iterable)}. */
+	private static boolean canCover(ImagePart image) {
+		return !de.haumacher.imageServer.cache.BrokenParts.isBroken(image) && image.getRating() > Ratings.MIN;
+	}
+
+	/**
 	 * The image the given part is shown by: an image itself, the representative of a group,
 	 * <code>null</code> for anything else and for a group without members.
 	 */

@@ -467,11 +467,12 @@ public class TestImageServletMove extends TestCase {
 	}
 
 
-	// --- A cover for an album that receives images, issue #153. ---
+	// --- A cover for an album created for the move, issues #153 and #277. ---
 
 	/**
 	 * The picker's flow of #114: an album is created by the sidecar PUT, then the selection is
-	 * moved into it; the album is covered by the first best-rated image that landed.
+	 * moved into it, the request saying the album was created for it; the album is covered by the
+	 * first best-rated image that landed, its rating being above normal.
 	 */
 	public void testAnAlbumCreatedForTheMoveIsCoveredByTheBestRatedLandedImage() throws Exception {
 		image("A/a.jpg", 8, 6, Color.RED);
@@ -485,7 +486,7 @@ public class TestImageServletMove extends TestCase {
 		assertTrue("Creating failed: " + created.body(), created.status() < 300);
 		assertNull("A new album has no cover.", album("New").getIndexPicture());
 
-		move("/A/", "New", "a.jpg", "b.jpg", "c.jpg");
+		moveIntoCreated("/A/", "New", "a.jpg", "b.jpg", "c.jpg");
 
 		ThumbnailInfo cover = album("New").getIndexPicture();
 		assertNotNull("The album that received images is covered.", cover);
@@ -535,7 +536,8 @@ public class TestImageServletMove extends TestCase {
 
 		move("/A/", "B", "a.jpg");
 
-		assertEquals("Only the landed images are chosen among.", "a.jpg", album("B").getIndexPicture().getImage());
+		assertEquals("Adding never touches the cover of an album that existed, not even a dangling one (#277).",
+			"gone.jpg", album("B").getIndexPicture().getImage());
 	}
 
 	public void testALandedImageIsNamedByItsLandedName() throws Exception {
@@ -547,8 +549,8 @@ public class TestImageServletMove extends TestCase {
 		MoveResult result = move("/A/", "B", "a.jpg");
 
 		assertEquals(Collections.singletonList("a-2.jpg"), newNames(result));
-		assertEquals("The cover is the landed image under the name it landed as, not the better one that was there.",
-			"a-2.jpg", album("B").getIndexPicture().getImage());
+		assertNull("An album that existed is never covered by what is added to it (#277).",
+			album("B").getIndexPicture());
 	}
 
 	public void testALandedGroupCountsAsItsRepresentative() throws Exception {
@@ -562,7 +564,7 @@ public class TestImageServletMove extends TestCase {
 			+ part("x.jpg", "\"rating\":1") + "]}]");
 		Files.createDirectories(_base.resolve("B"));
 
-		move("/A/", "B", "g1.jpg", "x.jpg");
+		moveIntoCreated("/A/", "B", "g1.jpg", "x.jpg");
 
 		assertEquals("A group is its representative, not its best member.", "x.jpg",
 			album("B").getIndexPicture().getImage());
@@ -579,7 +581,7 @@ public class TestImageServletMove extends TestCase {
 			+ part("c.jpg", "\"rating\":2,\"orientation\":\"ROT_R\"") + "," + part("d.jpg", "\"rating\":2") + "]}]");
 		Files.createDirectories(_base.resolve("B"));
 
-		move("/A/", "B", "a.jpg");
+		moveIntoCreated("/A/", "B", "a.jpg");
 
 		ThumbnailInfo cover = album("A").getIndexPicture();
 		assertEquals("The first best-rated image that stayed.", "c.jpg", cover.getImage());
@@ -774,6 +776,19 @@ public class TestImageServletMove extends TestCase {
 
 	private MoveResult move(String pathInfo, String target, String... names) throws Exception {
 		return move(_servlet, pathInfo, target, null, names);
+	}
+
+	/** A move into a target the dialog created for it, see issue #277. */
+	private MoveResult moveIntoCreated(String pathInfo, String target, String... names) throws Exception {
+		Map<String, String> parameters = new HashMap<>();
+		parameters.put("action", "move");
+		String body = "{\"target\":\"" + target + "\",\"names\":["
+			+ Arrays.stream(names).map(n -> "{\"name\":\"" + n + "\"}").collect(Collectors.joining(","))
+			+ "],\"created\":{\"cover\":\"\"}}";
+		FakeResponse response = new FakeResponse();
+		_servlet.doPost(request(pathInfo, "application/json", body, null, parameters), response.response());
+		assertEquals("The move failed: " + response.body(), HttpServletResponse.SC_OK, response.status());
+		return MoveResult.readMoveResult(reader(response.body()));
 	}
 
 	private MoveResult move(ImageServlet servlet, String pathInfo, String target, String token, String... names)

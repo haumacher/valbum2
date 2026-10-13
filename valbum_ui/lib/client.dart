@@ -1870,19 +1870,22 @@ class VAlbumClient {
   /// server speaking and is thrown as a [VAlbumException] carrying its
   /// message, like every other refused write.
   ///
-  /// [cover] names one of [names] that is to become the target's cover where
-  /// the target has none, see issue #273; `null` sends no such hint.
+  /// [created] says the target was created for this move, in the dialog it
+  /// was asked from — the server cannot tell, and only such an album is given
+  /// a cover by what arrives, see issue #277. [cover] names the one of
+  /// [names] the move was opened on (issue #273), sent only with [created].
   Future<MoveResult> move(
     List<String> path,
     String target,
     List<String> names, {
+    bool created = false,
     String? cover,
   }) async {
     var url = "${folderUrl(path)}?action=move";
     var request = MoveRequest(
       target: target,
       names: [for (var name in names) MoveName(name: name)],
-      cover: cover == null ? null : MoveName(name: cover),
+      created: created ? CreatedTarget(cover: cover ?? "") : null,
     );
     var body = StringBuffer();
     request.writeContent(jsonStringWriter(body));
@@ -1913,15 +1916,21 @@ class VAlbumClient {
   /// and a sentence where it was already there or was refused. A refusal of
   /// the whole request is thrown as a [VAlbumException] carrying the server's
   /// message, like every other refused write.
+  ///
+  /// [created] says the collection was created for these photographs, in the
+  /// dialog they were sent from: only such a collection is given a cover by
+  /// what arrives, see issue #277.
   Future<MoveResult> collect(
     List<String> path,
     String target,
-    List<String> names,
-  ) async {
+    List<String> names, {
+    bool created = false,
+  }) async {
     var url = "${folderUrl(path)}?action=collect";
     var request = MoveRequest(
       target: target,
       names: [for (var name in names) MoveName(name: name)],
+      created: created ? CreatedTarget() : null,
     );
     var body = StringBuffer();
     request.writeContent(jsonStringWriter(body));
