@@ -395,6 +395,9 @@ photo leaves it. Nothing is downloaded or started until a space asks for it.
   `python3-venv` (the `.deb` recommends it, the image has it), about 2.2 GB of disk in
   `VALBUM_EMBEDDER_DIR` and, while it works, about 2 GB of memory (`int8`: 1.1 GB, 0.7 GB of disk).
   The service ends after 15 minutes without work.
+- **Older Python** (Debian 12, Raspberry Pi OS bookworm have 3.11): install 3.12 beside it with
+  [uv](https://docs.astral.sh/uv/) and name it as `PYTHON` in `/etc/default/valbum`, where the
+  commented section shows how.
 - **First use** downloads about 50 MB of Python packages from PyPI and the model from Hugging Face,
   each file checked against its pinned SHA-256.
 - **Without internet**, prepare the folder on another machine and copy it over:

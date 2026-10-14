@@ -179,6 +179,19 @@ public class TestValbumServerScript extends TestCase {
 		assertEquals("http://127.0.0.1:8091/", env.get("VALBUM_EMBEDDER_URL"));
 	}
 
+	/** The Python the embedder's environment is made with reaches setup-venv also outside systemd. */
+	public void testThePythonOfTheEmbedderReachesTheServerThroughItsEnvironment() throws Exception {
+		String shipped = Files.readString(DEFAULTS, StandardCharsets.UTF_8);
+		assertTrue(shipped.contains("#   PYTHON="));
+		assertFalse(shipped.contains("\nPYTHON="));
+		if (noShell()) {
+			return;
+		}
+		configure("PYTHON=/opt/python/cpython-3.12-linux-aarch64-gnu/bin/python3.12");
+		run(Map.of());
+		assertEquals("/opt/python/cpython-3.12-linux-aarch64-gnu/bin/python3.12", environment().get("PYTHON"));
+	}
+
 	public void testTheEnvironmentWinsForTheMailSettingsToo() throws Exception {
 		if (noShell()) {
 			return;
