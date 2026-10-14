@@ -310,10 +310,13 @@ public class AuthService {
 		"The expiry of a share link is an ISO-8601 instant such as '2026-12-24T00:00:00Z', "
 			+ "or empty for a link that never expires.";
 
-	/** The message an edit setting a share link's expiry into the past is refused with, see issue #269. */
+	/**
+	 * The message a share link expiring in the past is refused with, created or changed so, see
+	 * issues #269 and #282.
+	 */
 	public static final String SHARE_EXPIRY_PAST =
-		"A share link cannot be changed to expire in the past. Choose a later day, or no expiry at all; "
-			+ "to close the link now, delete it.";
+		"A share link cannot expire in the past. Choose a later day, or no expiry at all; "
+			+ "to close a link now, delete it.";
 
 	/** The message a request naming a share link this server does not have is refused with. */
 	public static final String SHARE_UNKNOWN = "There is no share link of that id on this album.";
@@ -2191,8 +2194,8 @@ public class AuthService {
 	}
 
 	/**
-	 * The message an edit giving a share link a right its editor does not hold is refused with, see
-	 * issue #269.
+	 * The message a share link is refused with that would allow a right its maker or editor does
+	 * not hold, see issues #269 and #282.
 	 */
 	public static String shareRightNotHeld(String right) {
 		return "You cannot give this link '" + right + "': you may not do that yourself.";

@@ -22,6 +22,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'album_edit.dart' show privacyMembers, privacyPublic;
+import 'caller.dart';
 import 'client.dart';
 import 'filter_list.dart';
 import 'form_dialog.dart';
@@ -854,10 +855,18 @@ class SharesScreenState extends State<SharesScreen> {
 
   Future<void> _edit(ShareLink link) async {
     var l10n = AppLocalizations.of(context)!;
+    // Asked here, where the caller is known, as the share dialog asks it
+    // (issue #282). Nobody said → nothing is withheld on a guess.
+    var caller = CallerInfo.maybeOf(context);
     var changed = await showFormDialog<ShareLink>(
       context: context,
-      builder: (context) =>
-          ShareEditDialog(client: widget.client, link: link, now: _now),
+      builder: (context) => ShareEditDialog(
+        client: widget.client,
+        link: link,
+        now: _now,
+        mayShowMembers: caller == null || caller.permission.seesMembers,
+        grantableRights: grantableLinkRights(caller?.permission),
+      ),
     );
     if (changed == null || !mounted) {
       return;
@@ -919,11 +928,25 @@ class ShareEditDialog extends StatefulWidget {
   /// The moment new expiries are counted from.
   final DateTime? now;
 
+  /// Whether the editor may give the link a ceiling showing what members
+  /// see, as [ShareLinkDialog.mayShowMembers] (issue #282). A ceiling the
+  /// link already has stays offered: the server asks only what changes.
+  final bool mayShowMembers;
+
+  /// The rights beyond `view` the editor may give the link, see
+  /// [grantableLinkRights] (issue #282). A right the link already has stays
+  /// offered and kept, whoever edits it: the server refuses only a right
+  /// that is new to the link, and an edit of something else must not take
+  /// one away unasked.
+  final Set<String> grantableRights;
+
   const ShareEditDialog({
     super.key,
     required this.client,
     required this.link,
     this.now,
+    this.mayShowMembers = true,
+    this.grantableRights = const {rightDownload, rightContribute},
   });
 
   @override
@@ -1132,7 +1155,9 @@ class ShareEditDialogState extends State<ShareEditDialog> {
                 choices: [
                   if (link.maxPrivacy > privacyMembers)
                     (link.maxPrivacy, l10n.privacyUpToMembers),
-                  (privacyMembers, l10n.privacyUpToMembers),
+                  if (widget.mayShowMembers ||
+                      link.maxPrivacy == privacyMembers)
+                    (privacyMembers, l10n.privacyUpToMembers),
                   (privacyPublic, l10n.privacyPublicOnly),
                 ],
                 onChanged: (value) => setState(() => _maxPrivacy = value),
@@ -1166,21 +1191,23 @@ class ShareEditDialogState extends State<ShareEditDialog> {
                     runSpacing: 4,
                     children: [
                       for (var right in const [rightDownload, rightContribute])
-                        FilterChip(
-                          key: Key("edit-link-right-$right"),
-                          visualDensity: VisualDensity.compact,
-                          label: Text(rightLabel(l10n, right)),
-                          selected: _rights.contains(right),
-                          onSelected: _busy
-                              ? null
-                              : (value) => setState(() {
-                                    _rights = {
-                                      for (var held in _rights)
-                                        if (held != right) held,
-                                      if (value) right,
-                                    };
-                                  }),
-                        ),
+                        if (widget.grantableRights.contains(right) ||
+                            link.rights.any((had) => had.name == right))
+                          FilterChip(
+                            key: Key("edit-link-right-$right"),
+                            visualDensity: VisualDensity.compact,
+                            label: Text(rightLabel(l10n, right)),
+                            selected: _rights.contains(right),
+                            onSelected: _busy
+                                ? null
+                                : (value) => setState(() {
+                                      _rights = {
+                                        for (var held in _rights)
+                                          if (held != right) held,
+                                        if (value) right,
+                                      };
+                                    }),
+                          ),
                     ],
                   ),
                 ),

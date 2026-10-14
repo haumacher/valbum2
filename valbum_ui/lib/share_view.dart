@@ -134,6 +134,7 @@ Future<void> shareLinksOf({
   var caller = CallerInfo.maybeOf(context);
   var mayShowMembers = caller == null || caller.permission.seesMembers;
   var mayProveAddresses = caller?.mayProveAddresses ?? false;
+  var grantableRights = grantableLinkRights(caller?.permission);
   await showFormDialog<void>(
     context: context,
     builder: (context) => ShareLinkDialog(
@@ -143,9 +144,20 @@ Future<void> shareLinksOf({
       photoLabels: photoLabels,
       mayShowMembers: mayShowMembers,
       mayProveAddresses: mayProveAddresses,
+      grantableRights: grantableRights,
     ),
   );
 }
+
+/// The rights beyond `view` a caller of [permission] may give a new link
+/// (issue #282): only what they hold themself, since the server refuses a
+/// link allowing more rather than trimming it (`shareRightNotHeld`). Every
+/// role keeps what it sees, so `download` always; `contribute` only for a
+/// role that adds photos. Nobody said → nothing is withheld on a guess.
+Set<String> grantableLinkRights(CallerPermission? permission) =>
+    permission == null || !permission.named
+        ? const {rightDownload, rightContribute}
+        : {rightDownload, if (permission.mayContribute) rightContribute};
 
 /// Lists, deletes and creates the share links covering one folder.
 ///
@@ -183,6 +195,12 @@ class ShareLinkDialog extends StatefulWidget {
   /// of the one `?type=auth`, see [CallerInfo.mayProveAddresses].
   final bool mayProveAddresses;
 
+  /// The rights beyond `view` the creator may give the link, see
+  /// [grantableLinkRights]; a right not among them is not offered, since the
+  /// server refuses a link allowing a right its maker does not hold (issue
+  /// #282, `shareRightNotHeld`).
+  final Set<String> grantableRights;
+
   const ShareLinkDialog({
     super.key,
     required this.client,
@@ -191,6 +209,7 @@ class ShareLinkDialog extends StatefulWidget {
     this.photoLabels = const [],
     this.mayShowMembers = true,
     this.mayProveAddresses = false,
+    this.grantableRights = const {rightDownload, rightContribute},
     this.isWeb = kIsWeb,
   });
 
@@ -745,24 +764,25 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
             runSpacing: 4,
             children: [
               for (var right in const [rightDownload, rightContribute])
-                FilterChip(
-                  key: Key("link-right-$right"),
-                  visualDensity: VisualDensity.compact,
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  label: Text(rightLabel(l10n, right)),
-                  tooltip: rightExplanation(l10n, right),
-                  selected: _picked.contains(right),
-                  onSelected: _busy
-                      ? null
-                      : (value) => setState(() {
-                            _picked = {
-                              rightView,
-                              for (var held in _picked)
-                                if (held != right) held,
-                              if (value) right,
-                            };
-                          }),
-                ),
+                if (widget.grantableRights.contains(right))
+                  FilterChip(
+                    key: Key("link-right-$right"),
+                    visualDensity: VisualDensity.compact,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    label: Text(rightLabel(l10n, right)),
+                    tooltip: rightExplanation(l10n, right),
+                    selected: _picked.contains(right),
+                    onSelected: _busy
+                        ? null
+                        : (value) => setState(() {
+                              _picked = {
+                                rightView,
+                                for (var held in _picked)
+                                  if (held != right) held,
+                                if (value) right,
+                              };
+                            }),
+                  ),
             ],
           ),
         ),

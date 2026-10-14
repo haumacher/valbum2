@@ -3939,16 +3939,7 @@ public class ImageServlet extends HttpServlet {
 		String label = options._label;
 		String photoLabel = options._photoLabel;
 
-		// Nobody hands out more than they hold, and it is said rather than quietly trimmed: a link
-		// answered with a lower limit than the one asked for would be a link its maker believes
-		// shows more than it does, see issue #84.
-		int clearance = _auth.clearance(caller, location.getPath());
-		if (maxPrivacy > clearance) {
-			LOG.warning("Refusing a share link showing more than '" + caller.getUserName() + "' may see.");
-			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.shareAboveClearance(clearance));
-			return;
-		}
-		if (!photoLabel.isEmpty() && !labelOfAlbum(context, location.getPath(), photoLabel)) {
+		if (!mayGive(context, caller, location, null, options)) {
 			return;
 		}
 
@@ -4099,6 +4090,66 @@ public class ImageServlet extends HttpServlet {
 		result._label = request.getLabel() == null ? "" : request.getLabel().trim();
 		result._photoLabel = request.getPhotoLabel() == null ? "" : request.getPhotoLabel();
 		return result;
+	}
+
+	/**
+	 * Whether the caller may give a link the given options, the one rule of creating a link
+	 * (<code>?action=share</code>, anonymous and addressed alike) and of changing one
+	 * (<code>?action=edit-share</code>), see issues #84, #269 and #282; answers the refusal where
+	 * not.
+	 *
+	 * <p>
+	 * Nobody hands out more than they hold, and it is said rather than quietly trimmed: a link
+	 * answered with less than was asked for would be a link its maker believes does more than it
+	 * does. Refused, each with its reason: a right the caller may not use themself, a privacy
+	 * ceiling above their clearance, an expiry in the past, and a label the album does not have. On
+	 * an edit each is asked only where it changes, so that what a link already had never blocks an
+	 * edit of something else; a new link has nothing yet, so everything it asks for is asked.
+	 * </p>
+	 *
+	 * @param location
+	 *        Where the request was sent; the folder of a new link.
+	 * @param link
+	 *        The link being changed, <code>null</code> for one being created.
+	 */
+	private boolean mayGive(Context context, Caller caller, Location location, ShareStore.Link link,
+			LinkOptions options) throws IOException {
+		Set<String> had = link == null ? Rights.NONE : link.getRights();
+		Set<String> held = _auth.rights(caller, location.getPath());
+		for (String right : Rights.closure(options._rights)) {
+			if (!had.contains(right) && !held.contains(right)) {
+				LOG.warning("Refusing to give a share link '" + right + "', by '" + caller.getUserName() + "'.");
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.shareRightNotHeld(right));
+				return false;
+			}
+		}
+		int clearance = _auth.clearance(caller, location.getPath());
+		if ((link == null || options._maxPrivacy != link.getMaxPrivacy()) && options._maxPrivacy > clearance) {
+			LOG.warning("Refusing a share link showing more than '" + caller.getUserName() + "' may see.");
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.shareAboveClearance(clearance));
+			return false;
+		}
+		if (!options._expires.isEmpty() && (link == null || !options._expires.equals(link.getExpires()))
+			&& !java.time.Instant.parse(options._expires).isAfter(java.time.Instant.now())) {
+			LOG.warning("Refusing a share link expiring in the past, by '" + caller.getUserName() + "'.");
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.SHARE_EXPIRY_PAST);
+			return false;
+		}
+		if (!options._photoLabel.isEmpty() && (link == null || !options._photoLabel.equals(link.getPhotoLabel()))) {
+			PathInfo folder = location.getPath();
+			if (link != null) {
+				try {
+					folder = _auth.resolve(caller, _basePath, link.getPath()).getPath();
+				} catch (AuthService.PathRefused ex) {
+					errorInfo(context, ex.getStatus(), ex.getMessage());
+					return false;
+				}
+			}
+			if (!labelOfAlbum(context, folder, options._photoLabel)) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	/**
@@ -5045,39 +5096,8 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 
-		// Nobody hands out more than they hold (issue #84): a right the link did not have is one the
-		// editor gives, and only one they hold themself.
-		Set<String> held = _auth.rights(caller, location.getPath());
-		for (String right : Rights.closure(options._rights)) {
-			if (!link.getRights().contains(right) && !held.contains(right)) {
-				LOG.warning("Refusing to give the share link " + link + " '" + right + "'.");
-				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.shareRightNotHeld(right));
-				return;
-			}
-		}
-		int clearance = _auth.clearance(caller, location.getPath());
-		if (options._maxPrivacy != link.getMaxPrivacy() && options._maxPrivacy > clearance) {
-			LOG.warning("Refusing to let the share link " + link + " show more than its editor may see.");
-			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.shareAboveClearance(clearance));
+		if (!mayGive(context, caller, location, link, options)) {
 			return;
-		}
-		if (!options._expires.isEmpty() && !options._expires.equals(link.getExpires())
-			&& !java.time.Instant.parse(options._expires).isAfter(java.time.Instant.now())) {
-			LOG.warning("Refusing to let the share link " + link + " expire in the past.");
-			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, AuthService.SHARE_EXPIRY_PAST);
-			return;
-		}
-		if (!options._photoLabel.isEmpty() && !options._photoLabel.equals(link.getPhotoLabel())) {
-			Location folder;
-			try {
-				folder = _auth.resolve(caller, _basePath, link.getPath());
-			} catch (AuthService.PathRefused ex) {
-				errorInfo(context, ex.getStatus(), ex.getMessage());
-				return;
-			}
-			if (!labelOfAlbum(context, folder.getPath(), options._photoLabel)) {
-				return;
-			}
 		}
 
 		_auth.getShares().edit(link.getId(), options._label, options._expires, options._maxPrivacy,

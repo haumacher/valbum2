@@ -252,20 +252,22 @@ Future<void> pumpShares(
   String? person,
   String? personName,
   Locale locale = const Locale("en"),
+  CallerInfo? caller,
 }) async {
   tester.view.physicalSize = const Size(1000, 3000);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
+  Widget screen = SharesScreen(
+    client: clientOf(server),
+    album: album,
+    albumName: albumName,
+    person: person,
+    personName: personName,
+    isWeb: true,
+    now: now,
+  );
   await tester.pumpWidget(localizedApp(
-    SharesScreen(
-      client: clientOf(server),
-      album: album,
-      albumName: albumName,
-      person: person,
-      personName: personName,
-      isWeb: true,
-      now: now,
-    ),
+    caller == null ? screen : CallerScope(caller: caller, child: screen),
     locale: locale,
   ));
   await tester.pumpAndSettle();
@@ -632,6 +634,71 @@ void main() {
       var body = server.bodyOf("edit-share");
       expect(body["photoLabel"], "Elephants");
       expect(DateTime.parse(body["expires"] as String).isAfter(now), isTrue);
+    });
+
+    // Issue #282: the choices of the share dialog for the editor, and what
+    // the link already has stays offered and kept.
+    const viewer = CallerInfo(
+        userName: "dave",
+        role: roleView,
+        clearance: clearancePublic,
+        mayShare: true);
+
+    List<int> ceilings(WidgetTester tester) => [
+          for (var item in tester
+              .widget<DropdownButton<int>>(
+                  find.byKey(const Key("edit-link-shows")))
+              .items!)
+            item.value!,
+        ];
+
+    testWidgets('offers an editor only what they may give', (tester) async {
+      var server = SharesServer();
+      await pumpShares(tester, server, caller: viewer);
+      await tapKey(tester, "shares-edit-A1");
+      expect(find.byKey(const Key("edit-link-right-download")), findsOneWidget);
+      expect(find.byKey(const Key("edit-link-right-contribute")), findsNothing);
+      expect(ceilings(tester), [0]);
+    });
+
+    testWidgets('keeps what the link already has, beyond the editor\'s own',
+        (tester) async {
+      var server = SharesServer();
+      server.links[0]["rights"] = [
+        {"name": "view"},
+        {"name": "contribute"},
+      ];
+      server.links[0]["maxPrivacy"] = 1;
+      await pumpShares(tester, server, caller: viewer);
+      await tapKey(tester, "shares-edit-A1");
+      expect(
+          tester
+              .widget<FilterChip>(
+                  find.byKey(const Key("edit-link-right-contribute")))
+              .selected,
+          isTrue);
+      expect(ceilings(tester), [1, 0]);
+
+      // An edit of something else sends what the link had.
+      await tester.enterText(find.byKey(const Key("edit-link-label")), "All");
+      await tapKey(tester, "edit-link-save");
+      expect(find.byKey(const Key("edit-link-less")), findsNothing);
+      var body = server.bodyOf("edit-share");
+      expect(body["rights"], [
+        {"name": "view"},
+        {"name": "contribute"},
+      ]);
+      expect(body["maxPrivacy"], 1);
+    });
+
+    testWidgets('an administrator is offered everything', (tester) async {
+      var server = SharesServer();
+      await pumpShares(tester, server,
+          caller: const CallerInfo(userName: "alice", role: roleAdmin));
+      await tapKey(tester, "shares-edit-A1");
+      expect(
+          find.byKey(const Key("edit-link-right-contribute")), findsOneWidget);
+      expect(ceilings(tester), [1, 0]);
     });
 
     testWidgets('a refusal is said in the dialog, which stays open',

@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:valbum_ui/caller.dart';
 import 'package:valbum_ui/invitation.dart';
+import 'package:valbum_ui/rights.dart';
 import 'package:valbum_ui/share_view.dart';
 
 import 'form_dialog_test.dart' show Opened, openForm, phoneWithKeyboard;
@@ -224,6 +225,62 @@ void main() {
         await tester.tapAt(const Offset(5, 5));
         await tester.pumpAndSettle();
         await tapKey(tester, "link-cancel");
+        await tapKey(tester, "share-link-close");
+      }
+    });
+
+    test('a link is offered only the rights its creator holds (issue #282)',
+        () {
+      CallerPermission of(String role) =>
+          CallerPermission.ofFields(role: role, mayShare: true);
+      expect(grantableLinkRights(of(roleView)), {rightDownload});
+      expect(grantableLinkRights(of(roleContribute)),
+          {rightDownload, rightContribute});
+      expect(
+          grantableLinkRights(of(roleEdit)), {rightDownload, rightContribute});
+      expect(
+          grantableLinkRights(of(roleAdmin)), {rightDownload, rightContribute});
+      expect(grantableLinkRights(null), {rightDownload, rightContribute},
+          reason: "Nobody said: nothing withheld on a guess.");
+    });
+
+    testWidgets('the dialog asks the caller\'s role where it opens (#282)',
+        (tester) async {
+      for (var (role, offered) in const [
+        (roleView, false),
+        (roleContribute, true),
+        (roleAdmin, true),
+      ]) {
+        var requests = <http.Request>[];
+        await tester.pumpWidget(localizedApp(CallerScope(
+          caller: CallerInfo(userName: "dave", role: role, mayShare: true),
+          child: Builder(
+            builder: (context) => Scaffold(
+              body: TextButton(
+                onPressed: () => shareLinksOf(
+                  context: context,
+                  client: ownerClient(ownerAnswers, requests: requests),
+                  path: const ["2024", "Zoo"],
+                ),
+                child: const Text("share"),
+              ),
+            ),
+          ),
+        )));
+        await tester.tap(find.text("share"));
+        await tester.pumpAndSettle();
+        await tapKey(tester, "new-link");
+        expect(find.byKey(const Key("link-right-download")), findsOneWidget,
+            reason: role);
+        expect(find.byKey(const Key("link-right-contribute")),
+            offered ? findsOneWidget : findsNothing,
+            reason: role);
+        await tapKey(tester, "link-right-download");
+        await tapKey(tester, "link-create");
+        var body = bodyOf(requests, "share");
+        expect(body, contains('"name":"download"'), reason: role);
+        expect(body, isNot(contains('"name":"contribute"')), reason: role);
+        await tapKey(tester, "share-link-done");
         await tapKey(tester, "share-link-close");
       }
     });
