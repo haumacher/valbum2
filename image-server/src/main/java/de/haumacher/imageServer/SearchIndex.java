@@ -108,6 +108,11 @@ import org.apache.lucene.util.Bits;
  * by its album ({@link PrivacyFilter}), as for every view; the index only picks.
  * </p>
  *
+ * <p>
+ * The sets of the scopes and of the single criteria asked last are kept until the index changes
+ * (issue #276): a query is refined one criterion at a time, and the others are asked again.
+ * </p>
+ *
  * <h2>The temporary truth</h2>
  *
  * <p>
@@ -560,18 +565,26 @@ public final class SearchIndex implements FolderPipeline.Step {
 			removeTree(path);
 			return;
 		}
+		// What the index read of every folder of the tree, asked once rather than once per folder:
+		// a servlet without a background walks the tree before every search.
+		Map<String, Known> known = force ? null : _store.read(connection -> knownTree(connection, path), null);
 		Set<String> seen = new HashSet<>();
-		walk(path, dir, force, seen);
-		for (String known : knownBelow(path)) {
-			if (!seen.contains(known)) {
-				removeTree(known);
+		walk(path, dir, force, seen, known);
+		for (String below : known == null ? knownBelow(path) : known.keySet()) {
+			if (!seen.contains(below)) {
+				removeTree(below);
 			}
 		}
 	}
 
-	private void walk(String path, File dir, boolean force, Set<String> seen) {
+	/**
+	 * @param known
+	 *        What the index read of the folders of the tree, by their paths; <code>null</code> to
+	 *        ask it for each folder.
+	 */
+	private void walk(String path, File dir, boolean force, Set<String> seen, Map<String, Known> known) {
 		seen.add(path);
-		if (update(path, force)) {
+		if (update(path, force, known)) {
 			// A collection or a saved search: nothing below it is searched.
 			return;
 		}
@@ -581,7 +594,7 @@ public final class SearchIndex implements FolderPipeline.Step {
 		}
 		for (File child : children) {
 			if (PhotoSearch.isLibraryEntry(child.getName())) {
-				walk(path.isEmpty() ? child.getName() : path + "/" + child.getName(), child, force, seen);
+				walk(path.isEmpty() ? child.getName() : path + "/" + child.getName(), child, force, seen, known);
 			}
 		}
 	}
@@ -593,6 +606,14 @@ public final class SearchIndex implements FolderPipeline.Step {
 	 * @return Whether it is a collection or a saved search, below which nothing is searched.
 	 */
 	private boolean update(String path, boolean force) {
+		return update(path, force, null);
+	}
+
+	/**
+	 * {@link #update(String, boolean)} with what the index read of the folders of a tree, by their
+	 * paths, <code>null</code> to ask it.
+	 */
+	private boolean update(String path, boolean force, Map<String, Known> tree) {
 		File dir = fileOf(path);
 		if (!dir.isDirectory()) {
 			_stale.remove(path);
@@ -600,7 +621,7 @@ public final class SearchIndex implements FolderPipeline.Step {
 			return true;
 		}
 		if (!force && !_stale.contains(path)) {
-			Known known = _store.read(connection -> known(connection, path), null);
+			Known known = tree != null ? tree.get(path) : _store.read(connection -> known(connection, path), null);
 			if (known != null && current(known, new Stamps(dir))) {
 				return known._closed;
 			}
@@ -949,6 +970,19 @@ public final class SearchIndex implements FolderPipeline.Step {
 		}, new ArrayList<>());
 	}
 
+	/** What the index read of every folder at or below the given path, by its path. */
+	private static Map<String, Known> knownTree(Connection connection, String path) throws SQLException {
+		Map<String, Known> result = new HashMap<>();
+		try (PreparedStatement select = treeStatement(connection, "SELECT path, id, folder_stamp, sidecar_stamp, "
+			+ "record_stamp, waiting_epoch, closed FROM albums", path); ResultSet rows = select.executeQuery()) {
+			while (rows.next()) {
+				result.put(rows.getString(1), new Known(rows.getLong(2),
+					new Stamps(rows.getLong(3), rows.getLong(4), rows.getLong(5)), rows.getLong(6), rows.getBoolean(7)));
+			}
+		}
+		return result;
+	}
+
 	private static Known known(Connection connection, String path) throws SQLException {
 		try (PreparedStatement select = connection.prepareStatement("SELECT id, folder_stamp, sidecar_stamp, "
 			+ "record_stamp, waiting_epoch, closed FROM albums WHERE path = ?")) {
@@ -993,12 +1027,16 @@ public final class SearchIndex implements FolderPipeline.Step {
 			sync(prefix, false);
 		}
 		SearchCriterion root = query == null ? null : query.getRoot();
+		// Read before the rows: a write in between makes the next query compute again.
+		long version = _store.version();
 		List<Match> result = _store.read(connection -> {
-			Evaluation evaluation = new Evaluation(connection, people, -1);
+			Evaluation evaluation = new Evaluation(connection, people, -1, version);
 			BitSet scoped = scope(evaluation, prefix, visibility);
-			BitSet found = root == null ? (BitSet) scoped.clone() : evaluation.eval(root, scoped);
-			found.and(scoped);
-			return evaluation.matches(found, prefix, scoped.cardinality());
+			BitSet found = (BitSet) scoped.clone();
+			if (root != null) {
+				found.and(evaluation.eval(root, scoped));
+			}
+			return evaluation.matches(found, prefix);
 		}, new ArrayList<>());
 		_store.trimCache();
 		result.sort(PhotoSearch.ORDER);
@@ -1034,11 +1072,9 @@ public final class SearchIndex implements FolderPipeline.Step {
 			if (id < 0 || id > Integer.MAX_VALUE) {
 				return Boolean.FALSE;
 			}
-			Evaluation evaluation = new Evaluation(connection, people, id);
+			Evaluation evaluation = new Evaluation(connection, people, id, 0);
 			BitSet scoped = evaluation.scope(path, Visibility.ALL);
-			BitSet found = root == null ? scoped : evaluation.eval(root, scoped);
-			found.and(scoped);
-			return Boolean.valueOf(found.get((int) id));
+			return Boolean.valueOf(scoped.get((int) id) && (root == null || evaluation.eval(root, scoped).get((int) id)));
 		}, Boolean.FALSE).booleanValue();
 	}
 
@@ -1050,45 +1086,64 @@ public final class SearchIndex implements FolderPipeline.Step {
 	private BitSet scope(Evaluation evaluation, String prefix, Visibility visibility) throws SQLException {
 		String key = prefix + '\u0000' + visibility._clearance + '\u0000' + visibility._minRating + '\u0000'
 			+ visibility._label;
-		// Read before the rows: a write in between makes the next query compute again.
-		long version = _store.version();
-		synchronized (_scopes) {
-			Scope known = _scopes.get(key);
+		return cached(_scopes, key, evaluation._version, () -> evaluation.scope(prefix, visibility));
+	}
+
+	/** What computes a set of rows. */
+	private interface Rows {
+		BitSet compute() throws SQLException;
+	}
+
+	/**
+	 * The rows of the given key in the given cache where they were computed at the given version of
+	 * the index, computed and kept otherwise. Never changed by the caller.
+	 */
+	private static BitSet cached(Map<String, Cached> cache, String key, long version, Rows rows) throws SQLException {
+		synchronized (cache) {
+			Cached known = cache.get(key);
 			if (known != null && known._version == version) {
 				return known._rows;
 			}
 		}
-		BitSet result = evaluation.scope(prefix, visibility);
-		synchronized (_scopes) {
-			_scopes.put(key, new Scope(version, result));
+		BitSet result = rows.compute();
+		synchronized (cache) {
+			cache.put(key, new Cached(version, result));
 		}
 		return result;
 	}
 
-	/** A scope computed at a version of the index, see {@link #scope(Evaluation, String, Visibility)}. */
-	private static final class Scope {
+	/** Rows computed at a version of the index, see {@link #cached(Map, String, long, Rows)}. */
+	private static final class Cached {
 		final long _version;
 
 		final BitSet _rows;
 
-		Scope(long version, BitSet rows) {
+		Cached(long version, BitSet rows) {
 			_version = version;
 			_rows = rows;
 		}
 	}
 
 	/** The scopes of the last queries, see {@link #scope(Evaluation, String, Visibility)}; a few bits per photograph each. */
-	private final Map<String, Scope> _scopes = new java.util.LinkedHashMap<>(16, 0.75f, true) {
-		private static final long serialVersionUID = 1L;
+	private final Map<String, Cached> _scopes = lru(8);
 
-		@Override
-		protected boolean removeEldestEntry(Map.Entry<String, Scope> eldest) {
-			return size() > MAX_SCOPES;
-		}
-	};
+	/**
+	 * The rows of the last criteria asked (a person, a label, a date, a text, ...), see
+	 * {@link Evaluation#eval}: a query is refined one criterion at a time, and the others are asked
+	 * again. A bit per photograph each, as a scope.
+	 */
+	private final Map<String, Cached> _leaves = lru(32);
 
-	/** How many scopes {@link #_scopes} keeps. */
-	private static final int MAX_SCOPES = 8;
+	private static Map<String, Cached> lru(int size) {
+		return new java.util.LinkedHashMap<>(16, 0.75f, true) {
+			private static final long serialVersionUID = 1L;
+
+			@Override
+			protected boolean removeEldestEntry(Map.Entry<String, Cached> eldest) {
+				return size() > size;
+			}
+		};
+	}
 
 	/** The persons, labels and cameras of the photographs of the given rows, see {@link Match#getId()}. */
 	public Facets facets(Collection<Long> ids) {
@@ -1108,7 +1163,7 @@ public final class SearchIndex implements FolderPipeline.Step {
 	private static void collect(Connection connection, String sql, Collection<Long> ids, Set<String> into)
 			throws SQLException {
 		StringBuilder statement = new StringBuilder(sql).append("(?");
-		for (int n = 1; n < CHUNK; n++) {
+		for (int n = 1; n < FACETS_CHUNK; n++) {
 			statement.append(", ?");
 		}
 		statement.append(")");
@@ -1116,7 +1171,7 @@ public final class SearchIndex implements FolderPipeline.Step {
 			java.util.Iterator<Long> each = ids.iterator();
 			while (each.hasNext()) {
 				long last = 0;
-				for (int n = 0; n < CHUNK; n++) {
+				for (int n = 0; n < FACETS_CHUNK; n++) {
 					// The last chunk filled up with its last id.
 					if (each.hasNext()) {
 						last = each.next().longValue();
@@ -1141,10 +1196,14 @@ public final class SearchIndex implements FolderPipeline.Step {
 		/** The one row asked about, <code>-1</code> for all. */
 		private final long _only;
 
-		Evaluation(Connection connection, PeopleStore people, long only) {
+		/** The version of the index read before the first row, see {@link SearchIndex#cached}. */
+		final long _version;
+
+		Evaluation(Connection connection, PeopleStore people, long only, long version) {
 			_connection = connection;
 			_people = people;
 			_only = only;
+			_version = version;
 		}
 
 		/** The rows below the given path that the given visibility shows, the trash never. */
@@ -1168,7 +1227,11 @@ public final class SearchIndex implements FolderPipeline.Step {
 			return ids(sql, "p.id", parameters);
 		}
 
-		/** The rows the given criterion matches, among the given scope. */
+		/**
+		 * The rows the given criterion matches, among the given scope (a superset of them, where
+		 * the scope does not matter). Never changed by the caller: it may be kept for the next
+		 * query, see {@link SearchIndex#_leaves}.
+		 */
 		BitSet eval(SearchCriterion criterion, BitSet scope) throws SQLException {
 			if (criterion == null) {
 				// Never reached for a query that passed refusal(SearchQuery): nothing.
@@ -1196,6 +1259,55 @@ public final class SearchIndex implements FolderPipeline.Step {
 				result.andNot(eval(((SearchNot) criterion).getCriterion(), scope));
 				return result;
 			}
+			String key = leafKey(criterion);
+			if (key == null || _only >= 0) {
+				return leaf(criterion, scope);
+			}
+			return cached(_leaves, key, _version, () -> leaf(criterion, scope));
+		}
+
+		/**
+		 * What tells the rows of the given criterion apart from those of every other, as far as
+		 * they do not depend on the scope; <code>null</code> for one that is not kept.
+		 */
+		private String leafKey(SearchCriterion criterion) {
+			if (criterion instanceof SearchPerson) {
+				return "person\u0000" + String.join("\u0000",
+					new TreeSet<>(PhotoSearch.idsOf(((SearchPerson) criterion).getPerson(), _people)));
+			}
+			if (criterion instanceof SearchDate) {
+				return "date\u0000" + ((SearchDate) criterion).getFrom() + "\u0000" + ((SearchDate) criterion).getTo();
+			}
+			if (criterion instanceof SearchPlace) {
+				return "place\u0000" + ((SearchPlace) criterion).getGeonameId();
+			}
+			if (criterion instanceof SearchLabel) {
+				return "label\u0000" + ((SearchLabel) criterion).getLabel();
+			}
+			if (criterion instanceof SearchRating) {
+				return "rating\u0000" + ((SearchRating) criterion).getMin();
+			}
+			if (criterion instanceof SearchMedia) {
+				return "media\u0000" + ((SearchMedia) criterion).isVideo();
+			}
+			if (criterion instanceof SearchCamera) {
+				return "camera\u0000" + ((SearchCamera) criterion).getCamera();
+			}
+			if (criterion instanceof SearchFolder) {
+				String path = PhotoSearch.trimSlashes(((SearchFolder) criterion).getPath());
+				// The folder searched is the scope itself.
+				return path.isEmpty() ? null : "folder\u0000" + path;
+			}
+			if (criterion instanceof SearchText) {
+				String text = ((SearchText) criterion).getText();
+				// Nothing typed is the scope itself.
+				return text == null || text.trim().isEmpty() ? null : "text\u0000" + text;
+			}
+			return null;
+		}
+
+		/** {@link #eval(SearchCriterion, BitSet)} of a criterion that is no "all", "any" or "not". */
+		private BitSet leaf(SearchCriterion criterion, BitSet scope) throws SQLException {
 			if (criterion instanceof SearchPerson) {
 				// Every id that names the person: the survivor and everybody merged into them.
 				Set<String> ids = PhotoSearch.idsOf(((SearchPerson) criterion).getPerson(), _people);
@@ -1320,72 +1432,74 @@ public final class SearchIndex implements FolderPipeline.Step {
 		}
 
 		/**
-		 * The matches of the given rows, named below the folder at the given path, which holds the
-		 * given number of rows: a large part of them is read by a walk over the folder's rows, a
-		 * few by their ids.
+		 * The matches of the given rows, named below the folder at the given path: a dense set by a
+		 * walk over the range of their ids, a sparse one joined with its ids.
 		 */
-		List<Match> matches(BitSet rows, String prefix, int inScope) throws SQLException {
-			List<Match> result = new ArrayList<>(rows.cardinality());
-			if (rows.isEmpty()) {
+		List<Match> matches(BitSet rows, String prefix) throws SQLException {
+			int count = rows.cardinality();
+			List<Match> result = new ArrayList<>(count);
+			if (count == 0) {
 				return result;
 			}
-			Map<Long, String> albums = new HashMap<>();
-			Map<String, PathInfo> folders = new HashMap<>();
-			if (rows.cardinality() > CHUNK && rows.cardinality() > inScope / 4) {
+			int first = rows.nextSetBit(0);
+			int last = rows.length() - 1;
+			if ((long) last - first + 1 <= (long) DENSE * count) {
+				Map<Long, Folder> byId = new HashMap<>();
+				long max = 0;
 				try (PreparedStatement select = treeStatement(_connection, "SELECT id, path FROM albums", prefix);
 						ResultSet found = select.executeQuery()) {
 					while (found.next()) {
-						albums.put(Long.valueOf(found.getLong(1)), found.getString(2));
+						long album = found.getLong(1);
+						byId.put(Long.valueOf(album), folder(found.getString(2), prefix));
+						max = Math.max(max, album);
 					}
 				}
-				try (PreparedStatement select = _connection.prepareStatement("SELECT id, album, name, taken FROM photos");
-						ResultSet found = select.executeQuery()) {
-					while (found.next()) {
-						long id = found.getLong(1);
-						if (id > Integer.MAX_VALUE || !rows.get((int) id)) {
-							continue;
-						}
-						String path = albums.get(Long.valueOf(found.getLong(2)));
-						if (path != null) {
-							add(result, folders, path, prefix, id, found.getString(3), found.getLong(4));
+				// By the id of the album, a walk asks once per row: an array where the ids are not
+				// spread much wider than the albums are many, as they are numbered as read.
+				Folder[] folders = null;
+				if (max < 4L * byId.size() + 1024) {
+					folders = new Folder[(int) max + 1];
+					for (Map.Entry<Long, Folder> entry : byId.entrySet()) {
+						folders[entry.getKey().intValue()] = entry.getValue();
+					}
+				}
+				try (PreparedStatement select =
+					_connection.prepareStatement("SELECT id, album, name, taken FROM photos WHERE id BETWEEN ? AND ?")) {
+					select.setLong(1, first);
+					select.setLong(2, last);
+					try (ResultSet found = select.executeQuery()) {
+						while (found.next()) {
+							long id = found.getLong(1);
+							if (!rows.get((int) id)) {
+								continue;
+							}
+							long album = found.getLong(2);
+							Folder folder = folders == null ? byId.get(Long.valueOf(album))
+								: album >= 0 && album < folders.length ? folders[(int) album] : null;
+							if (folder != null) {
+								result.add(new Match(id, folder._path, folder._below, found.getString(3), found.getLong(4)));
+							}
 						}
 					}
 				}
 				return result;
 			}
-			StringBuilder sql = new StringBuilder("SELECT id, album, name, taken FROM photos WHERE id IN (?");
-			for (int n = 1; n < CHUNK; n++) {
-				sql.append(", ?");
-			}
-			sql.append(")");
-			try (PreparedStatement select = _connection.prepareStatement(sql.toString());
-					PreparedStatement album = _connection.prepareStatement("SELECT path FROM albums WHERE id = ?")) {
-				int id = rows.nextSetBit(0);
+			Map<String, Folder> folders = new HashMap<>();
+			try (PreparedStatement select = _connection.prepareStatement("SELECT p.id, a.path, p.name, p.taken "
+				+ "FROM TABLE(x BIGINT = ?) t JOIN photos p ON p.id = t.x JOIN albums a ON a.id = p.album")) {
+				int id = first;
 				while (id >= 0) {
-					// A chunk of ids, the last one filled up with its last id.
-					int last = id;
-					for (int n = 0; n < CHUNK; n++) {
-						if (id >= 0) {
-							last = id;
-							id = rows.nextSetBit(id + 1);
-						}
-						select.setLong(n + 1, last);
+					Long[] chunk = new Long[Math.min(CHUNK, count - result.size())];
+					int size = 0;
+					for (; size < chunk.length && id >= 0; id = rows.nextSetBit(id + 1)) {
+						chunk[size++] = Long.valueOf(id);
 					}
+					select.setObject(1, size == chunk.length ? chunk : java.util.Arrays.copyOf(chunk, size));
 					try (ResultSet found = select.executeQuery()) {
 						while (found.next()) {
-							Long albumId = Long.valueOf(found.getLong(2));
-							String path = albums.get(albumId);
-							if (path == null) {
-								album.setLong(1, albumId.longValue());
-								try (ResultSet paths = album.executeQuery()) {
-									path = paths.next() ? paths.getString(1) : null;
-								}
-								if (path == null) {
-									continue;
-								}
-								albums.put(albumId, path);
-							}
-							add(result, folders, path, prefix, found.getLong(1), found.getString(3), found.getLong(4));
+							Folder folder = folders.computeIfAbsent(found.getString(2), path -> folder(path, prefix));
+							result.add(new Match(found.getLong(1), folder._path, folder._below, found.getString(3),
+								found.getLong(4)));
 						}
 					}
 				}
@@ -1394,16 +1508,38 @@ public final class SearchIndex implements FolderPipeline.Step {
 		}
 	}
 
-	/** Adds the match of a row in the folder at the given path, named below the given prefix. */
-	private void add(List<Match> result, Map<String, PathInfo> folders, String path, String prefix, long id,
-			String name, long date) {
-		PathInfo folder = folders.computeIfAbsent(path, this::pathOf);
-		String below = path.equals(prefix) ? "" : (prefix.isEmpty() ? path : path.substring(prefix.length() + 1)) + "/";
-		result.add(new Match(id, folder, below + name, name, date));
+	/** An album of matches: where it lies, and its path below the folder searched. */
+	private static final class Folder {
+		final PathInfo _path;
+
+		final String _below;
+
+		Folder(PathInfo path, String below) {
+			_path = path;
+			_below = below;
+		}
 	}
 
-	/** How many rows {@link Evaluation#matches} reads by their ids with one statement. */
-	private static final int CHUNK = 512;
+	/** The album at the given path, named below the given prefix. */
+	private Folder folder(String path, String prefix) {
+		String below = path.equals(prefix) ? "" : (prefix.isEmpty() ? path : path.substring(prefix.length() + 1)) + "/";
+		return new Folder(pathOf(path), below);
+	}
+
+	/**
+	 * How many ids a set may span per row it holds to be read by a walk over that span rather than
+	 * joined with its ids: a row read by its id costs about as much as five read in a walk.
+	 */
+	private static final int DENSE = 5;
+
+	/**
+	 * How many ids {@link Evaluation#matches} joins with one statement; an array parameter holds at
+	 * most 65 536 values.
+	 */
+	private static final int CHUNK = 32768;
+
+	/** How many ids {@link #facets(Collection)} asks with one statement. */
+	private static final int FACETS_CHUNK = 512;
 
 	/** The rows of the documents the given query finds. */
 	private static BitSet collect(IndexSearcher searcher, Query query) throws IOException {

@@ -12,10 +12,13 @@ import de.haumacher.imageServer.index.SpaceIndex;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.model.SearchAnd;
+import de.haumacher.imageServer.shared.model.SearchCamera;
 import de.haumacher.imageServer.shared.model.SearchCriterion;
 import de.haumacher.imageServer.shared.model.SearchDate;
+import de.haumacher.imageServer.shared.model.SearchFolder;
 import de.haumacher.imageServer.shared.model.SearchLabel;
 import de.haumacher.imageServer.shared.model.SearchNot;
+import de.haumacher.imageServer.shared.model.SearchOr;
 import de.haumacher.imageServer.shared.model.SearchPerson;
 import de.haumacher.imageServer.shared.model.SearchQuery;
 import de.haumacher.imageServer.shared.model.SearchText;
@@ -200,15 +203,93 @@ public class TestSearchSpeed extends TestCase {
 	}
 
 	private int count(SearchQuery query) throws Exception {
+		return answer(query).getParts().size();
+	}
+
+	private AlbumInfo answer(SearchQuery query) throws Exception {
 		Map<String, String> parameters = new HashMap<>();
 		parameters.put("action", ImageServlet.SEARCH_ACTION);
 		FakeResponse response = new FakeResponse();
 		_servlet.doPost(request("/", "application/json", TestSavedSearch.write(query).getBytes(StandardCharsets.UTF_8),
 			Map.of(), parameters), response.response());
 		assertEquals(response.body(), HttpServletResponse.SC_OK, response.status());
-		AlbumInfo album = (AlbumInfo) Resource.readResource(
-			new JsonReader(new ReaderAdapter(new StringReader(response.body()))));
-		return album.getParts().size();
+		return (AlbumInfo) Resource.readResource(new JsonReader(new ReaderAdapter(new StringReader(response.body()))));
+	}
+
+	/**
+	 * The index answers what the albums hold (issue #276): every query of the measurement and more
+	 * &mdash; a sparse one, read by its ids, a dense one, read by a walk, "any", "not", a camera
+	 * and a folder &mdash; below the root, a year and an album, compared with what the generated
+	 * albums say, asked twice (the second time from the rows kept of each criterion), and through
+	 * the servlet, which answers each match without its faces.
+	 */
+	public void testTheIndexAnswersAsTheAlbums() throws Exception {
+		long middle = START + ALBUMS * PHOTOS / 2 * STEP;
+		Map<SearchQuery, Photo> queries = new java.util.LinkedHashMap<>();
+		queries.put(and(SearchPerson.create().setPerson("anne"), SearchPerson.create().setPerson("philipp"),
+			SearchDate.create().setFrom(middle)), (a, p, date) -> p % 8 == 0 && date >= middle);
+		queries.put(and(), (a, p, date) -> true);
+		queries.put(and(SearchText.create().setText("Lake")), (a, p, date) -> p % 10 == 0);
+		queries.put(and(SearchLabel.create().setLabel("Label 3"),
+			SearchNot.create().setCriterion(SearchPerson.create().setPerson("anne"))), (a, p, date) -> p % 5 == 3 && p % 4 != 0);
+		// Two photographs of fifty: sparse.
+		queries.put(and(SearchLabel.create().setLabel("Label 3"), SearchPerson.create().setPerson("philipp")),
+			(a, p, date) -> p % 5 == 3 && p % 8 == 0);
+		queries.put(and(SearchOr.create().setCriteria(new ArrayList<>(Arrays.asList(SearchPerson.create().setPerson("anne"),
+			SearchLabel.create().setLabel("Label 2"))))), (a, p, date) -> p % 4 == 0 || p % 5 == 2);
+		queries.put(and(SearchNot.create().setCriterion(SearchDate.create().setFrom(middle))), (a, p, date) -> date < middle);
+		queries.put(and(SearchCamera.create().setCamera("Camera 1"), SearchFolder.create().setPath("Year 2016")),
+			(a, p, date) -> a % 3 == 1 && a % 10 == 1);
+		_servlet.searchIndex().build();
+		for (String folder : Arrays.asList("", "Year 2017", "Year 2017/Album 2")) {
+			PathInfo scope = folder.isEmpty() ? new PathInfo(_base) : new PathInfo(_base, Path.of(folder));
+			for (Map.Entry<SearchQuery, Photo> query : queries.entrySet()) {
+				List<String> expected = expected(folder, query.getValue());
+				for (int n = 0; n < 2; n++) {
+					List<String> found = new ArrayList<>();
+					for (PhotoSearch.Match match : PhotoSearch.find(scope, query.getKey(), _servlet.searchIndex(), null,
+						SearchIndex.Visibility.ALL)) {
+						found.add(match.getRelative());
+					}
+					assertEquals(TestSavedSearch.write(query.getKey()) + " below '" + folder + "'", expected, found);
+				}
+			}
+		}
+		for (Map.Entry<SearchQuery, Photo> query : queries.entrySet()) {
+			List<String> found = new ArrayList<>();
+			for (de.haumacher.imageServer.shared.model.AlbumPart part : answer(query.getKey()).getParts()) {
+				de.haumacher.imageServer.shared.model.ImagePart image = (de.haumacher.imageServer.shared.model.ImagePart) part;
+				assertTrue(image.isPartial());
+				assertTrue(image.getTags().isEmpty());
+				assertTrue(image.getFaces().isEmpty());
+				found.add(image.getName());
+			}
+			assertEquals(expected("", query.getValue()), found);
+		}
+	}
+
+	/** Whether the generated photograph of the given album and number, taken at the given time, matches. */
+	private interface Photo {
+		boolean matches(int album, int photo, long date);
+	}
+
+	/** The paths below the given folder of the generated photographs that match, by their dates. */
+	private static List<String> expected(String folder, Photo photo) {
+		List<String> result = new ArrayList<>();
+		// The dates rise with the album and the photograph.
+		for (int a = 0; a < ALBUMS; a++) {
+			String path = "Year " + (2015 + a % 10) + "/Album " + a;
+			if (!folder.isEmpty() && !path.equals(folder) && !path.startsWith(folder + "/")) {
+				continue;
+			}
+			String below = folder.isEmpty() ? path + "/" : path.equals(folder) ? "" : path.substring(folder.length() + 1) + "/";
+			for (int p = 0; p < PHOTOS; p++) {
+				if (photo.matches(a, p, START + (a * PHOTOS + p) * STEP)) {
+					result.add(below + "IMG_" + p + ".jpg");
+				}
+			}
+		}
+		return result;
 	}
 
 	private static SearchQuery and(SearchCriterion... criteria) {

@@ -25,4 +25,11 @@ no sidecar is read and no stamp compared on the request. The album of every matc
   later, undoing `SET CACHE_SIZE` — it is set once on the writer. H2's page cache evicts a page by
   holding it weakly and takes it back on the next read without evicting another, so reads alone
   grow it past its size; `SpaceIndex#trimCache()` empties it after a search when it holds more than
-  twice its size. An array parameter holds at most 65 536 values; ids go in chunks of `IN (?, …)`.
+  twice its size. An array parameter holds at most 65 536 values.
+- **A read is one snapshot.** `SpaceIndex#read` runs in a `REPEATABLE_READ` transaction that is
+  rolled back. In autocommit, a statement that finds a row through a secondary index while a
+  writer deletes it fails now and then with 90143 ("Row not found in primary index"), and the
+  search answered nothing (`TestSearchIndex#testSearchesDuringARebuildAreConsistent` under load).
+- **Rows by id are joined, not listed.** `id IN (?, …)` re-checks the whole list for every row it
+  finds (seconds for 100 000 ids); `SearchIndex` joins `TABLE(x BIGINT = ?)` with the ids as an
+  array, or walks the id range where the ids are dense (#276).

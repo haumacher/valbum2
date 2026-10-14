@@ -8579,12 +8579,23 @@ public class ImageServlet extends HttpServlet {
 	 */
 	private List<ImagePart> searchMatches(PathInfo scope, SearchQuery query, Caller caller, int viewAs,
 			Map<String, PhotoSearch.Match> stored) {
+		return searchMatches(scope, query, caller, viewAs, stored, false);
+	}
+
+	/**
+	 * {@link #searchMatches(PathInfo, SearchQuery, Caller, int, Map)}, the answers without faces
+	 * and tags where <code>slim</code>: for an answer that is written out
+	 * {@link PhotoSearch#partial(Resource) partial} anyway, so that the faces of the albums are not
+	 * derived for nothing.
+	 */
+	private List<ImagePart> searchMatches(PathInfo scope, SearchQuery query, Caller caller, int viewAs,
+			Map<String, PhotoSearch.Match> stored, boolean slim) {
 		// What the photograph's own fields hide from this caller is not looked for at all, see
 		// SearchIndex.Visibility; the album decides the rest, as below.
 		SearchIndex.Visibility visibility = new SearchIndex.Visibility(Math.min(_auth.clearance(caller, scope), viewAs),
 			caller.isShareLink() ? caller.getShare().getMinRating() : Ratings.MIN, _auth.photoLabel(caller));
-		return searchMatches(scope, query, (folder, names) -> sourceAlbum(folder, caller, viewAs, names),
-			Faces.maySee(_auth, caller, viewAs), visibility, stored);
+		return searchMatches(scope, query, (folder, names) -> sourceAlbum(folder, caller, viewAs, names, !slim),
+			Faces.maySee(_auth, caller, viewAs), visibility, stored, slim);
 	}
 
 	/**
@@ -8602,10 +8613,13 @@ public class ImageServlet extends HttpServlet {
 	 *        are shown nothing of it. Asked once per folder.
 	 * @param member
 	 *        Whether the answers say where they lie.
+	 * @param slim
+	 *        Whether the answers leave out the faces and the tags, see
+	 *        {@link #searchMatches(PathInfo, SearchQuery, Caller, int, Map, boolean)}.
 	 */
 	private List<ImagePart> searchMatches(PathInfo scope, SearchQuery query,
 			java.util.function.BiFunction<PathInfo, Set<String>, AlbumInfo> sources, boolean member,
-			SearchIndex.Visibility visibility, Map<String, PhotoSearch.Match> stored) {
+			SearchIndex.Visibility visibility, Map<String, PhotoSearch.Match> stored, boolean slim) {
 		List<PhotoSearch.Match> found = PhotoSearch.find(scope, query, _searchIndex, _people, visibility);
 		// Each album is asked once, for its matches alone: what its filters and its faces cost is
 		// paid for what is answered, not for the whole album.
@@ -8613,8 +8627,16 @@ public class ImageServlet extends HttpServlet {
 		for (PhotoSearch.Match match : found) {
 			matched.computeIfAbsent(match.getFolder(), x -> new HashSet<>()).add(match.getName());
 		}
-		Map<PathInfo, Map<String, ImagePart>> albums = new HashMap<>();
+		// The albums the cache holds first: a search over more albums than the cache holds would
+		// otherwise push out, one by one, each album it is about to ask next, and read every one.
+		List<Map.Entry<PathInfo, Set<String>>> order = new ArrayList<>(matched.size());
+		List<Map.Entry<PathInfo, Set<String>>> unheld = new ArrayList<>();
 		for (Map.Entry<PathInfo, Set<String>> entry : matched.entrySet()) {
+			(_cache.holds(entry.getKey()) ? order : unheld).add(entry);
+		}
+		order.addAll(unheld);
+		Map<PathInfo, Map<String, ImagePart>> albums = new HashMap<>();
+		for (Map.Entry<PathInfo, Set<String>> entry : order) {
 			AlbumInfo album = sources.apply(entry.getKey(), entry.getValue());
 			Map<String, ImagePart> byName = new HashMap<>();
 			if (album != null) {
@@ -8633,6 +8655,9 @@ public class ImageServlet extends HttpServlet {
 				continue;
 			}
 			ImagePart answer = PhotoSearch.answerCopy(shown);
+			if (slim) {
+				answer.setFaces(Collections.emptyList()).setTags(Collections.emptyList());
+			}
 			answer.setName(match.getRelative());
 			answer.setRef(member
 				? PhotoRef.create().setHash("").setPath(folder.child(match.getName()).relativePath())
@@ -8745,7 +8770,8 @@ public class ImageServlet extends HttpServlet {
 			scope = searchScope(scope);
 		}
 		int viewAs = Privacy.PRIVATE;
-		List<ImagePart> parts = searchMatches(scope, query, caller, viewAs, null);
+		// Written out partial: no faces derived, see ImagePart#isPartial().
+		List<ImagePart> parts = searchMatches(scope, query, caller, viewAs, null, true);
 		AlbumInfo answer = AlbumInfo.create()
 			.setKind(de.haumacher.imageServer.shared.model.AlbumKind.SEARCH)
 			.setQuery(PhotoSearch.normalized(query))
@@ -8787,7 +8813,8 @@ public class ImageServlet extends HttpServlet {
 		}
 		PathInfo scope = PhotoSearch.isSearch(_cache.lookup(folder)) ? searchScope(folder) : folder;
 		Map<String, PhotoSearch.Match> stored = new LinkedHashMap<>();
-		List<ImagePart> shown = searchMatches(scope, null, caller, Privacy.PRIVATE, stored);
+		// Only their rows and their places are read: no faces derived.
+		List<ImagePart> shown = searchMatches(scope, null, caller, Privacy.PRIVATE, stored, true);
 
 		// The persons, cameras and labels of exactly the photographs the caller is shown, read off
 		// their rows in the index, see issue #264.
@@ -9093,6 +9120,15 @@ public class ImageServlet extends HttpServlet {
 	 * derived for its matches and not for every photograph of every album it touches.
 	 */
 	private AlbumInfo sourceAlbum(PathInfo folder, Caller caller, int viewAs, Set<String> only) {
+		return sourceAlbum(folder, caller, viewAs, only, true);
+	}
+
+	/**
+	 * {@link #sourceAlbum(PathInfo, Caller, int, Set)}, its faces derived only where
+	 * <code>faces</code>: an answer that leaves out the faces and the tags of every photograph
+	 * does not need them, see {@link #searchMatches(PathInfo, SearchQuery, Caller, int, Map, boolean)}.
+	 */
+	private AlbumInfo sourceAlbum(PathInfo folder, Caller caller, int viewAs, Set<String> only, boolean faces) {
 		if (!folder.toFile().isDirectory() || !_auth.mayView(caller, folder)) {
 			return null;
 		}
@@ -9109,7 +9145,9 @@ public class ImageServlet extends HttpServlet {
 		}
 		int clearance = Math.min(_auth.clearance(caller, folder), viewAs);
 		Resource answer = _privacy.filter(shown, folder, clearance, _auth.minRating(caller, folder, viewAs), "");
-		answer = withFaces(answer, folder, caller, viewAs, only == null);
+		if (faces) {
+			answer = withFaces(answer, folder, caller, viewAs, only == null);
+		}
 		return answer instanceof AlbumInfo ? (AlbumInfo) answer : null;
 	}
 
@@ -9161,7 +9199,7 @@ public class ImageServlet extends HttpServlet {
 			}
 			Resource answer = _privacy.filter(shown, folder, clearance, minRating, "");
 			return answer instanceof AlbumInfo ? (AlbumInfo) answer : null;
-		}, true, new SearchIndex.Visibility(clearance, minRating, label), null);
+		}, true, new SearchIndex.Visibility(clearance, minRating, label), null, false);
 		AlbumInfo found = AlbumInfo.create()
 			.setKind(de.haumacher.imageServer.shared.model.AlbumKind.SEARCH)
 			.setTitle(search.getTitle())
@@ -9624,8 +9662,65 @@ public class ImageServlet extends HttpServlet {
 
 		// Allow access from mobile app.
 		allowCrossOrigin(response);
-		try (JsonWriter json = new JsonWriter(new WriterAdapter(new OutputStreamWriter(response.getOutputStream(), "utf-8")))) {
+		try (JsonWriter json = new JsonWriter(new BufferedJson(new OutputStreamWriter(response.getOutputStream(), "utf-8")))) {
 			album.writeTo(json);
+		}
+	}
+
+	/**
+	 * The writer of a JSON answer: the {@link JsonWriter} hands it every quote, comma and colon on
+	 * its own, some millions for a search answer of a hundred thousand photographs, which a
+	 * {@link java.io.Writer} takes one lock each for and an unbuffered one encodes each on its own;
+	 * collected here first, see issue #276. One thread writes an answer.
+	 */
+	private static final class BufferedJson implements de.haumacher.msgbuf.io.Writer {
+
+		private final java.io.Writer _out;
+
+		private final char[] _buffer = new char[8192];
+
+		private int _length;
+
+		BufferedJson(java.io.Writer out) {
+			_out = out;
+		}
+
+		@Override
+		public void write(char ch) throws IOException {
+			if (_length == _buffer.length) {
+				drain();
+			}
+			_buffer[_length++] = ch;
+		}
+
+		@Override
+		public void write(String text, int offset, int length) throws IOException {
+			if (length > _buffer.length - _length) {
+				drain();
+				if (length > _buffer.length) {
+					_out.write(text, offset, length);
+					return;
+				}
+			}
+			text.getChars(offset, offset + length, _buffer, _length);
+			_length += length;
+		}
+
+		private void drain() throws IOException {
+			_out.write(_buffer, 0, _length);
+			_length = 0;
+		}
+
+		@Override
+		public void flush() throws IOException {
+			drain();
+			_out.flush();
+		}
+
+		@Override
+		public void close() throws IOException {
+			drain();
+			_out.close();
 		}
 	}
 

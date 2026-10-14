@@ -208,16 +208,23 @@ public final class PhotoSearch {
 
 		final PathInfo _folder;
 
-		final String _relative;
+		/** The path of {@link #_folder} below the folder searched, empty or ending in <code>/</code>. */
+		final String _below;
 
 		final String _name;
 
 		final long _date;
 
-		Match(long id, PathInfo folder, String relative, String name, long date) {
+		/**
+		 * {@link #getRelative()} once asked: a search of a hundred thousand photographs answers
+		 * them by name, and the sort reads the path only where two dates are equal.
+		 */
+		private String _relative;
+
+		Match(long id, PathInfo folder, String below, String name, long date) {
 			_id = id;
 			_folder = folder;
-			_relative = relative;
+			_below = below;
 			_name = name;
 			_date = date;
 		}
@@ -234,7 +241,13 @@ public final class PhotoSearch {
 
 		/** The photograph's path below the folder searched, <code>/</code>-separated. */
 		public String getRelative() {
-			return _relative;
+			String result = _relative;
+			if (result == null) {
+				// Racy but safe: a String is immutable, and every thread computes the same one.
+				result = _below.isEmpty() ? _name : _below + _name;
+				_relative = result;
+			}
+			return result;
 		}
 
 		/** The photograph's file name in its album. */
@@ -309,7 +322,7 @@ public final class PhotoSearch {
 			}
 			return Long.compare(da, db);
 		}
-		return a._relative.compareTo(b._relative);
+		return a.getRelative().compareTo(b.getRelative());
 	};
 
 	/** Whether a directory entry of the given name is part of the library at all. */

@@ -93,7 +93,7 @@ public class TestSavedSearchIndexed extends TestSavedSearch {
 			&& !PhotoSearch.holdsNoFiles(album)) {
 			for (de.haumacher.imageServer.shared.model.ImagePart image : PhotoSearch.images(album)) {
 				if (image.getRating() != de.haumacher.imageServer.auth.Ratings.TRASH && accepts(query, image)) {
-					found.add(new PhotoSearch.Match(0, folder, prefix + image.getName(), image.getName(), image.getDate()));
+					found.add(new PhotoSearch.Match(0, folder, prefix, image.getName(), image.getDate()));
 				}
 			}
 		}

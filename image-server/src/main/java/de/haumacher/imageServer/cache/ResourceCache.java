@@ -435,6 +435,15 @@ public class ResourceCache {
 		invalidate(_cache, pathInfo);
 	}
 
+	/**
+	 * Whether the cache holds what it answers for the given folder, so that a lookup reads nothing;
+	 * asking does not count as a use of it. For an answer drawn from more albums than the cache
+	 * holds (a search), which asks those it holds first, see issue #276.
+	 */
+	public boolean holds(PathInfo folder) {
+		return _cache.asMap().containsKey(folder);
+	}
+
 	static void invalidate(LoadingCache<PathInfo, Resource> cache, PathInfo pathInfo) {
 		cache.invalidate(pathInfo);
 		if (!pathInfo.isRoot()) {

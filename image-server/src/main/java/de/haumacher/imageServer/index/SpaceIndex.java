@@ -36,8 +36,8 @@ import org.h2.jdbcx.JdbcConnectionPool;
  *
  * <p>
  * <b>Connections.</b> One process, no server, no TCP. Requests read through a small pool of
- * connections and never wait for a writer: H2's MVStore answers each statement from the last
- * committed state. Writes go through {@link #write(Write)}, one at a time on a connection of their
+ * connections and never wait for a writer: H2's MVStore answers each read from one snapshot of the
+ * last committed state, see {@link #read(Read, Object)}. Writes go through {@link #write(Write)}, one at a time on a connection of their
  * own, each a transaction — the background (one writer per space) and the server's own edits, which
  * write through in the same step as their sidecar. Every statement is prepared; nothing a user
  * typed is ever spelled into SQL.
@@ -342,7 +342,15 @@ public final class SpaceIndex implements AutoCloseable {
 			return fallback;
 		}
 		try (Connection connection = pool.getConnection()) {
-			return read.run(connection);
+			// One transaction of one snapshot: the statements of a read see the same state, and a
+			// row a writer deletes meanwhile is never half gone, see faq/search-index.md.
+			connection.setAutoCommit(false);
+			connection.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
+			try {
+				return read.run(connection);
+			} finally {
+				connection.rollback();
+			}
 		} catch (SQLException | RuntimeException ex) {
 			if (!_closed) {
 				LOG.log(Level.WARNING, "Cannot read the index of '" + _label + "': " + ex.getMessage(), ex);

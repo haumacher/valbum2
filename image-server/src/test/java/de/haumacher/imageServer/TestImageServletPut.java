@@ -386,6 +386,13 @@ public class TestImageServletPut extends TestCase {
 						}
 
 						@Override
+						public void write(byte[] b, int off, int len) {
+							// As a servlet container does: not a byte at a time, which costs a search
+							// answer of a hundred thousand photographs a second, see TestSearchSpeed.
+							_body.write(b, off, len);
+						}
+
+						@Override
 						public boolean isReady() {
 							return true;
 						}
