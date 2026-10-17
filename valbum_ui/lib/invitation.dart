@@ -30,6 +30,7 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
 import 'caller.dart';
+import 'dialog_style.dart';
 import 'l10n/app_localizations.dart';
 import 'client.dart';
 import 'form_dialog.dart';
@@ -372,10 +373,9 @@ class InvitationWelcomeScreenState extends State<InvitationWelcomeScreen> {
         // An invitation is a code since issue #89, and it travels in the field
         // every other code travels in.
         deviceCode: widget.token,
-        deviceName:
-            _device.text.trim().isEmpty
-                ? defaultDeviceName(AppLocalizations.of(context)!)
-                : _device.text.trim(),
+        deviceName: _device.text.trim().isEmpty
+            ? defaultDeviceName(AppLocalizations.of(context)!)
+            : _device.text.trim(),
         userName: name,
       );
     } on VAlbumException catch (failure) {
@@ -492,7 +492,7 @@ class InviteDialogState extends State<InviteDialog> {
   @override
   Widget build(BuildContext context) {
     var l10n = AppLocalizations.of(context)!;
-    return AlertDialog(
+    return AppAlertDialog(
       key: const Key("invite-dialog"),
       title: Text(l10n.inviteDialogTitle),
       content: SizedBox(

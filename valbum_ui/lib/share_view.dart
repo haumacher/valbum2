@@ -20,6 +20,7 @@ import 'package:intl/intl.dart';
 import 'album_edit.dart' show privacyMembers, privacyPublic;
 import 'caller.dart';
 import 'client.dart';
+import 'dialog_style.dart';
 import 'form_dialog.dart';
 import 'l10n/app_localizations.dart';
 import 'manage_view.dart' show dayOf;
@@ -357,7 +358,7 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
         (widget.path.isEmpty
             ? l10n.shareTargetTopLevel
             : "'${widget.path.last}'");
-    return AlertDialog(
+    return AppAlertDialog(
       key: const Key("share-link-dialog"),
       title: Text(l10n.shareDialogTitle(name)),
       content: SizedBox(
@@ -1143,7 +1144,7 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
       context: context,
       builder: (context) {
         var l10n = AppLocalizations.of(context)!;
-        return AlertDialog(
+        return AppAlertDialog(
           key: const Key("delete-link-confirm"),
           title: Text(l10n.deleteLinkTitle),
           content: Text(deleteLinkQuestion(l10n, link)),

@@ -29,6 +29,7 @@ import 'client.dart';
 import 'device_code_payload.dart';
 import 'device_code_scanner.dart';
 import 'diagnostics.dart';
+import 'dialog_style.dart';
 import 'invitation.dart';
 import 'l10n/app_localizations.dart';
 import 'manage_view.dart';
@@ -1944,7 +1945,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
     var l10n = AppLocalizations.of(context)!;
     var confirmed = await showAppDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => AppAlertDialog(
         title: Text(l10n.clearCacheTitle),
         content: Text(l10n.clearCacheQuestion),
         actions: [

@@ -79,6 +79,7 @@ import 'camera_roll_view.dart';
 import 'client.dart';
 import 'crop.dart';
 import 'crop_editor.dart' show cropPhoto;
+import 'dialog_style.dart';
 import 'form_dialog.dart';
 import 'image_properties.dart';
 import 'keyboard_scroll.dart';
@@ -1041,7 +1042,7 @@ class InboxContentState extends State<InboxContent>
     var messenger = ScaffoldMessenger.of(context);
     var confirmed = await showAppDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => AppAlertDialog(
         key: const Key("inbox-delete-dialog"),
         title: Text(inboxDeleteTitle(_l10n, chosen.length)),
         content: Text(inboxDeleteExplanation(_l10n)),

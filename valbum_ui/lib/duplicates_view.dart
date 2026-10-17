@@ -30,6 +30,7 @@ import 'album_date.dart';
 import 'app.dart';
 import 'caller.dart';
 import 'client.dart';
+import 'dialog_style.dart';
 import 'l10n/app_localizations.dart';
 import 'move_view.dart' show showRefusal;
 import 'offline.dart';
@@ -197,7 +198,7 @@ class DuplicatesViewState extends State<DuplicatesView> {
     var album = _albumWord(copy);
     var confirmed = await showAppDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => AppAlertDialog(
         key: const Key("duplicates-delete-dialog"),
         title: Text(_l10n.duplicatesDeleteTitle),
         content: Text(_l10n.duplicatesDeleteQuestion(album, copy.name)),

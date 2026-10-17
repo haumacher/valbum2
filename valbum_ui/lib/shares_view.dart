@@ -24,6 +24,7 @@ import 'package:intl/intl.dart';
 import 'album_edit.dart' show privacyMembers, privacyPublic;
 import 'caller.dart';
 import 'client.dart';
+import 'dialog_style.dart';
 import 'filter_list.dart';
 import 'form_dialog.dart';
 import 'l10n/app_localizations.dart';
@@ -815,7 +816,7 @@ class SharesScreenState extends State<SharesScreen> {
         link.title.isNotEmpty ? link.title : _albumLabel(l10n, link.path);
     await showAppDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => AppAlertDialog(
         key: const Key("shares-renewed"),
         title: Text(l10n.sendAgainHeading(recipient.name)),
         content: SizedBox(
@@ -1082,7 +1083,7 @@ class ShareEditDialogState extends State<ShareEditDialog> {
         link.photoLabel,
     ];
     var refusal = _refusal;
-    return AlertDialog(
+    return AppAlertDialog(
       key: const Key("edit-link-dialog"),
       title: Text(l10n.editLinkTitle),
       content: SizedBox(

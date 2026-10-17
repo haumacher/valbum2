@@ -3,8 +3,9 @@
 /// or there is no pointer at all.
 ///
 /// A teaser is a nicety. Everything here is about it staying one: it plays
-/// muted and once per pointer enter (issue #263), it is gone at its end or
-/// the moment the pointer leaves, whichever comes first, and a teaser the server has not made yet shows nothing
+/// muted and once per pointer enter (issue #263), it stands on its last frame
+/// at its end (issue #284) and is gone the moment the pointer leaves, and a
+/// teaser the server has not made yet shows nothing
 /// and says nothing — and is asked about at most once more.
 library;
 
@@ -154,12 +155,13 @@ void main() {
     expect(find.byKey(const Key("the-poster")), findsOneWidget);
   });
 
-  testWidgets('plays once, then the tile is the poster again (issue #263)',
-      (tester) async {
+  testWidgets(
+      'plays once, then stands on its last frame until the pointer leaves '
+      '(issues #263, #284)', (tester) async {
     var probe = FakeProbe([const RenditionState(RenditionStatus.ready)]);
     await pumpTile(tester, probe: probe);
 
-    await hover(tester);
+    var gesture = await hover(tester);
     expect(find.byKey(const Key("video-teaser")), findsOneWidget);
     expect(platform.calls, isNot(contains("dispose")));
 
@@ -167,10 +169,18 @@ void main() {
     platform.complete(platform.lastPlayerId);
     await settle(tester);
 
+    expect(find.byKey(const Key("video-teaser")), findsOneWidget,
+        reason: "the last frame stays, not the poster");
+    expect(platform.calls, isNot(contains("dispose")));
+    expect(platform.calls.where((call) => call == "play"), hasLength(1),
+        reason: "played once, not again from the start");
+    expect(platform.looping, isNot(contains(true)));
+
+    await gesture.moveTo(const Offset(5, 5));
+    await settle(tester);
     expect(find.byKey(const Key("video-teaser")), findsNothing);
     expect(find.byKey(const Key("the-poster")), findsOneWidget);
     expect(platform.calls.where((call) => call == "dispose"), hasLength(1));
-    expect(platform.looping, isNot(contains(true)));
     expect(tester.takeException(), isNull);
   });
 
@@ -181,7 +191,6 @@ void main() {
     var gesture = await hover(tester);
     platform.complete(platform.lastPlayerId);
     await settle(tester);
-    expect(find.byKey(const Key("video-teaser")), findsNothing);
 
     // Off the tile and onto it again.
     await gesture.moveTo(const Offset(5, 5));
