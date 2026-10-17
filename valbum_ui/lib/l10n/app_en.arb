@@ -7397,5 +7397,47 @@
   "@backgroundSyncBusy": {
     "description": "Says why a background run did nothing: another run of the camera-roll sync was going on (issue #300)",
     "x-translated": "b23a0b38"
+  },
+  "spaceSettingsContent": "Search by content",
+  "@spaceSettingsContent": {
+    "description": "Title of the switch letting the server describe every photo for the content search (issue #257)",
+    "x-translated": "6b88e031"
+  },
+  "spaceSettingsContentHelp": "The server describes every photo and video in the background, so that it can be found by what it shows. Each photo is sent as a small preview to the embedder service, which may run on another computer and needs seconds to minutes per photo there. The descriptions take about 2 KB per photo on disk. Switching off keeps what was described.",
+  "@spaceSettingsContentHelp": {
+    "description": "Explanation below the content search switch: what it does and what it costs (issue #257)",
+    "x-translated": "7c547cdf"
+  },
+  "spaceSettingsContentReady": "The embedder service is ready.",
+  "@spaceSettingsContentReady": {
+    "description": "Line below the content search switch: the service that describes the photos answers (issue #257)",
+    "x-translated": "bb374972"
+  },
+  "spaceSettingsContentUnavailable": "The embedder service cannot describe photos now: {reason}",
+  "@spaceSettingsContentUnavailable": {
+    "description": "Line below the content search switch: why the service that describes the photos cannot do so now, in the server's words (issue #257)",
+    "placeholders": {
+      "reason": {
+        "type": "String",
+        "example": "the embedder service at http://pi:8091/ is downloading the model"
+      }
+    },
+    "x-translated": "fdfa69fa"
+  },
+  "catchUpStepContent": "Content search",
+  "@catchUpStepContent": {
+    "description": "Name of a background step: describing photos for the content search (issue #257)",
+    "x-translated": "b827311"
+  },
+  "catchUpContent": "{count, plural, =0{No photo waiting for the content search} =1{1 photo waiting for the content search} other{{count} photos waiting for the content search}}",
+  "@catchUpContent": {
+    "description": "Detail of the preparation progress: how many photos and videos still wait to be described for the content search (issue #257)",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "3"
+      }
+    },
+    "x-translated": "99e3064"
   }
 }

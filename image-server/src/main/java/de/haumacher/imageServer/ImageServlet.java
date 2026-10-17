@@ -30,6 +30,8 @@ import de.haumacher.imageServer.cache.AnalysisStep;
 import de.haumacher.imageServer.cache.BrokenParts;
 import de.haumacher.imageServer.cache.ResourceCache;
 import de.haumacher.imageServer.coded.CodedPictures;
+import de.haumacher.imageServer.content.ContentIndex;
+import de.haumacher.imageServer.content.Embedder;
 import de.haumacher.imageServer.faces.FaceCache;
 import de.haumacher.imageServer.faces.FaceImport;
 import de.haumacher.imageServer.faces.FaceIndex;
@@ -901,6 +903,26 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	/**
+	 * The content search of this space in the background, see issue #257: switched on by its
+	 * <code>space.json</code>, fed by the embedder of the server ({@link #setEmbedder(Embedder)}).
+	 */
+	private final ContentIndex _content;
+
+	/** The content search of this space, for the tests. */
+	public ContentIndex content() {
+		return _content;
+	}
+
+	/**
+	 * Installs the embedder of the content search, see issue #257: one for the whole server, made
+	 * by {@link de.haumacher.imageServer.content.EmbedderSettings#create(Path)}; without it every
+	 * photo waits, and the settings say why.
+	 */
+	public void setEmbedder(Embedder embedder) {
+		_content.setEmbedder(embedder);
+	}
+
+	/**
 	 * Starts building the hash index of this space in the background, see {@link HashIndex}.
 	 *
 	 * <p>
@@ -917,7 +939,7 @@ public class ImageServlet extends HttpServlet {
 		// reached it is still queued by its listing.
 		synchronized (this) {
 			if (!_catchUpInstalled) {
-				CatchUp.install(_index.pipeline(), _basePath, _faces, _videos, _placesStep);
+				CatchUp.install(_index.pipeline(), _basePath, _faces, _videos, _placesStep, _content);
 				_catchUpInstalled = true;
 			}
 		}
@@ -1050,6 +1072,8 @@ public class ImageServlet extends HttpServlet {
 			return places == null ? -1 : places.epoch();
 		}, _cache::hasBackground);
 		_index.pipeline().addStep(_searchIndex);
+		// The vectors of the content search, where the space has it on, see issue #257.
+		_content = new ContentIndex(_basePath, this::lookupOrSkip, config != null && config.isContentEnabled());
 		_settings = new SpaceConfiguration(this, _auth, _basePath, _space);
 		String noFaces = _faces.unavailability();
 		if (noFaces != null) {
@@ -1082,7 +1106,8 @@ public class ImageServlet extends HttpServlet {
 	 * the zone dates what is read from now on; the inbox moves (it holds nothing, see
 	 * {@link SpaceConfiguration#inboxFixed()}). Faces switched on join the background work, which
 	 * then looks at every album of the space; switched off, nothing is looked at or offered any
-	 * more, and nothing found or named before is touched.
+	 * more, and nothing found or named before is touched. The content search of issue #257 is
+	 * switched the same way.
 	 * </p>
 	 */
 	void reconfigure(SpaceStore.Config config) {
@@ -1113,6 +1138,12 @@ public class ImageServlet extends HttpServlet {
 			if (noFaces != null) {
 				LOG.warning("The space '" + (_space.isEmpty() ? _basePath.getFileName() : _space)
 					+ "' asked for face detection, which this machine cannot do: " + noFaces);
+			}
+		}
+		if (before.isContentEnabled() != config.isContentEnabled()) {
+			synchronized (this) {
+				CatchUp.switchContent(_index.pipeline(), _basePath, _content, config.isContentEnabled(),
+					_catchUpInstalled);
 			}
 		}
 		_auth.setAnonymousAllowed(config.isAnonymousAllowed());
@@ -1253,6 +1284,7 @@ public class ImageServlet extends HttpServlet {
 		_videos.shutdown();
 		_index.shutdown();
 		_faces.shutdown();
+		_content.close();
 		_reanalysis.shutdown();
 		_searchIndex.close();
 		if (_placesStep != null) {

@@ -149,6 +149,24 @@ void main() {
     expect(find.text("Nothing failed."), findsOneWidget);
   });
 
+  testWidgets('names the content search and what waits for it (issue #257)',
+      (tester) async {
+    await pumpSection(
+        tester,
+        MockClient((request) async => json(
+            statusOf(done: 40, step: "CONTENT", videos: 0).replaceFirst(
+                '"videosRemaining": 0',
+                '"videosRemaining": 0, "contentRemaining": 7'))));
+    await tester.tap(find.byKey(catchUpLineKey));
+    await tester.pumpAndSettle();
+    expect(find.text("Now: Content search in 2024/2024-05-01 Zoo"),
+        findsOneWidget);
+    expect(
+        find.text("7 photos waiting for the content search"), findsOneWidget);
+    expect(find.text("All 40 albums are prepared"), findsNothing,
+        reason: "Photos still wait to be described.");
+  });
+
   testWidgets('asks again while it is on screen, and stops when it is gone',
       (tester) async {
     var asked = 0;

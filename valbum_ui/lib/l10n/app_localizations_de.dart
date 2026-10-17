@@ -4514,4 +4514,34 @@ class AppLocalizationsDe extends AppLocalizations {
   @override
   String get backgroundSyncBusy =>
       'Eine andere Synchronisierung lief bereits und hat die neuen Fotos mitgenommen.';
+
+  @override
+  String get spaceSettingsContent => 'Suche nach Inhalt';
+
+  @override
+  String get spaceSettingsContentHelp =>
+      'Der Server beschreibt jedes Foto und jedes Video im Hintergrund, damit es anhand seines Inhalts gefunden werden kann. Jedes Foto wird als kleine Vorschau an den Einbettungsdienst gesendet, der möglicherweise auf einem anderen Computer läuft und dort pro Foto einige Sekunden bis Minuten benötigt. Die Beschreibungen belegen auf der Festplatte etwa 2 KB pro Foto. Beim Deaktivieren bleiben die bereits erstellten Beschreibungen erhalten.';
+
+  @override
+  String get spaceSettingsContentReady => 'Der Einbettungsdienst ist bereit.';
+
+  @override
+  String spaceSettingsContentUnavailable(String reason) {
+    return 'Der Einbettungsdienst kann Fotos derzeit nicht beschreiben: $reason';
+  }
+
+  @override
+  String get catchUpStepContent => 'Inhaltssuche';
+
+  @override
+  String catchUpContent(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Fotos warten auf die Inhaltssuche',
+      one: '1 Foto wartet auf die Inhaltssuche',
+      zero: 'Kein Foto wartet auf die Inhaltssuche',
+    );
+    return '$_temp0';
+  }
 }

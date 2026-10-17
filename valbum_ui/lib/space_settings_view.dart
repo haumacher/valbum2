@@ -1,6 +1,7 @@
 /// The settings of a space, made by its administrator (issue #297): its name,
-/// whether visitors see its public photos, faces, the map a position opens,
-/// the time zone of photos that state none, and the inbox.
+/// whether visitors see its public photos, faces, the content search (issue
+/// #257), the map a position opens, the time zone of photos that state none,
+/// and the inbox.
 ///
 /// Before, these were keys of `space.json` edited on the server by hand. Now
 /// the administrator finds them in the server settings, each switch with one
@@ -36,6 +37,13 @@ const Key spaceSettingsAnonymousKey = Key("spaceSettings.anonymous");
 
 /// The key of the face switch.
 const Key spaceSettingsFacesKey = Key("spaceSettings.faces");
+
+/// The key of the switch of the content search (issue #257).
+const Key spaceSettingsContentKey = Key("spaceSettings.content");
+
+/// The key of the line saying whether the embedder of the content search can
+/// describe photos now.
+const Key spaceSettingsContentStatusKey = Key("spaceSettings.content.status");
 
 /// The key of the map field.
 const Key spaceSettingsMapKey = Key("spaceSettings.mapUrl");
@@ -128,6 +136,7 @@ class SpaceSettingsScreenState extends State<SpaceSettingsScreen> {
 
   bool _anonymous = false;
   bool _faces = false;
+  bool _content = false;
 
   @override
   void initState() {
@@ -170,7 +179,12 @@ class SpaceSettingsScreenState extends State<SpaceSettingsScreen> {
     _inbox.text = settings.inbox;
     _anonymous = settings.anonymous == AnonymousAccess.public;
     _faces = settings.faces;
+    _content = settings.content == ContentSwitch.on;
   }
+
+  /// Whether the server knows the switch of the content search: one of an
+  /// earlier release answers none, and is then sent none.
+  bool get _hasContent => _settings?.content != ContentSwitch.keep;
 
   Future<void> _save() async {
     var current = _settings;
@@ -189,8 +203,11 @@ class SpaceSettingsScreenState extends State<SpaceSettingsScreen> {
       mapUrl: _mapUrl.text.trim(),
       timeZone: _timeZone.text.trim(),
       inbox: _inbox.text.trim(),
-      // The content search of issue #257 joins here as a switch of its own
-      // once the space can ask for it.
+      content: !_hasContent
+          ? ContentSwitch.keep
+          : _content
+              ? ContentSwitch.on
+              : ContentSwitch.off,
     );
     setState(() {
       _saving = true;
@@ -296,8 +313,41 @@ class SpaceSettingsScreenState extends State<SpaceSettingsScreen> {
           value: _faces,
           onChanged: (value) => setState(() => _faces = value),
         ),
-        // The switch of the content search (issue #257) goes here, beside the
-        // faces, once the space can ask for it.
+        if (_hasContent) ...[
+          SwitchListTile(
+            key: spaceSettingsContentKey,
+            contentPadding: EdgeInsets.zero,
+            title: Text(l10n.spaceSettingsContent),
+            subtitle: Text(l10n.spaceSettingsContentHelp),
+            value: _content,
+            onChanged: (value) => setState(() => _content = value),
+          ),
+          Row(
+            key: spaceSettingsContentStatusKey,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                settings.contentUnavailable.isEmpty
+                    ? Icons.check_circle_outline
+                    : Icons.info_outline,
+                size: 18,
+                color: settings.contentUnavailable.isEmpty
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  settings.contentUnavailable.isEmpty
+                      ? l10n.spaceSettingsContentReady
+                      : l10n.spaceSettingsContentUnavailable(
+                          settings.contentUnavailable),
+                  style: theme.textTheme.bodySmall,
+                ),
+              ),
+            ],
+          ),
+        ],
         const SizedBox(height: 16),
         TextField(
           key: spaceSettingsMapKey,

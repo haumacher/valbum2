@@ -14,6 +14,7 @@ import de.haumacher.imageServer.auth.SpaceStore;
 import de.haumacher.imageServer.auth.Spaces;
 import de.haumacher.imageServer.shared.model.AnonymousAccess;
 import de.haumacher.imageServer.shared.model.AuthInfo;
+import de.haumacher.imageServer.shared.model.ContentSwitch;
 import de.haumacher.imageServer.shared.model.ErrorInfo;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.model.SpaceSettings;
@@ -162,6 +163,7 @@ public class TestSpaceSettings extends TestCase {
 		String written = new String(Files.readAllBytes(SpaceStore.file(_root)), StandardCharsets.UTF_8);
 		assertTrue(written, written.contains("\"name\":\"Renamed\""));
 		assertTrue(written, written.contains("\"content\":\"on\""));
+		assertEquals("Known now, and kept.", ContentSwitch.ON, read(SharingFixture.ALICE).getContent());
 		assertTrue(written, written.contains("\"later\":{\"list\":[1,2.50,true,null,\"x\"],\"nested\":{}}"));
 
 		// And the inbox the starting server writes keeps them as well.
@@ -288,6 +290,50 @@ public class TestSpaceSettings extends TestCase {
 		assertFalse("Faces are not offered any more.", auth(SharingFixture.ALICE).isFaces());
 		assertEquals("What was found is never deleted by the switch.", "{\"what\":\"was found\"}",
 			new String(Files.readAllBytes(stored), StandardCharsets.UTF_8));
+	}
+
+	public void testTheContentSearchIsSwitchedAndAnAppThatDoesNotKnowItKeepsIt() throws Exception {
+		ImageServlet data = servlet().dataOf(SPACE);
+		SpaceSettings settings = read(SharingFixture.ALICE);
+		assertEquals("Absent is off.", ContentSwitch.OFF, settings.getContent());
+		assertEquals("A server without an embedder says so.", de.haumacher.imageServer.content.ContentIndex.NO_EMBEDDER,
+			settings.getContentUnavailable());
+		assertFalse(data.content().isEnabled());
+
+		FakeResponse on = save(SharingFixture.ALICE, copy(settings).setContent(ContentSwitch.ON));
+		assertEquals(ContentSwitch.ON, settings(on).getContent());
+		assertTrue("The space follows the switch at once.", data.content().isEnabled());
+		String written = new String(Files.readAllBytes(SpaceStore.file(_root)), StandardCharsets.UTF_8);
+		assertTrue(written, written.contains("\"content\":\"on\""));
+		assertTrue(SpaceStore.load(_root, SPACE).isContentEnabled());
+		assertEquals("Read, written, read: the same.", write(settings(on)), write(read(SharingFixture.ALICE)));
+
+		// An app of an earlier release sends no switch at all: the space keeps it.
+		String older = write(read(SharingFixture.ALICE).setName("Renamed")).replace("\"content\":\"ON\",", "")
+			.replace(",\"content\":\"ON\"", "");
+		assertFalse(older, older.contains("\"content\""));
+		FakeResponse kept = post(SharingFixture.ALICE, older);
+		assertEquals(kept.body(), 200, kept.status());
+		assertEquals(ContentSwitch.ON, settings(kept).getContent());
+		assertEquals("Renamed", settings(kept).getName());
+		assertTrue(data.content().isEnabled());
+
+		FakeResponse off = save(SharingFixture.ALICE, read(SharingFixture.ALICE).setContent(ContentSwitch.OFF));
+		assertEquals(ContentSwitch.OFF, settings(off).getContent());
+		assertFalse(data.content().isEnabled());
+		written = new String(Files.readAllBytes(SpaceStore.file(_root)), StandardCharsets.UTF_8);
+		assertTrue(written, written.contains("\"content\":\"off\""));
+	}
+
+	public void testAMemberCannotSwitchTheContentSearch() throws Exception {
+		byte[] before = Files.readAllBytes(SpaceStore.file(_root));
+		for (String token : new String[] { SharingFixture.CAROL, SharingFixture.DAVE }) {
+			FakeResponse write = save(token, SpaceSettings.create().setName("The Family").setContent(ContentSwitch.ON));
+			assertEquals(write.body(), 403, write.status());
+			assertEquals(SpaceConfiguration.ADMIN_ONLY, error(write));
+		}
+		assertTrue(Arrays.equals(before, Files.readAllBytes(SpaceStore.file(_root))));
+		assertFalse(servlet().dataOf(SPACE).content().isEnabled());
 	}
 
 	// --- Where the server decides. ---

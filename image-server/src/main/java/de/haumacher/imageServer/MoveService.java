@@ -1132,6 +1132,8 @@ public class MoveService {
 		targetHashes.put(moved, hash, attribution);
 		// What the background found the file to be travels with it, broken or not, see issue #253.
 		de.haumacher.imageServer.cache.AnalysisRecord.carry(sourceFolder, name, moved);
+		// And so does its description for the content search, see issue #257.
+		de.haumacher.imageServer.content.ContentCache.carry(sourceFolder, hash, targetFolder);
 		LOG.info("Moved image '" + file + "' to '" + moved + "'.");
 		return new Landing(moved.getName(), null);
 	}

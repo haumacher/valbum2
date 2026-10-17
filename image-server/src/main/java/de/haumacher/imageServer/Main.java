@@ -623,7 +623,19 @@ public class Main {
 		// One gazetteer for the whole server: a country is downloaded and held once, whichever
 		// space's photos lie in it, see issue #234.
 		de.haumacher.imageServer.places.Places places = environment.places(basePath.toPath());
+		// One embedder of the content search for the whole server, see issue #257: nothing is
+		// started or downloaded before a space that has it on asks for a vector.
+		de.haumacher.imageServer.content.Embedder embedder = environment.getEmbedder().create(basePath.toPath());
 		final Server server = new Server();
+		if (embedder != null) {
+			server.addEventListener(new org.eclipse.jetty.util.component.LifeCycle.Listener() {
+				@Override
+				public void lifeCycleStopped(org.eclipse.jetty.util.component.LifeCycle event) {
+					// The service this server started ends with it.
+					embedder.close();
+				}
+			});
+		}
 
 		HttpConfiguration config = new HttpConfiguration();
 		config.setRelativeRedirectAllowed(true);
@@ -656,6 +668,7 @@ public class Main {
 			data.setOidcLogins(oidc);
 			data.setPasskeys(passkeys);
 			data.setPlaces(places);
+			data.setEmbedder(embedder);
 			// Every photo of the space knows its hash from here on, see issue #118: one low
 			// priority thread that reads the library once and then keeps out of the way.
 			data.startIndexing();
@@ -672,6 +685,7 @@ public class Main {
 			front.setCacheMemory(environment.cacheBudget());
 			front.setIndexMemory(environment.indexBudget());
 			front.setPlaces(places);
+			front.setEmbedder(embedder);
 			// Each space indexes its own photos, and nobody else's, see issue #118.
 			front.startIndexing();
 			front.setEmailProofs(proofs);

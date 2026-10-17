@@ -1136,5 +1136,11 @@
   "notificationsAllow": "Zulassen",
   "notificationsNotNow": "Nicht jetzt",
   "cameraRollNotificationsOff": "Benachrichtigungen sind deaktiviert: Neue Fotos werden trotzdem hochgeladen, aber Sie sehen den Fortschritt nicht. Erlauben Sie die Benachrichtigungen von VAlbum in den Systemeinstellungen, um den Fortschritt zu sehen.",
-  "backgroundSyncBusy": "Eine andere Synchronisierung lief bereits und hat die neuen Fotos mitgenommen."
+  "backgroundSyncBusy": "Eine andere Synchronisierung lief bereits und hat die neuen Fotos mitgenommen.",
+  "spaceSettingsContent": "Suche nach Inhalt",
+  "spaceSettingsContentHelp": "Der Server beschreibt jedes Foto und jedes Video im Hintergrund, damit es anhand seines Inhalts gefunden werden kann. Jedes Foto wird als kleine Vorschau an den Einbettungsdienst gesendet, der möglicherweise auf einem anderen Computer läuft und dort pro Foto einige Sekunden bis Minuten benötigt. Die Beschreibungen belegen auf der Festplatte etwa 2 KB pro Foto. Beim Deaktivieren bleiben die bereits erstellten Beschreibungen erhalten.",
+  "spaceSettingsContentReady": "Der Einbettungsdienst ist bereit.",
+  "spaceSettingsContentUnavailable": "Der Einbettungsdienst kann Fotos derzeit nicht beschreiben: {reason}",
+  "catchUpStepContent": "Inhaltssuche",
+  "catchUpContent": "{count, plural, =0{Kein Foto wartet auf die Inhaltssuche} =1{1 Foto wartet auf die Inhaltssuche} other{{count} Fotos warten auf die Inhaltssuche}}"
 }

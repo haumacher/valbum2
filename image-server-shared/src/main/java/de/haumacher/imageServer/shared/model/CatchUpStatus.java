@@ -38,6 +38,9 @@ public class CatchUpStatus extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getVideosRemaining() */
 	private static final String VIDEOS_REMAINING__PROP = "videosRemaining";
 
+	/** @see #getContentRemaining() */
+	private static final String CONTENT_REMAINING__PROP = "contentRemaining";
+
 	/** @see #getFailure() */
 	private static final String FAILURE__PROP = "failure";
 
@@ -56,6 +59,8 @@ public class CatchUpStatus extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private String _folder = "";
 
 	private int _videosRemaining = 0;
+
+	private int _contentRemaining = 0;
 
 	private String _failure = "";
 
@@ -174,6 +179,27 @@ public class CatchUpStatus extends de.haumacher.msgbuf.data.AbstractDataObject {
 	}
 
 	/**
+	 * How many photos and videos still wait to be described for the content search of issue #257;
+	 * <code>0</code> where the space has it off.
+	 */
+	public final int getContentRemaining() {
+		return _contentRemaining;
+	}
+
+	/**
+	 * @see #getContentRemaining()
+	 */
+	public de.haumacher.imageServer.shared.model.CatchUpStatus setContentRemaining(int value) {
+		internalSetContentRemaining(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getContentRemaining()} without chain call utility. */
+	protected final void internalSetContentRemaining(int value) {
+		_contentRemaining = value;
+	}
+
+	/**
 	 * What failed last, as the server words it ("previews: IMG_1.jpg: &lt;reason&gt;"); empty while
 	 * nothing failed. A failure is retried when its folder changes, never in a loop.
 	 */
@@ -259,6 +285,8 @@ public class CatchUpStatus extends de.haumacher.msgbuf.data.AbstractDataObject {
 		out.value(getFolder());
 		out.name(VIDEOS_REMAINING__PROP);
 		out.value(getVideosRemaining());
+		out.name(CONTENT_REMAINING__PROP);
+		out.value(getContentRemaining());
 		out.name(FAILURE__PROP);
 		out.value(getFailure());
 		out.name(FAILURE_FOLDER__PROP);
@@ -275,6 +303,7 @@ public class CatchUpStatus extends de.haumacher.msgbuf.data.AbstractDataObject {
 			case STEP__PROP: setStep(de.haumacher.imageServer.shared.model.CatchUpStep.readCatchUpStep(in)); break;
 			case FOLDER__PROP: setFolder(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case VIDEOS_REMAINING__PROP: setVideosRemaining(in.nextInt()); break;
+			case CONTENT_REMAINING__PROP: setContentRemaining(in.nextInt()); break;
 			case FAILURE__PROP: setFailure(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case FAILURE_FOLDER__PROP: setFailureFolder(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case YIELDING__PROP: setYielding(in.nextBoolean()); break;

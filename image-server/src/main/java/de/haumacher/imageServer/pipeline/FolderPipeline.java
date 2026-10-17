@@ -426,7 +426,15 @@ public class FolderPipeline {
 
 		final String _failureFolder;
 
+		final Map<String, Integer> _remaining;
+
 		Status(int done, int total, String step, String folder, int videos, String failure, String failureFolder) {
+			this(done, total, step, folder, videos, failure, failureFolder, Collections.emptyMap());
+		}
+
+		Status(int done, int total, String step, String folder, int videos, String failure, String failureFolder,
+				Map<String, Integer> remaining) {
+			_remaining = remaining;
 			_done = done;
 			_total = total;
 			_step = step;
@@ -459,6 +467,14 @@ public class FolderPipeline {
 		/** How many videos still wait for a unit of a {@link UnitStep}. */
 		public int getVideos() {
 			return _videos;
+		}
+
+		/**
+		 * How many items (see {@link UnitStep#itemOf(String)}) still wait for a unit of the
+		 * {@link UnitStep} of the given name.
+		 */
+		public int getRemaining(String step) {
+			return _remaining.getOrDefault(step, Integer.valueOf(0)).intValue();
 		}
 
 		/** Why the most recent failure that is still outstanding failed, <code>null</code> if none is. */
@@ -798,6 +814,29 @@ public class FolderPipeline {
 		for (int index = 0; index < _steps.size(); index++) {
 			if (_steps.get(index).name().equals(name)) {
 				_steps.add(index + 1, step);
+				return;
+			}
+		}
+		_steps.add(step);
+	}
+
+	/**
+	 * Adds a step right before the step of the given name, behind all steps where there is none
+	 * of that name; nothing where the step is there already, see {@link #addStepAfter(String, Step)}.
+	 *
+	 * @throws IllegalArgumentException
+	 *         For a step of {@link Stage#VIDEOS} that is no {@link UnitStep}.
+	 */
+	public void addStepBefore(String name, Step step) {
+		if (_steps.contains(step)) {
+			return;
+		}
+		if (step.stage() == Stage.VIDEOS && !(step instanceof UnitStep)) {
+			throw new IllegalArgumentException("A step of the stage " + Stage.VIDEOS + " works in units: " + step.name());
+		}
+		for (int index = 0; index < _steps.size(); index++) {
+			if (_steps.get(index).name().equals(name)) {
+				_steps.add(index, step);
 				return;
 			}
 		}
@@ -2208,17 +2247,24 @@ public class FolderPipeline {
 			}
 		}
 		Set<String> videos = new HashSet<>();
+		Map<String, Set<String>> byStep = new HashMap<>();
 		for (Units work : _unitQueue.values()) {
 			for (String unit : work._units) {
-				videos.add(work._path + "/" + work._step.itemOf(unit));
+				String item = work._path + "/" + work._step.itemOf(unit);
+				videos.add(item);
+				byStep.computeIfAbsent(work._step.name(), x -> new HashSet<>()).add(item);
 			}
+		}
+		Map<String, Integer> remaining = new HashMap<>();
+		for (Map.Entry<String, Set<String>> entry : byStep.entrySet()) {
+			remaining.put(entry.getKey(), Integer.valueOf(entry.getValue().size()));
 		}
 		Failure last = null;
 		for (Failure failure : _outstanding.values()) {
 			last = failure;
 		}
 		return new Status(done, _known.size(), _currentStep, _currentFolder, videos.size(),
-			last == null ? null : last._reason, last == null ? null : last._folder);
+			last == null ? null : last._reason, last == null ? null : last._folder, remaining);
 	}
 
 	/** How many failures are outstanding, see {@link #MAX_OUTSTANDING}; for the tests. */

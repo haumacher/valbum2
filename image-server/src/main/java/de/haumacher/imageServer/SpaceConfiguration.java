@@ -12,6 +12,7 @@ import de.haumacher.imageServer.auth.SpaceStore;
 import de.haumacher.imageServer.cache.ResourceCache;
 import de.haumacher.imageServer.faces.FaceDetection;
 import de.haumacher.imageServer.shared.model.AnonymousAccess;
+import de.haumacher.imageServer.shared.model.ContentSwitch;
 import de.haumacher.imageServer.shared.model.SpaceSettings;
 import de.haumacher.msgbuf.json.JsonReader;
 import de.haumacher.msgbuf.server.io.ReaderAdapter;
@@ -26,6 +27,7 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.logging.Logger;
 
 /**
@@ -147,7 +149,7 @@ final class SpaceConfiguration {
 				request.getAnonymous() == AnonymousAccess.PUBLIC ? SpaceStore.ANONYMOUS_PUBLIC
 					: SpaceStore.ANONYMOUS_NONE,
 				request.isFaces() ? SpaceStore.FACES_ON : SpaceStore.FACES_OFF, request.getMapUrl(),
-				request.getTimeZone(), request.getInbox());
+				request.getTimeZone(), request.getInbox(), content(request.getContent()));
 			// Read back as the start reads it, so that what everybody sees from now on is what the
 			// next start sees.
 			stored = SpaceStore.load(_root, _segment);
@@ -155,6 +157,22 @@ final class SpaceConfiguration {
 			_servlet.reconfigure(stored);
 		}
 		ImageServlet.serveJsonObject(context.response(), answer(stored));
+	}
+
+	/**
+	 * What the given switch of the content search is stored as, <code>null</code> to keep what the
+	 * space says: an app that does not know the switch sends {@link ContentSwitch#KEEP}.
+	 */
+	private static String content(ContentSwitch value) {
+		switch (value) {
+			case ON:
+				return SpaceStore.CONTENT_ON;
+			case OFF:
+				return SpaceStore.CONTENT_OFF;
+			case KEEP:
+			default:
+				return null;
+		}
 	}
 
 	/**
@@ -198,7 +216,9 @@ final class SpaceConfiguration {
 			.setTimeZone(config.getTimeZone())
 			.setServerTimeZone(ZoneId.systemDefault().getId())
 			.setInbox(config.getInbox())
-			.setInboxFixed(inboxFixed == null ? "" : inboxFixed);
+			.setInboxFixed(inboxFixed == null ? "" : inboxFixed)
+			.setContent(config.isContentEnabled() ? ContentSwitch.ON : ContentSwitch.OFF)
+			.setContentUnavailable(Objects.requireNonNullElse(_servlet.content().unavailability(), ""));
 	}
 
 	/** What is wrong with the given settings, one sentence per value; empty where nothing is. */

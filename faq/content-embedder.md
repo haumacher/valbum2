@@ -20,3 +20,15 @@ for a 100-line download would have cost a fresh machine ~200 MB. Its configurati
 scripts to edit one); an empty key is the administrator's choice and stays empty. TLS is optional,
 never enforced. The service names its `PREPROCESSING` with every vector; the client refuses another
 than `ContentModel.PREPROCESSING` and any vector whose model differs from the stamp it reported.
+
+**The vectors (2026-10-17, #257 package 2):** `space.json` `content` switches a space's
+`ContentIndex` on; its step is a *unit* step (one photo per unit, queued behind the photo work of
+every album like the videos), because an embedder taking 90 s per photo must never hold up a
+preview, and a unit put aside for an upload keeps its vector computing on its own thread and takes
+it up again. Each album's `.vacache/content.bin` (binary, ~2.2 KB per photo; JSON with base64 would
+be ~2.9 KB) keys `v_img` by content hash and poster moment and `v_txt` by the SHA-256 of its text
+(`ContentText`, whose `VERSION` is in the text stamp), so a description edit re-embeds the text
+alone and a stamp change only one kind. The cache, not `pipeline.json`, is the truth: the step
+trusts no record. `SpaceSettings.content` is an enum whose first constant `KEEP` is what an app
+without the switch sends, so an older app's save never turns the search off. The H2/Lucene index
+(#264 slice 4) reads these files; nothing fills it yet.

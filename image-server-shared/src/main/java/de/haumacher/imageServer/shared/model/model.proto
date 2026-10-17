@@ -2191,6 +2191,12 @@ message CatchUpStatus {
 	int videosRemaining;
 
 	/**
+	 * How many photos and videos still wait to be described for the content search of issue #257;
+	 * <code>0</code> where the space has it off.
+	 */
+	int contentRemaining;
+
+	/**
 	 * What failed last, as the server words it ("previews: IMG_1.jpg: &lt;reason&gt;"); empty while
 	 * nothing failed. A failure is retried when its folder changes, never in a loop.
 	 */
@@ -2235,6 +2241,9 @@ enum CatchUpStep {
 	 * this step recorded.
 	 */
 	ANALYSIS;
+
+	/** Describing photos for the content search, where the space has it on, see issue #257. */
+	CONTENT;
 }
 
 /**
@@ -4820,8 +4829,7 @@ message NewsKey {
  *
  * <p>
  * The fields marked <em>answered</em> say what the server knows around the settings and are
- * ignored on a write. The content search of issue #257 joins this message as a switch of its own
- * once the space can ask for it.
+ * ignored on a write.
  * </p>
  */
 message SpaceSettings {
@@ -4876,6 +4884,38 @@ message SpaceSettings {
 	 * inbox would turn the photographs waiting in this one into an ordinary album.
 	 */
 	string inboxFixed;
+
+	/**
+	 * Whether the server describes every photo of the space for the content search of issue #257:
+	 * {@link ContentSwitch#ON} or {@link ContentSwitch#OFF} in an answer. On a write,
+	 * {@link ContentSwitch#KEEP} (what an app that does not know the switch sends) leaves the space
+	 * as it is.
+	 */
+	ContentSwitch content;
+
+	/**
+	 * <em>Answered:</em> why the embedder of the content search cannot describe photos now (it is
+	 * not reachable, refuses this server's key, is still downloading its model), empty where it
+	 * can. Where the switch is off and the embedder runs on this server, it says that nothing is
+	 * started before the switch is turned on.
+	 */
+	string contentUnavailable;
+}
+
+/** The content search of a space, see {@link SpaceSettings#content}. */
+enum ContentSwitch {
+	/**
+	 * Nothing said: what a write of an app that does not know the switch carries, and what an
+	 * answer of a server that has none reads. The first constant, so that an unknown value keeps
+	 * what the space says.
+	 */
+	KEEP;
+
+	/** No photo of the space is described; nothing is sent to the embedder. */
+	OFF;
+
+	/** Every photo of the space is described in the background, see issue #257. */
+	ON;
 }
 
 /** Who sees a space without signing in, see {@link SpaceSettings#anonymous}. */
