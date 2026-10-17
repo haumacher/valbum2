@@ -260,6 +260,36 @@ public class TestSharePreview extends TestCase {
 	}
 
 	/**
+	 * The card of a saved search is drawn with the picture stored for it, as its tile is (issue
+	 * #287), and the search is not run for it: a run would pick a match of the moment. Where the
+	 * link may not see the stored picture, the card has none — never another match.
+	 */
+	public void testTheCoverOfASavedSearchIsItsStoredPicture() throws Exception {
+		single();
+		String search = "[\"AlbumInfo\",{\"kind\":\"SEARCH\",\"title\":\"Zoo pick\","
+			+ "\"indexPicture\":{\"image\":\"" + ZOO + "/members.jpg\"},"
+			+ "\"query\":{\"version\":1,\"root\":[\"SearchFolder\",{\"path\":\"" + ZOO + "\"}]}}]";
+		album(_base, "Pick", search);
+		_data.get("").index().indexNow();
+		long before = _data.get("").searchRuns();
+
+		String members = share("", "Pick", Privacy.MEMBERS, Ratings.MIN);
+		assertTrue(get("/s/" + members + "/").body().contains("<title>Zoo pick</title>"));
+		FakeResponse cover = get("/s/" + members + "/cover.jpg");
+		assertEquals(cover.body(), HttpServletResponse.SC_OK, cover.status());
+		assertTrue("The stored picture, not the first match.",
+			Arrays.equals(preview(ZOO, "members.jpg"), cover.bodyBytes()));
+
+		String everybody = share("", "Pick", Privacy.PUBLIC, Ratings.MIN);
+		FakeResponse none = get("/s/" + everybody + "/cover.jpg");
+		assertEquals("No other match stands in for the stored picture.", HttpServletResponse.SC_NOT_FOUND,
+			none.status());
+		assertEquals(SharePreview.COVER_NONE, error(none).getMessage());
+
+		assertEquals("No card ran the search.", before, _data.get("").searchRuns());
+	}
+
+	/**
 	 * The card of an album whose picture is cropped shows the region, as the album's tile does
 	 * (issue #212); a folder's card likewise, through the region its listing entry derives.
 	 */

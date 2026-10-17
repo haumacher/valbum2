@@ -9672,39 +9672,59 @@ public class ImageServlet extends HttpServlet {
 
 	/**
 	 * The saved search of the given folder as a share link sees it, for the card of issue #104: what
-	 * {@link SharePreview} draws, with the references kept so that it finds the file, see issue
-	 * #227.
+	 * {@link SharePreview} draws, with the reference of its picture kept so that it finds the file,
+	 * see issue #227.
+	 *
+	 * <p>
+	 * The card shows the search by the picture stored for it, exactly as its tile does (issue #287),
+	 * and never runs the query: a run would choose some match of the moment, which is not the
+	 * picture its author chose. The answer holds that one photograph where the link may see it in
+	 * its own album and through the link's label; otherwise none, and the card has no picture.
+	 * </p>
 	 */
 	AlbumInfo searchForLink(PathInfo path, AlbumInfo search, int clearance, int minRating, String label) {
-		if (PhotoSearch.refusal(search.getQuery()) != null) {
-			return null;
-		}
-		List<ImagePart> parts = searchMatches(searchScope(path), search.getQuery(), (folder, only) -> {
-			if (!folder.toFile().isDirectory()) {
-				return null;
-			}
-			Resource stored = lookupOrSkip(folder);
-			if (!(stored instanceof AlbumInfo) || PhotoSearch.holdsNoFiles(stored)) {
-				return null;
-			}
-			stored = PhotoSearch.only((AlbumInfo) stored, only);
-			Resource shown = Inboxes.filter(stored, Inboxes.Visibility.NONE, "");
-			if (shown == null) {
-				return null;
-			}
-			Resource answer = _privacy.filter(shown, folder, clearance, minRating, "");
-			return answer instanceof AlbumInfo ? (AlbumInfo) answer : null;
-		}, true, new SearchIndex.Visibility(clearance, minRating, label), null, false);
 		AlbumInfo found = AlbumInfo.create()
 			.setKind(de.haumacher.imageServer.shared.model.AlbumKind.SEARCH)
 			.setTitle(search.getTitle())
-			.setParts(new ArrayList<>(parts));
-		ThumbnailInfo cover = searchCover(search.getIndexPicture(), parts);
-		if (cover != null) {
-			found.setIndexPicture(cover);
+			.setSubTitle(search.getSubTitle());
+		ThumbnailInfo chosen = search.getIndexPicture();
+		ImagePart picture = chosen == null || chosen.getImage().isEmpty() ? null
+			: linkPicture(path, search, chosen.getImage(), clearance, minRating, label);
+		if (picture != null) {
+			found.setParts(new ArrayList<>(Collections.singletonList(picture)));
+			found.setIndexPicture(Crops.copy(chosen));
 		}
-		Resource filtered = _privacy.filter(found, path, clearance, minRating, label);
-		return filtered instanceof AlbumInfo ? (AlbumInfo) filtered : null;
+		return found;
+	}
+
+	/**
+	 * The stored picture of the given saved search as a share link is shown it, named as the search
+	 * names it and with its reference, <code>null</code> where it leads nowhere or the link may not
+	 * see it. Never runs the query, see {@link #storedSearchCover}.
+	 */
+	private ImagePart linkPicture(PathInfo path, AlbumInfo search, String name, int clearance, int minRating,
+			String label) {
+		PathInfo image = photoNamed(path, search, name);
+		if (image == null || Inboxes.isInbox(image.parent().toFile()) || !image.parent().toFile().isDirectory()) {
+			return null;
+		}
+		PathInfo folder = image.parent();
+		Resource stored = lookupOrSkip(folder);
+		if (!(stored instanceof AlbumInfo) || PhotoSearch.holdsNoFiles(stored)) {
+			return null;
+		}
+		stored = PhotoSearch.only((AlbumInfo) stored, Collections.singleton(image.getName()));
+		Resource shown = Inboxes.filter(stored, Inboxes.Visibility.NONE, "");
+		if (shown == null) {
+			return null;
+		}
+		Resource answer = _privacy.filter(shown, folder, clearance, minRating, "");
+		ImagePart part = answer instanceof AlbumInfo ? Crops.findImage((AlbumInfo) answer, image.getName()) : null;
+		if (part == null || !PrivacyFilter.visible(part, clearance, minRating, label)) {
+			return null;
+		}
+		return PhotoSearch.answerCopy(part).setName(name)
+			.setRef(PhotoRef.create().setHash("").setPath(image.relativePath()));
 	}
 
 	/**
