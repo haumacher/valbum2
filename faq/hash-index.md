@@ -6,8 +6,9 @@ The hash index is a lookup derived from them, kept in the space's H2 database
 was read from, and the hashes per folder as `BINARY(32)`. It is rebuildable and **no part of a
 backup**: a database that is missing, unreadable (garbage, another H2 format) or of another schema
 (`SpaceIndex.SCHEMA`) is deleted and filled again by the background from the sidecars; one that
-cannot be created at all (read-only library, held by another process) lives in memory. A schema
-change is a bump of `SCHEMA`, never a migration. The `hash-index.json` of earlier builds is litter,
+cannot be created at all (read-only library, held by another process) lives in memory. A change
+of what is there is a bump of `SCHEMA` (a rebuild); a build that only adds tables does so in place,
+see `index-migration.md`. The `hash-index.json` of earlier builds is litter,
 deleted after the first complete pass.
 
 The background pass runs in the executor started in `Main.createServer` — never by a test — and a

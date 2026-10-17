@@ -1043,7 +1043,7 @@ public class ImageServlet extends HttpServlet {
 		_index.pipeline().addStep(new AnalysisStep(_cache, _index.pipeline()));
 		_cache.setRefusals((folder, reason) -> _index.pipeline().reportFailure(folder, reason));
 		_collections = new PhotoCollections(_basePath, _index);
-		_faces = new FaceIndex(_basePath, facesEnabled);
+		_faces = new FaceIndex(_basePath, facesEnabled, _spaceIndex);
 		_reanalysis = new Reanalysis(_cache, _space.isEmpty() ? basePath.getName() : _space);
 		_searchIndex = new SearchIndex(_basePath, _spaceIndex, this::lookupOrSkip, () -> {
 			Places places = _cache.places();
@@ -7135,13 +7135,14 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	/**
-	 * Tells the hash index (issue #118) and the search (issue #227) that a move, a delete, a purge
-	 * or a rename rearranged the tree at the given folder: both read it again in the same step, see
-	 * issue #264.
+	 * Tells the hash index (issue #118), the search (issue #227) and the recognition (issue #127)
+	 * that a move, a delete, a purge or a rename rearranged the tree at the given folder: they read
+	 * it again in the same step, see issue #264.
 	 */
 	private void treeChanged(File folder) {
 		_index.treeChanged(folder);
 		_searchIndex.treeChanged(folder);
+		_faces.recognition().treeChanged(folder, _faces.isEnabled());
 	}
 
 	/**

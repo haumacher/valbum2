@@ -44,8 +44,9 @@ import java.util.logging.Logger;
  * cropped photograph, and the display rendition of a HEIC, AVIF, JPEG XL or raw picture;</li>
  * <li>{@link Cover}: the picture of the album's tile in the listing, and of the tile of every folder
  * above it, and the large preview of a starred tile's picture (issue #241);</li>
- * <li>faces, where the space has them on ({@link FaceIndex#step()}), and the crop of every face an
- * album answers ({@link FaceIndex#cropStep()}, issue #256);</li>
+ * <li>faces, where the space has them on ({@link FaceIndex#step()}), the prototypes of the
+ * recognition in the index of the space ({@link FaceIndex#prototypeStep()}, issue #264), and the
+ * crop of every face an album answers ({@link FaceIndex#cropStep()}, issue #256);</li>
  * <li>places ({@link de.haumacher.imageServer.places.PlacesStep}), installed by
  * {@link ImageServlet#setPlaces};</li>
  * <li>{@link Videos}: the teaser and the playback rendition of every video, one unit each, behind
@@ -101,6 +102,8 @@ public final class CatchUp {
 		pipeline.addStep(new Cover(pipeline, root));
 		if (faces.isEnabled()) {
 			pipeline.addStep(faces.step());
+			// The prototypes of the recognition in the index of the space, see issue #264.
+			pipeline.addStep(faces.prototypeStep());
 			// The crop of every answered face, which a request never cuts, see issue #256.
 			pipeline.addStep(faces.cropStep());
 		}
@@ -129,7 +132,8 @@ public final class CatchUp {
 		}
 		if (on && faces.isEnabled()) {
 			pipeline.addStepAfter(COVER, faces.step());
-			pipeline.addStepAfter(FaceIndex.STEP, faces.cropStep());
+			pipeline.addStepAfter(FaceIndex.STEP, faces.prototypeStep());
+			pipeline.addStepAfter(FaceIndex.PROTOTYPES, faces.cropStep());
 			if (pipeline.isStarted()) {
 				// The walk on the pipeline's thread, not on the request that saved the switch.
 				try {
@@ -141,6 +145,7 @@ public final class CatchUp {
 			}
 		} else {
 			pipeline.removeStep(faces.step());
+			pipeline.removeStep(faces.prototypeStep());
 			pipeline.removeStep(faces.cropStep());
 		}
 	}

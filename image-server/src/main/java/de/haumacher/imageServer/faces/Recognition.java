@@ -3,6 +3,7 @@
  */
 package de.haumacher.imageServer.faces;
 
+import de.haumacher.imageServer.index.SpaceIndex;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.FaceState;
 import de.haumacher.imageServer.shared.model.FaceTag;
@@ -15,15 +16,27 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.Reader;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -35,12 +48,22 @@ import java.util.logging.Logger;
  *
  * <p>
  * For every person of the space, the embeddings of the faces somebody <em>confirmed</em> as them,
- * wherever in the space they stand. Kept in memory and nowhere else: every one of them is read back
- * from two things that are already on disk — the {@link FaceTag} in the album's
- * <code>index.json</code>, which is the stored truth, and the embedding in that album's
- * {@link FaceCache}, which is cache. There is no third file and no database; a prototype store
- * would be a second truth to keep in step with the first, and it would hold biometrics outside the
- * one place issue #124 confined them to.
+ * wherever in the space they stand. Every one of them is read from two things that are already on
+ * disk — the {@link FaceTag} in the album's <code>index.json</code>, which is the stored truth, and
+ * the embedding in that album's {@link FaceCache}, which is cache — and matched against in memory.
+ * </p>
+ *
+ * <p>
+ * <b>Kept in the index of the space</b> (issue #264, the tables <code>face_albums</code> and
+ * <code>face_prototypes</code> of {@link SpaceIndex}), so that a restart knows at once whom the
+ * people look like, without an album being listed or walked: what is read into memory is written
+ * through, per album, with a stamp of the three files it was read from. Like every table of that
+ * index it is derived and no truth: the background compares the stamp of every album it visits
+ * ({@link #refresh(File)}) and reads the album again where it differs, so an index that missed a
+ * change (a process killed, a build that did not keep it, a sidecar written behind the server's
+ * back) is put right by the next walk. The biometrics stay with the space and in its own folder:
+ * the index lives in <code>.valbum/index/</code>, is no part of a backup, and holds the embeddings of
+ * confirmed faces only.
  * </p>
  *
  * <p>
@@ -57,13 +80,17 @@ import java.util.logging.Logger;
  *
  * <p>
  * Per album, and always the whole album at once, so that a contribution is <em>replaced</em> rather
- * than accumulated and a decision taken back leaves nothing behind. Three places hand an album in,
- * all of them through {@link #observe(File, AlbumInfo)}:
+ * than accumulated and a decision taken back leaves nothing behind. What the index of the space
+ * holds is read when the recognition is created; after that, these places hand an album in:
  * </p>
  *
  * <ul>
- * <li>the space-wide walk of {@link FaceIndex#indexNow()}, on the one low-priority thread that
- * space already has — one walk and not two, the home issue #118 asked its index to share;</li>
+ * <li>the detection of the background, at the end of every album it looks at
+ * ({@link FaceIndex#step()}, and {@link FaceIndex#indexNow()} for the tests), and the step behind
+ * it that compares the stamps of every album ({@link FaceIndex#prototypeStep()},
+ * {@link #refresh(File)}), on the one low-priority thread the space already has;</li>
+ * <li>a move, a delete, a purge or a rename of folders, which reads the trees again
+ * ({@link #treeChanged(File, boolean)});</li>
  * <li>every listing of an album, from {@link FaceIndex#derive(AlbumInfo, File, PeopleStore)}, which
  * has read the two sidecars for its own sake anyway, so this costs no file access at all and keeps
  * an album that was moved, renamed or written behind the server's back current;</li>
@@ -104,7 +131,8 @@ import java.util.logging.Logger;
  * <p>
  * Nothing here is ever written to a sidecar. A suggestion is derived at request time, every time,
  * and vanishes when the model changes, when the cache is thrown away or when somebody decides
- * otherwise.
+ * otherwise. A suggestion is a face, and a face is answered only on an album the caller may see,
+ * to a member of the space, see {@link FaceIndex}.
  * </p>
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
@@ -204,9 +232,84 @@ public class Recognition {
 	/** The prototypes flattened for matching, <code>null</code> while it has to be rebuilt. */
 	private volatile Flat _flat;
 
-	/** Creates the recognition of one space; nothing is read until an album is handed in. */
+	/** The stamp of an album whose stamp nobody checked: never the stamp of any album. */
+	static final long UNVERIFIED = 0;
+
+	/** The root of the space, <code>null</code> for a recognition kept in memory alone. */
+	private final Path _root;
+
+	/** Where the prototypes are kept across a restart, <code>null</code> for none. */
+	private final SpaceIndex _store;
+
+	/**
+	 * The stamp of every album the index holds, by its path relative to {@link #_root}, see
+	 * {@link #stampOf(File)}; {@link #UNVERIFIED} for one of another model or written by a request.
+	 * Guarded by <code>this</code>.
+	 */
+	private final Map<String, Long> _stamps = new HashMap<>();
+
+	/** How many albums were read from their sidecars, for the tests. */
+	private final AtomicInteger _reads = new AtomicInteger();
+
+	/** Creates the recognition of one space in memory alone; nothing is read until an album is handed in. */
 	public Recognition() {
-		// Everything comes in through observe().
+		this(null, null);
+	}
+
+	/**
+	 * Creates the recognition of one space, kept in the given index, and reads what it holds.
+	 *
+	 * @param root
+	 *        The root of the space, which the paths in the index are relative to.
+	 * @param store
+	 *        The index of the space, <code>null</code> for a recognition in memory alone.
+	 */
+	public Recognition(Path root, SpaceIndex store) {
+		_root = root == null ? null : root.toAbsolutePath().normalize();
+		_store = _root == null ? null : store;
+		load();
+	}
+
+	/** Reads what the index holds into memory, see {@link Recognition}. */
+	private void load() {
+		if (_store == null) {
+			return;
+		}
+		String model = FaceDetection.MODEL;
+		Map<String, Long> stamps = new HashMap<>();
+		Map<String, List<Prototype>> byFolder = new HashMap<>();
+		boolean read = _store.read(connection -> {
+			try (Statement statement = connection.createStatement()) {
+				try (ResultSet rows = statement.executeQuery("SELECT path, stamp, model FROM face_albums")) {
+					while (rows.next()) {
+						// An album of another model is known, and read again by the background.
+						stamps.put(rows.getString(1),
+							Long.valueOf(model.equals(rows.getString(3)) ? rows.getLong(2) : UNVERIFIED));
+					}
+				}
+			}
+			try (PreparedStatement select = connection.prepareStatement("SELECT p.album, p.person, p.embedding "
+				+ "FROM face_prototypes p JOIN face_albums a ON a.path = p.album WHERE a.model = ? ORDER BY p.album, p.n")) {
+				select.setString(1, model);
+				try (ResultSet rows = select.executeQuery()) {
+					while (rows.next()) {
+						byFolder.computeIfAbsent(rows.getString(1), key -> new ArrayList<>())
+							.add(new Prototype(rows.getString(2), floats(rows.getBytes(3))));
+					}
+				}
+			}
+			return Boolean.TRUE;
+		}, Boolean.FALSE).booleanValue();
+		if (!read) {
+			return;
+		}
+		synchronized (this) {
+			_stamps.putAll(stamps);
+			for (Map.Entry<String, List<Prototype>> entry : byFolder.entrySet()) {
+				_byFolder.put(absolute(entry.getKey()), entry.getValue());
+			}
+			_flat = null;
+		}
 	}
 
 	/** How many confirmed faces are remembered altogether. */
@@ -230,12 +333,85 @@ public class Recognition {
 	 * </p>
 	 */
 	public void observe(File folder) {
+		// Before reading: a file written meanwhile leaves a stamp behind that is not its own, and
+		// the album is read again on the next visit.
+		long stamp = stampOf(folder);
+		_reads.incrementAndGet();
 		AlbumInfo album = sidecarOf(folder);
-		if (album == null) {
-			put(folder, Collections.emptyList());
-		} else {
-			observe(folder, album);
+		put(folder, album == null ? Collections.<Prototype> emptyList() : collect(folder, album), stamp);
+	}
+
+	/**
+	 * Reads the given album again where any of the files its prototypes were read from changed
+	 * since, or where it was never read; what the background does with every album it visits, see
+	 * {@link Recognition}.
+	 *
+	 * @return Whether it was read.
+	 */
+	public boolean refresh(File folder) {
+		String path = relative(folder);
+		if (path == null) {
+			return false;
 		}
+		if (!folder.isDirectory()) {
+			removeTree(path);
+			return false;
+		}
+		long now = stampOf(folder);
+		synchronized (this) {
+			Long known = _stamps.get(path);
+			if (known != null && known.longValue() == now) {
+				return false;
+			}
+		}
+		observe(folder);
+		return true;
+	}
+
+	/**
+	 * Reads the given folder and every folder below it again where it changed, and forgets what is
+	 * gone of it: a move, a delete, a purge or a rename rearranged the tree.
+	 *
+	 * @param read
+	 *        Whether to read what changed, or only to forget what is gone: a space that looks for
+	 *        no faces keeps what it knew, and reads nothing.
+	 */
+	public void treeChanged(File folder, boolean read) {
+		String path = relative(folder);
+		if (path == null) {
+			return;
+		}
+		Set<String> seen = new HashSet<>();
+		for (File below : de.haumacher.imageServer.pipeline.FolderPipeline.tree(folder)) {
+			String known = relative(below);
+			seen.add(known);
+			if (read) {
+				refresh(below);
+			}
+		}
+		for (String known : knownBelow(path)) {
+			if (!seen.contains(known)) {
+				removeTree(known);
+			}
+		}
+	}
+
+	/**
+	 * Forgets every album that is gone or no part of the walked library, see
+	 * {@link de.haumacher.imageServer.pipeline.FolderPipeline.Step#retain(Set)}.
+	 */
+	public void retain(Set<String> paths) {
+		for (String known : knownBelow("")) {
+			if (!new File(_root.toFile(), known).isDirectory()
+				|| (!paths.contains(known) && !de.haumacher.imageServer.LibraryFiles.isLibraryPath(known))) {
+				removeTree(known);
+			}
+		}
+	}
+
+	/** How many albums were read from their sidecars since this recognition was created; for the tests. */
+	public int reads() {
+		return _reads.get();
 	}
 
 	/**
@@ -257,38 +433,227 @@ public class Recognition {
 	 * disappears because the album is described afresh, never because somebody found the entry it
 	 * had left behind.
 	 * </p>
+	 *
+	 * <p>
+	 * The caller read the prototypes from somewhere else than the files on disk (the album of the
+	 * cache): a change is written through to the index with a stamp nobody checked, so that the
+	 * background reads the album itself on its next visit, see {@link #put(File, List, long)}.
+	 * </p>
 	 */
 	public void put(File folder, List<Prototype> prototypes) {
-		String stamp = FaceDetection.MODEL;
-		if (!stamp.equals(_model)) {
+		put(folder, prototypes, UNVERIFIED);
+	}
+
+	/**
+	 * The one place anything is remembered, in memory and in the index, see
+	 * {@link #put(File, List)}.
+	 *
+	 * @param stamp
+	 *        The {@link #stampOf(File) stamp} of the files the prototypes were read from, taken
+	 *        before they were read; {@link #UNVERIFIED} where the caller read them from somewhere
+	 *        else (the album of the cache), which keeps the stamp in the index where nothing
+	 *        changed.
+	 */
+	private synchronized void put(File folder, List<Prototype> prototypes, long stamp) {
+		String model = FaceDetection.MODEL;
+		if (!model.equals(_model)) {
 			// Another model described these faces; not one of its numbers is comparable to one of
 			// this model's.
 			_byFolder.clear();
-			_model = stamp;
+			_stamps.replaceAll((path, known) -> Long.valueOf(UNVERIFIED));
+			_model = model;
 			_flat = null;
 		}
 		String key = folder.getAbsolutePath();
+		List<Prototype> previous;
 		if (prototypes.isEmpty()) {
-			if (_byFolder.remove(key) != null) {
-				_flat = null;
-			}
+			previous = _byFolder.remove(key);
+		} else {
+			previous = _byFolder.put(key, new ArrayList<>(prototypes));
+		}
+		boolean same = same(previous, prototypes);
+		if (!same) {
+			_flat = null;
+		}
+
+		String path = _store == null ? null : relative(folder);
+		if (path == null) {
 			return;
 		}
-		List<Prototype> previous = _byFolder.put(key, new ArrayList<>(prototypes));
-		if (!same(previous, prototypes)) {
-			_flat = null;
+		Long known = _stamps.get(path);
+		if (known == null && prototypes.isEmpty() && stamp == UNVERIFIED) {
+			// Nothing to keep, and nothing anybody checked: an album the index does not know is one
+			// not read yet anyway.
+			return;
+		}
+		long stored = stamp != UNVERIFIED ? stamp : (same && known != null ? known.longValue() : UNVERIFIED);
+		if (same && known != null && known.longValue() == stored) {
+			return;
+		}
+		_stamps.put(path, Long.valueOf(stored));
+		if (!_store.write(connection -> store(connection, path, prototypes, stored, model))) {
+			// The index keeps what it had; the background reads the album again.
+			_stamps.remove(path);
 		}
 	}
 
-	/** Forgets everything the given album contributed. */
-	public void forget(File folder) {
-		if (_byFolder.remove(folder.getAbsolutePath()) != null) {
-			_flat = null;
+	/** Writes what the album at the given path contributes, as one transaction. */
+	private static void store(Connection connection, String path, List<Prototype> prototypes, long stamp, String model)
+			throws SQLException {
+		try (PreparedStatement album =
+			connection.prepareStatement("MERGE INTO face_albums (path, stamp, model) KEY (path) VALUES (?, ?, ?)")) {
+			album.setString(1, path);
+			album.setLong(2, stamp);
+			album.setString(3, model);
+			album.executeUpdate();
 		}
+		try (PreparedStatement delete = connection.prepareStatement("DELETE FROM face_prototypes WHERE album = ?")) {
+			delete.setString(1, path);
+			delete.executeUpdate();
+		}
+		if (prototypes.isEmpty()) {
+			return;
+		}
+		try (PreparedStatement insert = connection
+			.prepareStatement("INSERT INTO face_prototypes (album, n, person, embedding) VALUES (?, ?, ?, ?)")) {
+			int n = 0;
+			for (Prototype prototype : prototypes) {
+				insert.setString(1, path);
+				insert.setInt(2, n++);
+				insert.setString(3, prototype.getPerson());
+				insert.setBytes(4, bytes(prototype.getEmbedding()));
+				insert.addBatch();
+			}
+			insert.executeBatch();
+		}
+	}
+
+	/**
+	 * Forgets everything the given album contributed, in the index as well: the cache it was read
+	 * from was thrown away, and the background reads the album again.
+	 */
+	public void forget(File folder) {
+		synchronized (this) {
+			if (_byFolder.remove(folder.getAbsolutePath()) != null) {
+				_flat = null;
+			}
+		}
+		String path = _store == null ? null : relative(folder);
+		if (path != null) {
+			remove(path, false);
+		}
+	}
+
+	/** Forgets the album at the given path (relative to the root) and every album below it. */
+	public void removeTree(String path) {
+		if (_root == null) {
+			return;
+		}
+		synchronized (this) {
+			String key = absolute(path);
+			String prefix = key.endsWith(File.separator) ? key : key + File.separator;
+			if (_byFolder.keySet().removeIf(folder -> folder.equals(key) || folder.startsWith(prefix))) {
+				_flat = null;
+			}
+		}
+		if (_store != null) {
+			remove(path, true);
+		}
+	}
+
+	/** Forgets what the index holds of the album at the given path, and of the albums below it. */
+	private synchronized void remove(String path, boolean tree) {
+		String below = path.isEmpty() ? "" : path + "/";
+		_stamps.keySet().removeIf(known -> known.equals(path) || (tree && (path.isEmpty() || known.startsWith(below))));
+		_store.write(connection -> {
+			if (tree && path.isEmpty()) {
+				try (Statement delete = connection.createStatement()) {
+					delete.executeUpdate("DELETE FROM face_albums");
+				}
+				return;
+			}
+			try (PreparedStatement delete = connection.prepareStatement(tree
+				? "DELETE FROM face_albums WHERE path = ? OR path LIKE ? ESCAPE '\\'"
+				: "DELETE FROM face_albums WHERE path = ?")) {
+				delete.setString(1, path);
+				if (tree) {
+					delete.setString(2, path.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "/%");
+				}
+				delete.executeUpdate();
+			}
+		});
+	}
+
+	/** The paths of the albums the index holds at or below the given one. */
+	private synchronized List<String> knownBelow(String path) {
+		List<String> result = new ArrayList<>();
+		String below = path + "/";
+		for (String known : _stamps.keySet()) {
+			if (path.isEmpty() || known.equals(path) || known.startsWith(below)) {
+				result.add(known);
+			}
+		}
+		return result;
+	}
+
+	/**
+	 * A number that changes when any of the files the prototypes of the given album are read from
+	 * changes: its <code>index.json</code>, its {@link FaceCache} and its
+	 * <code>.hashes.json</code>, by their modification times and sizes, and the model; never
+	 * {@link #UNVERIFIED}.
+	 */
+	static long stampOf(File folder) {
+		long result = FaceDetection.MODEL.hashCode();
+		for (File file : new File[] { new File(folder, "index.json"), FaceCache.file(folder),
+			new File(folder, HashCache.FILE_NAME) }) {
+			result = 31 * result + file.lastModified();
+			result = 31 * result + file.length();
+		}
+		return result == UNVERIFIED ? 1 : result;
+	}
+
+	/** The path of the given folder relative to the root, <code>null</code> outside it. */
+	private String relative(File folder) {
+		if (_root == null) {
+			return null;
+		}
+		Path path = folder.toPath().toAbsolutePath().normalize();
+		if (!path.startsWith(_root)) {
+			return null;
+		}
+		return _root.relativize(path).toString().replace(File.separatorChar, '/');
+	}
+
+	/** The absolute path of the folder at the given path relative to the root, as a key of memory. */
+	private String absolute(String path) {
+		return path.isEmpty() ? _root.toFile().getAbsolutePath()
+			: _root.resolve(path.replace('/', File.separatorChar)).toFile().getAbsolutePath();
+	}
+
+	/** The given normalised embedding as it is stored, four bytes per number. */
+	static byte[] bytes(float[] embedding) {
+		ByteBuffer buffer = ByteBuffer.allocate(4 * embedding.length).order(ByteOrder.LITTLE_ENDIAN);
+		for (float value : embedding) {
+			buffer.putFloat(value);
+		}
+		return buffer.array();
+	}
+
+	/** The embedding stored as the given bytes, see {@link #bytes(float[])}. */
+	static float[] floats(byte[] bytes) {
+		ByteBuffer buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
+		float[] result = new float[bytes.length / 4];
+		for (int n = 0; n < result.length; n++) {
+			result[n] = buffer.getFloat();
+		}
+		return result;
 	}
 
 	private static boolean same(List<Prototype> previous, List<Prototype> current) {
-		if (previous == null || previous.size() != current.size()) {
+		if (previous == null) {
+			return current.isEmpty();
+		}
+		if (previous.size() != current.size()) {
 			return false;
 		}
 		for (int n = 0; n < current.size(); n++) {

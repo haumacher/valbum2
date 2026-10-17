@@ -30,8 +30,19 @@ import org.h2.jdbcx.JdbcConnectionPool;
  * albums (<code>.hashes.json</code> for the {@link de.haumacher.imageServer.upload.HashIndex hash
  * index}), which stay authoritative. The database carries a schema stamp ({@link #SCHEMA}); a
  * database without it, with another one, or one H2 cannot open at all (corrupt, written by another
- * H2 format) is deleted and created empty, and the background builds it again from the sidecars. A
- * schema change is a rebuild, never a migration, and the index is no part of a backup.
+ * H2 format) is deleted and created empty, and the background builds it again from the sidecars. The
+ * index is no part of a backup.
+ * </p>
+ *
+ * <p>
+ * <b>Added to in place.</b> A rebuild costs what is no truth of anything but still worth keeping
+ * &mdash; the read marks of the bell, the search until the background has read the library again
+ * &mdash; so a build that only <em>adds</em> to the tables does so in place: a {@link #MIGRATIONS
+ * migration step} creates what it needs where it is not there yet, and the meta table remembers
+ * how many steps an index has had ({@link #MIGRATION_KEY}). What fills the new tables is the
+ * background's ordinary work, which treats a missing row as "not read yet". {@link #SCHEMA} is
+ * bumped, and the index rebuilt, only for a change a step cannot make: one that changes what is
+ * there.
  * </p>
  *
  * <p>
@@ -87,7 +98,8 @@ public final class SpaceIndex implements AutoCloseable {
 
 	/**
 	 * The schema this build writes. A database stamped with anything else is deleted and built
-	 * again from the sidecars; bump it with every change of the tables below.
+	 * again from the sidecars; bump it with every change of the tables below that a
+	 * {@link #MIGRATIONS migration step} cannot make.
 	 */
 	public static final int SCHEMA = 4;
 
@@ -104,6 +116,47 @@ public final class SpaceIndex implements AutoCloseable {
 
 	/** The key of the schema stamp in the meta table. */
 	public static final String SCHEMA_KEY = "schema";
+
+	/**
+	 * The key of the number of {@link #MIGRATIONS migration steps} an index of {@link #SCHEMA} has
+	 * had in the meta table; an index without it has had none.
+	 */
+	public static final String MIGRATION_KEY = "migration";
+
+	/**
+	 * What builds after the schema {@link #SCHEMA} added to it, in place, one step after the other,
+	 * see {@link SpaceIndex}: each step is a list of statements, run on every index that has not had
+	 * it yet and on every index created.
+	 *
+	 * <p>
+	 * A step only adds (a table, a column, an index), and says so with <code>IF NOT EXISTS</code>:
+	 * H2 commits every such statement on its own, so a process killed half-way through a step runs
+	 * the whole step again on its next start. A step is never changed nor removed once released;
+	 * a change of what is there is a bump of {@link #SCHEMA}, which starts this list afresh.
+	 * </p>
+	 *
+	 * <ol>
+	 * <li>The prototypes of the face recognition of issue #127, see
+	 * <code>de.haumacher.imageServer.faces.Recognition</code>: <code>face_albums</code>, every album
+	 * the recognition read, with a stamp of the three files it read (<code>index.json</code>, the
+	 * album's face cache and its <code>.hashes.json</code>) and the model the embeddings are of,
+	 * <code>0</code> for a stamp nobody checked; <code>face_prototypes</code>, per album the
+	 * normalised embedding of every face confirmed in it, with the person id as it is stored in the
+	 * album, never resolved (a merge is felt when a suggestion is computed).</li>
+	 * </ol>
+	 */
+	private static final String[][] MIGRATIONS = {
+		{
+			"CREATE TABLE IF NOT EXISTS face_albums (path VARCHAR PRIMARY KEY, stamp BIGINT NOT NULL, "
+				+ "model VARCHAR NOT NULL)",
+			"CREATE TABLE IF NOT EXISTS face_prototypes (album VARCHAR NOT NULL REFERENCES face_albums(path) "
+				+ "ON DELETE CASCADE, n INT NOT NULL, person VARCHAR NOT NULL, embedding VARBINARY NOT NULL, "
+				+ "PRIMARY KEY (album, n))",
+		},
+	};
+
+	/** How many {@link #MIGRATIONS migration steps} this build knows; what a created index has had. */
+	public static final int MIGRATION = MIGRATIONS.length;
 
 	/** How many connections requests read through at most, besides the writer's. */
 	private static final int READERS = 16;
@@ -753,8 +806,60 @@ public final class SpaceIndex implements AutoCloseable {
 			return false;
 		}
 		_writer.commit();
-		return String.valueOf(SCHEMA).equals(stamp);
+		if (!String.valueOf(SCHEMA).equals(stamp)) {
+			return false;
+		}
+		int migration = migration();
+		if (migration > MIGRATION) {
+			// Added to by a later build, which this one cannot keep current: what it added would be
+			// stale when that build runs again.
+			LOG.info("The index of '" + _label + "' was written by a later build (migration " + migration + ").");
+			return false;
+		}
+		migrate(migration);
+		return true;
 	}
+
+	/** How many {@link #MIGRATIONS migration steps} the open database has had. */
+	private int migration() throws SQLException {
+		try (PreparedStatement statement = _writer.prepareStatement("SELECT val FROM meta WHERE name = ?")) {
+			statement.setString(1, MIGRATION_KEY);
+			try (ResultSet result = statement.executeQuery()) {
+				return result.next() ? Integer.parseInt(result.getString(1)) : 0;
+			}
+		} catch (NumberFormatException ex) {
+			throw new SQLException("Unreadable migration: " + ex.getMessage(), ex);
+		} finally {
+			_writer.commit();
+		}
+	}
+
+	/**
+	 * Runs every {@link #MIGRATIONS migration step} the open database has not had, from the given
+	 * one on, each recorded once it ran, see {@link SpaceIndex}.
+	 */
+	private void migrate(int from) throws SQLException {
+		for (int step = from; step < MIGRATION; step++) {
+			try (Statement statement = _writer.createStatement()) {
+				for (String sql : MIGRATIONS[step]) {
+					statement.execute(sql);
+				}
+			}
+			try (PreparedStatement statement =
+				_writer.prepareStatement("MERGE INTO meta (name, val) KEY (name) VALUES (?, ?)")) {
+				statement.setString(1, MIGRATION_KEY);
+				statement.setString(2, String.valueOf(step + 1));
+				statement.executeUpdate();
+			}
+			_writer.commit();
+			if (!_creating) {
+				LOG.info("The index of '" + _label + "' was added to in place (migration " + (step + 1) + ").");
+			}
+		}
+	}
+
+	/** Whether {@link #createSchema()} runs, which says nothing of the steps it takes. */
+	private boolean _creating;
 
 	private int tableCount() throws SQLException {
 		try (PreparedStatement statement = _writer.prepareStatement(
@@ -789,8 +894,8 @@ public final class SpaceIndex implements AutoCloseable {
 	}
 
 	/**
-	 * The tables of this build, stamped with {@link #SCHEMA}; a change here is a change of
-	 * {@link #SCHEMA}.
+	 * The tables of this build, stamped with {@link #SCHEMA}, and every {@link #MIGRATIONS migration
+	 * step} after it; a change here is a change of {@link #SCHEMA}.
 	 *
 	 * <ul>
 	 * <li><code>meta</code>: the stamp, and whatever a part of the index keeps about itself.</li>
@@ -875,5 +980,11 @@ public final class SpaceIndex implements AutoCloseable {
 			statement.executeUpdate();
 		}
 		_writer.commit();
+		_creating = true;
+		try {
+			migrate(0);
+		} finally {
+			_creating = false;
+		}
 	}
 }

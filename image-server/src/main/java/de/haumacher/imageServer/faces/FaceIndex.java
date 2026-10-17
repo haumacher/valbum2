@@ -247,7 +247,7 @@ public class FaceIndex {
 	 * space.
 	 * </p>
 	 */
-	private final Recognition _recognition = new Recognition();
+	private final Recognition _recognition;
 
 	/** Who the people of this space look like, see issue #127. */
 	public Recognition recognition() {
@@ -269,8 +269,20 @@ public class FaceIndex {
 	 *        loaded, queued or written while this is <code>false</code>.
 	 */
 	public FaceIndex(Path root, boolean enabled) {
+		this(root, enabled, null);
+	}
+
+	/**
+	 * Creates the index of one space whose recognition is kept in the given index of the space,
+	 * see {@link Recognition}.
+	 *
+	 * @param store
+	 *        The index of the space, <code>null</code> for a recognition in memory alone.
+	 */
+	public FaceIndex(Path root, boolean enabled, de.haumacher.imageServer.index.SpaceIndex store) {
 		_root = root.toAbsolutePath().normalize();
 		_enabled = enabled;
+		_recognition = new Recognition(_root, store);
 	}
 
 	/**
@@ -367,6 +379,56 @@ public class FaceIndex {
 			}
 		};
 	}
+
+	/** The name of {@link #prototypeStep()} in the record of the pipeline. */
+	public static final String PROTOTYPES = "prototypes";
+
+	/**
+	 * Keeps the prototypes of the recognition in the index of the space current, as a step of the
+	 * background work behind {@link #step()}, see {@link Recognition#refresh(File)}.
+	 *
+	 * <p>
+	 * It trusts no record: its own check is three stamps, and it is what fills the index after it
+	 * was added to in place (an upgrade, see {@link de.haumacher.imageServer.index.SpaceIndex}), or
+	 * after a process was killed before its last write reached the disk. A folder gone, or no part
+	 * of the library any more, goes from it.
+	 * </p>
+	 */
+	public de.haumacher.imageServer.pipeline.FolderPipeline.Step prototypeStep() {
+		return _prototypeStep;
+	}
+
+	/** See {@link #prototypeStep()}: one instance, so that it can be taken out of the pipeline again. */
+	private final de.haumacher.imageServer.pipeline.FolderPipeline.Step _prototypeStep =
+		new de.haumacher.imageServer.pipeline.FolderPipeline.Step() {
+			@Override
+			public String name() {
+				return PROTOTYPES;
+			}
+
+			@Override
+			public boolean trustsRecord() {
+				return false;
+			}
+
+			@Override
+			public de.haumacher.imageServer.pipeline.FolderPipeline.Outcome run(File folder) {
+				if (isEnabled()) {
+					_recognition.refresh(folder);
+				}
+				return de.haumacher.imageServer.pipeline.FolderPipeline.Outcome.DONE;
+			}
+
+			@Override
+			public void gone(String path) {
+				_recognition.removeTree(path);
+			}
+
+			@Override
+			public void retain(Set<String> paths) {
+				_recognition.retain(paths);
+			}
+		};
 
 	/** One lock per album for looking at it, so that the step and the queue never look twice at once. */
 	private final ConcurrentHashMap<String, Object> _indexing = new ConcurrentHashMap<>();

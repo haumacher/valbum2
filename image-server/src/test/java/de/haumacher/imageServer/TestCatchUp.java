@@ -590,6 +590,8 @@ public class TestCatchUp extends TestCase {
 			java.util.Collections.frequency(stepNames(), FaceIndex.STEP));
 		assertEquals(stepNames().toString(), 1,
 			java.util.Collections.frequency(stepNames(), FaceIndex.CROP_STEP));
+		assertEquals(stepNames().toString(), 1,
+			java.util.Collections.frequency(stepNames(), FaceIndex.PROTOTYPES));
 		assertEquals("Every photo looked at once, done before the switch back.", PHOTOS.length, _detector.total());
 	}
 

@@ -214,8 +214,11 @@ public class TestFaceRecognition extends FacesTestCase {
 
 	// --- Across a restart and across a merge. ---
 
-	/** The prototypes are rebuilt from the sidecars and the album caches, and say the same. */
-	public void testARestartRebuildsThePrototypes() throws Exception {
+	/**
+	 * The prototypes are kept in the index of the space across a restart (issue #264), and a pass
+	 * over what is on disk says the same.
+	 */
+	public void testARestartKeepsThePrototypes() throws Exception {
 		createSpace(A_ONE);
 		addAlbum(ELSEWHERE, A_TWO);
 		index();
@@ -224,10 +227,10 @@ public class TestFaceRecognition extends FacesTestCase {
 		assertEquals(anna.getId(), suggestion(face(ELSEWHERE, A_TWO)));
 
 		restart();
-		assertTrue("Nothing is remembered across a restart.",
-			_servlet.faces().recognition().isEmpty());
-		index();
+		assertEquals("Known at once after a restart.", 1, _servlet.faces().recognition().size());
+		assertEquals(anna.getId(), suggestion(face(ELSEWHERE, A_TWO)));
 
+		index();
 		assertEquals("Read back from what is on disk.", 1, _servlet.faces().recognition().size());
 		assertEquals(anna.getId(), suggestion(face(ELSEWHERE, A_TWO)));
 	}
