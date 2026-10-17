@@ -42,7 +42,7 @@ http.Response tree(http.Request request) {
     case "/valbum/data/":
       return json('["ListingInfo", {"path": "", "title": "Library", '
           '"rights": ${rightsOf(["contribute"])}, '
-          '"folders": [{"name": "2026", "title": "2026"}]}]');
+          '"folders": [{"name": "2026", "title": "2026", "kind": "FOLDER"}]}]');
     case "/valbum/data/2026/":
       return json('["ListingInfo", {"path": "2026", "title": "2026", '
           '"rights": ${rightsOf(["contribute"])}, '
@@ -98,7 +98,7 @@ Future<void> tapKey(WidgetTester tester, Key key) async {
   await tester.pumpAndSettle();
 }
 
-/// Opens the picker from the section and walks to [album] in 2026.
+/// Opens the picker from the section and chooses [album] in 2026.
 Future<void> pickAlbum(WidgetTester tester, String album) async {
   await tapKey(tester, uploadTargetChooseKey);
   await tapKey(tester, const Key("picker-folder-2026"));
@@ -115,16 +115,24 @@ void main() {
       await pumpSection(tester);
       expect(find.text(testL10n.uploadTargetToInbox), findsOneWidget);
 
-      await pickAlbum(tester, "Rome");
-      expect(find.byKey(const Key("picker-no-contribute")), findsOneWidget);
+      await tapKey(tester, uploadTargetChooseKey);
+      await tapKey(tester, const Key("picker-folder-2026"));
+      // A folder of folders is no target.
+      expect(confirm(tester).onPressed, isNull);
+
+      // The album is asked about when it is tapped, and its row says why
+      // it is refused.
+      await tapKey(tester, const Key("picker-folder-Rome"));
+      expect(
+          tester.widget<Text>(find.byKey(const Key("picker-refused-Rome"))).data,
+          testL10n.uploadTargetNoContribute);
+      expect(find.byKey(const Key("picker-selected")), findsNothing);
       expect(confirm(tester).onPressed, isNull,
           reason: "an album that refuses the upload is no target");
 
-      await tapKey(tester, const Key("picker-up"));
-      // A folder of folders is no target either.
-      expect(confirm(tester).onPressed, isNull);
       await tapKey(tester, const Key("picker-folder-Mallorca 2026"));
-      expect(find.byKey(const Key("picker-no-contribute")), findsNothing);
+      expect(find.byKey(const Key("picker-refused-Mallorca 2026")), findsNothing);
+      expect(find.byKey(const Key("picker-selected")), findsOneWidget);
       expect(confirm(tester).onPressed, isNotNull);
     });
 

@@ -472,7 +472,6 @@
   "deleteQuestion": "{what} löschen?",
   "deletedWhat": "Gelöscht: {what}.",
   "newAlbumCreatedEmpty": "Das neue Album {target} wurde erstellt und ist leer.",
-  "imagesLiveInAlbums": "Bilder liegen in Alben – öffnen Sie eines.",
   "albumHoldsNoFolders": "Ein Album enthält keine Ordner.",
   "folderCannotBeShown": "Dieser Ordner kann nicht angezeigt werden.",
   "createNewAlbum": "Neues Album erstellen…",
@@ -866,7 +865,6 @@
   "newCollectionTitle": "Neue Sammlung",
   "newCollectionHint": "Eine Sammlung zeigt Fotos anderer Alben, ohne sie zu kopieren.",
   "collectionTakesNoMove": "Eine Sammlung enthält keine Dateien; Fotos kommen mit „Zur Sammlung hinzufügen“ hinein.",
-  "pickerNeedsCollection": "Fotos kommen in eine Sammlung – öffnen oder erstellen Sie eine.",
   "createNewCollection": "Neue Sammlung erstellen…",
   "nothingToCollect": "Wählen Sie zuerst die Fotos aus.",
   "addToCollectionTitle": "Zur Sammlung hinzufügen",
@@ -1095,5 +1093,8 @@
   "shutOutDone": "Vom Link ausgesperrt: {name}",
   "letInDone": "Darf den Link wieder öffnen: {name}",
   "sharesOfAlbum": "Alle Freigaben…",
-  "contactSharesEntry": "Freigaben…"
+  "contactSharesEntry": "Freigaben…",
+  "pickerNotCollection": "Keine Sammlung.",
+  "searchTakesNoPhotos": "Eine gespeicherte Suche enthält keine eigenen Fotos.",
+  "pickerNeedsCollection": "Fotos werden einer Sammlung hinzugefügt – wählen Sie eine aus oder erstellen Sie eine."
 }

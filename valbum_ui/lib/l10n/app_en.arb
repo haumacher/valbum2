@@ -2863,11 +2863,6 @@
     },
     "x-translated": "1e1f5328"
   },
-  "imagesLiveInAlbums": "Images live in albums - open one.",
-  "@imagesLiveInAlbums": {
-    "description": "Says why a folder of folders cannot take images",
-    "x-translated": "222d14e7"
-  },
   "albumHoldsNoFolders": "An album holds no folders.",
   "@albumHoldsNoFolders": {
     "description": "Says why an album cannot take an album or a folder",
@@ -5587,10 +5582,20 @@
     "description": "Line of the move picker on a collection, which cannot be the target of a move (issue #221)",
     "x-translated": "f56b6a3f"
   },
-  "pickerNeedsCollection": "Photos are added to a collection — open one or create one.",
+  "pickerNotCollection": "Not a collection.",
+  "@pickerNotCollection": {
+    "description": "Second line of an album (or other folder that is no collection) in the add-to-collection picker, saying why it cannot be chosen (issue #221)",
+    "x-translated": "454ed61d"
+  },
+  "searchTakesNoPhotos": "A saved search holds no photos of its own.",
+  "@searchTakesNoPhotos": {
+    "description": "Second line of a saved search in the move picker, saying why it cannot be chosen as the target (issue #227)",
+    "x-translated": "f9a293d9"
+  },
+  "pickerNeedsCollection": "Photos are added to a collection — choose one or create one.",
   "@pickerNeedsCollection": {
-    "description": "Line of the add-to-collection picker on a folder that is no collection (issue #221)",
-    "x-translated": "1cc69979"
+    "description": "Line of the add-to-collection picker while no collection is chosen (issue #221)",
+    "x-translated": "df881e72"
   },
   "createNewCollection": "Create new collection…",
   "@createNewCollection": {

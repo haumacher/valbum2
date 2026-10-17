@@ -2930,12 +2930,6 @@ abstract class AppLocalizations {
   /// **'The new album {target} was created and is empty.'**
   String newAlbumCreatedEmpty(String target);
 
-  /// Says why a folder of folders cannot take images
-  ///
-  /// In en, this message translates to:
-  /// **'Images live in albums - open one.'**
-  String get imagesLiveInAlbums;
-
   /// Says why an album cannot take an album or a folder
   ///
   /// In en, this message translates to:
@@ -5295,10 +5289,22 @@ abstract class AppLocalizations {
   /// **'A collection holds no files; photos are added to it with “Add to collection”.'**
   String get collectionTakesNoMove;
 
-  /// Line of the add-to-collection picker on a folder that is no collection (issue #221)
+  /// Second line of an album (or other folder that is no collection) in the add-to-collection picker, saying why it cannot be chosen (issue #221)
   ///
   /// In en, this message translates to:
-  /// **'Photos are added to a collection — open one or create one.'**
+  /// **'Not a collection.'**
+  String get pickerNotCollection;
+
+  /// Second line of a saved search in the move picker, saying why it cannot be chosen as the target (issue #227)
+  ///
+  /// In en, this message translates to:
+  /// **'A saved search holds no photos of its own.'**
+  String get searchTakesNoPhotos;
+
+  /// Line of the add-to-collection picker while no collection is chosen (issue #221)
+  ///
+  /// In en, this message translates to:
+  /// **'Photos are added to a collection — choose one or create one.'**
   String get pickerNeedsCollection;
 
   /// Entry of the add-to-collection picker creating a collection in the folder shown (issue #221)

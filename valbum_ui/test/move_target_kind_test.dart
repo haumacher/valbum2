@@ -50,7 +50,7 @@ const String root = '["ListingInfo", {"path": "", "title": "My albums", '
     '"effectiveDate": $march3rd}, '
     '{"name": "$renamedAlbumName", "title": "Blumen und Fliegen", '
     '"effectiveDate": $august24th}, '
-    '{"name": "2021", "title": "2021"}, '
+    '{"name": "2021", "title": "2021", "kind": "FOLDER"}, '
     '{"name": "Inbox", "title": ""}'
     ']}]';
 
@@ -129,6 +129,7 @@ Future<void> openPicker(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+/// Taps the row of [name]: a folder of folders is opened, a leaf is chosen.
 Future<void> enterFolder(WidgetTester tester, String name) async {
   // The search field of issue #261 stands above the tree: an entry further
   // down is scrolled to, as a user would.
@@ -166,11 +167,11 @@ void main() {
 
         // With the search field of every folder picker (issue #261).
         expect(find.byKey(const Key("picker-search")), findsOneWidget);
-        // The top level is a folder of folders: nothing to confirm, and the
-        // reason is on the screen.
+        // The top level is a folder of folders: nothing to confirm until an
+        // album is chosen, and no line in the list says so — the disabled
+        // confirm does.
         expect(find.text("Top level"), findsOneWidget);
-        expect(find.byKey(const Key("picker-needs-album")), findsOneWidget);
-        expect(find.text(testL10n.imagesLiveInAlbums), findsOneWidget);
+        expect(find.byKey(const Key("picker-needs-album")), findsNothing);
         expect(confirmEnabled(tester), isFalse);
         // The label stays honest either way.
         expect(find.text("Move 2 images to the top level"), findsOneWidget);
@@ -181,10 +182,12 @@ void main() {
         await tester.tap(find.byKey(const Key("picker-up")));
         await tester.pumpAndSettle();
 
-        // An album takes images.
+        // An album takes images: a tap chooses it, at the level it lies in.
         await enterFolder(tester, datedAlbumName);
-        expect(find.byKey(const Key("picker-needs-album")), findsNothing);
+        expect(find.byKey(const Key("picker-up")), findsNothing);
+        expect(find.byKey(const Key("picker-selected")), findsOneWidget);
         expect(confirmEnabled(tester), isTrue);
+        expect(find.text("Move 2 images to '$datedAlbumName'"), findsOneWidget);
       });
 
       // Nothing was sent while the picker was open.
@@ -203,10 +206,18 @@ void main() {
         expect(confirmEnabled(tester), isTrue);
         expect(find.byKey(const Key("picker-needs-album")), findsNothing);
 
+        // An album holds no folders: its row says so and takes no tap.
+        expect(
+            tester
+                .widget<Text>(
+                    find.byKey(const Key("picker-refused-$datedAlbumName")))
+                .data,
+            testL10n.albumHoldsNoFolders);
         await enterFolder(tester, datedAlbumName);
-        expect(find.byKey(const Key("picker-leaf")), findsOneWidget);
-        expect(find.text(testL10n.albumHoldsNoFolders), findsOneWidget);
-        expect(confirmEnabled(tester), isFalse);
+        expect(find.byKey(const Key("picker-selected")), findsNothing);
+        expect(find.text("Top level"), findsOneWidget);
+        expect(confirmEnabled(tester), isTrue,
+            reason: "the confirm still acts on the level shown");
       });
 
       expect(requests.where((r) => r.method != "GET"), isEmpty);
@@ -386,19 +397,29 @@ void main() {
       });
     });
 
-    testWidgets('it is not offered on an album', (tester) async {
+    testWidgets('it is offered below the top level too, and made there',
+        (tester) async {
       var requests = <http.Request>[];
-      var client = recordingClient(treeAnswer, requests);
+      var client = recordingClient(creating(null), requests);
 
       await withFakeImageHttp(() async {
         await pumpSelection(tester, client);
         await openPicker(tester);
         expect(find.byKey(const Key("picker-create-album")), findsOneWidget);
 
-        // An album holds no albums.
+        // Choosing an album keeps it: the new album goes beside it.
         await enterFolder(tester, datedAlbumName);
-        expect(find.byKey(const Key("picker-create-album")), findsNothing);
+        expect(find.byKey(const Key("picker-create-album")), findsOneWidget);
+
+        await enterFolder(tester, "2021");
+        expect(find.byKey(const Key("picker-create-album")), findsOneWidget);
+        await createAlbumNamed(tester, "Ausflug");
       });
+
+      var put = requests.singleWhere((r) => r.method == "PUT");
+      expect(Uri.decodeFull(put.url.toString()),
+          "$dataUrl/2021/2002-03-03 Ausflug/",
+          reason: "made in the folder shown");
     });
 
     testWidgets('it is not offered for a folder that moves', (tester) async {

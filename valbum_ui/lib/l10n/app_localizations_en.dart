@@ -1749,9 +1749,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get imagesLiveInAlbums => 'Images live in albums - open one.';
-
-  @override
   String get albumHoldsNoFolders => 'An album holds no folders.';
 
   @override
@@ -3353,8 +3350,15 @@ class AppLocalizationsEn extends AppLocalizations {
       'A collection holds no files; photos are added to it with “Add to collection”.';
 
   @override
+  String get pickerNotCollection => 'Not a collection.';
+
+  @override
+  String get searchTakesNoPhotos =>
+      'A saved search holds no photos of its own.';
+
+  @override
   String get pickerNeedsCollection =>
-      'Photos are added to a collection — open one or create one.';
+      'Photos are added to a collection — choose one or create one.';
 
   @override
   String get createNewCollection => 'Create new collection…';

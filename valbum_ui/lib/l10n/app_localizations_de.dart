@@ -1773,9 +1773,6 @@ class AppLocalizationsDe extends AppLocalizations {
   }
 
   @override
-  String get imagesLiveInAlbums => 'Bilder liegen in Alben – öffnen Sie eines.';
-
-  @override
   String get albumHoldsNoFolders => 'Ein Album enthält keine Ordner.';
 
   @override
@@ -3401,8 +3398,15 @@ class AppLocalizationsDe extends AppLocalizations {
       'Eine Sammlung enthält keine Dateien; Fotos kommen mit „Zur Sammlung hinzufügen“ hinein.';
 
   @override
+  String get pickerNotCollection => 'Keine Sammlung.';
+
+  @override
+  String get searchTakesNoPhotos =>
+      'Eine gespeicherte Suche enthält keine eigenen Fotos.';
+
+  @override
   String get pickerNeedsCollection =>
-      'Fotos kommen in eine Sammlung – öffnen oder erstellen Sie eine.';
+      'Fotos werden einer Sammlung hinzugefügt – wählen Sie eine aus oder erstellen Sie eine.';
 
   @override
   String get createNewCollection => 'Neue Sammlung erstellen…';

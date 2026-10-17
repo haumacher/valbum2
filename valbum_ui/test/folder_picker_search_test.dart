@@ -147,21 +147,29 @@ void main() {
     await search(tester, "rom");
 
     await tapKey(tester, const Key("picker-match-2026/Rome"));
-    expect(pathLine(tester), "2026 / Rome");
+    // An album is shown where it lies, chosen as a tap on its row chooses it.
+    expect(pathLine(tester), "2026");
+    expect(find.byKey(const Key("picker-folder-Rome")), findsOneWidget);
     expect(tester.widget<TextField>(field).controller!.text, isEmpty,
         reason: "the tree again, at the folder picked");
     // The member may only look at Rome: no upload target, and it says why.
-    expect(find.byKey(const Key("picker-no-contribute")), findsOneWidget);
+    expect(find.byKey(const Key("picker-refused-Rome")), findsOneWidget);
     expect(confirmEnabled(tester), isFalse);
 
     await search(tester, "mallorca");
     await tapKey(tester, const Key("picker-match-2026/Mallorca 2026"));
     expect(pathLine(tester), "2026 / Mallorca 2026");
-    expect(find.byKey(const Key("picker-no-contribute")), findsNothing);
+    expect(find.byKey(const Key("picker-selected")), findsOneWidget);
     expect(confirmEnabled(tester), isTrue);
     // The way up is the tree's, as after browsing there.
     await tapKey(tester, const Key("picker-up"));
-    expect(pathLine(tester), "2026");
+    expect(pathLine(tester), testL10n.pickerTopLevel);
+
+    // A folder of folders found is opened.
+    await search(tester, "rom");
+    await tapKey(tester, const Key("picker-match-Rome trip"));
+    expect(pathLine(tester), "Rome trip");
+    expect(find.byKey(const Key("picker-up")), findsOneWidget);
   });
 
   testWidgets('the arrows walk the matches and Enter shows the one picked',

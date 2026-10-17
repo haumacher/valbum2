@@ -451,9 +451,13 @@ void main() {
       expect(find.text(inboxMoveLabel(testL10n, 2)), findsOneWidget);
       await tester.tap(find.byKey(const Key("move-to")));
       await tester.pumpAndSettle();
-      // An image lives in an album, so a folder of folders cannot be picked
-      // and the picker says why, see issue #113.
-      expect(find.byKey(const Key("picker-needs-album")), findsOneWidget);
+      // An image lives in an album, so a folder of folders cannot be picked,
+      // see issue #113: the confirm waits for an album to be chosen.
+      expect(
+          tester
+              .widget<ElevatedButton>(find.byKey(const Key("picker-confirm")))
+              .onPressed,
+          isNull);
       // And the album that does not exist yet is offered, see issue #114.
       expect(find.byKey(const Key("picker-create-album")), findsOneWidget);
     });

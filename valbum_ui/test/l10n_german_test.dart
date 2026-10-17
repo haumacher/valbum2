@@ -343,6 +343,7 @@ void sliceThree() {
             client: recordingClient(treeAnswer, []),
             initialPath: const [],
             confirmLabel: (path) => "move",
+            mayCreateAlbum: true,
           ),
           locale: const Locale("de"),
         ),
@@ -351,8 +352,8 @@ void sliceThree() {
 
       expect(find.text(de.moveToAction), findsOneWidget);
       expect(find.text(de.pickerTopLevel), findsOneWidget);
-      // An image lives in an album, and the top level is a folder of folders.
-      expect(find.text(de.imagesLiveInAlbums), findsOneWidget);
+      // The album to move into may be created at the level shown.
+      expect(find.text(de.createNewAlbum), findsOneWidget);
       expect(find.text(de.cancel), findsOneWidget);
     });
 

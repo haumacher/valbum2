@@ -557,10 +557,8 @@ Iterable<int> _datesOf(AlbumPart part) sync* {
   }
 }
 
-/// The line that says why an image cannot be left in a folder of folders.
-String imagesLiveInAlbums(AppLocalizations l10n) => l10n.imagesLiveInAlbums;
-
-/// The line an album shows in the picker, which holds no folders.
+/// Why the picker refuses an album where a folder of folders is looked for:
+/// it holds no folders.
 String albumHoldsNoFolders(AppLocalizations l10n) => l10n.albumHoldsNoFolders;
 
 /// What the picker was left with, see [FolderPicker].
@@ -628,31 +626,42 @@ String matchLocation(AppLocalizations l10n, String path) {
 /// and two or three entries, see [FolderPicker] and issue #178.
 const double _roomyPickerHeight = 260;
 
+/// The width of the screen from which the picker's create button carries
+/// its words beside the title; below, it is an icon, see [FolderPicker].
+const double _wideCreateButton = 600;
+
 /// Browses the caller's own tree and returns what the move goes into, `null`
 /// when the dialog was left without picking anything.
 ///
 /// Every level is fetched through the injected [client], so the picker shows
-/// exactly what the server lets this caller see. An album is a leaf — there is
-/// nothing to descend into.
+/// exactly what the server lets this caller see. Every level shown is a
+/// folder of folders: a tap on a folder of folders opens it, a tap on a leaf
+/// — an album, a collection, a saved search, which hold no folders — selects
+/// it ([FolderPickerState._choose]), and the confirm then acts on the leaf
+/// selected. `Enter` on the keyboard's highlight does what the tap does.
 ///
-/// The kind of the folder shown decides whether it can be confirmed at all,
-/// see issue #113: with [targetIsAlbum] only an album can be picked (images
-/// live in albums), without it only a folder of folders (an album holds no
-/// folders). What cannot be picked says why instead of being declined by the
-/// server afterwards.
+/// The kind decides what can be confirmed at all, see issue #113: with
+/// [targetIsAlbum] only an album (images live in albums), without it only the
+/// folder of folders shown (an album holds no folders), with
+/// [targetIsCollection] only a collection. One rule decides for every leaf
+/// ([FolderPickerState._refusal]): a leaf the purpose cannot take is shown
+/// disabled, its row saying why, instead of being declined by the server
+/// afterwards or silently doing nothing.
 ///
 /// The one thing the picker creates is the album of issue #114, and only where
 /// [mayCreateAlbum] says the move is looking for one and the caller may add to
 /// the folder shown: it is not created here either — the [PickedTarget] it
-/// answers carries it, and the move creates it, see [moveWithPicker].
+/// answers carries it, and the move creates it, see [moveWithPicker]. Its
+/// button stands in the dialog's title, never scrolled away by a long level.
 ///
 /// Above the tree stands the search field of issue #261, the one filter field
 /// of every chooser (see `filter_list.dart`): what is typed is looked for in
 /// the **whole space** — albums and folders by title, folder name and date —
 /// by the server ([VAlbumClient.findFolders]), and the matches stand as one
-/// flat list, each with the folder it lies in. Picking one shows that folder
-/// in the picker; whether it can be confirmed is decided there, by exactly
-/// the rules of a folder reached by browsing. An empty field is the tree.
+/// flat list, each with the folder it lies in. Picking a folder of folders
+/// opens it; picking a leaf shows the folder it lies in with the leaf chosen
+/// as a tap on its row would choose it, by exactly the rules of browsing. An
+/// empty field is the tree.
 ///
 /// A move of images opens where they belong, see issue #279 and
 /// [suggestNear]: at the level of the album suggested, that album *selected*
@@ -769,12 +778,11 @@ class FolderPickerState extends State<FolderPicker> {
   String? _searchError;
 
   /// The folders of [_path] in the order the listing shows them
-  /// ([pickerFolders]), empty while it is loading, while it failed, and for an
-  /// album (which has none).
+  /// ([pickerFolders]), empty while it is loading and while it failed.
   List<FolderInfo> _folders = const [];
 
-  /// The listing shown, `null` for an album and while nothing is shown: what
-  /// the caller may do here is answered with it, see [Rights].
+  /// The listing shown, `null` while nothing is shown: what the caller may do
+  /// here is answered with it, see [Rights].
   ListingInfo? _listing;
 
   /// Why the current level could not be loaded, `null` while all is well.
@@ -782,27 +790,26 @@ class FolderPickerState extends State<FolderPicker> {
 
   bool _loading = true;
 
-  /// Whether the folder shown is an album — a leaf of the tree.
-  bool _leaf = false;
-
-  /// Whether the folder shown is a collection (a leaf too), see issue #221.
-  bool _collection = false;
-
-  /// Whether the folder shown is a saved search (a leaf too), see issue #227:
-  /// it holds no photographs of its own and is no target of a move.
-  bool _search = false;
-
-  /// The album shown, `null` for a folder of folders and while nothing is
-  /// shown: its title and its rights, see [FolderPicker.requireContribute].
-  AlbumInfo? _album;
-
-  /// The album of the level shown that the confirm acts on, see issue #279:
-  /// the one the picker opened with, `null` where none is selected — then the
-  /// confirm acts on the folder shown.
+  /// The leaf of the level shown that the confirm acts on: the one tapped,
+  /// or the one the picker opened with (issue #279); `null` where none is
+  /// selected — then the confirm acts on the folder shown.
   FolderInfo? _selected;
 
-  /// The name of the folder to select once the level shown has loaded.
+  /// The name of the leaf to choose once the level shown has loaded.
   String? _toSelect;
+
+  /// Why a leaf of the level shown was refused once it was asked about, by
+  /// its name: an album the caller may not add photos to, see
+  /// [FolderPicker.requireContribute]. What a leaf's kind refuses needs no
+  /// asking, see [_refusal].
+  Map<String, String> _refused = const {};
+
+  /// The name of the leaf whose rights are being asked for, see [_choose].
+  String? _checking;
+
+  /// Counts the questions about a leaf, so that an answer for a level that
+  /// is no longer shown is dropped.
+  int _checkSerial = 0;
 
   /// Whether the picker was taken anywhere since it opened: a suggestion
   /// that arrives afterwards is no longer wanted.
@@ -918,44 +925,62 @@ class FolderPickerState extends State<FolderPicker> {
     });
   }
 
-  /// Shows the folder of a match: the tree again, at that folder.
+  /// Shows a match in the tree again: a folder of folders opened, a leaf in
+  /// the folder it lies in, chosen as a tap on its row chooses it.
+  ///
+  /// A match the server answered without its tile is opened like a folder;
+  /// should it turn out to be a leaf, [_load] shows it where it lies.
   void _goTo(FolderMatch match) {
     _searchDelay?.cancel();
     _query.clear();
     _leaving();
+    var segments = splitPath(match.path);
+    var kind = match.folder?.kind;
+    var leaf = kind != null && kind != FolderKind.folder;
     setState(() {
       _searchSerial++;
       _searching = false;
       _matches = null;
       _searchError = null;
-      _path = splitPath(match.path);
+      _path = leaf ? segments.sublist(0, segments.length - 1) : segments;
     });
+    if (leaf) {
+      _toSelect = segments.last;
+    }
     _load();
   }
 
-  /// What `Enter` does: enter the highlighted folder, or show the folder of
-  /// the highlighted match.
+  /// What `Enter` does: what a tap on the highlighted row does.
   void _pick(Object? highlighted) {
     if (highlighted is FolderMatch) {
       _goTo(highlighted);
     } else if (highlighted is FolderInfo) {
-      _enter(highlighted.name);
+      _tap(highlighted);
+    }
+  }
+
+  /// What a tap on the row of [folder] does: a folder of folders is opened,
+  /// a leaf is chosen.
+  void _tap(FolderInfo folder) {
+    if (folder.kind == FolderKind.folder) {
+      _enter(folder.name);
+    } else {
+      _choose(folder);
     }
   }
 
   Future<void> _load() async {
     // Another level, other entries: the highlight stands on none of them.
     _highlight.reset();
+    _checkSerial++;
     setState(() {
       _selected = null;
       _loading = true;
       _error = null;
       _folders = const [];
       _listing = null;
-      _leaf = false;
-      _collection = false;
-      _search = false;
-      _album = null;
+      _refused = const {};
+      _checking = null;
     });
     Resource? resource;
     try {
@@ -974,6 +999,18 @@ class FolderPickerState extends State<FolderPicker> {
     }
     var wanted = _toSelect;
     _toSelect = null;
+    if (resource is AlbumInfo && _path.isNotEmpty) {
+      // A leaf where a folder of folders was expected: a match answered
+      // without its tile, or a folder whose kind changed since its row was
+      // drawn. A level is always a folder of folders, so the leaf is shown
+      // where it lies, chosen as a tap on its row would choose it.
+      setState(() {
+        _toSelect = _path.last;
+        _path = _path.sublist(0, _path.length - 1);
+      });
+      await _load();
+      return;
+    }
     setState(() {
       _loading = false;
       if (resource is ListingInfo) {
@@ -981,33 +1018,112 @@ class FolderPickerState extends State<FolderPicker> {
         // The oldest first at every level, see issue #279: the listing opens
         // on the latest year (issue #270), the picker reads through time.
         _folders = pickerFolders(resource.folders);
-        for (var folder in _folders) {
-          if (folder.name == wanted && _selectable(folder)) {
-            _selected = folder;
-          }
-        }
-      } else if (resource is AlbumInfo) {
-        _leaf = true;
-        _album = resource;
-        _collection = resource.kind == AlbumKind.collection;
-        _search = resource.kind == AlbumKind.search;
       } else {
         _error = AppLocalizations.of(context)!.folderCannotBeShown;
       }
     });
+    for (var folder in _folders) {
+      // Never opened: a leaf only is chosen, so nothing here goes in circles.
+      if (folder.name == wanted && folder.kind != FolderKind.folder) {
+        _choose(folder);
+      }
+    }
     if (_selected != null) {
       // Once the row is laid out.
       WidgetsBinding.instance.addPostFrameCallback((_) => _centre(0));
     }
   }
 
-  /// Whether the confirm may act on [folder] of the level shown, see
-  /// [_selected]: an album, where an album is looked for.
-  bool _selectable(FolderInfo folder) =>
-      widget.targetIsAlbum &&
-      !widget.targetIsCollection &&
-      !widget.requireContribute &&
-      folder.kind == FolderKind.album;
+  /// Why the purpose of this picker cannot take the leaf [folder], `null`
+  /// where it can — and for a folder of folders, which is opened, not taken.
+  ///
+  /// The one rule for every leaf, browsed to, suggested or found: an image
+  /// goes into an album (issue #113), an album or a folder into no leaf at
+  /// all, an addition into a collection only (issue #221), and nothing into a
+  /// saved search (issue #227). What only the server can answer — whether
+  /// the caller may add photos to an album (issue #240) — is asked when the
+  /// leaf is chosen, and remembered in [_refused].
+  String? _refusal(FolderInfo folder) {
+    if (folder.kind == FolderKind.folder) {
+      return null;
+    }
+    var asked = _refused[folder.name];
+    if (asked != null) {
+      return asked;
+    }
+    var l10n = AppLocalizations.of(context)!;
+    if (widget.targetIsCollection) {
+      return folder.kind == FolderKind.collection
+          ? null
+          : l10n.pickerNotCollection;
+    }
+    return switch (folder.kind) {
+      // A collection holds references and no files.
+      FolderKind.collection => l10n.collectionTakesNoMove,
+      FolderKind.search => l10n.searchTakesNoPhotos,
+      _ => widget.targetIsAlbum ? null : albumHoldsNoFolders(l10n),
+    };
+  }
+
+  /// Chooses the leaf [folder] as what the confirm acts on, where the
+  /// purpose takes it ([_refusal]). Choosing it again leaves it chosen: a
+  /// second tap — or the double click a desktop opens a folder with — must
+  /// not undo the choice, and nothing would be gained by undoing it, since a
+  /// folder of folders that takes no leaf takes none to be chosen either.
+  ///
+  /// Where only an album the caller may add photos to will do, the server is
+  /// asked about the album first, and an album that refuses is marked so.
+  void _choose(FolderInfo folder) {
+    if (folder.name == _selected?.name || _refusal(folder) != null) {
+      return;
+    }
+    if (widget.requireContribute) {
+      _askContribute(folder);
+      return;
+    }
+    setState(() => _selected = folder);
+  }
+
+  /// Asks whether the caller may add photos to the album [folder] of the
+  /// level shown, and chooses it, or marks it refused. The rights the album
+  /// is answered with decide, the caller's role where it was answered none,
+  /// see [offeredRights].
+  Future<void> _askContribute(FolderInfo folder) async {
+    var serial = ++_checkSerial;
+    setState(() {
+      _selected = null;
+      _checking = folder.name;
+    });
+    String? refusal;
+    try {
+      var album = await widget.client.loadResource([..._path, folder.name]);
+      if (!mounted || serial != _checkSerial) {
+        return;
+      }
+      var l10n = AppLocalizations.of(context)!;
+      if (album is! AlbumInfo) {
+        refusal = l10n.folderCannotBeShown;
+      } else if (!offeredRights(
+        Rights.of(album),
+        CallerInfo.permissionOf(context),
+      ).mayContribute) {
+        refusal = l10n.uploadTargetNoContribute;
+      }
+    } catch (error) {
+      refusal = reasonOf(error);
+    }
+    if (!mounted || serial != _checkSerial) {
+      return;
+    }
+    setState(() {
+      _checking = null;
+      if (refusal == null) {
+        _selected = folder;
+      } else {
+        _refused = {..._refused, folder.name: refusal};
+      }
+    });
+  }
 
   /// Brings the row of [_selected] to the middle of the list, see issue
   /// #279. The list lays out only the rows near what it shows, so a row far
@@ -1041,6 +1157,7 @@ class FolderPickerState extends State<FolderPicker> {
   void _leaving() {
     _moved = true;
     _toSelect = null;
+    _checkSerial++;
   }
 
   void _enter(String name) {
@@ -1055,7 +1172,7 @@ class FolderPickerState extends State<FolderPicker> {
     _load();
   }
 
-  /// The folder the confirm acts on: the album selected, else the folder
+  /// The folder the confirm acts on: the leaf selected, else the folder
   /// shown.
   List<String> get _target {
     var selected = _selected;
@@ -1065,40 +1182,22 @@ class FolderPickerState extends State<FolderPicker> {
   /// Whether the folder shown says what it is at all.
   bool get _known => !_loading && _error == null;
 
-  /// Whether the folder shown is of the kind this move goes into.
+  /// Whether the confirm acts on something of the kind this move goes into.
   ///
   /// Nothing is confirmed on a level that is still loading or that could not
-  /// be read: what is unknown is not offered, see issue #113.
-  ///
-  /// A collection holds references and no files (issue #221): it is the one
-  /// target of an addition and never the target of a move.
+  /// be read: what is unknown is not offered, see issue #113. A leaf is
+  /// confirmed once it is chosen, which only a leaf the purpose takes can be
+  /// ([_choose]); the folder of folders shown only where a folder of folders
+  /// is looked for — an album or a folder moving.
   bool get _mayConfirm =>
       _known &&
       (_selected != null ||
-          (widget.targetIsCollection
-              ? _collection
-              : _leaf == widget.targetIsAlbum && !_collection && !_search)) &&
-      !_contributeMissing;
-
-  /// Whether the album shown refuses what [FolderPicker.requireContribute]
-  /// asks for. The rights the album was answered with decide, the caller's
-  /// role where it was answered none, see [offeredRights].
-  bool get _contributeMissing {
-    var album = _album;
-    if (!widget.requireContribute || album == null) {
-      return false;
-    }
-    return !offeredRights(
-      Rights.of(album),
-      CallerInfo.permissionOf(context),
-    ).mayContribute;
-  }
+          (!widget.targetIsAlbum && !widget.targetIsCollection));
 
   /// Whether a collection may be created in the folder shown, see #221.
   bool _mayCreateCollectionHere(BuildContext context) =>
       widget.targetIsCollection &&
       _known &&
-      !_leaf &&
       offeredRights(
         Rights.of(_listing),
         CallerInfo.permissionOf(context),
@@ -1113,7 +1212,6 @@ class FolderPickerState extends State<FolderPicker> {
   bool _mayCreateAlbumHere(BuildContext context) =>
       widget.mayCreateAlbum &&
       _known &&
-      !_leaf &&
       offeredRights(
         Rights.of(_listing),
         CallerInfo.permissionOf(context),
@@ -1134,7 +1232,32 @@ class FolderPickerState extends State<FolderPicker> {
       onEnter: _pick,
       child: AlertDialog(
         key: const Key("folder-picker"),
-        title: Text(widget.title ?? l10n.moveToAction),
+        // What is created stands beside the title, at every level it may be
+        // created on: in the list it was scrolled away as soon as the picker
+        // opened on an album far down a long level (issue #279), and with a
+        // phone's keyboard up the content scrolls as a whole. On a phone an
+        // icon, so that the title keeps its line.
+        title: Row(
+          children: [
+            Expanded(child: Text(widget.title ?? l10n.moveToAction)),
+            if (_mayCreateAlbumHere(context))
+              _createButton(
+                context,
+                key: const Key("picker-create-album"),
+                icon: Icons.create_new_folder,
+                label: l10n.createNewAlbum,
+                onPressed: _createAlbum,
+              ),
+            if (_mayCreateCollectionHere(context))
+              _createButton(
+                context,
+                key: const Key("picker-create-collection"),
+                icon: Icons.collections_bookmark_outlined,
+                label: l10n.createNewCollection,
+                onPressed: _createCollection,
+              ),
+          ],
+        ),
         content: SizedBox(
           width: 400,
           // The tree as tall as before the search field of issue #261 stood
@@ -1196,14 +1319,11 @@ class FolderPickerState extends State<FolderPicker> {
           ),
           ElevatedButton(
             key: const Key("picker-confirm"),
-            // A folder of the wrong kind cannot be picked; the line in the
-            // list says why, see issue #113.
+            // A leaf of the wrong kind cannot be chosen; its row says why,
+            // see issue #113.
             onPressed: _mayConfirm
                 ? () => Navigator.of(context).pop(
-                      PickedTarget(
-                        _target,
-                        title: _selected?.title ?? _album?.title ?? "",
-                      ),
+                      PickedTarget(_target, title: _selected?.title ?? ""),
                     )
                 : null,
             child: Text(widget.confirmLabel(_target)),
@@ -1212,6 +1332,30 @@ class FolderPickerState extends State<FolderPicker> {
       ),
     );
   }
+
+  /// The button beside the title creating what this picker may create: with
+  /// its [label] where the screen has the room, an icon carrying it as its
+  /// tooltip on a phone.
+  Widget _createButton(
+    BuildContext context, {
+    required Key key,
+    required IconData icon,
+    required String label,
+    required VoidCallback onPressed,
+  }) =>
+      MediaQuery.sizeOf(context).width >= _wideCreateButton
+          ? TextButton.icon(
+              key: key,
+              icon: Icon(icon),
+              label: Text(label),
+              onPressed: onPressed,
+            )
+          : IconButton(
+              key: key,
+              icon: Icon(icon),
+              tooltip: label,
+              onPressed: onPressed,
+            );
 
   /// The matches of the search field, see issue #261: each by the line the
   /// tree names it with and the folder it lies in, the best first. A search
@@ -1300,58 +1444,12 @@ class FolderPickerState extends State<FolderPicker> {
       shrinkWrap: true,
       physics: scrolls ? null : const NeverScrollableScrollPhysics(),
       children: [
-        if (_leaf && !widget.targetIsCollection && !_collection)
-          ListTile(
-            key: const Key("picker-leaf"),
-            leading: const Icon(Icons.photo_album),
-            title: Text(albumHoldsNoFolders(l10n)),
-          ),
-        // An album the caller may not add to is no upload target (#240).
-        if (_known && _leaf && !_collection && _contributeMissing)
-          ListTile(
-            key: const Key("picker-no-contribute"),
-            leading: const Icon(Icons.block),
-            title: Text(l10n.uploadTargetNoContribute),
-          ),
-        // A collection takes no file and no folder: photographs are added to
-        // it by reference, see issue #221.
-        if (_collection && !widget.targetIsCollection)
-          ListTile(
-            key: const Key("picker-collection-refused"),
-            leading: const Icon(Icons.collections_bookmark_outlined),
-            title: Text(l10n.collectionTakesNoMove),
-          ),
-        // Why this folder cannot be confirmed for an addition.
-        if (widget.targetIsCollection && !_collection)
+        // What this picker looks for, until one is chosen, see issue #221.
+        if (widget.targetIsCollection && _selected == null)
           ListTile(
             key: const Key("picker-needs-collection"),
             leading: const Icon(Icons.collections_bookmark_outlined),
             title: Text(l10n.pickerNeedsCollection),
-          ),
-        if (_mayCreateCollectionHere(context))
-          ListTile(
-            key: const Key("picker-create-collection"),
-            leading: const Icon(Icons.collections_bookmark_outlined),
-            title: Text(l10n.createNewCollection),
-            onTap: _createCollection,
-          ),
-        // Why this folder cannot be confirmed: an image belongs in an album,
-        // and this is a folder of folders, see issue #113.
-        if (!_leaf &&
-            _selected == null &&
-            widget.targetIsAlbum &&
-            !widget.targetIsCollection)
-          ListTile(
-            key: const Key("picker-needs-album"),
-            leading: const Icon(Icons.photo_library_outlined),
-            title: Text(imagesLiveInAlbums(l10n)),
-          ),
-        if (_mayCreateAlbumHere(context))
-          ListTile(
-            key: const Key("picker-create-album"),
-            leading: const Icon(Icons.create_new_folder),
-            title: Text(l10n.createNewAlbum),
-            onTap: _createAlbum,
           ),
         for (var folder in _folders)
           _highlight.row(folder, _folderRow(context, folder)),
@@ -1359,20 +1457,33 @@ class FolderPickerState extends State<FolderPicker> {
     );
   }
 
-  /// The row of [folder] of the level shown; the album the confirm acts on
-  /// ([_selected]) stands out and is marked.
+  /// The row of [folder] of the level shown; the leaf the confirm acts on
+  /// ([_selected]) stands out and is marked, a leaf the purpose cannot take
+  /// is disabled and says why ([_refusal]).
   Widget _folderRow(BuildContext context, FolderInfo folder) {
     var selected = folder.name == _selected?.name;
+    var refusal = _refusal(folder);
     var tile = ListTile(
       key: Key("picker-folder-${folder.name}"),
+      enabled: refusal == null,
       selected: selected || _highlight.isHighlighted(folder),
       selectedTileColor: PickHighlight.color(context),
       leading: Icon(folderIcon(folder.kind)),
       title: Text(folderLine(folder)),
+      subtitle: refusal == null
+          ? null
+          : Text(refusal, key: Key("picker-refused-${folder.name}")),
       trailing: selected
           ? const Icon(Icons.check, key: Key("picker-selected"))
-          : null,
-      onTap: () => _enter(folder.name),
+          : folder.name == _checking
+              ? const SizedBox(
+                  key: Key("picker-checking"),
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : null,
+      onTap: () => _tap(folder),
     );
     return selected ? KeyedSubtree(key: _selectedRow, child: tile) : tile;
   }

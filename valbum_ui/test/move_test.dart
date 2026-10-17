@@ -115,13 +115,15 @@ Future<void> openPicker(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-/// Descends into the folder of the given name in the open picker.
+/// Taps the row of the given name in the open picker: a folder of folders
+/// is opened, an album chosen.
 Future<void> enterFolder(WidgetTester tester, String name) async {
   await tester.tap(find.byKey(Key("picker-folder-$name")));
   await tester.pumpAndSettle();
 }
 
-/// Confirms the picker with the folder it currently shows.
+/// Confirms the picker with what it acts on: the album chosen, else the
+/// folder shown.
 Future<void> confirmPicker(WidgetTester tester) async {
   await tester.tap(find.byKey(const Key("picker-confirm")));
   await tester.pumpAndSettle();
@@ -169,9 +171,11 @@ void main() {
         expect(find.byKey(const Key("picker-folder-2021")), findsOneWidget);
         expect(find.text("Move 2 images to the top level"), findsOneWidget);
 
-        // An album is a leaf, and a target for images.
+        // An album is a leaf, and a target for images: a tap chooses it,
+        // the level stays.
         await enterFolder(tester, "2020 Trip");
-        expect(find.byKey(const Key("picker-leaf")), findsOneWidget);
+        expect(find.byKey(const Key("picker-selected")), findsOneWidget);
+        expect(find.byKey(const Key("picker-folder-2021")), findsOneWidget);
         expect(find.text("Move 2 images to '2020 Trip'"), findsOneWidget);
 
         await confirmPicker(tester);

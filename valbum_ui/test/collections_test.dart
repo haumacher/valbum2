@@ -353,15 +353,18 @@ void main() {
               .widget<ElevatedButton>(find.byKey(const Key("picker-confirm")))
               .onPressed,
           isNull);
-      // An album is no collection either.
+      // An album is no collection either: its row says so, a tap on it
+      // chooses nothing.
+      expect(find.byKey(const Key("picker-refused-2020 Trip")), findsOneWidget);
       await tapKey(tester, "picker-folder-2020 Trip");
       expect(
           tester
               .widget<ElevatedButton>(find.byKey(const Key("picker-confirm")))
               .onPressed,
           isNull);
-      await tapKey(tester, "picker-up");
+      // A collection is chosen by a tap.
       await tapKey(tester, "picker-folder-Best");
+      expect(find.byKey(const Key("picker-needs-collection")), findsNothing);
       await tapKey(tester, "picker-confirm");
 
       var post = space.posts("collect").single;
@@ -402,7 +405,11 @@ void main() {
       await tapKey(tester, "move-to");
       await tapKey(tester, "picker-folder-Best");
       expect(
-          find.byKey(const Key("picker-collection-refused")), findsOneWidget);
+          tester
+              .widget<Text>(find.byKey(const Key("picker-refused-Best")))
+              .data,
+          testL10n.collectionTakesNoMove);
+      expect(find.byKey(const Key("picker-selected")), findsNothing);
       expect(
           tester
               .widget<ElevatedButton>(find.byKey(const Key("picker-confirm")))
