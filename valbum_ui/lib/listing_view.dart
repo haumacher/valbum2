@@ -542,18 +542,24 @@ class ListingView extends StatelessWidget {
             children: [
               Padding(
                 padding: const EdgeInsets.only(bottom: 4),
-                child: folder.starred
-                    ? Stack(
-                        children: [
-                          buildFolderWidget(folder, width, large: large),
-                          Positioned(
-                            top: 6,
-                            right: 6,
-                            child: starBadge(context, large),
-                          ),
-                        ],
-                      )
-                    : buildFolderWidget(folder, width, large: large),
+                // The star takes the top right corner; the count shown on
+                // hover takes the bottom right one, see issue #286.
+                child: TileCountHover(
+                  folder: folder,
+                  large: large,
+                  child: folder.starred
+                      ? Stack(
+                          children: [
+                            buildFolderWidget(folder, width, large: large),
+                            Positioned(
+                              top: 6,
+                              right: 6,
+                              child: starBadge(context, large),
+                            ),
+                          ],
+                        )
+                      : buildFolderWidget(folder, width, large: large),
+                ),
               ),
               Text(
                 folder.title,
@@ -1569,4 +1575,122 @@ class InboxButton extends StatelessWidget {
           child: const Icon(Icons.inbox),
         ),
       );
+}
+
+/// Whether the tile of [folder] tells, on hover, how many photographs it
+/// holds, see issue #286.
+///
+/// Only an entry that holds photographs of its own has a count to tell -- an
+/// album, an inbox, a collection -- and only where the listing answered one:
+/// a folder of folders is never walked for it, a saved search finds a number
+/// that changes with the caller, and a count of `0` is what the server says
+/// for an entry it did not count (see [FolderInfo.imageCount]).
+bool showsImageCount(FolderInfo folder) =>
+    folder.imageCount > 0 &&
+    switch (folder.kind) {
+      FolderKind.album || FolderKind.inbox || FolderKind.collection => true,
+      _ => false,
+    };
+
+/// The picture of a listing tile that, while a mouse pointer rests on it,
+/// shows in a small bubble at its bottom right how many photographs the
+/// entry holds, see issue #286.
+///
+/// The bottom right corner is free: the star of a starred tile (issue #239)
+/// sits at the top right. A touch screen has no hover and never shows the
+/// bubble -- a tap opens the album, which says the same.
+class TileCountHover extends StatefulWidget {
+  /// The entry the tile shows.
+  final FolderInfo folder;
+
+  /// Whether the tile is the 2×2 tile of a starred entry.
+  final bool large;
+
+  /// The picture of the tile.
+  final Widget child;
+
+  const TileCountHover({
+    super.key,
+    required this.folder,
+    required this.large,
+    required this.child,
+  });
+
+  @override
+  State<TileCountHover> createState() => _TileCountHoverState();
+}
+
+class _TileCountHoverState extends State<TileCountHover> {
+  bool _hovered = false;
+
+  void _setHovered(bool hovered) {
+    if (_hovered != hovered) setState(() => _hovered = hovered);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!showsImageCount(widget.folder)) return widget.child;
+    return MouseRegion(
+      onEnter: (_) => _setHovered(true),
+      onExit: (_) => _setHovered(false),
+      child: Stack(
+        children: [
+          widget.child,
+          if (_hovered)
+            Positioned(
+              bottom: 6,
+              right: 6,
+              child: _bubble(context),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _bubble(BuildContext context) {
+    var count = widget.folder.imageCount;
+    var large = widget.large;
+    var label = AppLocalizations.of(context)!.imageCount(count);
+    // The look of the star's badge: a translucent dark ground that keeps the
+    // white number readable on a light photograph and a dark one alike.
+    return Tooltip(
+      message: label,
+      // The label below says it once, for a screen reader.
+      excludeFromSemantics: true,
+      child: Semantics(
+        label: label,
+        excludeSemantics: true,
+        child: Container(
+          key: const Key("image-count-bubble"),
+          padding: EdgeInsets.symmetric(
+            horizontal: large ? 10 : 7,
+            vertical: large ? 4 : 3,
+          ),
+          decoration: BoxDecoration(
+            color: Colors.black54,
+            borderRadius: BorderRadius.circular(large ? 14 : 11),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.photo_outlined,
+                color: Colors.white,
+                size: large ? 18 : 14,
+              ),
+              SizedBox(width: large ? 5 : 4),
+              Text(
+                "$count",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: large ? 15 : 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

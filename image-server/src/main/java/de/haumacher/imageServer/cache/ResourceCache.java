@@ -174,6 +174,14 @@ public class ResourceCache {
 	}
 
 	/**
+	 * How many photographs the given album holds, as a listing tile counts them, see
+	 * {@link FolderInfo#getImageCount()} and issue #286.
+	 */
+	public static int imageCount(AlbumInfo album) {
+		return Loader.imageCount(album);
+	}
+
+	/**
 	 * The <code>index.json</code> of the given folder, <code>null</code> if it has none; the strict
 	 * form of {@link #sidecar(File)}, see issue #254.
 	 *
@@ -1186,12 +1194,6 @@ public class ResourceCache {
 					folderInfo.setKind(inbox ? FolderKind.INBOX
 						: albumInfo.getKind() == AlbumKind.COLLECTION ? FolderKind.COLLECTION
 							: albumInfo.getKind() == AlbumKind.SEARCH ? FolderKind.SEARCH : FolderKind.ALBUM);
-					if (inbox) {
-						// The pile of work an inbox tile says how much of is left, see issue #137.
-						// Counted out of the sidecar that was read a line ago, so a listing pays
-						// nothing for it and no image is opened.
-						folderInfo.setImageCount(imageCount(albumInfo));
-					}
 					folderInfo.setTitle(albumInfo.getTitle());
 					folderInfo.setSubTitle(albumInfo.getSubTitle());
 					// Whether the tile stands out, read from the sidecar like the title, see
@@ -1202,12 +1204,32 @@ public class ResourceCache {
 						// A cropped photograph is shown cut, and the tile asks for its region, see
 						// ThumbnailInfo#getCrop() and issue #212.
 						folderInfo.setIndexPicture(de.haumacher.imageServer.Crops.withRegion(albumInfo, chosen));
-					} else if (albumInfo.getKind() == AlbumKind.ALBUM) {
-						// An album that chose no cover is shown by the same rule as one without a
-						// sidecar, never by none: writing a sidecar (a star, a rating, a title) must
-						// not take the picture off its tile, see issue #260. A collection and a
-						// saved search are given theirs where they are answered.
-						folderInfo.setIndexPicture(defaultCover(folder, albumInfo));
+					}
+					if (albumInfo.getKind() == AlbumKind.COLLECTION) {
+						// A collection holds no files, and its sidecar lists every reference it
+						// holds, see issue #221: their number, answered to each caller as the
+						// references they are shown, see ImageServlet#collectionCover.
+						folderInfo.setImageCount(imageCount(albumInfo));
+					} else if (albumInfo.getKind() != AlbumKind.SEARCH) {
+						// An album and the inbox: the sidecar is the truth for the files it lists,
+						// but it need not list every file of the folder -- a file nobody edited is
+						// in the record alone. Completed from the record exactly as the album
+						// itself is, so that the tile counts what opening the album shows: no
+						// image is opened, see issue #286. The inbox's count is the pile of work
+						// left (issue #137), the album's what it holds; PrivacyFilter#filterEntry
+						// narrows the latter to what the caller may see.
+						AnalysisRecord record = AnalysisRecord.read(folder);
+						AlbumInfo complete = loadAlbum(albumInfo, folder, record);
+						folderInfo.setImageCount(imageCount(complete));
+						if (chosen == null && record != null && complete.getKind() == AlbumKind.ALBUM) {
+							// An album that chose no cover is shown by the same rule as one without
+							// a sidecar, never by none: writing a sidecar (a star, a rating, a
+							// title) must not take the picture off its tile, see issue #260. A
+							// collection and a saved search are given theirs where they are
+							// answered. A folder the background has not recorded yet has no
+							// picture yet.
+							folderInfo.setIndexPicture(de.haumacher.imageServer.PrivacyFilter.defaultCover(complete));
+						}
 					}
 					return folderInfo;
 				}
@@ -1237,34 +1259,14 @@ public class ResourceCache {
 			// The album the folder is answered as (see #loadDir(PathInfo)), shown by the rule of
 			// an album that chose no cover, see issue #260.
 			AlbumInfo album = loadAlbum(AlbumInfo.create().setKind(Inboxes.kindOf(folder)), folder, record);
+			// Every photograph the record holds, see issue #286.
+			folderInfo.setImageCount(imageCount(album));
 			ImagePart picture = de.haumacher.imageServer.PrivacyFilter.defaultImage(album);
 			if (picture != null) {
 				folderInfo.setIndexPicture(de.haumacher.imageServer.PrivacyFilter.defaultCover(album));
 			}
 			titleFromName(folderInfo, folderName, picture == null ? 0L : picture.getDate());
 			return folderInfo;
-		}
-
-		/**
-		 * The picture the tile of the given album shows where its sidecar chose none, see
-		 * {@link de.haumacher.imageServer.PrivacyFilter#defaultCover(AlbumInfo)} and issue #260.
-		 *
-		 * <p>
-		 * Read from the sidecar and the analysis record exactly as the album itself is (see
-		 * {@link #loadAlbum(AlbumInfo, File, AnalysisRecord)}), so the tile shows what opening the
-		 * album would show first: no image is opened, and nothing is written. A folder the
-		 * background has not recorded yet has no picture yet.
-		 * </p>
-		 *
-		 * @param sidecar
-		 *        The album's sidecar as just read; completed by its record here.
-		 */
-		private static ThumbnailInfo defaultCover(File folder, AlbumInfo sidecar) {
-			AnalysisRecord record = AnalysisRecord.read(folder);
-			if (record == null) {
-				return null;
-			}
-			return de.haumacher.imageServer.PrivacyFilter.defaultCover(loadAlbum(sidecar, folder, record));
 		}
 
 		/**
@@ -1290,15 +1292,18 @@ public class ResourceCache {
 		}
 
 		/**
-		 * How many photographs the given sidecar lists, the members of a group counted one by one.
+		 * How many photographs the given album holds, the members of a group counted one by one,
+		 * see {@link FolderInfo#getImageCount()}.
 		 *
 		 * <p>
-		 * An inbox stores no group &mdash; it is answered flat and by date, see issue #131 &mdash;
-		 * but an album that was turned into one may hold some, and then the tile has to say how
-		 * many pictures are waiting there and not how many bundles.
+		 * A raw and the JPEG of its name are one part and count once (issue #191), a part whose file
+		 * cannot be read counts as the photograph it stands for. An inbox stores no group &mdash; it
+		 * is answered flat and by date, see issue #131 &mdash; but an album that was turned into one
+		 * may hold some, and then the tile has to say how many pictures are waiting there and not
+		 * how many bundles.
 		 * </p>
 		 */
-		private static int imageCount(AlbumInfo album) {
+		static int imageCount(AlbumInfo album) {
 			int result = 0;
 			for (AlbumPart part : album.getParts()) {
 				if (part instanceof ImagePart) {

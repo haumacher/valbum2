@@ -9,6 +9,7 @@ import de.haumacher.imageServer.cache.ResourceCache;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.AlbumPart;
 import de.haumacher.imageServer.shared.model.FolderInfo;
+import de.haumacher.imageServer.shared.model.FolderKind;
 import de.haumacher.imageServer.shared.model.FolderResource;
 import de.haumacher.imageServer.shared.model.ImageGroup;
 import de.haumacher.imageServer.shared.model.ImagePart;
@@ -573,6 +574,78 @@ public class PrivacyFilter {
 	 *        {@link #filter(Resource, PathInfo, int, int, String)}.
 	 */
 	public FolderInfo filterEntry(FolderInfo folder, PathInfo childPath, int clearance, int minRating, String label) {
+		FolderInfo result = filterCover(folder, childPath, clearance, minRating, label);
+		int count = visibleCount(folder, childPath, clearance, minRating, label);
+		if (count == result.getImageCount()) {
+			return result;
+		}
+		return withImageCount(result, count);
+	}
+
+	/**
+	 * How many photographs of the folder of the given tile the request may see, see
+	 * {@link FolderInfo#getImageCount()} and issue #286.
+	 *
+	 * <p>
+	 * An album answers what the request is shown of it, counted in the album exactly as opening it
+	 * would show it: a guest must not learn how many private photographs an album holds. A file
+	 * the sidecar does not mention is counted as the album shows it &mdash; public and unrated
+	 * where nobody restricted it, see {@link #shown(AlbumInfo, String, int, int, String)}. The
+	 * album is the cached one, so a listing opens no image for it.
+	 * </p>
+	 *
+	 * <p>
+	 * The inbox keeps its count, whoever looks: it is the pile of work waiting there, see issue
+	 * #135 and issue #137. A collection's references are resolved where a listing is answered (see
+	 * <code>ImageServlet#collectionCover</code>), so here, where nothing is resolved, a request
+	 * that sees less than everything is told no number at all.
+	 * </p>
+	 */
+	private int visibleCount(FolderInfo folder, PathInfo childPath, int clearance, int minRating, String label) {
+		int count = folder.getImageCount();
+		if (count == 0 || folder.getKind() == FolderKind.INBOX) {
+			return count;
+		}
+		if (clearance >= Privacy.PRIVATE && Ratings.unlimited(minRating) && label.isEmpty()) {
+			// Nothing is hidden from this request.
+			return count;
+		}
+		if (folder.getKind() != FolderKind.ALBUM || !childPath.toFile().isDirectory()) {
+			return 0;
+		}
+		Resource album;
+		try {
+			album = _cache.lookup(childPath);
+		} catch (RuntimeException ex) {
+			// A photograph whose privacy cannot be read is shown to nobody, see issue #254.
+			return 0;
+		}
+		if (!(album instanceof AlbumInfo)) {
+			return 0;
+		}
+		return ResourceCache.imageCount(filterAlbum((AlbumInfo) album, clearance, minRating, label));
+	}
+
+	/** A copy of the given tile that says it holds the given number of photographs. */
+	public static FolderInfo withImageCount(FolderInfo folder, int count) {
+		FolderInfo result = FolderInfo.create()
+			.setName(folder.getName())
+			.setKind(folder.getKind())
+			.setImageCount(count)
+			.setTitle(folder.getTitle())
+			.setSubTitle(folder.getSubTitle())
+			.setStarred(folder.isStarred())
+			.setLink(folder.getLink())
+			.setEffectiveDate(folder.getEffectiveDate());
+		if (folder.getIndexPicture() != null) {
+			result.setIndexPicture(folder.getIndexPicture());
+		}
+		return result;
+	}
+
+	/** The given tile with a cover the request may see, see {@link #filterEntry}. */
+	private FolderInfo filterCover(FolderInfo folder, PathInfo childPath, int clearance, int minRating,
+			String label) {
 		ThumbnailInfo indexPicture = folder.getIndexPicture();
 		if (indexPicture == null) {
 			return folder;
@@ -613,7 +686,7 @@ public class PrivacyFilter {
 			.setName(folder.getName())
 			// What the folder is does not depend on who is looking at it, see issue #133.
 			.setKind(folder.getKind())
-			// Nor how much lies in it, see issue #137.
+			// How much lies in it is narrowed by #filterEntry, see issue #286.
 			.setImageCount(folder.getImageCount())
 			.setTitle(folder.getTitle())
 			.setSubTitle(folder.getSubTitle())

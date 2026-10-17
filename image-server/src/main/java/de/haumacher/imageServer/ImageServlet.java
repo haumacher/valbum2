@@ -9576,6 +9576,9 @@ public class ImageServlet extends HttpServlet {
 		if (folder.getKind() == de.haumacher.imageServer.shared.model.FolderKind.SEARCH) {
 			return searchTile(folder, childPath, caller, viewAs, label);
 		}
+		if (folder.getKind() == de.haumacher.imageServer.shared.model.FolderKind.COLLECTION) {
+			folder = collectionCount(folder, childPath, caller, viewAs, label);
+		}
 		ThumbnailInfo cover = folder.getIndexPicture();
 		if (cover == null || cover.getImage().isEmpty() || !childPath.toFile().isDirectory()) {
 			return folder;
@@ -9615,6 +9618,29 @@ public class ImageServlet extends HttpServlet {
 			result.setIndexPicture(copy);
 		}
 		return result;
+	}
+
+	/**
+	 * The given collection tile with the number of photographs the caller is shown in it, see
+	 * issue #286: its references resolved and filtered exactly as opening the collection would
+	 * answer them (see {@link #folderAnswer(Resource, PathInfo, Caller, int, int)}), a gone
+	 * photograph left out. The faces are not derived: a count does not need them.
+	 */
+	private FolderInfo collectionCount(FolderInfo folder, PathInfo childPath, Caller caller, int viewAs,
+			String label) {
+		Resource stored = childPath.toFile().isDirectory() ? lookupOrSkip(childPath) : null;
+		int count = 0;
+		if (PhotoCollections.isCollection(stored)) {
+			AlbumInfo resolved = _collections.resolve((AlbumInfo) stored,
+				source -> sourceAlbum(source, caller, viewAs, null, false), false, false);
+			int clearance = Math.min(_auth.clearance(caller, childPath), viewAs);
+			Resource answer =
+				_privacy.filter(resolved, childPath, clearance, _auth.minRating(caller, childPath, viewAs), label);
+			if (answer instanceof AlbumInfo) {
+				count = ResourceCache.imageCount((AlbumInfo) answer);
+			}
+		}
+		return count == folder.getImageCount() ? folder : PrivacyFilter.withImageCount(folder, count);
 	}
 
 	/**

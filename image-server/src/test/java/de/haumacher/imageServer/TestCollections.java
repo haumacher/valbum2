@@ -347,6 +347,18 @@ public class TestCollections extends ShareTestCase {
 		assertNull("A picture the caller may not see is no picture of the tile.", forEve.getIndexPicture());
 	}
 
+	public void testTheListingCountsWhatTheCallerIsShownOfACollection() throws Exception {
+		createCollection("Best of");
+		collect(ZOO, "/Best of", SharingFixture.ALICE, "public.jpg", "members.jpg", "private.jpg");
+
+		// The very photographs opening the collection shows each of them, see issue #286.
+		assertEquals(3, entry(listing(get("/", "json", SharingFixture.ALICE)), "Best of").getImageCount());
+		assertEquals(2, entry(listing(get("/", "json", SharingFixture.CAROL)), "Best of").getImageCount());
+		assertEquals(1, entry(listing(get("/", "json", SharingFixture.EVE)), "Best of").getImageCount());
+		assertEquals("The author previewing as the public.", 1,
+			entry(listing(get("/", "json", SharingFixture.ALICE, "public")), "Best of").getImageCount());
+	}
+
 	// --- Edits through the collection. ---
 
 	public void testEditsAreWrittenToThePhotographsAlbum() throws Exception {

@@ -190,27 +190,30 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	}
 
 	/**
-	 * How many photographs an inbox holds, <code>0</code> for everything else, see issue #137.
+	 * How many photographs an album, the inbox or a collection holds, as the caller is shown them;
+	 * <code>0</code> for a folder of folders and a saved search, see issue #137 and issue #286.
 	 *
 	 * <p>
-	 * The number of {@link ImagePart}s the folder's own sidecar lists, the members of an
-	 * {@link ImageGroup} counted one by one. Derived on every read like {@link #getKind()} and read from
-	 * the very sidecar the listing opens anyway, so it costs a listing nothing: not one image file
-	 * is opened for it, which is the rule {@link #getEffectiveDate()} is bound by too.
+	 * What opening the folder would show, counted without opening a single image file (the rule
+		 * {@link #getEffectiveDate()} is bound by too): an album's own sidecar completed by the record the
+	 * background keeps of its folder, so that a file the sidecar does not mention counts as well;
+	 * the members of an {@link ImageGroup} are counted one by one, a raw and the JPEG of its name
+	 * once. A folder the background has not recorded yet answers what its sidecar lists.
 	 * </p>
 	 *
 	 * <p>
-	 * <b>Only an inbox carries it.</b> An album and a folder of folders answer <code>0</code>, and
-	 * deliberately so: an inbox is a pile of work and its tile says how much is left, while the
-	 * count of an album is no part of what an album is. A folder of folders would have to be walked
-	 * for one, which a listing never does.
+	 * An album's count is what the caller may see of it: narrowed to the photographs shown at the
+	 * caller's clearance, rating floor and label, so that a guest never learns how many private
+	 * photographs an album holds. A collection's count is its references resolved for the caller,
+	 * a gone photograph left out. A folder of folders would have to be walked for one, which a
+	 * listing never does; a saved search finds a different number for everybody who asks.
 	 * </p>
 	 *
 	 * <p>
-	 * It is what the folder holds, not what the caller may see: a member who may only
-	 * {@link #getKind() contribute} is answered the whole inbox's count although they are shown their
-	 * own contributions inside it (issue #135). The sidecar knows no contributors &mdash; the hash
-	 * sidecar does &mdash; so a count of one's own would cost a second file per entry of every
+	 * The inbox is the exception: its count is the pile of work left, whoever looks. A member who
+	 * may only {@link #getKind() contribute} is answered the whole inbox's count although they are shown
+	 * their own contributions inside it (issue #135). The sidecar knows no contributors &mdash; the
+	 * hash sidecar does &mdash; so a count of one's own would cost a second file per entry of every
 	 * listing, and the number the tile shows is "this much is waiting here", which is true for
 	 * everybody.
 	 * </p>
