@@ -4359,4 +4359,29 @@ class AppLocalizationsDe extends AppLocalizations {
   @override
   String get posterNotPlaying =>
       'Das Video zeigt noch kein Bild. Starten Sie es und halten Sie es in dem Moment an, den das Vorschaubild zeigen soll.';
+
+  @override
+  String get cameraRollChooseSources => 'Auswählen...';
+
+  @override
+  String cameraRollSourcesSummary(String names, int more) {
+    String _temp0 = intl.Intl.pluralLogic(
+      more,
+      locale: localeName,
+      other: 'Synchronisiert: $names und $more weitere',
+      one: 'Synchronisiert: $names und 1 weiteres',
+      zero: 'Synchronisiert: $names',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get cameraRollSourcesFilter => 'Alben filtern';
+
+  @override
+  String get cameraRollSourcesNoMatch => 'Kein Album passt.';
+
+  @override
+  String get cameraRollNoDeviceAlbums =>
+      'Das Gerät nennt keine Alben, aus denen ausgewählt werden kann.';
 }

@@ -1099,5 +1099,10 @@
   "pickerNeedsCollection": "Fotos werden einer Sammlung hinzugefügt – wählen Sie eine aus oder erstellen Sie eine.",
   "posterUse": "Als Vorschaubild verwenden",
   "posterReset": "Vorschaubild zurücksetzen",
-  "posterNotPlaying": "Das Video zeigt noch kein Bild. Starten Sie es und halten Sie es in dem Moment an, den das Vorschaubild zeigen soll."
+  "posterNotPlaying": "Das Video zeigt noch kein Bild. Starten Sie es und halten Sie es in dem Moment an, den das Vorschaubild zeigen soll.",
+  "cameraRollChooseSources": "Auswählen...",
+  "cameraRollSourcesSummary": "{more, plural, =0{Synchronisiert: {names}} =1{Synchronisiert: {names} und 1 weiteres} other{Synchronisiert: {names} und {more} weitere}}",
+  "cameraRollSourcesFilter": "Alben filtern",
+  "cameraRollSourcesNoMatch": "Kein Album passt.",
+  "cameraRollNoDeviceAlbums": "Das Gerät nennt keine Alben, aus denen ausgewählt werden kann."
 }

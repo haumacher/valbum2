@@ -8,9 +8,11 @@
 /// boxes existed must not upload one photo more than it did.
 library;
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -36,7 +38,7 @@ PhotoItem photo(String name, int minute) => fakePhoto(
 /// The engine of a test: a fake library with albums, an in-memory store, and
 /// a server that accepts everything and knows nothing.
 class Harness {
-  final FakePhotoLibrary library = FakePhotoLibrary();
+  final FakePhotoLibrary library;
   final InMemorySettingsStore store = InMemorySettingsStore();
 
   /// The bodies of the uploads the server received.
@@ -51,7 +53,8 @@ class Harness {
     CameraRollConfig config = const CameraRollConfig(
       enabled: true,
     ),
-  }) {
+    FakePhotoLibrary? library,
+  }) : library = library ?? FakePhotoLibrary() {
     store.cameraRoll = config.toJson();
     var client = VAlbumClient(
       dataUrl: serverDataUrl,
@@ -80,7 +83,7 @@ class Harness {
       callerOf: () async =>
           CallerInfo(role: roleMember, inbox: inbox.join("/")),
       store: store,
-      library: library,
+      library: this.library,
       clientOf: () => client,
     );
   }
@@ -98,21 +101,100 @@ class Harness {
   }
 }
 
-/// Pumps the camera-roll section of the settings on its own.
-Future<void> pumpSection(WidgetTester tester, CameraRollSync sync) async {
+/// Pumps the camera-roll section of the settings on its own, as [caller]
+/// where one is given.
+///
+/// [settle] waits for every animation; a progress indicator never settles.
+Future<void> pumpSection(
+  WidgetTester tester,
+  CameraRollSync sync, {
+  CallerInfo? caller,
+  bool settle = true,
+}) async {
+  Widget section = CameraRollScope(
+    sync: sync,
+    child: const Scaffold(
+      body: SingleChildScrollView(child: CameraRollSection()),
+    ),
+  );
   await tester.pumpWidget(
     MaterialApp(
       localizationsDelegates: testLocalizationsDelegates,
       supportedLocales: testSupportedLocales,
-      home: CameraRollScope(
-        sync: sync,
-        child: const Scaffold(
-          body: SingleChildScrollView(child: CameraRollSection()),
-        ),
-      ),
+      home: caller == null
+          ? section
+          : CallerScope(caller: caller, child: section),
     ),
   );
-  await tester.pumpAndSettle();
+  if (settle) {
+    await tester.pumpAndSettle();
+  } else {
+    await tester.pump();
+  }
+}
+
+/// A library whose albums arrive when the test says so ([gate]), or fail
+/// [failures] times with the platform's [reason] first (issue #298).
+class SlowLibrary extends FakePhotoLibrary {
+  /// Completed by the test to let the albums arrive; `null` for at once.
+  Completer<void>? gate;
+
+  /// How many of the next requests fail.
+  int failures = 0;
+
+  /// What the platform says when one fails.
+  String reason = "The gallery is busy.";
+
+  /// How many times the albums were asked for.
+  int asked = 0;
+
+  @override
+  Future<List<PhotoAlbum>> albums() async {
+    asked++;
+    await gate?.future;
+    if (failures > 0) {
+      failures--;
+      throw PlatformException(code: "busy", message: reason);
+    }
+    return super.albums();
+  }
+}
+
+/// Adds the camera and eleven albums more to [library]: twelve to choose
+/// from, in this order.
+void addTwelveAlbums(FakePhotoLibrary library) {
+  library.addAlbum("Camera", [photo("cam.jpg", 1)], id: "cam", camera: true);
+  library.addAlbum("WhatsApp Images", [photo("wa.jpg", 2)], id: "wa");
+  for (var n = 2; n < 12; n++) {
+    library.addAlbum(
+      "Album $n",
+      [for (var i = 0; i < n; i++) photo("a$n-$i.jpg", n)],
+      id: "a$n",
+    );
+  }
+}
+
+/// Opens the dialog choosing the albums.
+Future<void> openSources(WidgetTester tester, {bool settle = true}) async {
+  await tester.tap(find.byKey(cameraRollChooseSourcesKey));
+  if (settle) {
+    await tester.pumpAndSettle();
+  } else {
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+  }
+  expect(find.byKey(cameraRollSourcesDialogKey), findsOneWidget);
+}
+
+/// The box of the album [id] in the dialog.
+CheckboxListTile sourceBox(WidgetTester tester, String id) =>
+    tester.widget<CheckboxListTile>(find.byKey(cameraRollSourceKey(id)));
+
+/// Room for the dialog to show all twelve albums at once.
+void tallScreen(WidgetTester tester) {
+  tester.view.physicalSize = const Size(800, 2000);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
 }
 
 void main() {
@@ -439,8 +521,7 @@ void main() {
   });
 
   group('the settings section', () {
-    testWidgets('lists the albums of the device with their counts',
-        (tester) async {
+    testWidgets('names the watched album in one line', (tester) async {
       var harness = Harness();
       addTearDown(harness.dispose);
       harness.library.addAlbum(
@@ -457,45 +538,407 @@ void main() {
       await pumpSection(tester, harness.sync);
 
       expect(find.byKey(cameraRollSourcesKey), findsOneWidget);
-      expect(find.text("Camera"), findsOneWidget);
-      expect(find.text("2 photos"), findsOneWidget);
-      expect(find.text("WhatsApp Images"), findsOneWidget);
-      expect(find.text("1 photo"), findsOneWidget);
-      expect(find.text(testL10n.cameraRollNewSource), findsOneWidget);
+      expect(find.text(testL10n.albumsToSync), findsOneWidget);
       expect(
-        tester.widget<CheckboxListTile>(find.byKey(cameraRollSourceKey("cam"))),
-        isA<CheckboxListTile>().having((tile) => tile.value, "camera", isTrue),
+        tester.widget<Text>(find.byKey(cameraRollSourcesSummaryKey)).data,
+        "Watched: Camera",
+        reason: "the camera alone, where nothing was chosen yet",
       );
-      expect(
-        tester.widget<CheckboxListTile>(find.byKey(cameraRollSourceKey("wa"))),
-        isA<CheckboxListTile>()
-            .having((tile) => tile.value, "WhatsApp", isFalse),
-      );
+      expect(find.byType(CheckboxListTile), findsNothing);
       expect(find.byKey(cameraRollNoSourcesKey), findsNothing);
+      expect(
+        tester
+            .widget<OutlinedButton>(find.byKey(cameraRollChooseSourcesKey))
+            .onPressed,
+        isNotNull,
+      );
     });
 
-    testWidgets('stores what was ticked', (tester) async {
+    testWidgets('shows a summary, not a box for each of twelve albums',
+        (tester) async {
+      var harness = Harness();
+      addTearDown(harness.dispose);
+      addTwelveAlbums(harness.library);
+      await harness.sync.load();
+      await harness.sync.chooseSources(
+        const ["cam", "wa", "a5", "a9"],
+        albums: await harness.library.albums(),
+      );
+
+      await pumpSection(tester, harness.sync);
+
+      expect(
+        tester.widget<Text>(find.byKey(cameraRollSourcesSummaryKey)).data,
+        "Watched: Camera, WhatsApp Images and 2 more",
+      );
+      expect(find.byType(CheckboxListTile), findsNothing);
+      expect(find.text("Album 5"), findsNothing);
+      expect(find.byKey(cameraRollSourceKey("a5")), findsNothing);
+    });
+
+    test('names three albums rather than counting one', () {
+      expect(sourcesSummary(["A", "B", "C"], testL10n), "Watched: A, B, C");
+      expect(
+        sourcesSummary(["A", "B", "C", "D"], testL10n),
+        "Watched: A, B and 2 more",
+      );
+    });
+
+    testWidgets('"Choose..." opens the dialog with every album',
+        (tester) async {
+      tallScreen(tester);
+      var harness = Harness();
+      addTearDown(harness.dispose);
+      addTwelveAlbums(harness.library);
+      await harness.sync.load();
+      await pumpSection(tester, harness.sync);
+
+      await openSources(tester);
+
+      var dialog = find.byKey(cameraRollSourcesDialogKey);
+      expect(
+        find.descendant(of: dialog, matching: find.byType(CheckboxListTile)),
+        findsNWidgets(12),
+      );
+      expect(sourceBox(tester, "cam").value, isTrue);
+      expect(sourceBox(tester, "wa").value, isFalse);
+      expect(sourceBox(tester, "a11").value, isFalse);
+      expect(
+        find.descendant(of: dialog, matching: find.text("11 photos")),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+            of: dialog, matching: find.text(testL10n.cameraRollNewSource)),
+        findsOneWidget,
+      );
+      expect(find.byKey(cameraRollSourcesFilterKey), findsOneWidget);
+    });
+
+    testWidgets('narrows the dialog by the filter', (tester) async {
+      tallScreen(tester);
+      var harness = Harness();
+      addTearDown(harness.dispose);
+      addTwelveAlbums(harness.library);
+      await harness.sync.load();
+      await pumpSection(tester, harness.sync);
+      await openSources(tester);
+
+      await tester.enterText(find.byKey(cameraRollSourcesFilterKey), "whats");
+      await tester.pump();
+
+      expect(find.byType(CheckboxListTile), findsOneWidget);
+      expect(find.byKey(cameraRollSourceKey("wa")), findsOneWidget);
+
+      await tester.enterText(find.byKey(cameraRollSourcesFilterKey), "zzz");
+      await tester.pump();
+
+      expect(find.byType(CheckboxListTile), findsNothing);
+      expect(find.text(testL10n.cameraRollSourcesNoMatch), findsOneWidget);
+    });
+
+    testWidgets('keeps what was ticked behind the filter', (tester) async {
+      tallScreen(tester);
+      var harness = Harness();
+      addTearDown(harness.dispose);
+      addTwelveAlbums(harness.library);
+      await harness.sync.load();
+      await pumpSection(tester, harness.sync);
+      await openSources(tester);
+
+      await tester.enterText(find.byKey(cameraRollSourcesFilterKey), "whats");
+      await tester.pump();
+      await tester.tap(find.byKey(cameraRollSourceKey("wa")));
+      await tester.pump();
+      await tester.enterText(find.byKey(cameraRollSourcesFilterKey), "");
+      await tester.pump();
+      await tester.tap(find.byKey(cameraRollSourcesApplyKey));
+      await tester.pumpAndSettle();
+
+      expect(harness.sync.config.sources, ["cam", "wa"],
+          reason: "the camera, hidden by the filter, stays ticked");
+    });
+
+    testWidgets('applies the ticks in the order the device names the albums',
+        (tester) async {
+      tallScreen(tester);
+      var harness = Harness();
+      addTearDown(harness.dispose);
+      addTwelveAlbums(harness.library);
+      await harness.sync.load();
+      await pumpSection(tester, harness.sync);
+      await openSources(tester);
+
+      // Ticked the other way round from the order they stand in.
+      await tester.tap(find.byKey(cameraRollSourceKey("a9")));
+      await tester.pump();
+      await tester.tap(find.byKey(cameraRollSourceKey("a3")));
+      await tester.pump();
+      expect(sourceBox(tester, "a9").value, isTrue);
+      expect(harness.sync.config.sources, isNull,
+          reason: "nothing is stored before Apply");
+
+      await tester.tap(find.byKey(cameraRollSourcesApplyKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(cameraRollSourcesDialogKey), findsNothing);
+      expect(harness.sync.config.sources, ["cam", "a3", "a9"]);
+      expect(
+        (await harness.store.loadCameraRollConfig()).sources,
+        ["cam", "a3", "a9"],
+      );
+      expect(
+        tester.widget<Text>(find.byKey(cameraRollSourcesSummaryKey)).data,
+        "Watched: Camera, Album 3, Album 9",
+      );
+    });
+
+    testWidgets('unticking everything leaves the warning', (tester) async {
       var harness = Harness();
       addTearDown(harness.dispose);
       harness.library
           .addAlbum("Camera", [photo("a.jpg", 1)], id: "cam", camera: true);
-      harness.library
-          .addAlbum("WhatsApp Images", [photo("wa.jpg", 3)], id: "wa");
+      await harness.sync.load();
+      await pumpSection(tester, harness.sync);
+      await openSources(tester);
+
+      await tester.tap(find.byKey(cameraRollSourceKey("cam")));
+      await tester.pump();
+      await tester.tap(find.byKey(cameraRollSourcesApplyKey));
+      await tester.pumpAndSettle();
+
+      expect(harness.sync.config.sources, isEmpty);
+      expect(find.byKey(cameraRollNoSourcesKey), findsOneWidget);
+      expect(find.byKey(cameraRollSourcesSummaryKey), findsNothing);
+    });
+
+    testWidgets('Cancel and Escape change nothing', (tester) async {
+      tallScreen(tester);
+      var harness = Harness();
+      addTearDown(harness.dispose);
+      addTwelveAlbums(harness.library);
       await harness.sync.load();
       await pumpSection(tester, harness.sync);
 
+      await openSources(tester);
       await tester.tap(find.byKey(cameraRollSourceKey("wa")));
+      await tester.pump();
+      await tester.tap(find.byKey(cameraRollSourcesCancelKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(cameraRollSourcesDialogKey), findsNothing);
+      expect(harness.sync.config.sources, isNull);
+      expect(harness.store.cameraRoll, isNot(contains('"sources"')));
+      expect(
+        tester.widget<Text>(find.byKey(cameraRollSourcesSummaryKey)).data,
+        "Watched: Camera",
+      );
+
+      await openSources(tester);
+      expect(sourceBox(tester, "wa").value, isFalse,
+          reason: "a cancelled tick is not remembered either");
+      await tester.tap(find.byKey(cameraRollSourceKey("wa")));
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(cameraRollSourcesDialogKey), findsNothing);
+      expect(harness.sync.config.sources, isNull);
+    });
+
+    testWidgets('ticks the highlighted album with Enter', (tester) async {
+      tallScreen(tester);
+      var harness = Harness();
+      addTearDown(harness.dispose);
+      addTwelveAlbums(harness.library);
+      await harness.sync.load();
+      await pumpSection(tester, harness.sync);
+      await openSources(tester);
+
+      await tester.enterText(find.byKey(cameraRollSourcesFilterKey), "album 1");
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pump();
+
+      expect(sourceBox(tester, "a10").value, isTrue);
+      expect(sourceBox(tester, "a11").value, isFalse);
+    });
+
+    testWidgets('waits for the albums, in the section and in the dialog',
+        (tester) async {
+      var library = SlowLibrary()..gate = Completer<void>();
+      var harness = Harness(library: library);
+      addTearDown(harness.dispose);
+      addTwelveAlbums(library);
+      await harness.sync.load();
+
+      await pumpSection(tester, harness.sync, settle: false);
+
+      expect(find.byKey(const Key("$cameraRollAlbumsKeyPrefix-loading")),
+          findsOneWidget);
+      expect(find.byKey(cameraRollSourcesSummaryKey), findsNothing);
+
+      await openSources(tester, settle: false);
+      var dialog = find.byKey(cameraRollSourcesDialogKey);
+      expect(
+        find.descendant(
+            of: dialog,
+            matching:
+                find.byKey(const Key("$cameraRollAlbumsKeyPrefix-loading"))),
+        findsOneWidget,
+      );
+      expect(
+        tester.widget<FilledButton>(find.byKey(cameraRollSourcesApplyKey))
+            .onPressed,
+        isNull,
+        reason: "nothing to apply before the albums are there",
+      );
+
+      library.gate!.complete();
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key("$cameraRollAlbumsKeyPrefix-loading")),
+          findsNothing);
+      expect(sourceBox(tester, "cam").value, isTrue,
+          reason: "what is watched is ticked once the albums arrive");
+      expect(library.asked, 1, reason: "the dialog waits for the same request");
+
+      await tester.tap(find.byKey(cameraRollSourcesCancelKey));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<Text>(find.byKey(cameraRollSourcesSummaryKey)).data,
+        "Watched: Camera",
+      );
+    });
+
+    testWidgets('says why the albums failed, and asks again on Retry',
+        (tester) async {
+      var library = SlowLibrary()..failures = 1;
+      var harness = Harness(library: library);
+      addTearDown(harness.dispose);
+      addTwelveAlbums(library);
+      await harness.sync.load();
+
+      await pumpSection(tester, harness.sync);
+
+      expect(find.byKey(const Key("$cameraRollAlbumsKeyPrefix-failed")),
+          findsOneWidget);
+      expect(find.text(testL10n.loadingFailed("The gallery is busy.")),
+          findsOneWidget);
+      expect(find.byKey(cameraRollNoSourcesKey), findsNothing,
+          reason: "a failure is not an empty device");
+
+      await tester.tap(find.byKey(const Key("$cameraRollAlbumsKeyPrefix-retry")));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key("$cameraRollAlbumsKeyPrefix-failed")),
+          findsNothing);
+      expect(
+        tester.widget<Text>(find.byKey(cameraRollSourcesSummaryKey)).data,
+        "Watched: Camera",
+      );
+    });
+
+    testWidgets('says why in the dialog too, and Retry there lists them',
+        (tester) async {
+      tallScreen(tester);
+      // The dialog asks again as it opens over a failure: it fails twice.
+      var library = SlowLibrary()..failures = 2;
+      var harness = Harness(library: library);
+      addTearDown(harness.dispose);
+      addTwelveAlbums(library);
+      await harness.sync.load();
+      await pumpSection(tester, harness.sync);
+
+      await openSources(tester);
+
+      var dialog = find.byKey(cameraRollSourcesDialogKey);
+      var retry = find.descendant(
+          of: dialog,
+          matching: find.byKey(const Key("$cameraRollAlbumsKeyPrefix-retry")));
+      expect(retry, findsOneWidget);
+      expect(
+        find.descendant(
+            of: dialog,
+            matching:
+                find.text(testL10n.loadingFailed("The gallery is busy."))),
+        findsOneWidget,
+      );
+
+      await tester.tap(retry);
       await tester.pumpAndSettle();
 
       expect(
-        (await harness.store.loadCameraRollConfig()).sources,
-        ["cam", "wa"],
+        find.descendant(of: dialog, matching: find.byType(CheckboxListTile)),
+        findsNWidgets(12),
       );
+      expect(library.asked, 3);
+    });
+
+    testWidgets('offers no choice to a guest', (tester) async {
+      var harness = Harness();
+      addTearDown(harness.dispose);
+      harness.library
+          .addAlbum("Camera", [photo("a.jpg", 1)], id: "cam", camera: true);
+      await harness.sync.load();
+
+      await pumpSection(tester, harness.sync,
+          caller: const CallerInfo(role: roleGuest, space: "carol"));
+
+      expect(find.byKey(cameraRollChooseSourcesKey), findsOneWidget);
       expect(
-        tester.widget<CheckboxListTile>(find.byKey(cameraRollSourceKey("wa"))),
-        isA<CheckboxListTile>()
-            .having((tile) => tile.value, "WhatsApp", isTrue),
+        tester
+            .widget<OutlinedButton>(find.byKey(cameraRollChooseSourcesKey))
+            .onPressed,
+        isNull,
       );
+    });
+
+    testWidgets('offers no choice without a photo library', (tester) async {
+      var sync = CameraRollSync(
+        callerOf: () async => const CallerInfo(role: roleMember, inbox: "Inbox"),
+        store: InMemorySettingsStore()
+          ..cameraRoll = const CameraRollConfig(enabled: true).toJson(),
+        library: const UnavailablePhotoLibrary(),
+        clientOf: () => null,
+      );
+      addTearDown(sync.dispose);
+      await sync.load();
+
+      await pumpSection(tester, sync);
+
+      expect(find.byKey(cameraRollSourcesKey), findsNothing);
+      expect(find.byKey(cameraRollChooseSourcesKey), findsNothing);
+    });
+
+    testWidgets('fits a phone with the keyboard up', (tester) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      var harness = Harness();
+      addTearDown(harness.dispose);
+      addTwelveAlbums(harness.library);
+      await harness.sync.load();
+      await pumpSection(tester, harness.sync);
+      await openSources(tester);
+
+      tester.view.viewInsets = const FakeViewPadding(bottom: 340);
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      await tester.enterText(find.byKey(cameraRollSourcesFilterKey), "11");
+      await tester.pumpAndSettle();
+      // The content scrolls below the title, the buttons stay in place.
+      await tester.ensureVisible(find.byKey(cameraRollSourceKey("a11")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(cameraRollSourceKey("a11")));
+      await tester.pump();
+      await tester.tap(find.byKey(cameraRollSourcesApplyKey));
+      await tester.pumpAndSettle();
+
+      expect(harness.sync.config.sources, ["cam", "a11"]);
     });
 
     testWidgets('asks for a choice where the device has no camera album',
@@ -510,6 +953,7 @@ void main() {
 
       expect(find.byKey(cameraRollNoSourcesKey), findsOneWidget);
       expect(find.text(testL10n.cameraRollNoSources), findsOneWidget);
+      expect(find.byKey(cameraRollChooseSourcesKey), findsOneWidget);
     });
 
     testWidgets('says why the albums cannot be listed', (tester) async {
@@ -557,6 +1001,7 @@ void main() {
       expect(find.byKey(cameraRollSourcesKey), findsNothing);
       expect(find.byKey(cameraRollNoSourcesKey), findsNothing);
       expect(find.byKey(cameraRollSourcesProblemKey), findsNothing);
+      expect(find.byKey(cameraRollChooseSourcesKey), findsNothing);
     });
   });
 }
