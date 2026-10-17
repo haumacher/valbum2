@@ -1121,5 +1121,10 @@
   "spaceSettingsInbox": "Ordner des Posteingangs",
   "spaceSettingsInboxHelp": "Neue Fotos von Handys und Uploads werden hier gespeichert, bis sie in Alben sortiert werden. Der Ordner kann umbenannt werden, solange er leer ist.",
   "spaceSettingsSaved": "Gespeichert. Die Einstellungen werden sofort übernommen.",
-  "spaceSettingsRefused": "Nicht gespeichert: {reason}"
+  "spaceSettingsRefused": "Nicht gespeichert: {reason}",
+  "cameraRollChooseSources": "Auswählen...",
+  "cameraRollSourcesSummary": "{more, plural, =0{Synchronisiert: {names}} =1{Synchronisiert: {names} und 1 weiteres} other{Synchronisiert: {names} und {more} weitere}}",
+  "cameraRollSourcesFilter": "Alben filtern",
+  "cameraRollSourcesNoMatch": "Kein Album passt.",
+  "cameraRollNoDeviceAlbums": "Das Gerät nennt keine Alben, aus denen ausgewählt werden kann."
 }

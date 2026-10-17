@@ -7308,5 +7308,39 @@
       }
     },
     "x-translated": "3a199a1c"
+  },
+  "cameraRollChooseSources": "Choose...",
+  "@cameraRollChooseSources": {
+    "description": "Button of the camera-roll settings (issue #298) opening the dialog that chooses which albums of the device the sync watches",
+    "x-translated": "d1cce3c6"
+  },
+  "cameraRollSourcesSummary": "{more, plural, =0{Watched: {names}} =1{Watched: {names} and 1 more} other{Watched: {names} and {more} more}}",
+  "@cameraRollSourcesSummary": {
+    "description": "One line of the camera-roll settings (issue #298) naming the albums of the device the sync watches: the first few by name, the rest counted",
+    "placeholders": {
+      "names": {
+        "type": "String",
+        "example": "Camera, WhatsApp Images"
+      },
+      "more": {
+        "type": "int"
+      }
+    },
+    "x-translated": "fe754973"
+  },
+  "cameraRollSourcesFilter": "Filter albums",
+  "@cameraRollSourcesFilter": {
+    "description": "Label of the field narrowing the list of device albums in the dialog choosing the albums to sync (issue #298)",
+    "x-translated": "7097f206"
+  },
+  "cameraRollSourcesNoMatch": "No album matches.",
+  "@cameraRollSourcesNoMatch": {
+    "description": "Said in the dialog choosing the albums to sync (issue #298) where the filter leaves no album of the device",
+    "x-translated": "c2c8f5ef"
+  },
+  "cameraRollNoDeviceAlbums": "The device names no albums to choose from.",
+  "@cameraRollNoDeviceAlbums": {
+    "description": "Said in the dialog choosing the albums to sync (issue #298) where the device lists no album at all",
+    "x-translated": "4c5c38a6"
   }
 }

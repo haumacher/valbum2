@@ -4390,4 +4390,29 @@ class AppLocalizationsEn extends AppLocalizations {
   String spaceSettingsRefused(String reason) {
     return 'Not saved: $reason';
   }
+
+  @override
+  String get cameraRollChooseSources => 'Choose...';
+
+  @override
+  String cameraRollSourcesSummary(String names, int more) {
+    String _temp0 = intl.Intl.pluralLogic(
+      more,
+      locale: localeName,
+      other: 'Watched: $names and $more more',
+      one: 'Watched: $names and 1 more',
+      zero: 'Watched: $names',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get cameraRollSourcesFilter => 'Filter albums';
+
+  @override
+  String get cameraRollSourcesNoMatch => 'No album matches.';
+
+  @override
+  String get cameraRollNoDeviceAlbums =>
+      'The device names no albums to choose from.';
 }

@@ -6830,6 +6830,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Not saved: {reason}'**
   String spaceSettingsRefused(String reason);
+
+  /// Button of the camera-roll settings (issue #298) opening the dialog that chooses which albums of the device the sync watches
+  ///
+  /// In en, this message translates to:
+  /// **'Choose...'**
+  String get cameraRollChooseSources;
+
+  /// One line of the camera-roll settings (issue #298) naming the albums of the device the sync watches: the first few by name, the rest counted
+  ///
+  /// In en, this message translates to:
+  /// **'{more, plural, =0{Watched: {names}} =1{Watched: {names} and 1 more} other{Watched: {names} and {more} more}}'**
+  String cameraRollSourcesSummary(String names, int more);
+
+  /// Label of the field narrowing the list of device albums in the dialog choosing the albums to sync (issue #298)
+  ///
+  /// In en, this message translates to:
+  /// **'Filter albums'**
+  String get cameraRollSourcesFilter;
+
+  /// Said in the dialog choosing the albums to sync (issue #298) where the filter leaves no album of the device
+  ///
+  /// In en, this message translates to:
+  /// **'No album matches.'**
+  String get cameraRollSourcesNoMatch;
+
+  /// Said in the dialog choosing the albums to sync (issue #298) where the device lists no album at all
+  ///
+  /// In en, this message translates to:
+  /// **'The device names no albums to choose from.'**
+  String get cameraRollNoDeviceAlbums;
 }
 
 class _AppLocalizationsDelegate

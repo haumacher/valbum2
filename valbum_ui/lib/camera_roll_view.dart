@@ -7,13 +7,20 @@
 /// to it.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import 'background.dart';
 import 'caller.dart';
 import 'camera_roll.dart';
+import 'dialog_style.dart';
+import 'filter_list.dart';
+import 'form_dialog.dart';
 import 'l10n/app_localizations.dart';
+import 'loadable.dart';
 import 'notices.dart';
 import 'photo_library.dart';
 import 'selectable.dart';
@@ -26,8 +33,33 @@ const Key cameraRollSwitchKey = Key("cameraRoll.enabled");
 /// The key of the switch limiting the sync to Wi-Fi (issue #36).
 const Key cameraRollWifiOnlyKey = Key("cameraRoll.wifiOnly");
 
-/// The key of the list of device albums the sync watches (issue #117).
+/// The key of the part of the section naming the device albums the sync
+/// watches (issue #117), with the button choosing them (issue #298).
 const Key cameraRollSourcesKey = Key("cameraRoll.sources");
+
+/// The key of the line naming the albums the sync watches (issue #298).
+const Key cameraRollSourcesSummaryKey = Key("cameraRoll.sourcesSummary");
+
+/// The key of the button opening the dialog that chooses the albums to watch
+/// (issue #298).
+const Key cameraRollChooseSourcesKey = Key("cameraRoll.chooseSources");
+
+/// The key of the dialog choosing the albums to watch (issue #298).
+const Key cameraRollSourcesDialogKey = Key("cameraRoll.sourcesDialog");
+
+/// The key of the field narrowing the albums of that dialog.
+const Key cameraRollSourcesFilterKey = Key("cameraRoll.sourcesFilter");
+
+/// The key of the button of that dialog applying the choice.
+const Key cameraRollSourcesApplyKey = Key("cameraRoll.sourcesApply");
+
+/// The key of the button of that dialog discarding the choice.
+const Key cameraRollSourcesCancelKey = Key("cameraRoll.sourcesCancel");
+
+/// What the keys of the progress, the failure and the Retry of the device's
+/// albums start with, in the section and in the dialog alike: see
+/// [LoadableBuilder.keyPrefix] for the endings.
+const String cameraRollAlbumsKeyPrefix = "cameraRoll.albums";
 
 /// The key of the line asking for an album to watch, shown while none is
 /// (issue #117).
@@ -36,7 +68,8 @@ const Key cameraRollNoSourcesKey = Key("cameraRoll.noSources");
 /// The key of the line saying why the device's albums cannot be listed.
 const Key cameraRollSourcesProblemKey = Key("cameraRoll.sourcesProblem");
 
-/// The key of the checkbox watching the device album of the given id.
+/// The key of the checkbox watching the device album of the given id, a row
+/// of the dialog choosing the albums (issue #298).
 Key cameraRollSourceKey(String id) => Key("cameraRoll.source.$id");
 
 /// The key of the line naming the inbox the photos go into (issue #226).
@@ -102,20 +135,38 @@ class _CameraRollSectionState extends State<CameraRollSection> {
 
   /// The albums of the device, asked once and again whenever access may have
   /// changed (issue #117).
-  Future<List<PhotoAlbum>>? albums;
+  ///
+  /// A [Loadable] (issue #298): the section and the dialog choosing from them
+  /// show a progress while the device is asked, and its reason with a Retry
+  /// where it failed — never an empty list that hides the failure.
+  Loadable<List<PhotoAlbum>>? _albums;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    albums ??= _loadAlbums();
+    if (_albums == null) {
+      _albums = Loadable<List<PhotoAlbum>>(_loadAlbums);
+      _albums!.load().ignore();
+    }
+  }
+
+  @override
+  void dispose() {
+    _albums?.dispose();
+    super.dispose();
   }
 
   /// The albums a user may watch, or an empty list where there are none.
   ///
   /// Asking the device for its albums needs the same permission the sync
   /// needs, so the same request is made here; a refusal is not swallowed but
-  /// shown in the library's own words, see [PhotoLibrary.accessProblem].
+  /// shown in the library's own words, see [PhotoLibrary.accessProblem]. A
+  /// device that fails to list them fails the [Loadable], in the platform's
+  /// own words where it gave some.
   Future<List<PhotoAlbum>> _loadAlbums() async {
+    if (!mounted) {
+      return const [];
+    }
     var sync = CameraRollScope.maybeOf(context);
     var library = sync?.library;
     if (library == null || !library.available) {
@@ -130,16 +181,18 @@ class _CameraRollSectionState extends State<CameraRollSection> {
     if (!await library.requestAccess()) {
       return const [];
     }
-    return selectableSources(await library.albums());
+    try {
+      return selectableSources(await library.albums());
+    } on PlatformException catch (failure) {
+      // The platform's sentence, not the exception's dump.
+      throw failure.message ?? failure.code;
+    }
   }
 
   /// Asks the device for its albums again, after something may have changed
   /// what it answers — the access that was just granted, above all.
   void _reloadAlbums() {
-    var pending = _loadAlbums();
-    setState(() {
-      albums = pending;
-    });
+    _albums?.retry().ignore();
   }
 
   @override
@@ -309,110 +362,135 @@ class _CameraRollSectionState extends State<CameraRollSection> {
   /// The device albums the sync watches (issue #117).
   ///
   /// Before this existed the sync uploaded the whole photo library — every
-  /// picture any app ever saved. It watches what is ticked here, the camera
-  /// alone where nothing was ticked yet and the device names a camera album;
+  /// picture any app ever saved. It watches what is chosen here, the camera
+  /// alone where nothing was chosen yet and the device names a camera album;
   /// where it names none, nothing is watched and the section says so rather
   /// than quietly uploading everything again.
   ///
+  /// One line names what is watched, and a button opens the dialog that
+  /// chooses it (issue #298): a phone with dozens of albums made a box for
+  /// each of them a long list in the middle of the settings.
+  ///
   /// A device that has no albums at all shows nothing here: there is nothing
   /// to choose from, and the sync scans what little there is.
-  Widget _sources(CameraRollSync sync, bool available) =>
-      FutureBuilder<List<PhotoAlbum>>(
-        future: albums,
-        builder: (context, snapshot) {
-          // Only while the sync is on: a reason left over from somewhere else
-          // is not this section's news while nothing is being watched.
-          var problem = sync.library.available && sync.config.enabled
-              ? sync.library.accessProblem
-              : null;
-          var found = snapshot.data ?? const <PhotoAlbum>[];
-          if (found.isEmpty) {
-            if (problem == null) {
-              return const SizedBox.shrink();
-            }
-            return Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                noticeText(problem, AppLocalizations.of(context)!),
-                key: cameraRollSourcesProblemKey,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-            );
+  Widget _sources(CameraRollSync sync, bool available) {
+    var loadable = _albums!;
+    return ListenableBuilder(
+      listenable: loadable,
+      builder: (context, _) {
+        var l10n = AppLocalizations.of(context)!;
+        if (!loadable.hasValue) {
+          // While the sync is off the device is not asked, and there is
+          // nothing to wait for or to fail.
+          if (!sync.library.available || !sync.config.enabled) {
+            return const SizedBox.shrink();
           }
-          var watched = sync.config.sourcesOf(found).toSet();
-          return Padding(
-            key: cameraRollSourcesKey,
-            padding: const EdgeInsets.only(top: 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  AppLocalizations.of(context)!.albumsToSync,
-                  style: Theme.of(context).textTheme.titleSmall,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  AppLocalizations.of(context)!.cameraRollNewSource,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                if (watched.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Text(
-                      AppLocalizations.of(context)!.cameraRollNoSources,
-                      key: cameraRollNoSourcesKey,
-                      style:
-                          TextStyle(color: Theme.of(context).colorScheme.error),
-                    ),
-                  ),
-                for (var album in found)
-                  CheckboxListTile(
-                    key: cameraRollSourceKey(album.id),
-                    contentPadding: EdgeInsets.zero,
-                    dense: true,
-                    controlAffinity: ListTileControlAffinity.leading,
-                    title: Text(album.name),
-                    subtitle: Text(
-                      AppLocalizations.of(context)!.photoCount(album.count),
-                    ),
-                    value: watched.contains(album.id),
-                    onChanged: available
-                        ? (value) => _chooseSources(
-                              sync,
-                              found,
-                              album,
-                              value ?? false,
-                            )
-                        : null,
-                  ),
-              ],
+          return _sourcesBlock(
+            context,
+            sync,
+            available,
+            const [],
+            LoadableStatus(
+              loadable: loadable,
+              keyPrefix: cameraRollAlbumsKeyPrefix,
             ),
           );
-        },
-      );
-
-  /// Ticks or unticks one album, and hands the whole choice to the engine.
-  Future<void> _chooseSources(
-    CameraRollSync sync,
-    List<PhotoAlbum> found,
-    PhotoAlbum album,
-    bool watch,
-  ) async {
-    var watched = sync.config.sourcesOf(found).toSet();
-    if (watch) {
-      watched.add(album.id);
-    } else {
-      watched.remove(album.id);
-    }
-    await sync.chooseSources(
-      [
-        // In the order the device names them, so that what is stored does not
-        // depend on the order the boxes were ticked in.
-        for (var candidate in found)
-          if (watched.contains(candidate.id)) candidate.id
-      ],
-      albums: found,
+        }
+        // Only while the sync is on: a reason left over from somewhere else
+        // is not this section's news while nothing is being watched.
+        var problem = sync.library.available && sync.config.enabled
+            ? sync.library.accessProblem
+            : null;
+        var found = loadable.value!;
+        if (found.isEmpty) {
+          if (problem == null) {
+            return const SizedBox.shrink();
+          }
+          return Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              noticeText(problem, l10n),
+              key: cameraRollSourcesProblemKey,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          );
+        }
+        var watched = sync.config.sourcesOf(found).toSet();
+        var names = [
+          for (var album in found)
+            if (watched.contains(album.id)) album.name
+        ];
+        return _sourcesBlock(
+          context,
+          sync,
+          available,
+          found,
+          names.isEmpty
+              ? Text(
+                  l10n.cameraRollNoSources,
+                  key: cameraRollNoSourcesKey,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                )
+              : Text(
+                  sourcesSummary(names, l10n),
+                  key: cameraRollSourcesSummaryKey,
+                ),
+        );
+      },
     );
+  }
+
+  /// The heading, [line] and the button opening the dialog.
+  Widget _sourcesBlock(
+    BuildContext context,
+    CameraRollSync sync,
+    bool available,
+    List<PhotoAlbum> found,
+    Widget line,
+  ) {
+    var l10n = AppLocalizations.of(context)!;
+    return Padding(
+      key: cameraRollSourcesKey,
+      padding: const EdgeInsets.only(top: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            l10n.albumsToSync,
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Expanded(child: line),
+              const SizedBox(width: 8),
+              OutlinedButton(
+                key: cameraRollChooseSourcesKey,
+                onPressed: available ? () => _openSources(sync) : null,
+                child: Text(l10n.cameraRollChooseSources),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Opens the dialog choosing the albums, and hands the whole choice it
+  /// answers to the engine; Cancel and Escape change nothing.
+  Future<void> _openSources(CameraRollSync sync) async {
+    var loadable = _albums!;
+    var chosen = await showFormDialog<List<String>>(
+      context: context,
+      builder: (context) => CameraRollSourcesDialog(
+        albums: loadable,
+        watchedOf: sync.config.sourcesOf,
+      ),
+    );
+    if (chosen == null || !mounted) {
+      return;
+    }
+    await sync.chooseSources(chosen, albums: loadable.value ?? const []);
     if (mounted) {
       setState(() => refusal = null);
     }
@@ -489,6 +567,228 @@ class _CameraRollSectionState extends State<CameraRollSection> {
     await sync.syncNow();
   }
 
+}
+
+/// How many albums [sourcesSummary] names before it counts the rest.
+const int _namedSources = 2;
+
+/// The line naming the watched albums [names], in the order the device names
+/// them: the first [_namedSources] by name, the rest counted — "Camera,
+/// WhatsApp Images and 2 more" (issue #298).
+String sourcesSummary(List<String> names, AppLocalizations l10n) {
+  var named = names.length <= _namedSources + 1
+      // A count of one would take as much room as the name it hides.
+      ? names
+      : names.take(_namedSources).toList();
+  return l10n.cameraRollSourcesSummary(
+    named.join(", "),
+    names.length - named.length,
+  );
+}
+
+/// The height of the dialog's content below which its list no longer has the
+/// room to scroll by itself, see [CrampedScroll]: the explanation, the filter
+/// field and two or three albums.
+const double _roomySourcesHeight = 240;
+
+/// The dialog choosing the albums of the device the camera-roll sync watches
+/// (issue #298).
+///
+/// A box for each album, with its name and the number of its photos, below a
+/// [FilterField] that narrows them as in every chooser of the app; the arrows
+/// walk the boxes and `Enter` ticks the one they stand on. The dialog answers
+/// the ids of the ticked albums in the order the device names them — so that
+/// what is stored does not depend on the order they were ticked in — on
+/// Apply, and `null` on Cancel or Escape. The albums are a [Loadable]: the
+/// dialog waits for them, or says why they failed, with a Retry.
+class CameraRollSourcesDialog extends StatefulWidget {
+  /// The albums to choose from.
+  final Loadable<List<PhotoAlbum>> albums;
+
+  /// The ids of the albums watched now, given what the device holds; ticked
+  /// when the dialog opens (or when the albums arrive).
+  final List<String> Function(List<PhotoAlbum> albums) watchedOf;
+
+  const CameraRollSourcesDialog({
+    super.key,
+    required this.albums,
+    required this.watchedOf,
+  });
+
+  @override
+  State<CameraRollSourcesDialog> createState() =>
+      _CameraRollSourcesDialogState();
+}
+
+class _CameraRollSourcesDialogState extends State<CameraRollSourcesDialog> {
+  final TextEditingController _filter = TextEditingController();
+
+  /// Which album the keyboard stands on, see [PickHighlight].
+  late final PickHighlight<PhotoAlbum> _highlight =
+      PickHighlight<PhotoAlbum>(idOf: (album) => album.id)
+        ..addListener(_changed);
+
+  /// The ids ticked, `null` until the albums arrived.
+  Set<String>? _ticked;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.albums.addListener(_albumsChanged);
+    _tickWatched();
+    // Albums that failed are asked again when the dialog opens over them —
+    // after the build, which is no time to tell the others listening.
+    scheduleMicrotask(() {
+      if (mounted) {
+        widget.albums.load().ignore();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    widget.albums.removeListener(_albumsChanged);
+    _highlight.dispose();
+    _filter.dispose();
+    super.dispose();
+  }
+
+  void _changed() => setState(() {});
+
+  void _albumsChanged() => setState(_tickWatched);
+
+  /// Ticks what is watched, once the albums are there to say it of.
+  void _tickWatched() {
+    if (_ticked == null && widget.albums.hasValue) {
+      _ticked = widget.watchedOf(widget.albums.value!).toSet();
+    }
+  }
+
+  void _toggle(PhotoAlbum album, bool watch) {
+    setState(() {
+      if (watch) {
+        _ticked!.add(album.id);
+      } else {
+        _ticked!.remove(album.id);
+      }
+    });
+  }
+
+  void _apply() {
+    var found = widget.albums.value ?? const <PhotoAlbum>[];
+    var ticked = _ticked ?? const <String>{};
+    Navigator.of(context).pop([
+      for (var album in found)
+        if (ticked.contains(album.id)) album.id
+    ]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var l10n = AppLocalizations.of(context)!;
+    var loaded = widget.albums.hasValue && _ticked != null;
+    var found = widget.albums.value ?? const <PhotoAlbum>[];
+    var needle = _filter.text.trim().toLowerCase();
+    var shown = [
+      for (var album in found)
+        if (needle.isEmpty || album.name.toLowerCase().contains(needle)) album
+    ];
+    _highlight.shown = loaded ? shown : const [];
+    return PickKeys<PhotoAlbum>(
+      highlight: _highlight,
+      onEnter: (album) {
+        if (album != null) {
+          _toggle(album, !_ticked!.contains(album.id));
+        }
+      },
+      child: AppAlertDialog(
+        key: cameraRollSourcesDialogKey,
+        title: Text(l10n.albumsToSync),
+        content: SizedBox(
+          width: 360,
+          child: LayoutBuilder(builder: (context, constraints) {
+            // With room, the list scrolls by itself below the field; where a
+            // phone's keyboard leaves too little, the whole content scrolls
+            // and the list is laid out in full, see [CrampedScroll].
+            var roomy = constraints.maxHeight >= _roomySourcesHeight;
+            var list = ListView(
+              shrinkWrap: true,
+              physics: roomy ? null : const NeverScrollableScrollPhysics(),
+              children: [
+                for (var album in shown) _row(context, l10n, album),
+              ],
+            );
+            return CrampedScroll(
+              roomy: roomy,
+              maxHeight: constraints.maxHeight,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    l10n.cameraRollNewSource,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 8),
+                  FilterField(
+                    fieldKey: cameraRollSourcesFilterKey,
+                    controller: _filter,
+                    label: l10n.cameraRollSourcesFilter,
+                    highlight: _highlight,
+                    onChanged: (_) => setState(() {}),
+                  ),
+                  const SizedBox(height: 8),
+                  if (!loaded)
+                    LoadableStatus(
+                      loadable: widget.albums,
+                      keyPrefix: cameraRollAlbumsKeyPrefix,
+                    )
+                  else if (found.isEmpty)
+                    Text(l10n.cameraRollNoDeviceAlbums)
+                  else if (shown.isEmpty)
+                    Text(l10n.cameraRollSourcesNoMatch)
+                  else if (roomy)
+                    Flexible(child: list)
+                  else
+                    list,
+                ],
+              ),
+            );
+          }),
+        ),
+        actions: [
+          TextButton(
+            key: cameraRollSourcesCancelKey,
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(l10n.cancel),
+          ),
+          FilledButton(
+            key: cameraRollSourcesApplyKey,
+            onPressed: loaded ? _apply : null,
+            child: Text(l10n.apply),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The box of one album, with its name and the number of its photos.
+  Widget _row(BuildContext context, AppLocalizations l10n, PhotoAlbum album) =>
+      _highlight.row(
+        album,
+        CheckboxListTile(
+          key: cameraRollSourceKey(album.id),
+          selected: _highlight.isHighlighted(album),
+          selectedTileColor: PickHighlight.color(context),
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          controlAffinity: ListTileControlAffinity.leading,
+          title: Text(album.name),
+          subtitle: Text(l10n.photoCount(album.count)),
+          value: _ticked!.contains(album.id),
+          onChanged: (value) => _toggle(album, value ?? false),
+        ),
+      );
 }
 
 /// The app-bar indicator saying that a camera-roll sync is running.
