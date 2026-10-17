@@ -30,5 +30,5 @@ be ~2.9 KB) keys `v_img` by content hash and poster moment and `v_txt` by the SH
 (`ContentText`, whose `VERSION` is in the text stamp), so a description edit re-embeds the text
 alone and a stamp change only one kind. The cache, not `pipeline.json`, is the truth: the step
 trusts no record. `SpaceSettings.content` is an enum whose first constant `KEEP` is what an app
-without the switch sends, so an older app's save never turns the search off. The H2/Lucene index
-(#264 slice 4) reads these files; nothing fills it yet.
+without the switch sends, so an older app's save never turns the search off. The vector index
+(#264 slice 4, `faq/search-index.md`) is fed from these files.

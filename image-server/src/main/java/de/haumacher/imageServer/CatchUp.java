@@ -6,6 +6,7 @@ package de.haumacher.imageServer;
 import de.haumacher.imageServer.cache.AnalysisRecord;
 import de.haumacher.imageServer.cache.ResourceCache;
 import de.haumacher.imageServer.content.ContentIndex;
+import de.haumacher.imageServer.content.ContentVectors;
 import de.haumacher.imageServer.faces.FaceIndex;
 import de.haumacher.imageServer.pipeline.Background;
 import de.haumacher.imageServer.pipeline.FolderPipeline;
@@ -51,7 +52,8 @@ import java.util.logging.Logger;
  * <li>places ({@link de.haumacher.imageServer.places.PlacesStep}), installed by
  * {@link ImageServlet#setPlaces};</li>
  * <li>the content search, where the space has it on ({@link ContentIndex#step()}, issue #257): the
- * vectors of every photo, one unit each, behind the photographs of every album;</li>
+ * vectors of every photo, one unit each, behind the photographs of every album, and the vector
+ * index of the space fed from them ({@link ContentVectors}, issue #264);</li>
  * <li>{@link Videos}: the teaser and the playback rendition of every video, one unit each, behind
  * the photographs of every album.</li>
  * </ol>
@@ -98,16 +100,16 @@ public final class CatchUp {
 	 */
 	public static void install(FolderPipeline pipeline, Path root, FaceIndex faces, VideoRenditions videos,
 			FolderPipeline.Step places) {
-		install(pipeline, root, faces, videos, places, null);
+		install(pipeline, root, faces, videos, places, null, null);
 	}
 
 	/**
 	 * Adds the steps of issue #236 to the given pipeline behind hashing, the given places step (if
 	 * any) behind faces, and the given content search (if any, and where it is on) before the
-	 * videos, see issue #257.
+	 * videos, see issue #257, and behind it the feed of the vector index (if any).
 	 */
 	public static void install(FolderPipeline pipeline, Path root, FaceIndex faces, VideoRenditions videos,
-			FolderPipeline.Step places, ContentIndex content) {
+			FolderPipeline.Step places, ContentIndex content, ContentVectors vectors) {
 		if (places != null) {
 			pipeline.removeStep(places);
 		}
@@ -125,24 +127,31 @@ public final class CatchUp {
 		}
 		if (content != null) {
 			content.setPipeline(pipeline);
+			if (vectors != null) {
+				vectors.setPipeline(pipeline);
+			}
 			if (content.isEnabled()) {
 				pipeline.addStep(content.step());
 			}
 		}
 		pipeline.addStep(new Videos(videos));
+		if (content != null && content.isEnabled() && vectors != null) {
+			// Last, behind the search, whose ids the vectors are filed under.
+			pipeline.addStep(vectors);
+		}
 	}
 
 	/**
 	 * Follows the administrator's switch of the content search of a space while the server runs,
 	 * see issue #257, as {@link #switchFaces} does for the faces: on, its step joins the pipeline
 	 * before the videos and every album of the space is handed to the catch-up, newest first; off, it
-	 * leaves again, and every vector stored stays.
+	 * leaves again, and every vector stored stays. The feed of the vector index (if any) follows it.
 	 *
 	 * @param installed
 	 *        Whether {@link #install} ran; without it only the index itself is switched.
 	 */
-	public static void switchContent(FolderPipeline pipeline, Path root, ContentIndex content, boolean on,
-			boolean installed) {
+	public static void switchContent(FolderPipeline pipeline, Path root, ContentIndex content,
+			ContentVectors vectors, boolean on, boolean installed) {
 		content.setEnabled(on);
 		if (!installed) {
 			return;
@@ -150,6 +159,12 @@ public final class CatchUp {
 		if (on) {
 			content.setPipeline(pipeline);
 			pipeline.addStepBefore(VIDEOS, content.step());
+			if (vectors != null) {
+				vectors.setPipeline(pipeline);
+				// Last, behind the search, whose ids the vectors are filed under.
+				pipeline.removeStep(vectors);
+				pipeline.addStep(vectors);
+			}
 			if (pipeline.isStarted()) {
 				try {
 					pipeline.execute(
@@ -160,6 +175,9 @@ public final class CatchUp {
 			}
 		} else {
 			pipeline.removeStep(content.step());
+			if (vectors != null) {
+				pipeline.removeStep(vectors);
+			}
 		}
 	}
 

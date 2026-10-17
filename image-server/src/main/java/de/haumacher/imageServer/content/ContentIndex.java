@@ -130,6 +130,11 @@ public final class ContentIndex {
 
 	private volatile FolderPipeline _pipeline;
 
+	/** Who hears of every album whose cache this index wrote, see {@link #setOnWritten(java.util.function.Consumer)}. */
+	private volatile java.util.function.Consumer<File> _onWritten = folder -> {
+		// Nobody.
+	};
+
 	private long _firstRetry = FIRST_RETRY_MILLIS;
 
 	private long _maxRetry = MAX_RETRY_MILLIS;
@@ -243,6 +248,25 @@ public final class ContentIndex {
 	/** The pipeline the step is part of, which it notices albums in again. */
 	public void setPipeline(FolderPipeline pipeline) {
 		_pipeline = pipeline;
+	}
+
+	/**
+	 * Lets the given listener hear of every album whose {@link ContentCache} the step wrote, after it
+	 * was written, on the thread that wrote it: the vector index of the space (issue #264, slice 4)
+	 * takes the new vectors at once.
+	 */
+	public void setOnWritten(java.util.function.Consumer<File> listener) {
+		_onWritten = listener == null ? folder -> {
+			// Nobody.
+		} : listener;
+	}
+
+	/**
+	 * The stamp the embedder named when it last answered, <code>null</code> while it was never
+	 * asked or never answered; nothing is asked here.
+	 */
+	public synchronized String stamp() {
+		return _stamp;
 	}
 
 	/** Sets the back-off of an embedder that cannot answer, for the tests. */
@@ -683,6 +707,7 @@ public final class ContentIndex {
 				try {
 					ContentCache.update(folder, stamps[0], stamps[1],
 						each -> each.retain(album.names(), album.hashes()));
+					_onWritten.accept(folder);
 				} catch (IOException ex) {
 					LOG.log(Level.FINE, "Cannot tidy the content cache of '" + folder + "': " + ex.getMessage(), ex);
 				}
@@ -723,6 +748,7 @@ public final class ContentIndex {
 			// A photo renamed, or a copy: both vectors are there, it is only named.
 			ContentCache.update(folder, stamps[0], stamps[1],
 				each -> mapIfThere(each, item));
+			_onWritten.accept(folder);
 			return Outcome.DONE;
 		}
 		_aside = false;
@@ -762,6 +788,7 @@ public final class ContentIndex {
 				each.putText(item.textHash(), textVector);
 				each.putPhoto(name, new ContentCache.Photo(item.image(), item.textHash()));
 			});
+			_onWritten.accept(folder);
 			return Outcome.DONE;
 		} catch (EmbedderUnavailableException ex) {
 			refused(ex.getMessage());
