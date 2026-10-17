@@ -444,7 +444,34 @@ void main() {
       expect(post.body, '{"target":"Best","names":[{"name":"a.jpg"}]}');
     });
 
-    testWidgets("the viewer names no faces in a collection", (tester) async {
+    testWidgets(
+        "the viewer names the faces of a photo of a collection in the album "
+        "it lies in (issue #294)", (tester) async {
+      var space = Space();
+      withEmptyImageCache();
+      var image = viewerImagePart("a.jpg")
+        ..ref = PhotoRef(hash: "", path: "trip/a.jpg");
+      var album = viewerAlbum([image],
+          rights: const ["view", "download", "contribute", "edit"]);
+      album.kind = AlbumKind.collection;
+      fakeImageRequests();
+      await pumpViewerHarness(
+        tester,
+        image,
+        client: space.client,
+        caller: const CallerInfo(
+            userName: "anna", role: roleMember, space: "anna", faces: true),
+        editPath: const ["Best"],
+      );
+      await tester.tap(find.byKey(const Key("viewer-menu")));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key("viewer-edit-persons")), findsOneWidget);
+      expect(find.byKey(const Key("viewer-add-to-collection")), findsOneWidget);
+    });
+
+    testWidgets(
+        "a photo of a collection that names no album is written nowhere "
+        "(issue #294)", (tester) async {
       var space = Space();
       withEmptyImageCache();
       var image = viewerImagePart("a.jpg");
@@ -463,7 +490,9 @@ void main() {
       await tester.tap(find.byKey(const Key("viewer-menu")));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key("viewer-edit-persons")), findsNothing);
-      expect(find.byKey(const Key("viewer-add-to-collection")), findsOneWidget);
+      expect(find.byKey(const Key("viewer-add-to-collection")), findsNothing);
+      expect(find.byKey(const Key("viewer-crop")), findsNothing);
+      expect(find.byKey(const Key("viewer-properties")), findsOneWidget);
     });
   });
 

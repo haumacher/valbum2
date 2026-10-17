@@ -1946,11 +1946,12 @@ class AlbumContentState extends State<AlbumContent>
 
   /// Edits what the photo of [tile] is in the edit mode, the one image
   /// properties dialog the viewer opens as well (issue #122); shows it
-  /// read-only everywhere else.
+  /// read-only everywhere else — the catalogue's rule,
+  /// [PhotoFacts.editsProperties].
   @override
   Future<void> showPhotoProperties(PhotoTile tile) async {
     var image = tile.image;
-    if (!editMode) {
+    if (!photoFacts.editsProperties) {
       await showImageProperties(context, image, editable: false);
       return;
     }

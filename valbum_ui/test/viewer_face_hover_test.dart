@@ -286,10 +286,14 @@ void main() {
 
     // A long press on the region is the viewer's own long press, as it is
     // anywhere else on the picture (issue #80): this caller may not write a
-    // description, and is told exactly that — the region took nothing away.
+    // description, and is shown the properties read-only (issue #294) — the
+    // region took nothing away.
     await tester.longPressAt(region.center);
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key("image-not-editable")), findsOneWidget);
+    var properties = find.byKey(const Key("image-properties-read-only"));
+    expect(properties, findsOneWidget);
+    Navigator.of(tester.element(properties)).pop();
+    await tester.pumpAndSettle();
     // A touch has no hover, so it never names anybody: the tooltip is
     // triggered by the mouse entering the region and by nothing else.
     expect(find.text("Anna"), findsNothing);

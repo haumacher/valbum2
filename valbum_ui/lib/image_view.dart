@@ -18,7 +18,6 @@ import 'attribution.dart';
 import 'broken.dart';
 import 'caller.dart';
 import 'client.dart';
-import 'collections.dart';
 import 'crop.dart';
 import 'crop_editor.dart';
 import 'diagnostics.dart';
@@ -344,6 +343,17 @@ class ImageView extends StatefulWidget {
   /// album as any other.
   final List<String>? editPath;
 
+  /// The path of the folder the view stands on — the album, the collection,
+  /// the saved search, the folder searched, the album of an entry of the bell
+  /// — from which the album the photo lies in is found, see [photoSourceOf]
+  /// (issue #294); [editPath] where it is not given.
+  ///
+  /// Not [editPath]: that one names a sidecar the viewer's own album *is*,
+  /// which the description is written into whole. A search and the copy of
+  /// an album the bell shows are no such sidecar, and still their photos lie
+  /// somewhere, where a crop, a poster, a face and a description are written.
+  final List<String>? folderPath;
+
   /// Whether the album this image belongs to is being edited (issue #80).
   ///
   /// Two plain values rather than the album's `AlbumEditSession` itself: that
@@ -379,6 +389,7 @@ class ImageView extends StatefulWidget {
     this.albumPath,
     this.onTakenBack,
     this.editPath,
+    this.folderPath,
     this.editing = false,
     this.onEdited,
     this.delegate,
@@ -389,7 +400,7 @@ class ImageView extends StatefulWidget {
 }
 
 class ImageViewState extends State<ImageView>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, PhotoActionHost {
   ImageTransform? _transform;
 
   /// The state the transform had when the current gesture started.
@@ -568,13 +579,44 @@ class ImageViewState extends State<ImageView>
   /// #51), see [rightsOf].
   Rights get rights => rightsOf(context, album);
 
-  /// Whether a description may be edited here at all.
-  ///
-  /// The `edit` right and an album to write into.
-  bool get mayEditDescription =>
-      album != null &&
-      rights.mayEdit &&
-      (widget.editPath != null || inEditSession);
+  /// Whether a description may be edited here at all: the catalogue's rule
+  /// ([PhotoFacts.editsProperties]) — the `edit` right on the album the
+  /// photograph lies in, which the viewer knows, and never in an inbox.
+  bool get mayEditDescription => album != null && photoFacts.editsProperties;
+
+  /// The album the photograph shown lies in, where everything the viewer
+  /// writes about it goes (issue #294), see [photoSourceOf]; `null` where
+  /// the viewer does not know it.
+  PhotoSource? get source => album == null
+      ? null
+      : photoSourceOf(
+          part,
+          album: album,
+          folder: widget.folderPath ?? widget.editPath,
+        );
+
+  /// Whether [source] is the album the viewer pages through itself, whose
+  /// parts are the very objects written about — or another one, which the
+  /// router must fetch anew after a write, see [_forgetSource].
+  bool get _sourceIsShown {
+    var path = widget.editPath;
+    var self = source;
+    return self != null &&
+        path != null &&
+        self.name == part.name &&
+        self.folder.join("/") == path.join("/");
+  }
+
+  /// Forgets what the router holds for the album the photograph lies in
+  /// after a write there, unless that is the album shown (whose part was
+  /// changed in place): it must show the change when it is opened next.
+  void _forgetSource() {
+    var self = source;
+    var delegate = widget.delegate;
+    if (self != null && delegate != null && !_sourceIsShown) {
+      delegate.forgetTree(self.folder);
+    }
+  }
 
   /// Whether the album this image belongs to is being edited (issue #80).
   ///
@@ -583,37 +625,20 @@ class ImageViewState extends State<ImageView>
   /// view reads off it, this view is handed, see `app.dart`.
   bool get inEditSession => widget.editing;
 
-  /// Opens the description dialog on the displayed image (issue #80).
+  /// Opens the properties of the displayed image (issues #80, #294): the
+  /// "Properties" entry of the menu, a long press and `e`.
   ///
   /// The dialog the tile editor of the album opens, on the image that is being
   /// looked at — which is where a description is written in practice, and for
-  /// a group member in detail mode it is that member's own description. A
-  /// caller who may not change the album is told so rather than being left
-  /// with a gesture that does nothing, see [notEditableMessage].
+  /// a group member in detail mode it is that member's own description.
+  /// Whoever may not write the description ([mayEditDescription]) is shown
+  /// the same dialog read-only: what the photograph is belongs to everybody
+  /// who sees it — and a photograph in an inbox carries no description at
+  /// all (issue #136), it belongs to the album the photograph ends up in.
   Future<void> editDescription() async {
     var self = album;
-    if (self == null) {
-      // No album behind this image: nothing to write into, and nothing this
-      // view could say that would help.
-      return;
-    }
-    if (self.kind == AlbumKind.inbox) {
-      // A photograph in an inbox carries no description, see issue #136: the
-      // dialog says what the image is and offers nothing to type in — the
-      // description belongs to the album the photograph ends up in.
+    if (self == null || !mayEditDescription) {
       await showImageProperties(context, part, editable: false);
-      return;
-    }
-    if (!mayEditDescription) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            AppLocalizations.of(context)!.notEditableMessage,
-            key: const Key("image-not-editable"),
-          ),
-          duration: const Duration(seconds: 4),
-        ),
-      );
       return;
     }
     await _askForDescription(
@@ -654,7 +679,8 @@ class ImageViewState extends State<ImageView>
       return;
     }
     var path = widget.editPath;
-    if (path == null) {
+    var target = source;
+    if (path == null && target == null) {
       // Guarded by [mayEditDescription]; here for the reader.
       return;
     }
@@ -665,9 +691,21 @@ class ImageViewState extends State<ImageView>
     var written = await writeAction(
       context,
       () async {
-        await widget.client.saveAlbum(path, owner);
-        // Written to the album a photograph of a collection lies in (#221).
-        forgetSourceOf(widget.delegate, image);
+        if (path != null) {
+          // The viewer's album is a sidecar of its own: written whole, by
+          // the server into the album a photograph of a collection or a
+          // saved search lies in (#221, #227).
+          await widget.client.saveAlbum(path, owner);
+        } else {
+          // A search, the copy of an album an entry of the bell shows: no
+          // sidecar to write whole, so the change goes into the album the
+          // photograph lies in (#294).
+          await widget.client.saveAlbum(
+            target!.folder,
+            await _describedSource(target, answer),
+          );
+        }
+        _forgetSource();
       },
       refusalKey: const Key("image-description-failed"),
       onRefused: (_) => refused = true,
@@ -683,14 +721,41 @@ class ImageViewState extends State<ImageView>
     }
   }
 
+  /// The album [target] the photograph lies in with the description
+  /// [answer], to be written where the viewer pages through no sidecar of its
+  /// own (#294): that album as the caller is answered it, the one photograph
+  /// changed — the server keeps whatever it did not answer this caller (#296).
+  Future<AlbumInfo> _describedSource(
+    PhotoSource target,
+    ImagePropertiesResult answer,
+  ) async {
+    var l10n = AppLocalizations.of(context)!;
+    var loaded = await widget.client.loadResource(target.folder);
+    ImagePart? stored;
+    if (loaded is AlbumInfo) {
+      for (var image in imagesOfAlbum(loaded)) {
+        if (image.name == target.name) {
+          stored = image;
+        }
+      }
+    }
+    if (loaded is! AlbumInfo || stored == null) {
+      throw VAlbumException(l10n.noSuchImage(target.name));
+    }
+    answer.applyTo(stored);
+    return loaded;
+  }
+
   // --- Taking a copy of the original, see issue #164. ---
 
   /// Whether the original of this picture may be taken out of the album.
   ///
   /// The `download` right on the album, whoever holds it — a member, and a
   /// share link made with it alike: the link's rights are what it was made
-  /// with, and the server answers them as the album's rights.
-  bool get mayDownloadOriginal => album != null && rights.mayDownload;
+  /// with, and the server answers them as the album's rights. The
+  /// catalogue's rule ([PhotoAction.download]).
+  bool get mayDownloadOriginal =>
+      album != null && PhotoAction.download.offeredOn(part, photoFacts);
 
   /// Fetches the original of the shown picture and hands it to the platform,
   /// see `downloads.dart`.
@@ -715,6 +780,12 @@ class ImageViewState extends State<ImageView>
 
   /// What the viewer says about itself to the catalogue of
   /// `photo_actions.dart` (issue #290).
+  ///
+  /// What the viewer offers follows the photograph, not the way it was
+  /// opened by (issue #294): [PhotoFacts.knowsSource] says whether the
+  /// album it lies in is known ([source]), and the rights are the rights
+  /// there, see [PhotoFacts.knowsSource].
+  @override
   PhotoFacts get photoFacts {
     var caller = CallerInfo.peek(context);
     return PhotoFacts(
@@ -725,21 +796,50 @@ class ImageViewState extends State<ImageView>
       // on a guess, see `offeredRights`.
       signedIn: caller == null || caller.permission.named,
       shareLink: ShareSession.of(context) != null,
+      knowsSource: source != null,
+      findsFaces: CallerInfo.facesOf(context),
+      inInbox: album?.kind == AlbumKind.inbox,
     );
   }
 
-  /// Whether "Add to collection…" is offered for the picture shown: the one
-  /// rule of the server, [mayCollectFrom] (issue #290), where the viewer
-  /// knows the album the picture is answered from.
+  @override
+  BuildContext get photoContext => context;
+
+  @override
+  int get actedOnCount => 1;
+
+  @override
+  VAlbumRouterDelegate? get photoDelegate => widget.delegate;
+
+  /// The tile the catalogue's actions are run on: the picture shown.
+  PhotoTile get _shownTile => PhotoTile(widget.image, part);
+
+  @override
+  Future<void> downloadPhotos(PhotoTile? tile) => downloadOriginal();
+
+  @override
+  Future<void> collectPhotos(PhotoTile? tile) => collectShown();
+
+  @override
+  Future<void> showPhotoProperties(PhotoTile tile) => editDescription();
+
+  @override
+  Future<void> cropPhotoOf(PhotoTile tile) => cropShown();
+
+  @override
+  Future<void> usePhotoAsPoster(PhotoTile tile) => useShownAsPoster();
+
+  @override
+  Future<void> resetPhotoPoster(PhotoTile tile) => storePoster(0);
+
+  @override
+  Future<void> namePersonsOf(PhotoTile tile) async => enterEditPersons();
+
+  /// Whether "Add to collection…" is offered for the picture shown: the
+  /// catalogue's rule, [mayCollectFrom] (issue #290), taken from the album
+  /// the picture lies in (#294).
   bool get mayCollect =>
-      album != null &&
-      widget.editPath != null &&
-      part.hasPicture &&
-      mayCollectFrom(
-        shareLink: photoFacts.shareLink,
-        signedIn: photoFacts.signedIn,
-        rights: photoFacts.rights,
-      );
+      album != null && PhotoAction.collect.offeredOn(part, photoFacts);
 
   /// Whether "Show in album" is offered: the catalogue's rule (issue #289).
   bool get mayShowInAlbum =>
@@ -757,73 +857,66 @@ class ImageViewState extends State<ImageView>
   }
 
   /// Adds the picture shown to a collection, chosen or created in the picker.
+  ///
+  /// Taken from the album the picture lies in (#294), by its own name there.
   Future<void> collectShown() async {
-    var path = widget.editPath;
-    if (path == null) {
+    var from = source;
+    if (from == null || !mayCollect) {
       return;
     }
     await collectWithPicker(
       context: context,
       client: widget.client,
-      source: path,
-      names: [part.name],
+      source: from.folder,
+      names: [from.name],
       delegate: widget.delegate,
     );
   }
 
   // --- Naming the faces of the picture, see issue #147. ---
 
-  /// Whether this picture's faces may be named here at all.
+  /// Whether this picture's faces may be named here at all: the
+  /// catalogue's rule ([PhotoAction.namePersons]).
   ///
-  /// The `edit` right, a space that looks for faces, an album to post to, and
-  /// never inside a share link — a link is answered no face at all and is not
-  /// an account (issues #124 and #51). A video is left out because the
-  /// detector never looks at one (issue #123): there is nothing to name and
-  /// nothing to draw on.
-  ///
-  /// Never in a collection (issue #221): a face is named in the album the
-  /// photograph lies in, which is where the server stores the decision.
+  /// The `edit` right, a space that looks for faces, the album the
+  /// photograph lies in — where the server stores the decision, wherever the
+  /// photograph is looked at (#294) — and never inside a share link — a link
+  /// is answered no face at all and is not an account (issues #124 and #51).
+  /// A video is left out because the detector never looks at one (issue
+  /// #123): there is nothing to name and nothing to draw on.
   bool get mayEditPersons =>
-      !isVideo &&
-      !isBroken &&
-      album != null &&
-      album!.kind != AlbumKind.collection &&
-      album!.kind != AlbumKind.search &&
-      widget.editPath != null &&
-      rights.mayEdit &&
-      CallerInfo.facesOf(context);
+      album != null && PhotoAction.namePersons.offeredOn(part, photoFacts);
 
-  /// Whether the photograph shown may be cropped here (issue #212).
+  /// Whether the photograph shown may be cropped here (issue #212): the
+  /// catalogue's rule ([PhotoAction.crop]).
   ///
-  /// With `edit`, never in a share session, never on a video (a cropped
-  /// rendition of a video would be a transcode), and only where the viewer
-  /// knows the album to write to. Whether the album's edit mode is on does
-  /// not matter: the crop is written at once either way, see [cropShown].
+  /// With `edit` on the album it lies in, never in a share session, never on
+  /// a video (a cropped rendition of a video would be a transcode), and only
+  /// where the viewer knows that album (#294). Whether the album's edit mode
+  /// is on does not matter: the crop is written at once either way, see
+  /// [cropShown].
   bool get mayCrop =>
-      !isVideo &&
-      !isBroken &&
-      album != null &&
-      widget.editPath != null &&
-      rights.mayEdit;
+      album != null && PhotoAction.crop.offeredOn(part, photoFacts);
 
   /// Opens the crop editor on the photograph shown and writes what it
-  /// answers at once, see [cropPhoto].
+  /// answers at once, see [cropPhoto]: into the album it lies in (#294).
   Future<void> cropShown() async {
-    var path = widget.editPath;
-    if (path == null || !mayCrop) {
+    var target = source;
+    if (target == null || !mayCrop) {
       return;
     }
     var changed = await cropPhoto(
       context,
       client: widget.client,
-      albumPath: path,
+      albumPath: target.folder,
+      name: target.name,
       imageUrl: dataUrl,
       image: part,
-      album: album,
+      // The album picture is the album's whose answer it is.
+      album: _sourceIsShown ? album : null,
     );
     if (changed) {
-      // A photograph of a collection is cropped in its own album (#221).
-      forgetSourceOf(widget.delegate, part);
+      _forgetSource();
     }
     if (changed && mounted) {
       // The region is another picture: fitted anew.
@@ -851,59 +944,15 @@ class ImageViewState extends State<ImageView>
     return _videoKey!;
   }
 
-  /// Whether the poster of the video shown may be chosen here (issue #285).
+  /// Whether the poster of the video shown may be chosen here (issue #285):
+  /// the catalogue's rule ([PhotoAction.usePoster]).
   ///
-  /// The rule of [mayCrop], turned round: with `edit`, never in a share
-  /// session, only on a video, and only where the viewer knows the album to
-  /// write to. The poster is written at once, edit mode or not.
+  /// The rule of [mayCrop], turned round: with `edit` on the album the video
+  /// lies in, never in a share session, only on a video, and only where the
+  /// viewer knows that album (#294). The poster is written at once, edit
+  /// mode or not.
   bool get mayChoosePoster =>
-      isVideo &&
-      !isBroken &&
-      album != null &&
-      widget.editPath != null &&
-      rights.mayEdit;
-
-  /// Whether the video shown has a poster chosen, which "Reset thumbnail"
-  /// takes away.
-  bool get hasChosenPoster => posterMillisOf(part) > 0;
-
-  /// The entries of the poster in a menu: "Use as thumbnail", and "Reset
-  /// thumbnail" where a moment is chosen. Empty where [mayChoosePoster] is
-  /// not given.
-  List<PopupMenuEntry<void Function(BuildContext)>> posterEntries(
-    AppLocalizations l10n,
-  ) =>
-      [
-        if (mayChoosePoster)
-          PopupMenuItem<void Function(BuildContext)>(
-            key: const Key("viewer-use-as-poster"),
-            value: (_) => useShownAsPoster(),
-            child: Row(
-              children: [
-                const Padding(
-                  padding: EdgeInsets.only(right: 16),
-                  child: Icon(Icons.photo_size_select_actual_outlined,
-                      color: Colors.blueAccent),
-                ),
-                Flexible(child: Text(l10n.posterUse)),
-              ],
-            ),
-          ),
-        if (mayChoosePoster && hasChosenPoster)
-          PopupMenuItem<void Function(BuildContext)>(
-            key: const Key("viewer-reset-poster"),
-            value: (_) => storePoster(0),
-            child: Row(
-              children: [
-                const Padding(
-                  padding: EdgeInsets.only(right: 16),
-                  child: Icon(Icons.restart_alt, color: Colors.blueAccent),
-                ),
-                Flexible(child: Text(l10n.posterReset)),
-              ],
-            ),
-          ),
-      ];
+      album != null && PhotoAction.usePoster.offeredOn(part, photoFacts);
 
   /// Makes the moment the player shows the poster of the video (issue #285).
   ///
@@ -943,15 +992,16 @@ class ImageViewState extends State<ImageView>
   /// poster when the album is shown again, as a crop does (see `cropPhoto`) —
   /// and the album picture's moment, where the video is the album's picture.
   Future<void> storePoster(int millis) async {
-    var path = widget.editPath;
-    if (path == null || !mayChoosePoster) {
+    var target = source;
+    if (target == null || !mayChoosePoster) {
       return;
     }
     var image = part;
-    var shown = album;
+    // The album picture is the album's whose answer it is.
+    var shown = _sourceIsShown ? album : null;
     var written = await writeAction(
       context,
-      () => widget.client.posterVideo(path, image.name, millis),
+      () => widget.client.posterVideo(target.folder, target.name, millis),
       refusalKey: const Key("poster-failed"),
     );
     if (written == null) {
@@ -962,7 +1012,7 @@ class ImageViewState extends State<ImageView>
     ThumbnailInfo? cover;
     if (answer != null) {
       for (var answered in imagesOfAlbum(answer)) {
-        if (answered.name == image.name) {
+        if (answered.name == target.name) {
           stored = answered.poster;
         }
       }
@@ -972,21 +1022,22 @@ class ImageViewState extends State<ImageView>
     if (shown != null && cover != null && cover.image == image.name) {
       shown.indexPicture = cover;
     }
-    // A video of a collection has its poster in its own album (#221).
-    forgetSourceOf(widget.delegate, image);
+    // A video found elsewhere has its poster in its own album (#221, #294).
+    _forgetSource();
     if (mounted) {
       setState(() {});
     }
   }
 
-  /// The poster's menu at [position], where the video is clicked with the
-  /// secondary button (issue #285): the entries the viewer's own menu has.
-  Future<void> showPosterMenu(Offset position) async {
-    var l10n = AppLocalizations.of(context)!;
-    var entries = posterEntries(l10n);
-    if (entries.isEmpty) {
+  /// The viewer's menu at [position], where the picture or the video is
+  /// clicked with the secondary button (issues #285, #294): the entries of
+  /// the menu of its ⋮ button, see [menuEntries]. Not in the edit-persons
+  /// mode, which shows no menu.
+  Future<void> showViewerMenu(Offset position) async {
+    if (editPersons) {
       return;
     }
+    var entries = menuEntries(AppLocalizations.of(context)!);
     var overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
     var action = await showMenu<void Function(BuildContext)>(
       context: context,
@@ -1250,12 +1301,13 @@ class ImageViewState extends State<ImageView>
     required String person,
     required FaceState state,
   }) async {
-    var path = widget.editPath;
-    if (path == null) {
+    // Named in the album the photograph lies in (#294).
+    var target = source;
+    if (target == null) {
       return false;
     }
     var assignment = FaceAssignment(
-      image: part.name,
+      image: target.name,
       face: face,
       person: person,
       state: state,
@@ -1268,13 +1320,13 @@ class ImageViewState extends State<ImageView>
     );
     var written = await writeAction(
       context,
-      () => widget.client.tagFaces(path, [assignment]),
+      () => widget.client.tagFaces(target.folder, [assignment]),
       refusalKey: _tagFailed,
     );
     if (written == null || !mounted) {
       return false;
     }
-    _adopt(written.value);
+    _adopt(written.value, target);
     return true;
   }
 
@@ -1292,14 +1344,14 @@ class ImageViewState extends State<ImageView>
   /// the usual reason; a refusal of the server is said in its own words and
   /// changes nothing, so the box snaps back to where the server has it.
   Future<bool> adjustFace(FaceInfo face, MarkedBox box) async {
-    var path = widget.editPath;
-    if (path == null) {
+    var target = source;
+    if (target == null) {
       return false;
     }
     var decided =
         face.state == FaceState.confirmed || face.state == FaceState.rejected;
     var assignment = FaceAssignment(
-      image: part.name,
+      image: target.name,
       face: face.index,
       person: decided ? face.person : "",
       state: decided ? face.state : FaceState.undecided,
@@ -1310,13 +1362,14 @@ class ImageViewState extends State<ImageView>
     );
     var written = await writeAction(
       context,
-      () => widget.client.adjustFaces(path, TagFaces(faces: [assignment])),
+      () => widget.client
+          .adjustFaces(target.folder, TagFaces(faces: [assignment])),
       refusalKey: _tagFailed,
     );
     if (written == null || !mounted) {
       return false;
     }
-    _adopt(written.value);
+    _adopt(written.value, target);
     return true;
   }
 
@@ -1476,12 +1529,17 @@ class ImageViewState extends State<ImageView>
   /// now. Only the faces and the decisions travel: the part on the screen is
   /// the one the album view holds, linked to its neighbours, and replacing it
   /// would cut the picture out of the album it is being paged through.
-  void _adopt(AlbumInfo? answer) {
+  ///
+  /// The answer is the album [target] names, where the photograph has the
+  /// name of its own file (#294); the router forgets that album where it is
+  /// not the one shown, see [_forgetSource].
+  void _adopt(AlbumInfo? answer, PhotoSource target) {
+    _forgetSource();
     if (answer == null) {
       return;
     }
     for (var image in _imagesOf(answer)) {
-      if (image.name != part.name) {
+      if (image.name != target.name) {
         continue;
       }
       setState(() {
@@ -1831,6 +1889,8 @@ class ImageViewState extends State<ImageView>
         // The description of the image, where the image is looked at
         // (issue #80).
         onLongPress: editDescription,
+        // The viewer's menu, where the picture is right-clicked (#294).
+        onSecondaryTapUp: (details) => showViewerMenu(details.globalPosition),
         onScaleStart: (details) {
           _stopSnapBack();
           _gestureScale = tx.scale;
@@ -2403,10 +2463,9 @@ class ImageViewState extends State<ImageView>
       // A video has a description like every other part of the album
       // (issue #80).
       onLongPress: editDescription,
-      // The poster's menu, where the video is right-clicked (issue #285).
-      onSecondaryTapUp: mayChoosePoster
-          ? (details) => showPosterMenu(details.globalPosition)
-          : null,
+      // The viewer's menu, where the video is right-clicked (issues #285,
+      // #294): the poster's entries among the others.
+      onSecondaryTapUp: (details) => showViewerMenu(details.globalPosition),
       onScaleStart: (details) {},
       onScaleEnd: (details) {
         if (details.pointerCount <= 1) {
@@ -2458,6 +2517,7 @@ class ImageViewState extends State<ImageView>
         key: const Key("broken-viewer-surface"),
         behavior: HitTestBehavior.opaque,
         onLongPress: editDescription,
+        onSecondaryTapUp: (details) => showViewerMenu(details.globalPosition),
         onScaleStart: (details) {},
         onScaleEnd: (details) {
           if (details.pointerCount <= 1) {
@@ -2650,6 +2710,79 @@ class ImageViewState extends State<ImageView>
     });
   }
 
+  /// The key of an action of the catalogue in the viewer's menu, the keys the
+  /// viewer's entries have always had.
+  static const Map<String, String> _entryKeys = {
+    "download": "viewer-download",
+    "crop": "viewer-crop",
+    "show-in-album": "viewer-show-in-album",
+    "collect": "viewer-add-to-collection",
+    "use-as-poster": "viewer-use-as-poster",
+    "reset-poster": "viewer-reset-poster",
+    "edit-persons": "viewer-edit-persons",
+    "properties": "viewer-properties",
+  };
+
+  /// Whether the viewer offers [action] of the catalogue for the picture
+  /// shown; "Show in album" needs the router besides.
+  bool _offers(PhotoAction action) {
+    if (identical(action, PhotoAction.showInAlbum)) {
+      return mayShowInAlbum;
+    }
+    // What the photograph is, everybody is shown, album or not.
+    if (identical(action, PhotoAction.properties)) {
+      return action.offeredOn(part, photoFacts);
+    }
+    return album != null && action.offeredOn(part, photoFacts);
+  }
+
+  /// The entries of the viewer's menu (issues #100, #294), its ⋮ button's
+  /// and the secondary click's alike: the actions of the catalogue the
+  /// picture is offered ([viewerActions]) — decided from the album it lies
+  /// in, so the same wherever the viewer was opened from — the raw file
+  /// beside the download, and "About" last.
+  List<PopupMenuEntry<void Function(BuildContext)>> menuEntries(
+      AppLocalizations l10n) {
+    PopupMenuItem<void Function(BuildContext)> entry(
+      String key,
+      IconData icon,
+      String text,
+      void Function(BuildContext) action,
+    ) =>
+        PopupMenuItem<void Function(BuildContext)>(
+          key: Key(key),
+          value: action,
+          child: Row(
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(right: 16),
+                child: Icon(icon, color: Colors.blueAccent),
+              ),
+              Flexible(child: Text(text)),
+            ],
+          ),
+        );
+    var facts = photoFacts;
+    return [
+      for (var action in viewerActions)
+        if (_offers(action)) ...[
+          entry(
+            _entryKeys[action.id]!,
+            action.icon,
+            action.label(l10n, facts, 1),
+            (_) => action.run(this, _shownTile),
+          ),
+          // The raw shot beside the photograph is the same photograph, and
+          // its second original (#191).
+          if (identical(action, PhotoAction.download) && mayDownloadRaw)
+            entry("viewer-download-raw", Icons.raw_on, l10n.viewerDownloadRaw,
+                (_) => downloadRaw()),
+        ],
+      // What this app is, the last entry of every main menu (#187).
+      aboutMenuItem(l10n),
+    ];
+  }
+
   /// The navigation chevrons and the caption shown on top of the image.
   List<Widget> buildOverlay(BuildContext context) {
     var l10n = AppLocalizations.of(context)!;
@@ -2701,106 +2834,11 @@ class ImageViewState extends State<ImageView>
           ),
           // The look of every other control over the picture: white, and as
           // large (#155) — the theme's dark icon was all but invisible here.
-          child: menu(context, icon: imageOverlayIcon(Icons.more_vert), [
-            // The copy the `download` right promises, see issue #164.
-            if (mayDownloadOriginal)
-              PopupMenuItem<void Function(BuildContext)>(
-                key: const Key("viewer-download"),
-                value: (_) => downloadOriginal(),
-                child: Row(
-                  children: [
-                    const Padding(
-                      padding: EdgeInsets.only(right: 16),
-                      child: Icon(Icons.download, color: Colors.blueAccent),
-                    ),
-                    Flexible(child: Text(l10n.viewerDownload)),
-                  ],
-                ),
-              ),
-            // The raw shot beside the photograph is the same photograph, and
-            // its second original (#191).
-            if (mayDownloadRaw)
-              PopupMenuItem<void Function(BuildContext)>(
-                key: const Key("viewer-download-raw"),
-                value: (_) => downloadRaw(),
-                child: Row(
-                  children: [
-                    const Padding(
-                      padding: EdgeInsets.only(right: 16),
-                      child: Icon(Icons.raw_on, color: Colors.blueAccent),
-                    ),
-                    Flexible(child: Text(l10n.viewerDownloadRaw)),
-                  ],
-                ),
-              ),
-            // The region of the photograph that is shown (issue #212).
-            if (mayCrop)
-              PopupMenuItem<void Function(BuildContext)>(
-                key: const Key("viewer-crop"),
-                value: (_) => cropShown(),
-                child: Row(
-                  children: [
-                    const Padding(
-                      padding: EdgeInsets.only(right: 16),
-                      child: Icon(Icons.crop, color: Colors.blueAccent),
-                    ),
-                    Flexible(child: Text(l10n.cropMenu)),
-                  ],
-                ),
-              ),
-            // The album the photograph lies in, from a collection or a search
-            // (issues #221, #227).
-            if (mayShowInAlbum)
-              PopupMenuItem<void Function(BuildContext)>(
-                key: const Key("viewer-show-in-album"),
-                value: (_) => showInAlbum(),
-                child: Row(
-                  children: [
-                    const Padding(
-                      padding: EdgeInsets.only(right: 16),
-                      child: Icon(Icons.photo_album_outlined,
-                          color: Colors.blueAccent),
-                    ),
-                    Flexible(child: Text(l10n.showInAlbum)),
-                  ],
-                ),
-              ),
-            // A reference to this photograph in a collection (#221).
-            if (mayCollect)
-              PopupMenuItem<void Function(BuildContext)>(
-                key: const Key("viewer-add-to-collection"),
-                value: (_) => collectShown(),
-                child: Row(
-                  children: [
-                    const Padding(
-                      padding: EdgeInsets.only(right: 16),
-                      child: Icon(Icons.collections_bookmark_outlined,
-                          color: Colors.blueAccent),
-                    ),
-                    Flexible(child: Text(l10n.addToCollection)),
-                  ],
-                ),
-              ),
-            // The moment of a video its thumbnail shows (issue #285).
-            ...posterEntries(l10n),
-            if (mayEditPersons)
-              PopupMenuItem<void Function(BuildContext)>(
-                key: const Key("viewer-edit-persons"),
-                value: (_) => enterEditPersons(),
-                child: Row(
-                  children: [
-                    const Padding(
-                      padding: EdgeInsets.only(right: 16),
-                      child:
-                          Icon(Icons.people_outline, color: Colors.blueAccent),
-                    ),
-                    Flexible(child: Text(l10n.viewerEditPersons)),
-                  ],
-                ),
-              ),
-            // What this app is, the last entry of every main menu (#187).
-            aboutMenuItem(l10n),
-          ]),
+          child: menu(
+            context,
+            icon: imageOverlayIcon(Icons.more_vert),
+            menuEntries(l10n),
+          ),
         ),
     ];
     return [

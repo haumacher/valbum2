@@ -1791,9 +1791,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get nothingSelected => 'Nothing is selected.';
 
   @override
-  String get notEditableMessage => 'You may not edit this album.';
-
-  @override
   String get pictureFailedMessage => 'This picture could not be loaded.';
 
   @override

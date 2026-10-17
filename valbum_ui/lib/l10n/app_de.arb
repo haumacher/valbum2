@@ -483,7 +483,6 @@
   "selectedCount": "{count, plural, =1{1 Bild ausgewählt} other{{count} Bilder ausgewählt}}",
   "selectEverythingBelow": "Alles darunter auswählen",
   "nothingSelected": "Es ist nichts ausgewählt.",
-  "notEditableMessage": "Sie dürfen dieses Album nicht bearbeiten.",
   "pictureFailedMessage": "Dieses Bild konnte nicht geladen werden.",
   "takeBack": "Zurücknehmen…",
   "previousImage": "Vorheriges Bild",

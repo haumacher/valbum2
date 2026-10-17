@@ -2923,11 +2923,6 @@
     "description": "Refuses an action that needs a selection",
     "x-translated": "3c128ffe"
   },
-  "notEditableMessage": "You may not edit this album.",
-  "@notEditableMessage": {
-    "description": "Refuses the edit mode to a caller who may only look",
-    "x-translated": "3ce2f686"
-  },
   "pictureFailedMessage": "This picture could not be loaded.",
   "@pictureFailedMessage": {
     "description": "Said over the thumbnail when the picture itself did not arrive",

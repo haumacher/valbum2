@@ -59,22 +59,34 @@ class PhotoSpace {
   /// they lie, as the server says it to a member alone.
   bool refs;
 
+  /// The kind of `a.jpg`, wherever it is answered: a video for the poster.
+  String aKind;
+
+  /// Whether the space looks for faces, as the server answers it (#124).
+  bool faces;
+
   PhotoSpace({
     this.role = "edit",
     this.rights = const ["view", "download", "contribute", "edit"],
     this.extra = 0,
     this.savedGroupBy,
     this.refs = true,
+    this.aKind = "IMAGE",
+    this.faces = false,
   });
+
+  /// [photo], `a.jpg` of the kind [aKind].
+  String _photo(String name, int index, {String? ref}) => photo(name, index,
+      ref: ref, kind: name.endsWith("a.jpg") ? aKind : "IMAGE");
 
   String get _auth => '{"mode":"writes","deviceName":"Desk",'
       '"writeAllowed":true,"userName":"carol","role":"$role","space":"",'
-      '"clearance":"all","mayShare":false}';
+      '"clearance":"all","mayShare":false,"faces":$faces}';
 
   String get trip => '["AlbumInfo", {"path": "trip", "title": "Trip", '
       '"subTitle": "", "rights": ${rightsOf(rights)}, "parts": ['
       '${[
-        for (var (i, name) in tripNames(extra).indexed) photo(name, i)
+        for (var (i, name) in tripNames(extra).indexed) _photo(name, i)
       ].join(", ")}'
       ']}]';
 
@@ -82,12 +94,12 @@ class PhotoSpace {
 
   String get best => '["AlbumInfo", {"path": "Best", "kind": "COLLECTION", '
       '"title": "Best", "subTitle": "", "rights": ${rightsOf(rights)}, '
-      '"parts": [${photo("a.jpg", 0, ref: _ref("trip/a.jpg"))}, '
+      '"parts": [${_photo("a.jpg", 0, ref: _ref("trip/a.jpg"))}, '
       '${photo("b.jpg", 1, ref: _ref("trip/b.jpg"))}, '
       '${photo("last.jpg", 2, ref: _ref("trip/${tripNames(extra).last}"))}]}]';
 
   String get _foundParts =>
-      '${photo("trip/a.jpg", 0, ref: _ref("trip/a.jpg"))}, '
+      '${_photo("trip/a.jpg", 0, ref: _ref("trip/a.jpg"))}, '
       '${photo("trip/b.jpg", 1, ref: _ref("trip/b.jpg"))}, '
       '${photo("trip/${tripNames(extra).last}", 2, ref: _ref("trip/${tripNames(extra).last}"))}';
 

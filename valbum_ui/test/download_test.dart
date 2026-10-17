@@ -255,8 +255,9 @@ Future<void> pumpSelection(
       }
       if (path == "/valbum/data/Inbox/a.jpg" &&
           request.url.queryParameters["type"] == "media-url") {
-        return chrome.json('{"url": "/valbum/data/Inbox/a.jpg?media=d.dev.99.m",'
-            ' "media": "d.dev.99.m", "expires": "2026-10-03T12:10:00Z"}');
+        return chrome
+            .json('{"url": "/valbum/data/Inbox/a.jpg?media=d.dev.99.m",'
+                ' "media": "d.dev.99.m", "expires": "2026-10-03T12:10:00Z"}');
       }
       if (path == "/valbum/data/Inbox/") {
         return chrome.json(album(rights));
@@ -358,11 +359,12 @@ void main() {
     testWidgets('offers nothing to a caller who may only look', (tester) async {
       await pumpViewer(tester, viewerClient([]), rights: const ["view"]);
 
-      // The menu holds nothing but the About entry for a looker (#187).
+      // The menu holds nothing but the properties (#294) and the About entry
+      // (#187) for a looker.
       await tester.tap(find.byKey(const Key("viewer-menu")));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key("viewer-download")), findsNothing);
-      expect(menuKeys(tester), ["about"]);
+      expect(menuKeys(tester), ["viewer-properties", "about"]);
     });
 
     testWidgets('offers the original inside a share link made with download',
@@ -706,8 +708,7 @@ void main() {
       expect(find.text(testL10n.downloadSaved("Inbox.zip")), findsOneWidget);
     });
 
-    testWidgets('a refused ticket says the server\'s sentence',
-        (tester) async {
+    testWidgets('a refused ticket says the server\'s sentence', (tester) async {
       var saver = installAddressSaver();
       await withFakeImageHttp(() async {
         await pumpSelection(
@@ -743,8 +744,8 @@ void main() {
       );
       var saver = AddressSaver();
 
-      var result = await downloadOne(
-          client, "${chrome.dataUrl}/Inbox/a.jpg", saver: saver);
+      var result = await downloadOne(client, "${chrome.dataUrl}/Inbox/a.jpg",
+          saver: saver);
 
       expect(result.name, "a.jpg");
       expect(requests.single.url.queryParameters,
@@ -767,8 +768,8 @@ void main() {
       await downloadOne(client, "${chrome.dataUrl}/Inbox/a.jpg", saver: saver);
 
       expect(requests, isEmpty);
-      expect(
-          saver.addresses.single.$2, "${chrome.dataUrl}/Inbox/a.jpg?download=1");
+      expect(saver.addresses.single.$2,
+          "${chrome.dataUrl}/Inbox/a.jpg?download=1");
     });
   });
 

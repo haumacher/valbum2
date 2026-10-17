@@ -2996,12 +2996,6 @@ abstract class AppLocalizations {
   /// **'Nothing is selected.'**
   String get nothingSelected;
 
-  /// Refuses the edit mode to a caller who may only look
-  ///
-  /// In en, this message translates to:
-  /// **'You may not edit this album.'**
-  String get notEditableMessage;
-
   /// Said over the thumbnail when the picture itself did not arrive
   ///
   /// In en, this message translates to:

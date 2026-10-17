@@ -78,8 +78,10 @@ class RecordingServer {
   RecordingServer({this.putStatus = 200, this.putBody = "{}"});
 
   /// The PUTs of the album sidecar.
-  List<http.Request> get puts =>
-      [for (var request in requests) if (request.method == "PUT") request];
+  List<http.Request> get puts => [
+        for (var request in requests)
+          if (request.method == "PUT") request
+      ];
 
   VAlbumClient get client => VAlbumClient(
         dataUrl: "http://server/valbum/data",
@@ -121,9 +123,9 @@ Future<void> pumpViewer(
   }
   await withFakeImageHttp(() async {
     await tester.pumpWidget(MaterialApp(
-      localizationsDelegates: testLocalizationsDelegates,
-      supportedLocales: testSupportedLocales,
-      home: viewer));
+        localizationsDelegates: testLocalizationsDelegates,
+        supportedLocales: testSupportedLocales,
+        home: viewer));
     await tester.pumpAndSettle();
   });
 }
@@ -230,8 +232,9 @@ void main() {
     expect(image.comment, "Am Meer, abends");
   });
 
-  testWidgets('refuses where the caller may not edit the album',
-      (tester) async {
+  testWidgets(
+      'shows the properties read-only where the caller may not edit the '
+      'album (issue #294)', (tester) async {
     var image = imagePart("a.jpg", comment: "Am Meer");
     linkedAlbum([image], rights: [right(rightView), right(rightDownload)]);
     var server = RecordingServer();
@@ -239,15 +242,19 @@ void main() {
     await pumpViewer(tester, image, server: server);
     await longPressImage(tester);
 
+    // What the photograph is belongs to whoever sees it: the same dialog,
+    // with nothing to type in — never a refusal.
     expect(find.byType(TextInputDialog), findsNothing);
-    expect(find.byKey(const Key("image-not-editable")), findsOneWidget);
-    expect(find.text("You may not edit this album."), findsOneWidget);
+    expect(find.byKey(const Key("image-properties-read-only")), findsOneWidget);
+    expect(find.text("Am Meer"), findsWidgets);
+    expect(find.text("You may not edit this album."), findsNothing);
     expect(server.puts, isEmpty);
     expect(image.comment, "Am Meer");
   });
 
-  testWidgets('refuses inside a share link, whatever the rights say',
-      (tester) async {
+  testWidgets(
+      'shows them read-only inside a share link, whatever the rights '
+      'say', (tester) async {
     var image = imagePart("a.jpg", comment: "Am Meer");
     // Every right — and still no editing: a link is not an account.
     linkedAlbum([image], rights: [right(rightEdit)]);
@@ -271,7 +278,7 @@ void main() {
     await longPressImage(tester);
 
     expect(find.byType(TextInputDialog), findsNothing);
-    expect(find.byKey(const Key("image-not-editable")), findsOneWidget);
+    expect(find.byKey(const Key("image-properties-read-only")), findsOneWidget);
     expect(server.puts, isEmpty);
   });
 

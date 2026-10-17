@@ -47,7 +47,8 @@ void main() {
           tester, link == "album" ? chrome.albumLink() : chrome.folderLink());
       var menu = find.byIcon(Icons.more_vert).last;
       var rect = tester.getRect(menu);
-      expect(rect.top, greaterThanOrEqualTo(47), reason: "below the status bar");
+      expect(rect.top, greaterThanOrEqualTo(47),
+          reason: "below the status bar");
       await tester.tapAt(rect.center);
       await tester.pumpAndSettle();
       expect(menuKeys(tester).last, "about");
@@ -61,6 +62,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key("viewer-menu")));
     await tester.pumpAndSettle();
-    expect(menuKeys(tester), ["about"]);
+    // The properties, read-only, are a link visitor's as well (#294).
+    expect(menuKeys(tester), ["viewer-properties", "about"]);
   });
 }

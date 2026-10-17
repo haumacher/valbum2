@@ -81,10 +81,14 @@ Future<bool> cropPhoto(
   BuildContext context, {
   required VAlbumClient client,
   required List<String> albumPath,
+  String? name,
   required String imageUrl,
   required ImagePart image,
   AlbumInfo? album,
 }) async {
+  // The photograph's name in [albumPath]: its own where a photograph found
+  // elsewhere is cropped in the album it lies in (#294).
+  var named = name ?? image.name;
   var result = await openCropEditor(
     context,
     client: client,
@@ -100,7 +104,7 @@ Future<bool> cropPhoto(
   // Refused offline; a refusal in the server's own words (key `crop-failed`).
   var done = await writeAction(
     context,
-    () => client.cropImage(albumPath, image.name, result.crop),
+    () => client.cropImage(albumPath, named, result.crop),
     refusalKey: const Key("crop-failed"),
   );
   if (done == null) {
@@ -111,7 +115,7 @@ Future<bool> cropPhoto(
   ThumbnailInfo? cover;
   if (answer != null) {
     for (var part in imagesOfAlbum(answer)) {
-      if (part.name == image.name) {
+      if (part.name == named) {
         stored = part.crop;
       }
     }

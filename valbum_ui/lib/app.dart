@@ -3344,11 +3344,19 @@ class VAlbumState extends State<VAlbumView>
             ? null
             : path,
         onTakenBack: takenBack,
-        // Where a description edited in the viewer is written (issue #80),
-        // and whether it goes into the album's editing buffer instead. The
-        // search view is looked at, never edited (issue #227).
-        editPath: route.fromSearch ? null : path,
+        // The sidecar the viewer's album is, written whole with a changed
+        // description (issue #80), and whether that goes into the album's
+        // editing buffer instead. Not the search view's results, nor the copy
+        // of the album an entry of the bell shows (#268): neither is a
+        // sidecar, and a description is written into the album the photo
+        // lies in instead (#294).
+        editPath: route.fromSearch || route.newsKey != null ? null : path,
+        // Where the album a photo lies in is found from, which is where the
+        // viewer writes: the same photo, the same actions, wherever it was
+        // opened from (issue #294).
+        folderPath: path,
         editing: !route.fromSearch &&
+            route.newsKey == null &&
             navigator.delegate.editSession(statePath).editMode,
         onEdited: () => navigator.delegate.editSession(statePath).dirty = true,
         // Where a photo taken back out of this album lands is forgotten, so

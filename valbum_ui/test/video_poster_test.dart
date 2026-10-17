@@ -226,11 +226,14 @@ void main() {
       expect(resetEntry, findsOneWidget);
     });
 
-    testWidgets("a right click offers nothing to a viewer", (tester) async {
+    testWidgets(
+        "a right click offers a viewer no poster, the rest of the menu "
+        "(issue #294)", (tester) async {
       await pumpPaused(tester, posterClient([]), rights: const ["view"]);
       await tester.tap(find.byType(VideoView), buttons: kSecondaryButton);
       await tester.pumpAndSettle();
       expect(useEntry, findsNothing);
+      expect(find.byKey(const Key("viewer-properties")), findsOneWidget);
     });
   });
 
