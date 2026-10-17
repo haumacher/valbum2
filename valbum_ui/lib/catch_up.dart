@@ -135,7 +135,8 @@ class CatchUpSectionState extends State<CatchUpSection> {
   static bool _finished(CatchUpStatus status) =>
       status.step == CatchUpStep.idle &&
       status.albumsDone >= status.albumsTotal &&
-      status.videosRemaining == 0;
+      status.videosRemaining == 0 &&
+      status.contentRemaining == 0;
 
   List<String> _details(AppLocalizations l10n, CatchUpStatus? status) {
     var problem = _problem;
@@ -152,6 +153,9 @@ class CatchUpSectionState extends State<CatchUpSection> {
             _stepName(l10n, status.step), _folder(l10n, status.folder)),
       if (status.yielding) l10n.catchUpYielding,
       l10n.catchUpVideos(status.videosRemaining),
+      // Only where the space has the content search on (issue #257).
+      if (status.contentRemaining > 0)
+        l10n.catchUpContent(status.contentRemaining),
       if (status.failure.isEmpty)
         l10n.catchUpNoFailure
       else
@@ -182,6 +186,8 @@ class CatchUpSectionState extends State<CatchUpSection> {
         return l10n.catchUpStepPlaces;
       case CatchUpStep.videos:
         return l10n.catchUpStepVideos;
+      case CatchUpStep.content:
+        return l10n.catchUpStepContent;
       case CatchUpStep.idle:
       case CatchUpStep.other:
         return l10n.catchUpStepOther;

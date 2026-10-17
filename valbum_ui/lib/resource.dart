@@ -5096,6 +5096,10 @@ class CatchUpStatus extends _JsonObject {
 	///  How many videos still wait for their teaser or playback rendition.
 	int videosRemaining;
 
+	///  How many photos and videos still wait to be described for the content search of issue #257;
+	///  <code>0</code> where the space has it off.
+	int contentRemaining;
+
 	///  What failed last, as the server words it ("previews: IMG_1.jpg: &lt;reason&gt;"); empty while
 	///  nothing failed. A failure is retried when its folder changes, never in a loop.
 	String failure;
@@ -5113,6 +5117,7 @@ class CatchUpStatus extends _JsonObject {
 			this.step = CatchUpStep.idle, 
 			this.folder = "", 
 			this.videosRemaining = 0, 
+			this.contentRemaining = 0, 
 			this.failure = "", 
 			this.failureFolder = "", 
 			this.yielding = false, 
@@ -5156,6 +5161,10 @@ class CatchUpStatus extends _JsonObject {
 				videosRemaining = json.expectInt();
 				break;
 			}
+			case "contentRemaining": {
+				contentRemaining = json.expectInt();
+				break;
+			}
 			case "failure": {
 				failure = json.expectString();
 				break;
@@ -5191,6 +5200,9 @@ class CatchUpStatus extends _JsonObject {
 		json.addKey("videosRemaining");
 		json.addNumber(videosRemaining);
 
+		json.addKey("contentRemaining");
+		json.addNumber(contentRemaining);
+
 		json.addKey("failure");
 		json.addString(failure);
 
@@ -5225,6 +5237,8 @@ enum CatchUpStep {
 	///  sizes and dates, and which cannot be read, see issue #253. An album is answered from what
 	///  this step recorded.
 	analysis,
+	///  Describing photos for the content search, where the space has it on, see issue #257.
+	content,
 }
 
 /// Writes a value of CatchUpStep to a JSON stream.
@@ -5239,6 +5253,7 @@ void writeCatchUpStep(JsonSink json, CatchUpStep value) {
 		case CatchUpStep.videos: json.addString("VIDEOS"); break;
 		case CatchUpStep.other: json.addString("OTHER"); break;
 		case CatchUpStep.analysis: json.addString("ANALYSIS"); break;
+		case CatchUpStep.content: json.addString("CONTENT"); break;
 		default: throw ("No such literal: " + value.name);
 	}
 }
@@ -5255,6 +5270,7 @@ CatchUpStep readCatchUpStep(JsonReader json) {
 		case "VIDEOS": return CatchUpStep.videos;
 		case "OTHER": return CatchUpStep.other;
 		case "ANALYSIS": return CatchUpStep.analysis;
+		case "CONTENT": return CatchUpStep.content;
 		default: return CatchUpStep.idle;
 	}
 }
@@ -13997,8 +14013,7 @@ class NewsKey extends _JsonObject {
 /// 
 ///  <p>
 ///  The fields marked <em>answered</em> say what the server knows around the settings and are
-///  ignored on a write. The content search of issue #257 joins this message as a switch of its own
-///  once the space can ask for it.
+///  ignored on a write.
 ///  </p>
 class SpaceSettings extends _JsonObject {
 	///  The name shown for the space; the folder's name where the file gives none. Never empty.
@@ -14041,6 +14056,18 @@ class SpaceSettings extends _JsonObject {
 	///  inbox would turn the photographs waiting in this one into an ordinary album.
 	String inboxFixed;
 
+	///  Whether the server describes every photo of the space for the content search of issue #257:
+	///  {@link ContentSwitch#ON} or {@link ContentSwitch#OFF} in an answer. On a write,
+	///  {@link ContentSwitch#KEEP} (what an app that does not know the switch sends) leaves the space
+	///  as it is.
+	ContentSwitch content;
+
+	///  <em>Answered:</em> why the embedder of the content search cannot describe photos now (it is
+	///  not reachable, refuses this server's key, is still downloading its model), empty where it
+	///  can. Where the switch is off and the embedder runs on this server, it says that nothing is
+	///  started before the switch is turned on.
+	String contentUnavailable;
+
 	/// Creates a SpaceSettings.
 	SpaceSettings({
 			this.name = "", 
@@ -14054,6 +14081,8 @@ class SpaceSettings extends _JsonObject {
 			this.serverTimeZone = "", 
 			this.inbox = "", 
 			this.inboxFixed = "", 
+			this.content = ContentSwitch.keep, 
+			this.contentUnavailable = "", 
 	});
 
 	/// Parses a SpaceSettings from a string source.
@@ -14118,6 +14147,14 @@ class SpaceSettings extends _JsonObject {
 				inboxFixed = json.expectString();
 				break;
 			}
+			case "content": {
+				content = readContentSwitch(json);
+				break;
+			}
+			case "contentUnavailable": {
+				contentUnavailable = json.expectString();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -14158,8 +14195,46 @@ class SpaceSettings extends _JsonObject {
 
 		json.addKey("inboxFixed");
 		json.addString(inboxFixed);
+
+		json.addKey("content");
+		writeContentSwitch(json, content);
+
+		json.addKey("contentUnavailable");
+		json.addString(contentUnavailable);
 	}
 
+}
+
+///  The content search of a space, see {@link SpaceSettings#content}.
+enum ContentSwitch {
+	///  Nothing said: what a write of an app that does not know the switch carries, and what an
+	///  answer of a server that has none reads. The first constant, so that an unknown value keeps
+	///  what the space says.
+	keep,
+	///  No photo of the space is described; nothing is sent to the embedder.
+	off,
+	///  Every photo of the space is described in the background, see issue #257.
+	on,
+}
+
+/// Writes a value of ContentSwitch to a JSON stream.
+void writeContentSwitch(JsonSink json, ContentSwitch value) {
+	switch (value) {
+		case ContentSwitch.keep: json.addString("KEEP"); break;
+		case ContentSwitch.off: json.addString("OFF"); break;
+		case ContentSwitch.on: json.addString("ON"); break;
+		default: throw ("No such literal: " + value.name);
+	}
+}
+
+/// Reads a value of ContentSwitch from a JSON stream.
+ContentSwitch readContentSwitch(JsonReader json) {
+	switch (json.expectString()) {
+		case "KEEP": return ContentSwitch.keep;
+		case "OFF": return ContentSwitch.off;
+		case "ON": return ContentSwitch.on;
+		default: return ContentSwitch.keep;
+	}
 }
 
 ///  Who sees a space without signing in, see {@link SpaceSettings#anonymous}.

@@ -15,8 +15,7 @@ package de.haumacher.imageServer.shared.model;
  *
  * <p>
  * The fields marked <em>answered</em> say what the server knows around the settings and are
- * ignored on a write. The content search of issue #257 joins this message as a switch of its own
- * once the space can ask for it.
+ * ignored on a write.
  * </p>
  */
 public class SpaceSettings extends de.haumacher.msgbuf.data.AbstractDataObject {
@@ -64,6 +63,12 @@ public class SpaceSettings extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getInboxFixed() */
 	private static final String INBOX_FIXED__PROP = "inboxFixed";
 
+	/** @see #getContent() */
+	private static final String CONTENT__PROP = "content";
+
+	/** @see #getContentUnavailable() */
+	private static final String CONTENT_UNAVAILABLE__PROP = "contentUnavailable";
+
 	private String _name = "";
 
 	private de.haumacher.imageServer.shared.model.AnonymousAccess _anonymous = de.haumacher.imageServer.shared.model.AnonymousAccess.NONE;
@@ -85,6 +90,10 @@ public class SpaceSettings extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private String _inbox = "";
 
 	private String _inboxFixed = "";
+
+	private de.haumacher.imageServer.shared.model.ContentSwitch _content = de.haumacher.imageServer.shared.model.ContentSwitch.KEEP;
+
+	private String _contentUnavailable = "";
 
 	/**
 	 * Creates a {@link SpaceSettings} instance.
@@ -323,6 +332,53 @@ public class SpaceSettings extends de.haumacher.msgbuf.data.AbstractDataObject {
 		_inboxFixed = value;
 	}
 
+	/**
+	 * Whether the server describes every photo of the space for the content search of issue #257:
+	 * {@link ContentSwitch#ON} or {@link ContentSwitch#OFF} in an answer. On a write,
+	 * {@link ContentSwitch#KEEP} (what an app that does not know the switch sends) leaves the space
+	 * as it is.
+	 */
+	public final de.haumacher.imageServer.shared.model.ContentSwitch getContent() {
+		return _content;
+	}
+
+	/**
+	 * @see #getContent()
+	 */
+	public de.haumacher.imageServer.shared.model.SpaceSettings setContent(de.haumacher.imageServer.shared.model.ContentSwitch value) {
+		internalSetContent(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getContent()} without chain call utility. */
+	protected final void internalSetContent(de.haumacher.imageServer.shared.model.ContentSwitch value) {
+		if (value == null) throw new IllegalArgumentException("Property 'content' cannot be null.");
+		_content = value;
+	}
+
+	/**
+	 * <em>Answered:</em> why the embedder of the content search cannot describe photos now (it is
+	 * not reachable, refuses this server's key, is still downloading its model), empty where it
+	 * can. Where the switch is off and the embedder runs on this server, it says that nothing is
+	 * started before the switch is turned on.
+	 */
+	public final String getContentUnavailable() {
+		return _contentUnavailable;
+	}
+
+	/**
+	 * @see #getContentUnavailable()
+	 */
+	public de.haumacher.imageServer.shared.model.SpaceSettings setContentUnavailable(String value) {
+		internalSetContentUnavailable(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getContentUnavailable()} without chain call utility. */
+	protected final void internalSetContentUnavailable(String value) {
+		_contentUnavailable = value;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.SpaceSettings readSpaceSettings(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.SpaceSettings result = new de.haumacher.imageServer.shared.model.SpaceSettings();
@@ -360,6 +416,10 @@ public class SpaceSettings extends de.haumacher.msgbuf.data.AbstractDataObject {
 		out.value(getInbox());
 		out.name(INBOX_FIXED__PROP);
 		out.value(getInboxFixed());
+		out.name(CONTENT__PROP);
+		getContent().writeTo(out);
+		out.name(CONTENT_UNAVAILABLE__PROP);
+		out.value(getContentUnavailable());
 	}
 
 	@Override
@@ -376,6 +436,8 @@ public class SpaceSettings extends de.haumacher.msgbuf.data.AbstractDataObject {
 			case SERVER_TIME_ZONE__PROP: setServerTimeZone(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case INBOX__PROP: setInbox(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case INBOX_FIXED__PROP: setInboxFixed(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case CONTENT__PROP: setContent(de.haumacher.imageServer.shared.model.ContentSwitch.readContentSwitch(in)); break;
+			case CONTENT_UNAVAILABLE__PROP: setContentUnavailable(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			default: super.readField(in, field);
 		}
 	}

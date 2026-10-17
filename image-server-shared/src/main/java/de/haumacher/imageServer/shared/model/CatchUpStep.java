@@ -52,6 +52,11 @@ public enum CatchUpStep implements de.haumacher.msgbuf.data.ProtocolEnum {
 	 */
 	ANALYSIS("ANALYSIS"),
 
+	/**
+	 * Describing photos for the content search, where the space has it on, see issue #257.
+	 */
+	CONTENT("CONTENT"),
+
 	;
 
 	private final String _protocolName;
@@ -83,6 +88,7 @@ public enum CatchUpStep implements de.haumacher.msgbuf.data.ProtocolEnum {
 			case "VIDEOS": return VIDEOS;
 			case "OTHER": return OTHER;
 			case "ANALYSIS": return ANALYSIS;
+			case "CONTENT": return CONTENT;
 		}
 		return IDLE;
 	}
@@ -109,6 +115,7 @@ public enum CatchUpStep implements de.haumacher.msgbuf.data.ProtocolEnum {
 			case VIDEOS: out.value(7); break;
 			case OTHER: out.value(8); break;
 			case ANALYSIS: out.value(9); break;
+			case CONTENT: out.value(10); break;
 			default: out.value(0);
 		}
 	}
@@ -125,6 +132,7 @@ public enum CatchUpStep implements de.haumacher.msgbuf.data.ProtocolEnum {
 			case 7: return VIDEOS;
 			case 8: return OTHER;
 			case 9: return ANALYSIS;
+			case 10: return CONTENT;
 			default: return IDLE;
 		}
 	}

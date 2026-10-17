@@ -45,6 +45,8 @@ String settingsOf({
   String timeZone = "",
   String inbox = "Inbox",
   String inboxFixed = "",
+  String? content,
+  String contentUnavailable = "",
 }) =>
     jsonEncode({
       "name": name,
@@ -58,6 +60,9 @@ String settingsOf({
       "serverTimeZone": "UTC",
       "inbox": inbox,
       "inboxFixed": inboxFixed,
+      // A server of an earlier release answers no switch of the content search.
+      if (content != null) "content": content,
+      if (content != null) "contentUnavailable": contentUnavailable,
     });
 
 /// Pumps the page alone, asking the given transport.
@@ -214,6 +219,98 @@ void main() {
         body["mapUrl"], "https://www.openstreetmap.org/?mlat={lat}&mlon={lon}");
     expect(body["inbox"], "Inbox");
     expect(find.text(testL10n.spaceSettingsSaved), findsOneWidget);
+  });
+
+  testWidgets('the content search is switched on with the right body',
+      (tester) async {
+    var posts = <Map<String, dynamic>>[];
+    await pumpPage(
+      tester,
+      MockClient((request) async {
+        if (request.method == "POST") {
+          var sent = jsonDecode(request.body) as Map<String, dynamic>;
+          posts.add(sent);
+          return json(settingsOf(content: sent["content"] as String));
+        }
+        return json(settingsOf(content: "OFF"));
+      }),
+    );
+    expect(find.text(testL10n.spaceSettingsContent), findsOneWidget);
+    expect(find.text(testL10n.spaceSettingsContentHelp), findsOneWidget);
+    expect(
+        find.descendant(
+            of: find.byKey(spaceSettingsContentStatusKey),
+            matching: find.text(testL10n.spaceSettingsContentReady)),
+        findsOneWidget);
+    expect(
+        tester
+            .widget<SwitchListTile>(find.byKey(spaceSettingsContentKey))
+            .value,
+        isFalse);
+
+    await tester.tap(find.byKey(spaceSettingsContentKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(spaceSettingsSaveKey));
+    await tester.pumpAndSettle();
+    expect(posts, hasLength(1));
+    expect(posts.single["content"], "ON");
+    expect(posts.single["faces"], false,
+        reason: "The faces are another switch.");
+    expect(
+        tester
+            .widget<SwitchListTile>(find.byKey(spaceSettingsContentKey))
+            .value,
+        isTrue);
+
+    await tester.tap(find.byKey(spaceSettingsContentKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(spaceSettingsSaveKey));
+    await tester.pumpAndSettle();
+    expect(posts.last["content"], "OFF");
+  });
+
+  testWidgets(
+      'says why the embedder cannot describe photos, in the server\'s '
+      'words', (tester) async {
+    const reason =
+        "the embedder service at http://pi:8091/ is downloading the model";
+    await pumpPage(
+        tester,
+        MockClient((request) async =>
+            json(settingsOf(content: "ON", contentUnavailable: reason))));
+    expect(
+        tester
+            .widget<SwitchListTile>(find.byKey(spaceSettingsContentKey))
+            .value,
+        isTrue);
+    expect(
+        find.descendant(
+            of: find.byKey(spaceSettingsContentStatusKey),
+            matching:
+                find.text(testL10n.spaceSettingsContentUnavailable(reason))),
+        findsOneWidget);
+    expect(find.text(testL10n.spaceSettingsContentReady), findsNothing);
+  });
+
+  testWidgets('a server without the switch is shown none, and sent none',
+      (tester) async {
+    var posts = <Map<String, dynamic>>[];
+    await pumpPage(
+      tester,
+      MockClient((request) async {
+        if (request.method == "POST") {
+          posts.add(jsonDecode(request.body) as Map<String, dynamic>);
+        }
+        return json(settingsOf());
+      }),
+    );
+    expect(find.byKey(spaceSettingsContentKey), findsNothing);
+    expect(find.byKey(spaceSettingsContentStatusKey), findsNothing);
+    await tester.tap(find.byKey(spaceSettingsSaveKey));
+    await tester.pumpAndSettle();
+    expect(posts, hasLength(1));
+    expect(posts.single["content"] ?? "KEEP", "KEEP",
+        reason: "The space keeps what it says.");
   });
 
   testWidgets('a refusal is shown in the server\'s words', (tester) async {

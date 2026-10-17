@@ -5,6 +5,7 @@ package de.haumacher.imageServer;
 
 import de.haumacher.imageServer.cache.AnalysisRecord;
 import de.haumacher.imageServer.cache.ResourceCache;
+import de.haumacher.imageServer.content.ContentIndex;
 import de.haumacher.imageServer.faces.FaceIndex;
 import de.haumacher.imageServer.pipeline.Background;
 import de.haumacher.imageServer.pipeline.FolderPipeline;
@@ -49,6 +50,8 @@ import java.util.logging.Logger;
  * crop of every face an album answers ({@link FaceIndex#cropStep()}, issue #256);</li>
  * <li>places ({@link de.haumacher.imageServer.places.PlacesStep}), installed by
  * {@link ImageServlet#setPlaces};</li>
+ * <li>the content search, where the space has it on ({@link ContentIndex#step()}, issue #257): the
+ * vectors of every photo, one unit each, behind the photographs of every album;</li>
  * <li>{@link Videos}: the teaser and the playback rendition of every video, one unit each, behind
  * the photographs of every album.</li>
  * </ol>
@@ -95,6 +98,16 @@ public final class CatchUp {
 	 */
 	public static void install(FolderPipeline pipeline, Path root, FaceIndex faces, VideoRenditions videos,
 			FolderPipeline.Step places) {
+		install(pipeline, root, faces, videos, places, null);
+	}
+
+	/**
+	 * Adds the steps of issue #236 to the given pipeline behind hashing, the given places step (if
+	 * any) behind faces, and the given content search (if any, and where it is on) before the
+	 * videos, see issue #257.
+	 */
+	public static void install(FolderPipeline pipeline, Path root, FaceIndex faces, VideoRenditions videos,
+			FolderPipeline.Step places, ContentIndex content) {
 		if (places != null) {
 			pipeline.removeStep(places);
 		}
@@ -110,7 +123,44 @@ public final class CatchUp {
 		if (places != null) {
 			pipeline.addStep(places);
 		}
+		if (content != null) {
+			content.setPipeline(pipeline);
+			if (content.isEnabled()) {
+				pipeline.addStep(content.step());
+			}
+		}
 		pipeline.addStep(new Videos(videos));
+	}
+
+	/**
+	 * Follows the administrator's switch of the content search of a space while the server runs,
+	 * see issue #257, as {@link #switchFaces} does for the faces: on, its step joins the pipeline
+	 * before the videos and every album of the space is handed to the catch-up, newest first; off, it
+	 * leaves again, and every vector stored stays.
+	 *
+	 * @param installed
+	 *        Whether {@link #install} ran; without it only the index itself is switched.
+	 */
+	public static void switchContent(FolderPipeline pipeline, Path root, ContentIndex content, boolean on,
+			boolean installed) {
+		content.setEnabled(on);
+		if (!installed) {
+			return;
+		}
+		if (on) {
+			content.setPipeline(pipeline);
+			pipeline.addStepBefore(VIDEOS, content.step());
+			if (pipeline.isStarted()) {
+				try {
+					pipeline.execute(
+						() -> pipeline.catchUp(FolderPipeline.newestFirst(FolderPipeline.tree(root.toFile()))));
+				} catch (IllegalStateException ex) {
+					// Stopped meanwhile: the next start walks the space anyway.
+				}
+			}
+		} else {
+			pipeline.removeStep(content.step());
+		}
 	}
 
 	/**
@@ -158,7 +208,8 @@ public final class CatchUp {
 			.setAlbumsTotal(status.getTotal())
 			.setStep(step(status.getStep()))
 			.setFolder(status.getFolder() == null ? "" : status.getFolder())
-			.setVideosRemaining(status.getVideos())
+			.setVideosRemaining(status.getRemaining(VIDEOS))
+			.setContentRemaining(status.getRemaining(ContentIndex.STEP))
 			.setFailure(status.getFailure() == null ? "" : status.getFailure())
 			.setFailureFolder(status.getFailureFolder() == null ? "" : status.getFailureFolder())
 			.setYielding(status.getStep() != null && Background.busy());
@@ -184,6 +235,8 @@ public final class CatchUp {
 				return CatchUpStep.PLACES;
 			case VIDEOS:
 				return CatchUpStep.VIDEOS;
+			case ContentIndex.STEP:
+				return CatchUpStep.CONTENT;
 			default:
 				return CatchUpStep.OTHER;
 		}

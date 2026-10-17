@@ -99,6 +99,16 @@ public interface Embedder extends Closeable {
 	String unavailability();
 
 	/**
+	 * Why this embedder cannot answer now, as {@link #unavailability()} says it, but without setting
+	 * anything in motion: what the settings of a space show while its content search is off, see
+	 * issue #257. By default the same as {@link #unavailability()}, which asks a service of its own
+	 * and starts nothing.
+	 */
+	default String peekUnavailability() {
+		return unavailability();
+	}
+
+	/**
 	 * Waits until this embedder can answer, setting in motion what is needed.
 	 *
 	 * @return Whether it can, <code>false</code> when the time ran out or it never will (then

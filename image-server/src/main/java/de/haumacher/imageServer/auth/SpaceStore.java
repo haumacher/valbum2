@@ -49,17 +49,18 @@ import java.util.logging.Logger;
  *
  * <pre>
  * {"version":1,"name":"Alice","anonymous":"public","mapUrl":"https://www.google.com/maps?q={lat},{lon}",
- *  "faces":"on","timeZone":"Europe/Berlin","inbox":"Inbox"}
+ *  "faces":"on","timeZone":"Europe/Berlin","inbox":"Inbox","content":"on"}
  * </pre>
  *
  * <p>
  * Everything is optional: a file holding nothing but <code>{}</code> is a space with the folder's
  * own name, no anonymous access, the default map (issue #112), no face index (issue #124) and the
  * server's own time zone for the photographs that do not say theirs (issue #183), and its inbox
- * at {@link #DEFAULT_INBOX} (issue #226). An
+ * at {@link #DEFAULT_INBOX} (issue #226), and no content search (issue #257). An
  * unknown <code>anonymous</code> value is read as {@link #ANONYMOUS_NONE}, the closed one, and an
  * unknown <code>faces</code> value as {@link #FACES_OFF} — a space is never opened and never made
- * to process biometrics by a typo.
+ * to process biometrics by a typo; so is an unknown <code>content</code> value, as
+ * {@link #CONTENT_OFF}: describing every photo costs days of background work.
  * </p>
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
@@ -87,6 +88,16 @@ public class SpaceStore {
 	 * </p>
 	 */
 	public static final String FACES_ON = "on";
+
+	/** No photo of this space is described for the content search, see issue #257. */
+	public static final String CONTENT_OFF = "off";
+
+	/**
+	 * Every photo of this space is described in the background for the content search, see issue
+	 * #257: by the embedder, which may run on another machine, at a cost of seconds to minutes per
+	 * photo. Opt-in like {@link #FACES_ON}.
+	 */
+	public static final String CONTENT_ON = "on";
 
 	/**
 	 * Where a position is shown when the space names no map of its own, see issue #112.
@@ -122,6 +133,8 @@ public class SpaceStore {
 	private static final String TIME_ZONE__PROP = "timeZone";
 
 	private static final String INBOX__PROP = "inbox";
+
+	private static final String CONTENT__PROP = "content";
 
 	private static final Logger LOG = Logger.getLogger(SpaceStore.class.getName());
 
@@ -165,6 +178,8 @@ public class SpaceStore {
 		private final ZoneId _zone;
 
 		private final String _inbox;
+
+		private final String _content;
 
 		/** Creates a {@link Config} with the default map, see {@link SpaceStore#DEFAULT_MAP_URL}. */
 		public Config(String name, String anonymous) {
@@ -212,6 +227,19 @@ public class SpaceStore {
 		 *        refuses is logged and read as none.
 		 */
 		public Config(String name, String anonymous, String mapUrl, String faces, String timeZone, String inbox) {
+			this(name, anonymous, mapUrl, faces, timeZone, inbox, CONTENT_OFF);
+		}
+
+		/**
+		 * Creates a {@link Config}.
+		 *
+		 * @param content
+		 *        {@link SpaceStore#CONTENT_ON} or {@link SpaceStore#CONTENT_OFF}; anything else is off,
+		 *        see issue #257.
+		 */
+		public Config(String name, String anonymous, String mapUrl, String faces, String timeZone, String inbox,
+				String content) {
+			_content = CONTENT_ON.equals(content) ? CONTENT_ON : CONTENT_OFF;
 			_name = name;
 			_anonymous = anonymous;
 			_mapUrl = mapUrl == null || mapUrl.trim().isEmpty() ? DEFAULT_MAP_URL : mapUrl.trim();
@@ -244,7 +272,12 @@ public class SpaceStore {
 
 		/** This configuration with the given inbox, see {@link #getInbox()}. */
 		public Config withInbox(String inbox) {
-			return new Config(_name, _anonymous, _mapUrl, _faces, _timeZone, inbox);
+			return new Config(_name, _anonymous, _mapUrl, _faces, _timeZone, inbox, _content);
+		}
+
+		/** This configuration with the given content search, see {@link #isContentEnabled()}. */
+		public Config withContent(String content) {
+			return new Config(_name, _anonymous, _mapUrl, _faces, _timeZone, _inbox, content);
 		}
 
 		/**
@@ -292,6 +325,24 @@ public class SpaceStore {
 			return FACES_ON.equals(_faces);
 		}
 
+		/** {@link SpaceStore#CONTENT_OFF} or {@link SpaceStore#CONTENT_ON}, see issue #257. */
+		public String getContent() {
+			return _content;
+		}
+
+		/**
+		 * Whether the server describes the photographs of this space for the content search, see
+		 * issue #257.
+		 *
+		 * <p>
+		 * <code>false</code> unless the file says <code>"content":"on"</code>, like
+		 * {@link #isFacesEnabled()}.
+		 * </p>
+		 */
+		public boolean isContentEnabled() {
+			return CONTENT_ON.equals(_content);
+		}
+
 		/** The name to show for this space; the folder name when the file gives none. */
 		public String getName() {
 			return _name;
@@ -322,7 +373,7 @@ public class SpaceStore {
 		@Override
 		public String toString() {
 			return "Space[" + _name + ", anonymous=" + _anonymous + ", map=" + _mapUrl + ", faces="
-				+ _faces + ", timeZone=" + _timeZone + ", inbox=" + getInbox() + "]";
+				+ _faces + ", timeZone=" + _timeZone + ", inbox=" + getInbox() + ", content=" + _content + "]";
 		}
 	}
 
@@ -353,7 +404,7 @@ public class SpaceStore {
 		Stored stored = readStored(file);
 		return new Config(stored.name.trim().isEmpty() ? folderName : stored.name.trim(),
 			ANONYMOUS_PUBLIC.equals(stored.anonymous) ? ANONYMOUS_PUBLIC : ANONYMOUS_NONE, stored.mapUrl,
-			stored.faces.trim(), stored.timeZone, stored.inbox);
+			stored.faces.trim(), stored.timeZone, stored.inbox, stored.content.trim());
 	}
 
 	/** The values of a {@value #FILE_NAME} exactly as they are written, empty where one is absent. */
@@ -370,10 +421,12 @@ public class SpaceStore {
 
 		String inbox = "";
 
+		String content = "";
+
 		/**
 		 * The keys this build does not know, with their values as JSON, in the order they are
-		 * written: kept on every rewrite, so that a file a later build wrote (a <code>content</code>
-		 * switch, say) survives a save of this one, see issue #297.
+		 * written: kept on every rewrite, so that a file a later build wrote survives a save of this
+		 * one, see issue #297.
 		 */
 		final Map<String, String> unknown = new LinkedHashMap<>();
 	}
@@ -409,6 +462,9 @@ public class SpaceStore {
 						break;
 					case INBOX__PROP:
 						result.inbox = in.nextString();
+						break;
+					case CONTENT__PROP:
+						result.content = in.nextString();
 						break;
 					case VERSION__PROP:
 						// Written anew with every write.
@@ -543,7 +599,8 @@ public class SpaceStore {
 	public static void store(Path spaceRoot, Config config) throws IOException {
 		write(spaceRoot, config.getName(), config.getAnonymous(), config.getMapUrl(), config.getFaces(),
 			config.getTimeZone().isEmpty() ? null : config.getTimeZone(),
-			config.hasStoredInbox() ? config.getInbox() : null, Collections.emptyMap(), true);
+			config.hasStoredInbox() ? config.getInbox() : null, config.isContentEnabled() ? CONTENT_ON : null,
+			Collections.emptyMap(), true);
 	}
 
 	/**
@@ -599,7 +656,7 @@ public class SpaceStore {
 		}
 		String trimmed = name == null ? "" : name.trim();
 		write(spaceRoot, trimmed.isEmpty() ? null : trimmed, anonymous, null, faces, zone.isEmpty() ? null : zone,
-			null, Collections.emptyMap(), false);
+			null, null, Collections.emptyMap(), false);
 	}
 
 	/**
@@ -633,6 +690,20 @@ public class SpaceStore {
 	 */
 	public static void storeSettings(Path spaceRoot, String folderName, String name, String anonymous, String faces,
 			String mapUrl, String timeZone, String inbox) throws IOException {
+		storeSettings(spaceRoot, folderName, name, anonymous, faces, mapUrl, timeZone, inbox, null);
+	}
+
+	/**
+	 * Writes what the administrator of the space at the given folder set in the app, see
+	 * {@link #storeSettings(Path, String, String, String, String, String, String, String)}, with the
+	 * content search of issue #257.
+	 *
+	 * @param content
+	 *        {@link #CONTENT_ON} or {@link #CONTENT_OFF}; <code>null</code> to keep what the file
+	 *        says (an app that does not know the switch).
+	 */
+	public static void storeSettings(Path spaceRoot, String folderName, String name, String anonymous, String faces,
+			String mapUrl, String timeZone, String inbox, String content) throws IOException {
 		Path file = file(spaceRoot);
 		Stored stored = Files.isRegularFile(file) ? readStored(file) : new Stored();
 		String newName = trim(name);
@@ -644,6 +715,11 @@ public class SpaceStore {
 		stored.timeZone = trim(timeZone);
 		String newInbox = trim(inbox);
 		stored.inbox = stored.inbox.trim().isEmpty() && newInbox.equals(DEFAULT_INBOX) ? "" : newInbox;
+		if (content != null) {
+			// Off where the file never said it stays unsaid: its absence means off anyway.
+			stored.content = CONTENT_ON.equals(content) ? CONTENT_ON
+				: stored.content.trim().isEmpty() ? "" : CONTENT_OFF;
+		}
 		write(spaceRoot, stored, true);
 	}
 
@@ -684,7 +760,10 @@ public class SpaceStore {
 			stored.mapUrl.trim().isEmpty() ? null : stored.mapUrl.trim(),
 			FACES_ON.equals(stored.faces.trim()) ? FACES_ON : FACES_OFF,
 			stored.timeZone.trim().isEmpty() ? null : stored.timeZone.trim(),
-			stored.inbox.trim().isEmpty() ? null : stored.inbox.trim(), stored.unknown, replace);
+			stored.inbox.trim().isEmpty() ? null : stored.inbox.trim(),
+			stored.content.trim().isEmpty() ? null
+				: CONTENT_ON.equals(stored.content.trim()) ? CONTENT_ON : CONTENT_OFF,
+			stored.unknown, replace);
 	}
 
 	/**
@@ -698,6 +777,8 @@ public class SpaceStore {
 	 *        <code>null</code> to leave the time zone out.
 	 * @param inbox
 	 *        <code>null</code> to leave the inbox out, see issue #226.
+	 * @param content
+	 *        <code>null</code> to leave the content search out, see issue #257.
 	 * @param unknown
 	 *        The keys this build does not know, with their values as JSON, written behind the
 	 *        ones it knows, see issue #297.
@@ -705,7 +786,8 @@ public class SpaceStore {
 	 *        Whether an existing file is replaced; otherwise it is left as it is and the call fails.
 	 */
 	private static void write(Path spaceRoot, String name, String anonymous, String mapUrl, String faces,
-			String timeZone, String inbox, Map<String, String> unknown, boolean replace) throws IOException {
+			String timeZone, String inbox, String content, Map<String, String> unknown, boolean replace)
+			throws IOException {
 		Path file = file(spaceRoot);
 		Files.createDirectories(file.getParent());
 		Path tmp = file.resolveSibling(FILE_NAME + ".tmp");
@@ -734,6 +816,10 @@ public class SpaceStore {
 				if (inbox != null) {
 					out.name(INBOX__PROP);
 					out.value(inbox);
+				}
+				if (content != null) {
+					out.name(CONTENT__PROP);
+					out.value(content);
 				}
 				for (Map.Entry<String, String> entry : unknown.entrySet()) {
 					out.name(entry.getKey());

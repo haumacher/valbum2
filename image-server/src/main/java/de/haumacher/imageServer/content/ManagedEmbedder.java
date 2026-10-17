@@ -205,6 +205,23 @@ public final class ManagedEmbedder implements Embedder {
 		return problem;
 	}
 
+	/** What {@link #peekUnavailability()} says of a service that was never asked for. */
+	static final String NOT_STARTED = "the embedder service of this server is not running: it is prepared (its "
+		+ "Python environment and the model are downloaded once) and started when a space switches content search on";
+
+	@Override
+	public String peekUnavailability() {
+		synchronized (_lock) {
+			if (_state == State.IDLE) {
+				return NOT_STARTED;
+			}
+			if (_state != State.READY && _state != State.STARTING) {
+				return describe();
+			}
+		}
+		return unavailability();
+	}
+
 	@Override
 	public boolean awaitAvailable(Duration timeout) throws InterruptedException {
 		long end = System.nanoTime() + timeout.toNanos();

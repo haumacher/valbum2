@@ -59,6 +59,8 @@ public class CacheRefresh {
 	 * <li>The faces found in the photographs of this folder,
 	 * {@value de.haumacher.imageServer.faces.FaceCache#FILE_NAME}, and the crop of one of them,
 	 * <code>face-&lt;name&gt;-&lt;index&gt;.jpg</code>, see issue #124.</li>
+	 * <li>The vectors of the content search of this folder's photographs,
+	 * {@value de.haumacher.imageServer.content.ContentCache#FILE_NAME}, see issue #257.</li>
 	 * <li>Anything of those under its {@value PreviewCache#TMP_SUFFIX} name — a leftover of a
 	 * server that was killed between writing and moving.</li>
 	 * <li>The record of the original any of those was made from, under its name and
@@ -81,7 +83,8 @@ public class CacheRefresh {
 			&& plain.toLowerCase(Locale.ROOT).endsWith("." + PreviewCache.DISPLAY_EXTENSION)) {
 			return true;
 		}
-		if (plain.equals(de.haumacher.imageServer.faces.FaceCache.FILE_NAME)) {
+		if (plain.equals(de.haumacher.imageServer.faces.FaceCache.FILE_NAME)
+			|| plain.equals(de.haumacher.imageServer.content.ContentCache.FILE_NAME)) {
 			return true;
 		}
 		if (plain.equals(de.haumacher.imageServer.cache.AnalysisRecord.FILE_NAME)

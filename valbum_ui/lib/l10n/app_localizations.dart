@@ -6914,6 +6914,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Another sync was running and took the new photos along.'**
   String get backgroundSyncBusy;
+
+  /// Title of the switch letting the server describe every photo for the content search (issue #257)
+  ///
+  /// In en, this message translates to:
+  /// **'Search by content'**
+  String get spaceSettingsContent;
+
+  /// Explanation below the content search switch: what it does and what it costs (issue #257)
+  ///
+  /// In en, this message translates to:
+  /// **'The server describes every photo and video in the background, so that it can be found by what it shows. Each photo is sent as a small preview to the embedder service, which may run on another computer and needs seconds to minutes per photo there. The descriptions take about 2 KB per photo on disk. Switching off keeps what was described.'**
+  String get spaceSettingsContentHelp;
+
+  /// Line below the content search switch: the service that describes the photos answers (issue #257)
+  ///
+  /// In en, this message translates to:
+  /// **'The embedder service is ready.'**
+  String get spaceSettingsContentReady;
+
+  /// Line below the content search switch: why the service that describes the photos cannot do so now, in the server's words (issue #257)
+  ///
+  /// In en, this message translates to:
+  /// **'The embedder service cannot describe photos now: {reason}'**
+  String spaceSettingsContentUnavailable(String reason);
+
+  /// Name of a background step: describing photos for the content search (issue #257)
+  ///
+  /// In en, this message translates to:
+  /// **'Content search'**
+  String get catchUpStepContent;
+
+  /// Detail of the preparation progress: how many photos and videos still wait to be described for the content search (issue #257)
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{No photo waiting for the content search} =1{1 photo waiting for the content search} other{{count} photos waiting for the content search}}'**
+  String catchUpContent(int count);
 }
 
 class _AppLocalizationsDelegate

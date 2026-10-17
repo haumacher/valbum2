@@ -195,6 +195,16 @@ public class SpaceServlet extends HttpServlet {
 		}
 	}
 
+	/**
+	 * Installs the one embedder of the content search of this server in every space, see issue
+	 * #257: one service, whichever space asks it.
+	 */
+	public void setEmbedder(de.haumacher.imageServer.content.Embedder embedder) {
+		for (ImageServlet servlet : _data.values()) {
+			servlet.setEmbedder(embedder);
+		}
+	}
+
 	@Override
 	public void init(ServletConfig config) throws ServletException {
 		super.init(config);

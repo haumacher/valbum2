@@ -4453,4 +4453,34 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get backgroundSyncBusy =>
       'Another sync was running and took the new photos along.';
+
+  @override
+  String get spaceSettingsContent => 'Search by content';
+
+  @override
+  String get spaceSettingsContentHelp =>
+      'The server describes every photo and video in the background, so that it can be found by what it shows. Each photo is sent as a small preview to the embedder service, which may run on another computer and needs seconds to minutes per photo there. The descriptions take about 2 KB per photo on disk. Switching off keeps what was described.';
+
+  @override
+  String get spaceSettingsContentReady => 'The embedder service is ready.';
+
+  @override
+  String spaceSettingsContentUnavailable(String reason) {
+    return 'The embedder service cannot describe photos now: $reason';
+  }
+
+  @override
+  String get catchUpStepContent => 'Content search';
+
+  @override
+  String catchUpContent(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count photos waiting for the content search',
+      one: '1 photo waiting for the content search',
+      zero: 'No photo waiting for the content search',
+    );
+    return '$_temp0';
+  }
 }
