@@ -39,6 +39,7 @@ import 'platform.dart';
 import 'resource.dart';
 import 'selectable.dart';
 import 'sign_in_form.dart';
+import 'space_settings_view.dart';
 import 'upload_target_view.dart';
 import 'urls.dart';
 import 'page_insets.dart';
@@ -1576,8 +1577,22 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
       ..._inviteSection(l10n),
       ..._contactsSection(),
       ..._sharesSection(),
+      ..._spaceSettingsSection(),
       ..._catchUpSection(),
     ];
+  }
+
+  /// The settings of the space (issue #297): its name, its visitors, faces,
+  /// map, time zone and inbox. The administrator's, and nobody else's — the
+  /// server refuses everybody else, so the section is not even built for them.
+  List<Widget> _spaceSettingsSection() {
+    var client = _managementClient();
+    if (!widget.settings.signedIn ||
+        client == null ||
+        identity?.role != roleAdmin) {
+      return const [];
+    }
+    return [SpaceSettingsSection(client: client)];
   }
 
   /// How far the server has got preparing the albums (issue #236): the

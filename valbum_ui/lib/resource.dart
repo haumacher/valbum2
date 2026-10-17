@@ -13983,3 +13983,208 @@ class NewsKey extends _JsonObject {
 
 }
 
+///  The settings of a space its administrator makes in the app, see issue #297:
+///  <code>GET &lt;data&gt;/?type=space-settings</code> answers them, and
+///  <code>POST &lt;data&gt;/?action=space-settings</code> with this message stores them and answers
+///  them as they are then.
+/// 
+///  <p>
+///  The administrator's question and decision alone: a member who is no administrator, a share link
+///  and a visitor are refused with the server's reason. What is stored is the space's
+///  <code>.valbum/space.json</code>, in the format it always had; a key this build does not know is
+///  kept as it is written. A change takes effect without a restart.
+///  </p>
+/// 
+///  <p>
+///  The fields marked <em>answered</em> say what the server knows around the settings and are
+///  ignored on a write. The content search of issue #257 joins this message as a switch of its own
+///  once the space can ask for it.
+///  </p>
+class SpaceSettings extends _JsonObject {
+	///  The name shown for the space; the folder's name where the file gives none. Never empty.
+	String name;
+
+	///  Whether a visitor who is not signed in sees the public photos of the space.
+	AnonymousAccess anonymous;
+
+	///  <em>Answered:</em> why {@link #anonymous} decides nothing on this server, empty where it
+	///  does: a server that serves one library, or one started with <code>--auth all</code> or
+	///  <code>--auth off</code>, decides at its start who may look. A change is refused then.
+	String anonymousFixed;
+
+	///  Whether the server looks for faces in the photographs of the space, see issue #124.
+	bool faces;
+
+	///  <em>Answered:</em> why the server cannot look for faces on this machine although the space
+	///  may ask for it, empty where it can.
+	String facesUnavailable;
+
+	///  The map a position is shown on: a URL template with <code>{lat}</code> and
+	///  <code>{lon}</code>, see issue #112. Empty on a write for {@link #defaultMapUrl}.
+	String mapUrl;
+
+	///  <em>Answered:</em> the map of a space that names none of its own.
+	String defaultMapUrl;
+
+	///  The time zone a photograph that says neither its offset nor a GPS time was taken in, an IANA
+	///  id such as <code>Europe/Berlin</code>, see issue #183; empty for the server's own zone.
+	String timeZone;
+
+	///  <em>Answered:</em> the server's own time zone, which an empty {@link #timeZone} means.
+	String serverTimeZone;
+
+	///  The folder of the space's inbox, relative to the space root with <code>/</code> between the
+	///  folders, see issue #226.
+	String inbox;
+
+	///  <em>Answered:</em> why the {@link #inbox} cannot be changed now, empty where it can: another
+	///  inbox would turn the photographs waiting in this one into an ordinary album.
+	String inboxFixed;
+
+	/// Creates a SpaceSettings.
+	SpaceSettings({
+			this.name = "", 
+			this.anonymous = AnonymousAccess.none, 
+			this.anonymousFixed = "", 
+			this.faces = false, 
+			this.facesUnavailable = "", 
+			this.mapUrl = "", 
+			this.defaultMapUrl = "", 
+			this.timeZone = "", 
+			this.serverTimeZone = "", 
+			this.inbox = "", 
+			this.inboxFixed = "", 
+	});
+
+	/// Parses a SpaceSettings from a string source.
+	static SpaceSettings? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a SpaceSettings instance from the given reader.
+	static SpaceSettings read(JsonReader json) {
+		SpaceSettings result = SpaceSettings();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "SpaceSettings";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "name": {
+				name = json.expectString();
+				break;
+			}
+			case "anonymous": {
+				anonymous = readAnonymousAccess(json);
+				break;
+			}
+			case "anonymousFixed": {
+				anonymousFixed = json.expectString();
+				break;
+			}
+			case "faces": {
+				faces = json.expectBool();
+				break;
+			}
+			case "facesUnavailable": {
+				facesUnavailable = json.expectString();
+				break;
+			}
+			case "mapUrl": {
+				mapUrl = json.expectString();
+				break;
+			}
+			case "defaultMapUrl": {
+				defaultMapUrl = json.expectString();
+				break;
+			}
+			case "timeZone": {
+				timeZone = json.expectString();
+				break;
+			}
+			case "serverTimeZone": {
+				serverTimeZone = json.expectString();
+				break;
+			}
+			case "inbox": {
+				inbox = json.expectString();
+				break;
+			}
+			case "inboxFixed": {
+				inboxFixed = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("name");
+		json.addString(name);
+
+		json.addKey("anonymous");
+		writeAnonymousAccess(json, anonymous);
+
+		json.addKey("anonymousFixed");
+		json.addString(anonymousFixed);
+
+		json.addKey("faces");
+		json.addBool(faces);
+
+		json.addKey("facesUnavailable");
+		json.addString(facesUnavailable);
+
+		json.addKey("mapUrl");
+		json.addString(mapUrl);
+
+		json.addKey("defaultMapUrl");
+		json.addString(defaultMapUrl);
+
+		json.addKey("timeZone");
+		json.addString(timeZone);
+
+		json.addKey("serverTimeZone");
+		json.addString(serverTimeZone);
+
+		json.addKey("inbox");
+		json.addString(inbox);
+
+		json.addKey("inboxFixed");
+		json.addString(inboxFixed);
+	}
+
+}
+
+///  Who sees a space without signing in, see {@link SpaceSettings#anonymous}.
+enum AnonymousAccess {
+	///  Nobody sees anything without signing in; the first constant, and what an unknown value reads.
+	none,
+	///  A visitor sees the public photos, and changes nothing.
+	public,
+}
+
+/// Writes a value of AnonymousAccess to a JSON stream.
+void writeAnonymousAccess(JsonSink json, AnonymousAccess value) {
+	switch (value) {
+		case AnonymousAccess.none: json.addString("NONE"); break;
+		case AnonymousAccess.public: json.addString("PUBLIC"); break;
+		default: throw ("No such literal: " + value.name);
+	}
+}
+
+/// Reads a value of AnonymousAccess from a JSON stream.
+AnonymousAccess readAnonymousAccess(JsonReader json) {
+	switch (json.expectString()) {
+		case "NONE": return AnonymousAccess.none;
+		case "PUBLIC": return AnonymousAccess.public;
+		default: return AnonymousAccess.none;
+	}
+}
+

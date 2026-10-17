@@ -4804,3 +4804,85 @@ message NewsKey {
 	/** The {@link NewsEntry#id}. */
 	string id;
 }
+
+/**
+ * The settings of a space its administrator makes in the app, see issue #297:
+ * <code>GET &lt;data&gt;/?type=space-settings</code> answers them, and
+ * <code>POST &lt;data&gt;/?action=space-settings</code> with this message stores them and answers
+ * them as they are then.
+ *
+ * <p>
+ * The administrator's question and decision alone: a member who is no administrator, a share link
+ * and a visitor are refused with the server's reason. What is stored is the space's
+ * <code>.valbum/space.json</code>, in the format it always had; a key this build does not know is
+ * kept as it is written. A change takes effect without a restart.
+ * </p>
+ *
+ * <p>
+ * The fields marked <em>answered</em> say what the server knows around the settings and are
+ * ignored on a write. The content search of issue #257 joins this message as a switch of its own
+ * once the space can ask for it.
+ * </p>
+ */
+message SpaceSettings {
+	/** The name shown for the space; the folder's name where the file gives none. Never empty. */
+	string name;
+
+	/** Whether a visitor who is not signed in sees the public photos of the space. */
+	AnonymousAccess anonymous;
+
+	/**
+	 * <em>Answered:</em> why {@link #anonymous} decides nothing on this server, empty where it
+	 * does: a server that serves one library, or one started with <code>--auth all</code> or
+	 * <code>--auth off</code>, decides at its start who may look. A change is refused then.
+	 */
+	string anonymousFixed;
+
+	/** Whether the server looks for faces in the photographs of the space, see issue #124. */
+	bool faces;
+
+	/**
+	 * <em>Answered:</em> why the server cannot look for faces on this machine although the space
+	 * may ask for it, empty where it can.
+	 */
+	string facesUnavailable;
+
+	/**
+	 * The map a position is shown on: a URL template with <code>{lat}</code> and
+	 * <code>{lon}</code>, see issue #112. Empty on a write for {@link #defaultMapUrl}.
+	 */
+	string mapUrl;
+
+	/** <em>Answered:</em> the map of a space that names none of its own. */
+	string defaultMapUrl;
+
+	/**
+	 * The time zone a photograph that says neither its offset nor a GPS time was taken in, an IANA
+	 * id such as <code>Europe/Berlin</code>, see issue #183; empty for the server's own zone.
+	 */
+	string timeZone;
+
+	/** <em>Answered:</em> the server's own time zone, which an empty {@link #timeZone} means. */
+	string serverTimeZone;
+
+	/**
+	 * The folder of the space's inbox, relative to the space root with <code>/</code> between the
+	 * folders, see issue #226.
+	 */
+	string inbox;
+
+	/**
+	 * <em>Answered:</em> why the {@link #inbox} cannot be changed now, empty where it can: another
+	 * inbox would turn the photographs waiting in this one into an ordinary album.
+	 */
+	string inboxFixed;
+}
+
+/** Who sees a space without signing in, see {@link SpaceSettings#anonymous}. */
+enum AnonymousAccess {
+	/** Nobody sees anything without signing in; the first constant, and what an unknown value reads. */
+	NONE;
+
+	/** A visitor sees the public photos, and changes nothing. */
+	PUBLIC;
+}

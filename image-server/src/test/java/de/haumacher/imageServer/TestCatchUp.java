@@ -11,6 +11,7 @@ import de.haumacher.imageServer.auth.UserStore;
 import de.haumacher.imageServer.cache.ResourceCache;
 import de.haumacher.imageServer.faces.FaceCache;
 import de.haumacher.imageServer.faces.FaceDetection;
+import de.haumacher.imageServer.faces.FaceIndex;
 import de.haumacher.imageServer.pipeline.Background;
 import de.haumacher.imageServer.pipeline.FolderPipeline;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
@@ -530,6 +531,97 @@ public class TestCatchUp extends TestCase {
 			old.setWritable(true, false);
 			de.haumacher.imageServer.pipeline.ReadOnlyFolders.writtenAgain(old);
 		}
+	}
+
+	/**
+	 * Faces switched on in the app (issue #297) are picked up by the running background: the
+	 * detection joins the pipeline and looks at every album, no restart; switched off, it leaves
+	 * the pipeline again and what it found stays.
+	 */
+	public void testFacesSwitchedOnInTheAppArePickedUpWithoutARestart() throws Exception {
+		library(false);
+		start();
+		_servlet.startIndexing();
+		awaitCatchUp();
+		assertFalse("Off: no detection in the background.", stepNames().contains(FaceIndex.STEP));
+		assertEquals("Off: nothing looked at.", 0, _detector.total());
+
+		de.haumacher.imageServer.shared.model.SpaceSettings settings = settings(get("/", "space-settings", _adminToken));
+		FakeResponse on = saveSettings(settings.setFaces(true));
+		assertEquals(on.body(), 200, on.status());
+		assertTrue(stepNames().toString(), stepNames().contains(FaceIndex.STEP));
+		assertTrue(stepNames().toString(), stepNames().contains(FaceIndex.CROP_STEP));
+		assertTrue("Behind the cover, before the videos: " + stepNames(),
+			stepNames().indexOf(CatchUp.COVER) < stepNames().indexOf(FaceIndex.STEP)
+				&& stepNames().indexOf(FaceIndex.CROP_STEP) < stepNames().indexOf(CatchUp.VIDEOS));
+		awaitCatchUp();
+		assertEquals("The background looked at every photo once.", PHOTOS.length, _detector.total());
+		for (String album : new String[] { OLD, NEW, SKI, UNDATED }) {
+			assertTrue("Faces are stored: " + album, FaceCache.file(_base.resolve(album).toFile()).isFile());
+			assertTrue(pipeline().isDone(_base.resolve(album).toFile(), FaceIndex.STEP));
+		}
+
+		FakeResponse off = saveSettings(settings(on).setFaces(false));
+		assertEquals(off.body(), 200, off.status());
+		assertFalse(stepNames().contains(FaceIndex.STEP));
+		assertFalse(stepNames().contains(FaceIndex.CROP_STEP));
+		for (String album : new String[] { OLD, NEW, SKI, UNDATED }) {
+			assertTrue("What was found stays: " + album, FaceCache.file(_base.resolve(album).toFile()).isFile());
+		}
+	}
+
+	/**
+	 * Probe: faces switched on twice, off and on again, and saved unchanged while on, put each
+	 * face step into the pipeline once, and no photo is looked at twice.
+	 */
+	public void testFacesSwitchedBackAndForthAreInThePipelineOnce() throws Exception {
+		library(false);
+		start();
+		_servlet.startIndexing();
+		awaitCatchUp();
+		de.haumacher.imageServer.shared.model.SpaceSettings settings = settings(get("/", "space-settings", _adminToken));
+		FakeResponse on = saveSettings(settings.setFaces(true));
+		on = saveSettings(settings(on).setFaces(true));
+		awaitCatchUp();
+		FakeResponse off = saveSettings(settings(on).setFaces(false));
+		on = saveSettings(settings(off).setFaces(true));
+		awaitCatchUp();
+		assertEquals(stepNames().toString(), 1,
+			java.util.Collections.frequency(stepNames(), FaceIndex.STEP));
+		assertEquals(stepNames().toString(), 1,
+			java.util.Collections.frequency(stepNames(), FaceIndex.CROP_STEP));
+		assertEquals("Every photo looked at once, done before the switch back.", PHOTOS.length, _detector.total());
+	}
+
+	private List<String> stepNames() {
+		List<String> result = new ArrayList<>();
+		for (FolderPipeline.Step step : pipeline().steps()) {
+			result.add(step.name());
+		}
+		return result;
+	}
+
+	private static de.haumacher.imageServer.shared.model.SpaceSettings settings(FakeResponse response)
+			throws Exception {
+		assertEquals(response.body(), 200, response.status());
+		return de.haumacher.imageServer.shared.model.SpaceSettings
+			.readSpaceSettings(new JsonReader(new ReaderAdapter(new StringReader(response.body()))));
+	}
+
+	private FakeResponse saveSettings(de.haumacher.imageServer.shared.model.SpaceSettings settings) throws Exception {
+		java.io.StringWriter buffer = new java.io.StringWriter();
+		try (de.haumacher.msgbuf.json.JsonWriter json =
+			new de.haumacher.msgbuf.json.JsonWriter(new de.haumacher.msgbuf.server.io.WriterAdapter(buffer))) {
+			settings.writeTo(json);
+		}
+		Map<String, String> parameters = new HashMap<>();
+		parameters.put("action", "space-settings");
+		Map<String, String> headers = new HashMap<>();
+		headers.put("Authorization", "Bearer " + _adminToken);
+		FakeResponse response = new FakeResponse();
+		_servlet.doPost(TestImageServletPut.request("/", "application/json",
+			buffer.toString().getBytes(StandardCharsets.UTF_8), headers, parameters), response.response());
+		return response;
 	}
 
 	// --- The status. ---

@@ -6698,6 +6698,126 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The video shows no picture yet. Start it and pause it at the moment the thumbnail should show.'**
   String get posterNotPlaying;
+
+  /// Heading of the administrator's section of the server settings leading to the settings of the space (issue #297)
+  ///
+  /// In en, this message translates to:
+  /// **'Space settings'**
+  String get spaceSettingsHeading;
+
+  /// Lead sentence of the space settings section (issue #297)
+  ///
+  /// In en, this message translates to:
+  /// **'The name of this space, whether visitors see its public photos, faces, the map and the time zone.'**
+  String get spaceSettingsLead;
+
+  /// Button of the server settings opening the space settings page (issue #297)
+  ///
+  /// In en, this message translates to:
+  /// **'Space settings…'**
+  String get spaceSettingsOpen;
+
+  /// Title of the page with the settings of the space (issue #297)
+  ///
+  /// In en, this message translates to:
+  /// **'Space settings'**
+  String get spaceSettingsTitle;
+
+  /// Line of the space settings page while the server is asked (issue #297)
+  ///
+  /// In en, this message translates to:
+  /// **'Asking the server…'**
+  String get spaceSettingsAsking;
+
+  /// Line of the space settings page when the server could not be asked or refused; the reason is the server's or the transport's own sentence (issue #297)
+  ///
+  /// In en, this message translates to:
+  /// **'The settings cannot be read: {reason}'**
+  String spaceSettingsUnavailable(String reason);
+
+  /// Label of the field with the name of the space (issue #297)
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get spaceSettingsName;
+
+  /// Help below the name field of the space settings (issue #297)
+  ///
+  /// In en, this message translates to:
+  /// **'How this space is called, for example in sign-in e-mails and authenticator apps.'**
+  String get spaceSettingsNameHelp;
+
+  /// Title of the switch letting people who are not signed in see the photos marked Public (issue #297)
+  ///
+  /// In en, this message translates to:
+  /// **'Visitors see the public photos'**
+  String get spaceSettingsAnonymous;
+
+  /// Explanation below the switch for visitors (issue #297)
+  ///
+  /// In en, this message translates to:
+  /// **'On: anybody who opens the address of this space sees the photos marked Public, without signing in, and changes nothing. Off: nobody sees anything without signing in.'**
+  String get spaceSettingsAnonymousHelp;
+
+  /// Title of the switch letting the server look for faces in the photos (issue #297)
+  ///
+  /// In en, this message translates to:
+  /// **'Find faces'**
+  String get spaceSettingsFaces;
+
+  /// Explanation below the face switch: what it does and what it costs (issue #297)
+  ///
+  /// In en, this message translates to:
+  /// **'The server looks for faces in every photo, so that you can name the people in them. After switching on, it works through all photos in the background, and the faces take some disk space. Switching off keeps what was found.'**
+  String get spaceSettingsFacesHelp;
+
+  /// Label of the field with the map template of the space (issue #297)
+  ///
+  /// In en, this message translates to:
+  /// **'Map address'**
+  String get spaceSettingsMap;
+
+  /// Help below the map field; lat and lon are the literal markers '{lat}' and '{lon}', defaultMap the default address (issue #297)
+  ///
+  /// In en, this message translates to:
+  /// **'The web address a photo\'s position opens, with {lat} and {lon} where the position goes. Empty: {defaultMap}'**
+  String spaceSettingsMapHelp(String defaultMap, String lon, String lat);
+
+  /// Label of the field with the time zone of photos that state none (issue #297)
+  ///
+  /// In en, this message translates to:
+  /// **'Time zone'**
+  String get spaceSettingsTimeZone;
+
+  /// Help below the time zone field; zone is the server's own time zone (issue #297)
+  ///
+  /// In en, this message translates to:
+  /// **'Where photos were taken that state no time zone, for example Europe/Berlin. Empty: the server\'s time zone, {zone}. Photos already read keep their dates.'**
+  String spaceSettingsTimeZoneHelp(String zone);
+
+  /// Label of the field with the folder of the space's inbox (issue #297)
+  ///
+  /// In en, this message translates to:
+  /// **'Inbox folder'**
+  String get spaceSettingsInbox;
+
+  /// Help below the inbox field (issue #297)
+  ///
+  /// In en, this message translates to:
+  /// **'New photos from phones and uploads wait here until they are sorted into albums. It can be renamed while it is empty.'**
+  String get spaceSettingsInboxHelp;
+
+  /// Message after the space settings were saved (issue #297)
+  ///
+  /// In en, this message translates to:
+  /// **'Saved. The settings apply at once.'**
+  String get spaceSettingsSaved;
+
+  /// Line below the save button when the server refused the settings; the reason is the server's own sentence (issue #297)
+  ///
+  /// In en, this message translates to:
+  /// **'Not saved: {reason}'**
+  String spaceSettingsRefused(String reason);
 }
 
 class _AppLocalizationsDelegate

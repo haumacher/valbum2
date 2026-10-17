@@ -110,6 +110,41 @@ public final class CatchUp {
 		pipeline.addStep(new Videos(videos));
 	}
 
+	/**
+	 * Follows the administrator's switch of the faces of a space while the server runs, see issue
+	 * #297: on, the detection and the crops join the pipeline where {@link #install} puts them,
+	 * and every album of the space is handed to the catch-up, newest first, so that the background
+	 * looks at it as it would after a start; off, they leave it again. Nothing stored is touched
+	 * either way.
+	 *
+	 * @param installed
+	 *        Whether {@link #install} ran, i.e. whether this space has a background at all; without
+	 *        one (a test's servlet) only the index itself is switched.
+	 */
+	public static void switchFaces(FolderPipeline pipeline, Path root, FaceIndex faces, boolean on,
+			boolean installed) {
+		faces.setEnabled(on);
+		if (!installed) {
+			return;
+		}
+		if (on && faces.isEnabled()) {
+			pipeline.addStepAfter(COVER, faces.step());
+			pipeline.addStepAfter(FaceIndex.STEP, faces.cropStep());
+			if (pipeline.isStarted()) {
+				// The walk on the pipeline's thread, not on the request that saved the switch.
+				try {
+					pipeline.execute(
+						() -> pipeline.catchUp(FolderPipeline.newestFirst(FolderPipeline.tree(root.toFile()))));
+				} catch (IllegalStateException ex) {
+					// Stopped meanwhile: the next start walks the space anyway.
+				}
+			}
+		} else {
+			pipeline.removeStep(faces.step());
+			pipeline.removeStep(faces.cropStep());
+		}
+	}
+
 	/** The status of the given pipeline as the protocol says it. */
 	public static CatchUpStatus status(FolderPipeline pipeline) {
 		FolderPipeline.Status status = pipeline.status();

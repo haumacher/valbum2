@@ -3077,6 +3077,39 @@ class VAlbumClient {
     return CatchUpStatus.read(JsonReader.fromString(response.body));
   }
 
+  /// The settings of this space (issue #297): its name, whether visitors
+  /// see its public photos, its faces, its map, its time zone and its inbox,
+  /// with what the server knows around them (why a switch decides nothing
+  /// here, the defaults).
+  ///
+  /// The administrator's question: everybody else is refused with the
+  /// server's own sentence.
+  Future<SpaceSettings> spaceSettings() async {
+    var url = "${folderUrl(const [])}?type=space-settings";
+    var response = await _http.get(Uri.parse(url), headers: authHeaders);
+    if (response.statusCode >= 300) {
+      throw failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingAsking("'$url'"),
+      );
+    }
+    return SpaceSettings.read(JsonReader.fromString(response.body));
+  }
+
+  /// Stores the settings of this space, answering them as they are then
+  /// (issue #297); they take effect at once, without a restart.
+  ///
+  /// A refusal is the server speaking — a time zone it does not know, a map
+  /// without the place of the position, a member who is no administrator —
+  /// and is thrown as a [VAlbumException] carrying that sentence; nothing is
+  /// stored then.
+  Future<SpaceSettings> saveSpaceSettings(SpaceSettings settings) async {
+    var url = "${folderUrl(const [])}?action=space-settings";
+    var response = await _postBody(url, _jsonOf(settings.writeContent));
+    return SpaceSettings.read(JsonReader.fromString(response));
+  }
+
   /// How many photographs the caller is shown on opening the folder at
   /// [path], `GET <folder>/?type=image-count` (issue #286): the count a
   /// listing tile does not carry -- a collection's, whose references the

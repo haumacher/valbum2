@@ -780,6 +780,30 @@ public class FolderPipeline {
 		_steps.remove(step);
 	}
 
+	/**
+	 * Adds a step right behind the step of the given name, behind all steps where there is none
+	 * of that name; nothing where the step is there already. What a step switched on while the
+	 * server runs is placed with, see issue #297.
+	 *
+	 * @throws IllegalArgumentException
+	 *         For a step of {@link Stage#VIDEOS} that is no {@link UnitStep}.
+	 */
+	public void addStepAfter(String name, Step step) {
+		if (_steps.contains(step)) {
+			return;
+		}
+		if (step.stage() == Stage.VIDEOS && !(step instanceof UnitStep)) {
+			throw new IllegalArgumentException("A step of the stage " + Stage.VIDEOS + " works in units: " + step.name());
+		}
+		for (int index = 0; index < _steps.size(); index++) {
+			if (_steps.get(index).name().equals(name)) {
+				_steps.add(index + 1, step);
+				return;
+			}
+		}
+		_steps.add(step);
+	}
+
 	/** The steps, in the order they run. */
 	public List<Step> steps() {
 		return new ArrayList<>(_steps);

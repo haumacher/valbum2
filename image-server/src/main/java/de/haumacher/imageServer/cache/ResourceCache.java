@@ -426,6 +426,15 @@ public class ResourceCache {
 	}
 
 	/**
+	 * Dates the photographs read from now on in the given zone, see {@link #zone()} and issue #297;
+	 * <code>null</code> for the server's. What was read before keeps its dates: they are written
+	 * into the albums' sidecars, and a photograph is not read again for a setting.
+	 */
+	public void setZone(ZoneId zone) {
+		_loader.setZone(zone);
+	}
+
+	/**
 	 * Drops this cache: it no longer hears of recorded folders, see {@link #recorded(File)} and
 	 * {@link de.haumacher.imageServer.ImageServlet#destroy()}. The watches of the library are the
 	 * background's, see {@link de.haumacher.imageServer.pipeline.LibraryWatch}.
@@ -727,8 +736,11 @@ public class ResourceCache {
 		/** What is taken over out of a photograph that is analysed here, see issue #129. */
 		private final ImageData.Analysis _analysis;
 
-		/** The zone of the space, <code>null</code> for the server's; see issue #183. */
-		private final ZoneId _zone;
+		/**
+		 * The zone of the space, <code>null</code> for the server's; see issue #183. Changed by the
+		 * administrator's save of the space's settings (issue #297), for what is read from then on.
+		 */
+		private volatile ZoneId _zone;
 
 		/** Where the places of a photograph come from, see issue #234; <code>null</code> for none. */
 		private volatile de.haumacher.imageServer.places.Places _places;
@@ -898,6 +910,11 @@ public class ResourceCache {
 		private static String stamp(File dir) {
 			return Stamps.of(dir) + "|" + Stamps.of(new File(dir, "index.json")) + "|" + AnalysisRecord.stamp(dir)
 				+ "|" + Stamps.of(new File(dir, de.haumacher.imageServer.upload.HashCache.FILE_NAME));
+		}
+
+		/** See {@link ResourceCache#setZone(ZoneId)}. */
+		void setZone(ZoneId zone) {
+			_zone = zone;
 		}
 
 		/** See {@link ResourceCache#zone()}. */
