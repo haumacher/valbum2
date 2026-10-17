@@ -1077,6 +1077,185 @@ public final class SearchIndex implements FolderPipeline.Step {
 		return result;
 	}
 
+	/** A photograph found near a vector, see {@link #nearest}: where it lies, and how near. */
+	public record Scored(Match match, float score) {
+		// A pair.
+	}
+
+	/**
+	 * The <code>k</code> photographs below the given folder whose vectors of the content search
+	 * (issue #257) are nearest to the given one, among those the given visibility shows, the trash
+	 * left out; the nearest first, see {@link de.haumacher.imageServer.index.VectorIndex#nearest}.
+	 *
+	 * <p>
+	 * What the caller may not see is not looked for: the very rows a query of
+	 * {@link #find(PathInfo, SearchQuery, PeopleStore, Visibility)} is cut by (the folder, the trash,
+	 * the clearance, a link's rating floor and label) are the filter <em>inside</em> the vector
+	 * query, so that <code>k</code> are found as long as <code>k</code> may be. What each is shown as
+	 * is still decided by its album, as for every answer of the search
+	 * (<code>ImageServlet#nearestAnswers</code>).
+	 * </p>
+	 *
+	 * @param vector
+	 *        A vector of the model the index holds ({@link de.haumacher.imageServer.index.VectorIndex#stamp()}).
+	 * @param imageWeight
+	 *        The weight of the picture's vector, <code>0</code> to leave it out.
+	 * @param textWeight
+	 *        The weight of the text's vector, <code>0</code> to leave it out.
+	 * @return Nothing where the space holds no vectors, or none of that many dimensions.
+	 */
+	public List<Scored> nearest(PathInfo scope, float[] vector, float imageWeight, float textWeight, int k,
+			Visibility visibility) {
+		return nearest(scope, vector, imageWeight, textWeight, k, visibility, path -> true, -1);
+	}
+
+	/**
+	 * {@link #nearest(PathInfo, float[], float, float, int, Visibility)} among the photographs of
+	 * the albums the given test passes alone: what the caller is shown nothing of by the album
+	 * itself (an inbox they may not see, a folder they may not view) is left out inside the vector
+	 * query too, so that it takes none of the <code>k</code> places.
+	 *
+	 * @param folders
+	 *        Whether the photographs of the album at the given path (relative to the space root)
+	 *        may be found at all; asked once per album below the scope.
+	 */
+	public List<Scored> nearest(PathInfo scope, float[] vector, float imageWeight, float textWeight, int k,
+			Visibility visibility, java.util.function.Predicate<String> folders) {
+		return nearest(scope, vector, imageWeight, textWeight, k, visibility, folders, -1);
+	}
+
+	/**
+	 * The <code>k</code> photographs that look most like the given one, see
+	 * {@link #nearest(PathInfo, float[], float, float, int, Visibility)}: "more like this" (issue
+	 * #257), by the picture's vector alone, the photograph itself left out.
+	 *
+	 * @return Nothing where the photograph has no vector (yet).
+	 */
+	public List<Scored> similarTo(PathInfo folder, String name, PathInfo scope, int k, Visibility visibility) {
+		String path = relative(folder.toFile());
+		de.haumacher.imageServer.index.VectorIndex vectors = _store.vectors();
+		if (path == null || vectors == null) {
+			return new ArrayList<>();
+		}
+		writeThrough();
+		Map<String, Long> ids = photoIds(_store, path);
+		Long id = ids == null ? null : ids.get(name);
+		if (id == null) {
+			return new ArrayList<>();
+		}
+		float[] vector;
+		try {
+			vector = vectors.vector(id.longValue(), de.haumacher.imageServer.index.VectorIndex.IMAGE);
+		} catch (IOException ex) {
+			LOG.warning("Cannot read the vector index of '" + _root + "': " + ex.getMessage());
+			return new ArrayList<>();
+		}
+		if (vector == null) {
+			return new ArrayList<>();
+		}
+		return nearest(scope, vector, 1, 0, k, visibility, album -> true, id.longValue());
+	}
+
+	private List<Scored> nearest(PathInfo scope, float[] vector, float imageWeight, float textWeight, int k,
+			Visibility visibility, java.util.function.Predicate<String> folders, long without) {
+		String prefix = relative(scope.toFile());
+		de.haumacher.imageServer.index.VectorIndex vectors = _store.vectors();
+		if (prefix == null || vectors == null || k <= 0) {
+			return new ArrayList<>();
+		}
+		writeThrough();
+		if (syncsOnRequest()) {
+			sync(prefix, false);
+		}
+		long version = _store.version();
+		List<Scored> result = _store.read(connection -> {
+			Evaluation evaluation = new Evaluation(connection, null, -1, version);
+			BitSet allowed = withoutFolders(connection, scope(evaluation, prefix, visibility), prefix, folders);
+			if (without >= 0 && without <= Integer.MAX_VALUE && allowed.get((int) without)) {
+				allowed = (BitSet) allowed.clone();
+				allowed.clear((int) without);
+			}
+			List<de.haumacher.imageServer.index.VectorIndex.Hit> hits;
+			try {
+				hits = vectors.nearest(vector, imageWeight, textWeight, k, allowed);
+			} catch (IOException ex) {
+				LOG.warning("Cannot read the vector index of '" + _root + "': " + ex.getMessage());
+				return new ArrayList<Scored>();
+			}
+			BitSet found = new BitSet();
+			for (de.haumacher.imageServer.index.VectorIndex.Hit hit : hits) {
+				if (hit.photo() >= 0 && hit.photo() <= Integer.MAX_VALUE) {
+					found.set((int) hit.photo());
+				}
+			}
+			Map<Long, Match> byId = new HashMap<>();
+			for (Match match : evaluation.matches(found, prefix)) {
+				byId.put(Long.valueOf(match.getId()), match);
+			}
+			List<Scored> scored = new ArrayList<>(hits.size());
+			for (de.haumacher.imageServer.index.VectorIndex.Hit hit : hits) {
+				Match match = byId.get(Long.valueOf(hit.photo()));
+				if (match != null) {
+					scored.add(new Scored(match, hit.score()));
+				}
+			}
+			return scored;
+		}, new ArrayList<>());
+		_store.trimCache();
+		return result;
+	}
+
+	/**
+	 * The given rows less those of the albums below the given path the given test does not pass;
+	 * the given set itself where it passes every one. Never changes the given set.
+	 */
+	private static BitSet withoutFolders(Connection connection, BitSet rows, String prefix,
+			java.util.function.Predicate<String> folders) throws SQLException {
+		List<Long> excluded = new ArrayList<>();
+		try (PreparedStatement select = treeStatement(connection, "SELECT id, path FROM albums", prefix);
+				ResultSet albums = select.executeQuery()) {
+			while (albums.next()) {
+				if (!folders.test(albums.getString(2))) {
+					excluded.add(Long.valueOf(albums.getLong(1)));
+				}
+			}
+		}
+		if (excluded.isEmpty()) {
+			return rows;
+		}
+		BitSet result = (BitSet) rows.clone();
+		collect(connection, "SELECT p.id FROM TABLE(x BIGINT = ?) t JOIN photos p ON p.album = t.x",
+			excluded.toArray(new Long[excluded.size()]), found -> {
+				long id = found.getLong(1);
+				if (id >= 0 && id <= Integer.MAX_VALUE) {
+					result.clear((int) id);
+				}
+			});
+		return result;
+	}
+
+	/**
+	 * The ids of the rows of the photographs of the folder at the given path (relative to the space
+	 * root) in the given index, by name: the keys of the vectors of the content search (issue #264,
+	 * slice 4). Empty for a folder the search did not read; <code>null</code> where the index cannot
+	 * be read.
+	 */
+	public static Map<String, Long> photoIds(SpaceIndex store, String path) {
+		return store.read(connection -> {
+			Map<String, Long> result = new HashMap<>();
+			try (PreparedStatement select = connection.prepareStatement(
+				"SELECT p.name, p.id FROM photos p JOIN albums a ON a.id = p.album WHERE a.path = ?")) {
+				select.setString(1, path);
+				try (ResultSet rows = select.executeQuery()) {
+					while (rows.next()) {
+						result.put(rows.getString(1), Long.valueOf(rows.getLong(2)));
+					}
+				}
+			}
+			return result;
+		}, null);
+	}
+
 	/**
 	 * Whether the photograph of the given name in the folder at the given path matches the given
 	 * query, see {@link PhotoSearch#matching}; the trash never does.
@@ -1665,7 +1844,7 @@ public final class SearchIndex implements FolderPipeline.Step {
 	}
 
 	/** A 64-bit hash of the given text that is never <code>0</code>, which marks a text to be written again. */
-	static long hash(String text) {
+	public static long hash(String text) {
 		long result = 0xcbf29ce484222325L;
 		for (int n = 0; n < text.length(); n++) {
 			result ^= text.charAt(n);

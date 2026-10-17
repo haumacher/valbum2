@@ -74,11 +74,21 @@ import org.h2.jdbcx.JdbcConnectionPool;
  * </p>
  *
  * <p>
+ * <b>Three stores.</b> The vectors of the content search (issue #257) are a Lucene index of their
+ * own ({@link VectorIndex}, in <code>{@value VectorIndex#DIRECTORY_NAME}/</code>), keyed by the
+ * same ids of H2 and stamped with the same generation, and with the model that made them: a new
+ * model drops every vector and keeps every word, and an index of the build before gained it without
+ * a migration step &mdash; nothing of H2 changed.
+ * </p>
+ *
+ * <p>
  * <b>Memory.</b> H2's page cache and Lucene's buffer of new documents are the heap this index
  * takes, bounded by {@link #setBudget(long)} (<code>VALBUM_INDEX_MEMORY</code>, all spaces
  * together), {@link #defaultBudget()} by default: a quarter of it, at most
  * {@link #MAX_TEXT_BUFFER}, is Lucene's buffer, the rest H2's cache. Lucene reads its files through
- * memory mapping, which takes the operating system's page cache, not the heap.
+ * memory mapping, which takes the operating system's page cache, not the heap. The buffer of
+ * the vector index ({@link #vectorBuffer(long)}, an eighth, at most {@link #MAX_VECTOR_BUFFER}) is
+ * taken from H2's share too.
  * </p>
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
@@ -108,6 +118,9 @@ public final class SpaceIndex implements AutoCloseable {
 
 	/** The most of the budget Lucene's buffer of new documents takes, see {@link SpaceIndex}. */
 	public static final long MAX_TEXT_BUFFER = 16L * 1024 * 1024;
+
+	/** The most of the budget the vector index's buffer of new documents takes, see {@link SpaceIndex}. */
+	public static final long MAX_VECTOR_BUFFER = 16L * 1024 * 1024;
 
 	/**
 	 * The key of the moment the database was created in the meta table, see {@link #created()}.
@@ -226,6 +239,9 @@ public final class SpaceIndex implements AutoCloseable {
 	/** The full-text half, see {@link SpaceIndex}; <code>null</code> where nothing could be opened. */
 	private TextIndex _text;
 
+	/** The vectors of the content search, see {@link SpaceIndex}; <code>null</code> where nothing could be opened. */
+	private VectorIndex _vectors;
+
 	/** What {@link #textSince()} answers. */
 	private long _textSince;
 
@@ -296,12 +312,17 @@ public final class SpaceIndex implements AutoCloseable {
 	public void setBudget(long bytes) {
 		long budget = Math.max(MIN_BUDGET, bytes);
 		TextIndex text;
+		VectorIndex vectors;
 		synchronized (this) {
 			_budget = budget;
 			text = _text;
+			vectors = _vectors;
 		}
 		if (text != null) {
 			text.setBuffer(textBuffer(budget));
+		}
+		if (vectors != null) {
+			vectors.setBuffer(vectorBuffer(budget));
 		}
 		write(connection -> {
 			// SET takes no parameter; the number is ours, never a user's.
@@ -365,9 +386,14 @@ public final class SpaceIndex implements AutoCloseable {
 		return Math.min(MAX_TEXT_BUFFER, budget / 4);
 	}
 
+	/** The vector index's share of the given budget, see {@link SpaceIndex}. */
+	public static long vectorBuffer(long budget) {
+		return Math.min(MAX_VECTOR_BUFFER, budget / 8);
+	}
+
 	/** H2's share of the given budget, see {@link SpaceIndex}. */
 	public static long cacheBudget(long budget) {
-		return Math.max(MIN_BUDGET, budget - textBuffer(budget));
+		return Math.max(MIN_BUDGET, budget - textBuffer(budget) - vectorBuffer(budget));
 	}
 
 	/** How many bytes of heap H2's page cache of this index may take, see {@link #setBudget(long)}. */
@@ -556,6 +582,14 @@ public final class SpaceIndex implements AutoCloseable {
 		return _created;
 	}
 
+	/**
+	 * The vectors of the content search of this space, see {@link VectorIndex}; <code>null</code>
+	 * where they could not be opened at all, or this index is closed.
+	 */
+	public synchronized VectorIndex vectors() {
+		return _closed ? null : _vectors;
+	}
+
 	/** Whether the text index is kept on disk, see {@link #isPersistent()}. */
 	public synchronized boolean isTextPersistent() {
 		return _text != null && _text.isPersistent();
@@ -580,6 +614,7 @@ public final class SpaceIndex implements AutoCloseable {
 	@Override
 	public void close() {
 		TextIndex text;
+		VectorIndex vectors;
 		synchronized (this) {
 			if (_closed) {
 				return;
@@ -587,10 +622,15 @@ public final class SpaceIndex implements AutoCloseable {
 			_closed = true;
 			text = _text;
 			_text = null;
+			vectors = _vectors;
+			_vectors = null;
 		}
 		// Outside this index's lock: a text write takes the text index's lock first.
 		if (text != null) {
 			text.release(SCHEMA);
+		}
+		if (vectors != null) {
+			vectors.release();
 		}
 		synchronized (this) {
 			disconnect();
@@ -639,6 +679,9 @@ public final class SpaceIndex implements AutoCloseable {
 		_text = TextIndex.acquire(_persistent ? _directory.resolve(TextIndex.DIRECTORY_NAME) : null, _label);
 		_text.setBuffer(textBuffer(_budget));
 		_textSince = _text.attach(generation, SCHEMA);
+		_vectors = VectorIndex.acquire(_persistent ? _directory.resolve(VectorIndex.DIRECTORY_NAME) : null, _label);
+		_vectors.setBuffer(vectorBuffer(_budget));
+		_vectors.attach(generation);
 	}
 
 	private String generation() throws SQLException {

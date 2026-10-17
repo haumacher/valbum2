@@ -39,3 +39,12 @@ no sidecar is read and no stamp compared on the request. The album of every matc
   are read off the index (`ImageServlet#optionRows`, `SearchIndex#facets`, the table `places`);
   a folder changed behind the index is read into it first (`SearchIndex#refresh`), and only an
   inbox shown to a contributor as their own photos reads its album (the contributor is no column).
+- **The vectors are a third store, filtered by H2's ids.** `VectorIndex` (#264 slice 4) is its own
+  Lucene folder, `.valbum/index/vectors/` — a whole-document update would otherwise tie every
+  description edit to the album's vectors, and a model change must drop vectors without the words.
+  A document per photograph keyed by its `photos.id`, plus a marker per album (the stamp it was fed
+  with, committed with its vectors, so a kill loses both). Who may see a photograph is *not* in it:
+  the scope `BitSet` of the search is the filter inside `KnnFloatVectorQuery`, read off a doc value
+  per document. `LongPoint.newSetQuery` of the ids was tried and costs every id in every segment
+  (600 ms for 100 000 allowed in 81 segments, against 40 ms). An index of the build before gains
+  the folder without a migration step; the start-up walk fills it (`ContentVectors`).

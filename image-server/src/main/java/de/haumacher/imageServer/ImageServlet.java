@@ -31,6 +31,7 @@ import de.haumacher.imageServer.cache.BrokenParts;
 import de.haumacher.imageServer.cache.ResourceCache;
 import de.haumacher.imageServer.coded.CodedPictures;
 import de.haumacher.imageServer.content.ContentIndex;
+import de.haumacher.imageServer.content.ContentVectors;
 import de.haumacher.imageServer.content.Embedder;
 import de.haumacher.imageServer.faces.FaceCache;
 import de.haumacher.imageServer.faces.FaceImport;
@@ -914,6 +915,17 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	/**
+	 * The feed of the vector index of this space from the albums' caches, see issue #264 (slice 4)
+	 * and {@link SearchIndex#nearest}.
+	 */
+	private final ContentVectors _vectors;
+
+	/** The feed of the vector index of this space, for the tests. */
+	public ContentVectors vectors() {
+		return _vectors;
+	}
+
+	/**
 	 * Installs the embedder of the content search, see issue #257: one for the whole server, made
 	 * by {@link de.haumacher.imageServer.content.EmbedderSettings#create(Path)}; without it every
 	 * photo waits, and the settings say why.
@@ -939,7 +951,7 @@ public class ImageServlet extends HttpServlet {
 		// reached it is still queued by its listing.
 		synchronized (this) {
 			if (!_catchUpInstalled) {
-				CatchUp.install(_index.pipeline(), _basePath, _faces, _videos, _placesStep, _content);
+				CatchUp.install(_index.pipeline(), _basePath, _faces, _videos, _placesStep, _content, _vectors);
 				_catchUpInstalled = true;
 			}
 		}
@@ -1074,6 +1086,9 @@ public class ImageServlet extends HttpServlet {
 		_index.pipeline().addStep(_searchIndex);
 		// The vectors of the content search, where the space has it on, see issue #257.
 		_content = new ContentIndex(_basePath, this::lookupOrSkip, config != null && config.isContentEnabled());
+		// Their index, fed from each album's cache whenever the step writes it, see issue #264.
+		_vectors = new ContentVectors(_basePath, _spaceIndex, _content);
+		_content.setOnWritten(folder -> _vectors.refresh(folder));
 		_settings = new SpaceConfiguration(this, _auth, _basePath, _space);
 		String noFaces = _faces.unavailability();
 		if (noFaces != null) {
@@ -1142,7 +1157,7 @@ public class ImageServlet extends HttpServlet {
 		}
 		if (before.isContentEnabled() != config.isContentEnabled()) {
 			synchronized (this) {
-				CatchUp.switchContent(_index.pipeline(), _basePath, _content, config.isContentEnabled(),
+				CatchUp.switchContent(_index.pipeline(), _basePath, _content, _vectors, config.isContentEnabled(),
 					_catchUpInstalled);
 			}
 		}
@@ -1207,6 +1222,11 @@ public class ImageServlet extends HttpServlet {
 			// The search reads the places, so it runs behind them, see issue #227.
 			_index.pipeline().removeStep(_searchIndex);
 			_index.pipeline().addStep(_searchIndex);
+			// And the vectors, filed under the ids of the search, behind it.
+			if (_index.pipeline().steps().contains(_vectors)) {
+				_index.pipeline().removeStep(_vectors);
+				_index.pipeline().addStep(_vectors);
+			}
 		}
 	}
 
@@ -7167,14 +7187,16 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	/**
-	 * Tells the hash index (issue #118), the search (issue #227) and the recognition (issue #127)
-	 * that a move, a delete, a purge or a rename rearranged the tree at the given folder: they read
-	 * it again in the same step, see issue #264.
+	 * Tells the hash index (issue #118), the search (issue #227), the recognition (issue #127) and
+	 * the vectors of the content search (issue #257) that a move, a delete, a purge or a rename
+	 * rearranged the tree at the given folder: they read it again in the same step, see issue #264.
+	 * The vectors after the search, whose ids they are filed under.
 	 */
 	private void treeChanged(File folder) {
 		_index.treeChanged(folder);
 		_searchIndex.treeChanged(folder);
 		_faces.recognition().treeChanged(folder, _faces.isEnabled());
+		_vectors.treeChanged(folder);
 	}
 
 	/**
@@ -9309,6 +9331,99 @@ public class ImageServlet extends HttpServlet {
 			SearchIndex.Visibility visibility, Map<String, PhotoSearch.Match> stored, boolean slim) {
 		_searchRuns.incrementAndGet();
 		List<PhotoSearch.Match> found = PhotoSearch.find(scope, query, _searchIndex, _people, visibility);
+		Map<PathInfo, Map<String, ImagePart>> albums = shownAlbums(found, sources);
+		List<ImagePart> result = new ArrayList<>(found.size());
+		for (PhotoSearch.Match match : found) {
+			ImagePart answer = answerOf(match, albums, member, slim);
+			if (answer == null) {
+				// Hidden from this caller in its own album: not there for them here either.
+				continue;
+			}
+			result.add(answer);
+			if (stored != null) {
+				stored.put(match.getRelative(), match);
+			}
+		}
+		return result;
+	}
+
+	/** A photograph found near a vector as the caller is answered it, and how near, see {@link #nearestAnswers}. */
+	record ScoredPart(ImagePart part, float score) {
+		// A pair.
+	}
+
+	/**
+	 * The <code>k</code> photographs below the given folder nearest to the given vector of the
+	 * content search (issue #257), the nearest first, each as its own album answers it to the
+	 * caller: what the caller may not see is not looked for ({@link SearchIndex#nearest}, the
+	 * visibility inside the vector query), and what the index holds stale is checked by the album,
+	 * exactly as for the answers of {@link #searchMatches}.
+	 *
+	 * @param vector
+	 *        A vector of the model the vector index holds.
+	 */
+	List<ScoredPart> nearestAnswers(PathInfo scope, float[] vector, float imageWeight, float textWeight, int k,
+			Caller caller, int viewAs) {
+		List<ScoredPart> result = new ArrayList<>();
+		if (k <= 0 || !_auth.mayView(caller, scope)) {
+			// Not one album of it would be answered.
+			return result;
+		}
+		// Every rule of sourceAlbum() that drops all photographs of a folder is part of the filter
+		// inside the vector query; what drops single photographs the index cannot tell (a
+		// contributor's own uploads in the inbox, an album changed behind the index) is made up for
+		// by asking for more, see NEAREST_MORE.
+		SearchIndex.Visibility visibility = new SearchIndex.Visibility(Math.min(_auth.clearance(caller, scope), viewAs),
+			caller.isShareLink() ? caller.getShare().getMinRating() : Ratings.MIN, _auth.photoLabel(caller));
+		java.util.function.Predicate<String> folders = path -> {
+			PathInfo folder = path.isEmpty() ? new PathInfo(_basePath) : new PathInfo(_basePath, Paths.get(path));
+			return _auth.mayView(caller, folder) && (!Inboxes.isInbox(folder.toFile())
+				|| Inboxes.visibility(_auth, caller, folder, viewAs) != Inboxes.Visibility.NONE);
+		};
+		boolean member = Faces.maySee(_auth, caller, viewAs);
+		int limit = Math.max(k * NEAREST_MORE, NEAREST_LEAST);
+		for (int asked = k;; asked = Math.min(limit, asked * 4)) {
+			List<SearchIndex.Scored> scored =
+				_searchIndex.nearest(scope, vector, imageWeight, textWeight, asked, visibility, folders);
+			List<PhotoSearch.Match> found = new ArrayList<>(scored.size());
+			for (SearchIndex.Scored each : scored) {
+				found.add(each.match());
+			}
+			Map<PathInfo, Map<String, ImagePart>> albums =
+				shownAlbums(found, (folder, names) -> sourceAlbum(folder, caller, viewAs, names, false));
+			result.clear();
+			for (SearchIndex.Scored each : scored) {
+				ImagePart answer = answerOf(each.match(), albums, member, true);
+				if (answer != null) {
+					result.add(new ScoredPart(answer, each.score()));
+					if (result.size() == k) {
+						return result;
+					}
+				}
+			}
+			if (scored.size() < asked || asked >= limit) {
+				// Every candidate there is was asked, or as many as a query may cost.
+				return result;
+			}
+		}
+	}
+
+	/**
+	 * How many times <code>k</code> candidates {@link #nearestAnswers} asks the index for at most,
+	 * where their albums hide some of them from the caller (at least {@link #NEAREST_LEAST}): each
+	 * round asks four times as many as the one before.
+	 */
+	static final int NEAREST_MORE = 16;
+
+	/** The fewest candidates {@link #nearestAnswers} may ask for at most, see {@link #NEAREST_MORE}. */
+	static final int NEAREST_LEAST = 1000;
+
+	/**
+	 * The albums of the given matches as the given sources answer them, each photograph by its name:
+	 * each album is asked once, for its matches alone, see {@link #searchMatches}.
+	 */
+	private Map<PathInfo, Map<String, ImagePart>> shownAlbums(List<PhotoSearch.Match> found,
+			java.util.function.BiFunction<PathInfo, Set<String>, AlbumInfo> sources) {
 		// Each album is asked once, for its matches alone: what its filters and its faces cost is
 		// paid for what is answered, not for the whole album.
 		Map<PathInfo, Set<String>> matched = new LinkedHashMap<>();
@@ -9334,28 +9449,31 @@ public class ImageServlet extends HttpServlet {
 			}
 			albums.put(entry.getKey(), byName);
 		}
-		List<ImagePart> result = new ArrayList<>(found.size());
-		for (PhotoSearch.Match match : found) {
-			PathInfo folder = match.getFolder();
-			ImagePart shown = albums.get(folder).get(match.getName());
-			if (shown == null) {
-				// Hidden from this caller in its own album: not there for them here either.
-				continue;
-			}
-			ImagePart answer = PhotoSearch.answerCopy(shown);
-			if (slim) {
-				answer.setFaces(Collections.emptyList()).setTags(Collections.emptyList());
-			}
-			answer.setName(match.getRelative());
-			answer.setRef(member
-				? PhotoRef.create().setHash("").setPath(folder.child(match.getName()).relativePath())
-				: null);
-			result.add(answer);
-			if (stored != null) {
-				stored.put(match.getRelative(), match);
-			}
+		return albums;
+	}
+
+	/**
+	 * The answer of the given match, see {@link #searchMatches}: a copy of the photograph as its
+	 * album shows it, named by its path below the folder searched; <code>null</code> where the album
+	 * hides it from the caller.
+	 */
+	private static ImagePart answerOf(PhotoSearch.Match match, Map<PathInfo, Map<String, ImagePart>> albums,
+			boolean member, boolean slim) {
+		PathInfo folder = match.getFolder();
+		Map<String, ImagePart> album = albums.get(folder);
+		ImagePart shown = album == null ? null : album.get(match.getName());
+		if (shown == null) {
+			return null;
 		}
-		return result;
+		ImagePart answer = PhotoSearch.answerCopy(shown);
+		if (slim) {
+			answer.setFaces(Collections.emptyList()).setTags(Collections.emptyList());
+		}
+		answer.setName(match.getRelative());
+		answer.setRef(member
+			? PhotoRef.create().setHash("").setPath(folder.child(match.getName()).relativePath())
+			: null);
+		return answer;
 	}
 
 	/**
