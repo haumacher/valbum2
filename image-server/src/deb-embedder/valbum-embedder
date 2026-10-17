@@ -1,0 +1,84 @@
+#!/bin/sh
+#
+# Starts the embedder service of VAlbum's content search on a machine of its own (issue #257),
+# with the configuration from /etc/default/valbum-embedder.
+#
+# This is what the systemd unit valbum-embedder.service runs and what the container image
+# valbum-embedder starts; it works the same by hand:
+#
+#     sudo -u valbum-embedder valbum-embedder
+#
+# It makes the Python environment of the service where it is missing (setup-venv: the pinned
+# wheels with their hashes, from PyPI or from $VALBUM_EMBEDDER_DIR/wheels), then runs the service,
+# which fetches the model's missing files itself (each checked against model.json) and answers
+# "downloading" until they are there. The key reaches the service through its environment, never
+# through its command line, which every user of the machine can read.
+#
+# Arguments given here are passed to the service after the configured ones.
+#
+set -eu
+
+CONFIG=${VALBUM_EMBEDDER_CONFIG:-/etc/default/valbum-embedder}
+
+SETTINGS="VALBUM_EMBEDDER_DIR VALBUM_EMBEDDER_HOST VALBUM_EMBEDDER_PORT VALBUM_EMBEDDER_PRECISION VALBUM_EMBEDDER_THREADS VALBUM_EMBEDDER_KEY VALBUM_EMBEDDER_TLS_CERT VALBUM_EMBEDDER_TLS_KEY VALBUM_EMBEDDER_MODEL_URL VALBUM_EMBEDDER_VENV VALBUM_EMBEDDER_CODE PYTHON"
+
+if [ -r "$CONFIG" ]; then
+	# The systemd unit passes these as environment variables already; sourcing makes the script
+	# work the same from a shell. A variable set by the caller wins over the file.
+	for var in $SETTINGS; do
+		if eval "[ -n \"\${$var+set}\" ]"; then
+			eval "env_$var=\$$var"
+			eval "env_${var}_set=1"
+		fi
+	done
+	# shellcheck source=/dev/null
+	. "$CONFIG"
+	for var in $SETTINGS; do
+		if eval "[ -n \"\${env_${var}_set:-}\" ]"; then
+			eval "$var=\$env_$var"
+		fi
+	done
+fi
+
+CODE=${VALBUM_EMBEDDER_CODE:-/usr/share/valbum-embedder}
+DIR=${VALBUM_EMBEDDER_DIR:-/var/lib/valbum-embedder}
+HOST=${VALBUM_EMBEDDER_HOST:-0.0.0.0}
+PORT=${VALBUM_EMBEDDER_PORT:-8091}
+PRECISION=${VALBUM_EMBEDDER_PRECISION:-fp32}
+THREADS=${VALBUM_EMBEDDER_THREADS:-0}
+MODEL_URL=${VALBUM_EMBEDDER_MODEL_URL:-https://huggingface.co/}
+
+if [ ! -d "$DIR" ] || [ ! -w "$DIR" ]; then
+	echo "valbum-embedder: cannot write '$DIR' (VALBUM_EMBEDDER_DIR), where the model and the Python environment are kept." >&2
+	exit 1
+fi
+
+# The environment: one per requirements and machine, as the album server names its own.
+VENV=${VALBUM_EMBEDDER_VENV:-}
+if [ -z "$VENV" ]; then
+	HASH=$(sha256sum "$CODE/requirements.txt" | cut -c1-12)
+	VENV="$DIR/python/$HASH-$(uname -m)"
+fi
+if [ -n "${PYTHON:-}" ]; then
+	# The Python setup-venv makes the environment with, where python3 is older than 3.12.
+	export PYTHON
+fi
+if [ ! -x "$VENV/bin/python3" ]; then
+	echo "valbum-embedder: installing the Python packages of the service into $VENV (about 50 MB from PyPI, or from $DIR/wheels)" >&2
+	sh "$CODE/setup-venv" "$VENV" "$CODE/requirements.txt" "$DIR/wheels" </dev/null
+fi
+
+set -- --model-root "$DIR" --fetch --model-url "$MODEL_URL" --precision "$PRECISION" \
+	--host "$HOST" --port "$PORT" --threads "$THREADS" "$@"
+if [ -n "${VALBUM_EMBEDDER_TLS_CERT:-}" ] || [ -n "${VALBUM_EMBEDDER_TLS_KEY:-}" ]; then
+	set -- --tls-cert "${VALBUM_EMBEDDER_TLS_CERT:-}" --tls-key "${VALBUM_EMBEDDER_TLS_KEY:-}" "$@"
+fi
+
+# Only the key travels by the environment; an empty one is no key.
+if [ -n "${VALBUM_EMBEDDER_KEY:-}" ]; then
+	export VALBUM_EMBEDDER_KEY
+else
+	unset VALBUM_EMBEDDER_KEY
+fi
+
+exec "$VENV/bin/python3" -I "$CODE/embedder.py" "$@"

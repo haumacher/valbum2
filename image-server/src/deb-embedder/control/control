@@ -1,0 +1,25 @@
+Package: valbum-embedder
+Version: ${deb.version}
+Section: web
+Priority: optional
+Architecture: ${deb.arch}
+Maintainer: Bernhard Haumacher <haui@haumacher.de>
+Homepage: https://github.com/haumacher/valbum2
+Depends: python3, python3-venv, ca-certificates, adduser
+Description: Embedder service of VAlbum's content search
+ VAlbum finds photos by what they show ("flowers", "Blumen im Regen") with the
+ model EmbeddingGemma 2 (Apache-2.0). This package runs the part that turns
+ photos and search texts into vectors on a machine of its own - a faster one
+ than the album server, which then calls it over the network. The album server
+ does not need it: without it, it runs the same service itself.
+ .
+ The service runs as the system user "valbum-embedder" under systemd and
+ listens on port 8091. Its configuration lives in /etc/default/valbum-embedder,
+ with a random key made at installation that every request must carry; set
+ the same key and the address on the album server. TLS is optional and
+ recommended.
+ .
+ At its first start the service makes a Python environment (Python 3.12 or
+ newer, about 50 MB of pinned packages from PyPI) and downloads the model from
+ huggingface.co (about 1.8 GB for fp32, 0.5 GB for int8) into
+ /var/lib/valbum-embedder, every file checked against its pinned SHA-256.

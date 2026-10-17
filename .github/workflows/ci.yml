@@ -129,6 +129,35 @@ jobs:
       - name: Smoke-test the image
         run: image-server/src/docker/smoke-test valbum:ci linux/amd64
 
+  # The embedder service of content search (#257): its Python tests on the pinned packages, and
+  # the image of the package valbum-embedder for a machine of its own, smoke-tested without the
+  # model (its address points nowhere, so nothing is downloaded).
+  embedder:
+    name: Embedder service (Python, image)
+    needs: changes
+    if: needs.changes.outputs.docker == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Python tests
+        working-directory: image-server/src/embedder
+        run: |
+          set -euo pipefail
+          python -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --no-deps --only-binary=:all: --require-hashes -r requirements.txt
+          "$RUNNER_TEMP/venv/bin/pip" install pytest
+          "$RUNNER_TEMP/venv/bin/python" -m pytest -q tests
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the embedder image
+        run: |
+          docker buildx build --platform linux/amd64 --load -t valbum-embedder:ci \
+            -f image-server/src/docker/Dockerfile.embedder image-server/src
+      - name: Smoke-test the embedder image
+        run: image-server/src/docker/embedder-smoke-test valbum-embedder:ci linux/amd64
+
   app:
     name: Flutter app
     runs-on: ubuntu-latest

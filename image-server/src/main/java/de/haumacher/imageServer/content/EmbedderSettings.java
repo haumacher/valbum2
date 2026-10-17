@@ -24,8 +24,12 @@ import java.util.Map;
  * one by default.</li>
  * <li><code>VALBUM_EMBEDDER_PRECISION</code>: <code>fp32</code> (default, the reference to a cosine
  * above 0.999) or <code>int8</code> (half the memory and download).</li>
- * <li><code>VALBUM_EMBEDDER_URL</code>: an embedder service that runs on its own (started by hand,
- * or a container beside this one); then nothing is downloaded or started here.</li>
+ * <li><code>VALBUM_EMBEDDER_URL</code>: an embedder service that runs on its own (the package
+ * <code>valbum-embedder</code> on another machine, its container image, or one started by hand);
+ * then nothing is downloaded or started here.</li>
+ * <li><code>VALBUM_EMBEDDER_KEY</code>: the key of that service, sent with every request.</li>
+ * <li><code>VALBUM_EMBEDDER_CERT_SHA256</code>: the SHA-256 fingerprint of its certificate, for an
+ * <code>https</code> address with a self-signed one.</li>
  * </ul>
  *
  * <p>
@@ -47,6 +51,12 @@ public final class EmbedderSettings {
 	/** An embedder service of its own; nothing is started then. */
 	public static final String URL = "VALBUM_EMBEDDER_URL";
 
+	/** The key of a service of its own, sent with every request. */
+	public static final String KEY = "VALBUM_EMBEDDER_KEY";
+
+	/** The SHA-256 fingerprint of the certificate of a service of its own, for a self-signed one. */
+	public static final String CERT_SHA256 = "VALBUM_EMBEDDER_CERT_SHA256";
+
 	/** The folder below the base path the embedder is kept in by default. */
 	public static final String DEFAULT_DIR = ".embedder";
 
@@ -57,7 +67,7 @@ public final class EmbedderSettings {
 	public static final Duration IDLE_EXIT = Duration.ofMinutes(15);
 
 	/** No content search at all: what a test builds a server with. */
-	public static final EmbedderSettings NONE = new EmbedderSettings(false, null, 0, ContentModel.FP32, null);
+	public static final EmbedderSettings NONE = new EmbedderSettings(false, null, 0, ContentModel.FP32, null, null, null);
 
 	private final boolean _on;
 
@@ -69,12 +79,19 @@ public final class EmbedderSettings {
 
 	private final URI _url;
 
-	private EmbedderSettings(boolean on, String dir, int port, String precision, URI url) {
+	private final String _key;
+
+	private final byte[] _certSha256;
+
+	private EmbedderSettings(boolean on, String dir, int port, String precision, URI url, String key,
+			byte[] certSha256) {
 		_on = on;
 		_dir = dir;
 		_port = port;
 		_precision = precision;
 		_url = url;
+		_key = key;
+		_certSha256 = certSha256;
 	}
 
 	/**
@@ -126,7 +143,31 @@ public final class EmbedderSettings {
 					+ "example 'http://127.0.0.1:8091/', not '" + urlText + "'.");
 			}
 		}
-		return new EmbedderSettings(true, dir.isEmpty() ? null : dir, port, precision, url);
+		String key = value(env, KEY);
+		for (int n = 0; n < key.length(); n++) {
+			char c = key.charAt(n);
+			if (c <= ' ' || c >= 127) {
+				throw new ServerEnvironment.Invalid(KEY + " must be printable ASCII without blanks (it travels in a "
+					+ "header), as the key the package valbum-embedder makes.");
+			}
+		}
+		String pinText = value(env, CERT_SHA256);
+		byte[] pin = null;
+		if (!pinText.isEmpty()) {
+			String hex = pinText.replace(":", "").replaceFirst("(?i)^sha256( fingerprint)?=", "");
+			if (!hex.matches("[0-9A-Fa-f]{64}")) {
+				throw new ServerEnvironment.Invalid(CERT_SHA256 + " must be the SHA-256 fingerprint of the service's "
+					+ "certificate, 64 hex digits (colons allowed), as 'openssl x509 -noout -fingerprint -sha256 -in "
+					+ "cert.pem' shows it, not '" + pinText + "'.");
+			}
+			if (url == null || !"https".equalsIgnoreCase(url.getScheme())) {
+				throw new ServerEnvironment.Invalid(CERT_SHA256 + " pins the certificate of an https service; "
+					+ URL + " is " + (url == null ? "not set" : "'" + url + "'") + ".");
+			}
+			pin = java.util.HexFormat.of().parseHex(hex.toLowerCase(Locale.ROOT));
+		}
+		return new EmbedderSettings(true, dir.isEmpty() ? null : dir, port, precision, url,
+			key.isEmpty() ? null : key, pin);
 	}
 
 	private static String value(Map<String, String> env, String name) {
@@ -159,6 +200,16 @@ public final class EmbedderSettings {
 		return _url;
 	}
 
+	/** Whether a key is sent to the service of its own. */
+	public boolean hasKey() {
+		return _key != null;
+	}
+
+	/** Whether the certificate of the service of its own is pinned. */
+	public boolean hasPinnedCertificate() {
+		return _certSha256 != null;
+	}
+
 	/**
 	 * The embedder of a server serving the given base path; nothing is started or downloaded
 	 * before it is asked for a vector. <code>null</code> for {@link #NONE}.
@@ -168,7 +219,7 @@ public final class EmbedderSettings {
 			return null;
 		}
 		if (_url != null) {
-			return new HttpEmbedder(_url);
+			return new HttpEmbedder(_url, _key, _certSha256).reportChanges();
 		}
 		return new ManagedEmbedder(
 			new PythonService(directory(basePath), _precision, _port, IDLE_EXIT, new ModelStore.Settings()));
@@ -180,8 +231,22 @@ public final class EmbedderSettings {
 			return "Content search: off";
 		}
 		if (_url != null) {
-			return "Content search: the embedder service at " + _url + " (" + URL + "), asked when a space uses it";
+			boolean tls = "https".equalsIgnoreCase(_url.getScheme());
+			return "Content search: the embedder service at " + _url + " (" + URL + "), "
+				+ (_key == null ? "without a key (" + KEY + ")" : "with its key") + ", "
+				+ (tls ? (_certSha256 == null ? "TLS" : "TLS with the pinned certificate")
+					: "unencrypted (the previews, search texts" + (_key == null ? "" : " and the key")
+						+ " travel in the clear; https is recommended)")
+				+ "; asked when a space uses it";
 		}
+		if (_key != null) {
+			// The child on 127.0.0.1 needs none; the pin is refused without an address already.
+			return reportManaged(basePath) + "; " + KEY + " is set but used only with " + URL;
+		}
+		return reportManaged(basePath);
+	}
+
+	private String reportManaged(Path basePath) {
 		ContentModel model = ContentModel.bundled();
 		return "Content search: " + model.getModel() + " (Apache-2.0), " + _precision + " (" + PRECISION + "), in "
 			+ directory(basePath).toAbsolutePath() + " (" + DIR + "); the model ("

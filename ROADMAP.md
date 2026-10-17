@@ -239,6 +239,8 @@ in a separate service, and abuse and law (the DSA, GDPR) come first. Open questi
 
 ## Decisions log
 
+- **2026-10-17** — **Content search on another machine (#257):** the embedder service ships as a package of its own, `valbum-embedder` (`.deb` for `amd64`/`arm64`, and an image), so a faster machine in the network can do the image encoding (a Pi 4 needs ~90 s per photo). Push model: the album server calls it (`VALBUM_EMBEDDER_URL`), no worker pulls jobs. Every request carries a key (`VALBUM_EMBEDDER_KEY`, made at installation); without one the service runs open and warns. TLS is recommended, never required (`VALBUM_EMBEDDER_CERT_SHA256` pins a self-signed certificate). The album server's own package keeps running the service as its child on 127.0.0.1.
+
 - **2026-10-14** — 2.14.0 released (tag `valbum-2.14.0` on the commit recording it).
   - **Uploads appear by themselves again (#258):** the background puts uploads first, then what a request was answered "not there yet" for, then the catch-up; the app asks again once per page while something is pending, honouring `Retry-After` — this reverses the "press reload" of #256 for pictures.
   - **An index per space (#264, slices 1–2):** the hash index and the search index live in an embedded H2 database per space, the text in Lucene (prefix and German/English stem matching, labels and places searchable, no mid-word match); nothing is rebuilt after a restart, searches are 3–4× faster (#276), never empty during a rebuild. `VALBUM_INDEX_MEMORY` sizes it. Rebuildable, not part of a backup.

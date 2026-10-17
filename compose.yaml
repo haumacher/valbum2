@@ -52,7 +52,9 @@ services:
       # VALBUM_INDEX_MEMORY: "64"
       # Content search (finding photos by what they show) downloads, when a space asks for it, a
       # Python environment and the model (about 2 GB) into /photos/.embedder; another folder, the
-      # precision (fp32, or int8 with half the memory), or an embedder service of its own:
+      # precision (fp32, or int8 with half the memory), or the embedder on a faster machine
+      # (valbum-embedder, see the README) with its key:
       # VALBUM_EMBEDDER_DIR: /photos/.embedder
       # VALBUM_EMBEDDER_PRECISION: fp32
-      # VALBUM_EMBEDDER_URL: http://127.0.0.1:8091/
+      # VALBUM_EMBEDDER_URL: http://faster-machine:8091/
+      # VALBUM_EMBEDDER_KEY: <VALBUM_EMBEDDER_KEY of that service>

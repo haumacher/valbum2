@@ -43,27 +43,41 @@ class FakeModel:
         return v / np.linalg.norm(v), 3
 
 
-@pytest.fixture()
-def service():
+def start(key=None, tls=None):
     args = types.SimpleNamespace(precision="fp32", model_dir="/nowhere", threads=0)
-    result = embedder.Service(args, embedder.read_manifest())
+    result = embedder.Service(args, embedder.read_manifest(), key)
     result.model = FakeModel()
     result.status = "ready"
     embedder.Handler.service = result
-    httpd = embedder.ThreadingHTTPServer(("127.0.0.1", 0), embedder.Handler)
+    httpd = embedder.Server(("127.0.0.1", 0), embedder.Handler)
+    httpd.tls = tls
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
-    result.url = "http://127.0.0.1:%d" % httpd.server_address[1]
+    result.url = "%s://127.0.0.1:%d" % ("https" if tls else "http", httpd.server_address[1])
+    result.httpd = httpd
+    return result
+
+
+def stop(service):
+    service.httpd.shutdown()
+    service.httpd.server_close()
+
+
+@pytest.fixture()
+def service():
+    result = start()
     yield result
-    httpd.shutdown()
-    httpd.server_close()
+    stop(result)
 
 
-def call(url, body=None):
+def call(url, body=None, key=None, context=None):
     data = None if body is None else json.dumps(body).encode("utf-8")
-    request = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+    headers = {"Content-Type": "application/json"}
+    if key is not None:
+        headers["Authorization"] = "Bearer " + key
+    request = urllib.request.Request(url, data=data, headers=headers)
     try:
-        with urllib.request.urlopen(request, timeout=10) as response:
+        with urllib.request.urlopen(request, timeout=10, context=context) as response:
             return response.status, json.load(response)
     except urllib.error.HTTPError as ex:
         return ex.code, json.load(ex)
@@ -84,6 +98,7 @@ def test_health_names_the_pinned_model(service):
     assert len(body["revision"]) == 40
     assert body["precision"] == "fp32"
     assert body["dimension"] == 768
+    assert body["preprocessing"] == embedder.PREPROCESSING
 
 
 def test_texts_are_embedded_as_given_truncated_and_normalised_again(service):

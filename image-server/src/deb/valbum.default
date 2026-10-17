@@ -142,13 +142,24 @@ VALBUM_SPACES=auto
 # A server without internet access takes the model files placed there by hand
 # (into embeddinggemma-2-ONNX@daa72c51/, under their names in the repository),
 # and the Python packages from the folder wheels/ beside it; see the README.
-# VALBUM_EMBEDDER_URL names a service that runs on its own instead - then
-# nothing is downloaded or started here.
 #
 #   VALBUM_EMBEDDER_DIR=/var/cache/valbum/embedder
 #   VALBUM_EMBEDDER_PRECISION=int8
 #   VALBUM_EMBEDDER_PORT=8091
-#   VALBUM_EMBEDDER_URL=http://127.0.0.1:8091/
+#
+# On a slow machine (a Raspberry Pi takes about 90 s per photo) the service can
+# run on a faster one instead: install the package valbum-embedder there (or
+# its container image) and name it here, with the key from its
+# /etc/default/valbum-embedder. Then nothing is downloaded or started here,
+# and VALBUM_EMBEDDER_DIR, _PORT and _PRECISION are not used. What travels is
+# the preview of every photo, the search texts and the key: https is
+# recommended (VALBUM_EMBEDDER_TLS_CERT on the service); for a self-signed
+# certificate pin its SHA-256 fingerprint here
+# (openssl x509 -noout -fingerprint -sha256 -in cert.pem).
+#
+#   VALBUM_EMBEDDER_URL=https://gpu-box.local:8091/
+#   VALBUM_EMBEDDER_KEY=<VALBUM_EMBEDDER_KEY of the service>
+#   VALBUM_EMBEDDER_CERT_SHA256=AB:CD:...
 #
 # PYTHON names the Python the environment is made with, where python3 is older
 # than 3.12 (Debian 12, Raspberry Pi OS bookworm). uv installs one beside it,

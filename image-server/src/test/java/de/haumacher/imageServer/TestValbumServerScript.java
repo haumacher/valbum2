@@ -179,6 +179,22 @@ public class TestValbumServerScript extends TestCase {
 		assertEquals("http://127.0.0.1:8091/", env.get("VALBUM_EMBEDDER_URL"));
 	}
 
+	/** The key of an embedder on another machine reaches the server through its environment only. */
+	public void testTheKeyOfARemoteEmbedderNeverShowsOnTheCommandLine() throws Exception {
+		if (noShell()) {
+			return;
+		}
+		configure("VALBUM_EMBEDDER_URL=https://gpu.local:8091/\nVALBUM_EMBEDDER_KEY=0f1e2d3c4b5a\n"
+			+ "VALBUM_EMBEDDER_CERT_SHA256=AB:CD");
+		List<String> args = run(Map.of());
+		Map<String, String> env = environment();
+		assertEquals("0f1e2d3c4b5a", env.get("VALBUM_EMBEDDER_KEY"));
+		assertEquals("AB:CD", env.get("VALBUM_EMBEDDER_CERT_SHA256"));
+		for (String arg : args) {
+			assertFalse("No key on the command line: " + args, arg.contains("0f1e2d3c4b5a"));
+		}
+	}
+
 	/** The Python the embedder's environment is made with reaches setup-venv also outside systemd. */
 	public void testThePythonOfTheEmbedderReachesTheServerThroughItsEnvironment() throws Exception {
 		String shipped = Files.readString(DEFAULTS, StandardCharsets.UTF_8);
@@ -239,7 +255,9 @@ public class TestValbumServerScript extends TestCase {
 		ServerEnvironment.GEONAMES_MEMORY, ServerEnvironment.CACHE_MEMORY,
 		ServerEnvironment.INDEX_MEMORY,
 		de.haumacher.imageServer.content.EmbedderSettings.DIR, de.haumacher.imageServer.content.EmbedderSettings.PORT,
-		de.haumacher.imageServer.content.EmbedderSettings.PRECISION, de.haumacher.imageServer.content.EmbedderSettings.URL);
+		de.haumacher.imageServer.content.EmbedderSettings.PRECISION, de.haumacher.imageServer.content.EmbedderSettings.URL,
+		de.haumacher.imageServer.content.EmbedderSettings.KEY,
+		de.haumacher.imageServer.content.EmbedderSettings.CERT_SHA256);
 
 	/** The environment the fake <code>java</code> was started with. */
 	private Map<String, String> environment() throws Exception {

@@ -3,6 +3,8 @@
  */
 package de.haumacher.imageServer.content;
 
+import de.haumacher.imageServer.PreviewCache;
+import de.haumacher.imageServer.PreviewException;
 import de.haumacher.imageServer.ServerEnvironment;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -26,7 +28,13 @@ import java.util.Objects;
  * Reads <code>VALBUM_EMBEDDER_*</code> like the server (run it as the server's user, with its
  * configuration), waits until the service is ready, then prints the time of a text query, of each
  * picture, and the memory of the service. It also prepares an offline machine: the files placed
- * by hand are checked here.
+ * by hand are checked here; and with <code>VALBUM_EMBEDDER_URL</code> it checks a service on
+ * another machine, its key and its certificate.
+ * </p>
+ *
+ * <p>
+ * What is sent of a picture is its preview, as the server sends it, never the original: the preview
+ * is looked up or made in the <code>.vacache</code> beside the picture, like the server does.
  * </p>
  */
 public final class EmbedderCheck {
@@ -84,7 +92,9 @@ public final class EmbedderCheck {
 				System.out.println("  " + problem);
 				last = problem;
 			}
-			if (problem.contains("cannot run") || problem.contains("cannot load")) {
+			// What only the administrator can mend: waiting does not help.
+			if (problem.contains("cannot run") || problem.contains("cannot load") || problem.contains("refuses this server")
+				|| problem.contains("preprocesses by version") || problem.contains("TLS handshake")) {
 				System.out.println("Not available.");
 				return 1;
 			}
@@ -104,16 +114,26 @@ public final class EmbedderCheck {
 		System.out.printf("Text query: %.0f ms each (%d queries)%n", seconds(start) * 1000 / (rounds * queries.length),
 			rounds * queries.length);
 
-		if (!images.isEmpty()) {
-			embedder.embedImage(Files.readAllBytes(images.get(0)));
-			start = System.nanoTime();
-			for (Path image : images) {
-				long one = System.nanoTime();
-				embedder.embedImage(Files.readAllBytes(image));
-				System.out.printf("  %s: %.0f ms%n", image.getFileName(), seconds(one) * 1000);
+		List<byte[]> previews = new ArrayList<>();
+		List<Path> shown = new ArrayList<>();
+		for (Path image : images) {
+			byte[] preview = preview(image);
+			if (preview != null) {
+				previews.add(preview);
+				shown.add(image);
 			}
-			System.out.printf("Picture: %.0f ms each (%d pictures)%n", seconds(start) * 1000 / images.size(),
-				images.size());
+		}
+		if (!previews.isEmpty()) {
+			embedder.embedImage(previews.get(0));
+			start = System.nanoTime();
+			for (int n = 0; n < previews.size(); n++) {
+				long one = System.nanoTime();
+				embedder.embedImage(previews.get(n));
+				System.out.printf("  %s (preview, %d KB): %.0f ms%n", shown.get(n).getFileName(),
+					previews.get(n).length / 1024, seconds(one) * 1000);
+			}
+			System.out.printf("Picture: %.0f ms each (%d pictures)%n", seconds(start) * 1000 / previews.size(),
+				previews.size());
 		}
 		if (embedder instanceof ManagedEmbedder managed && managed.getProcess() != null) {
 			Path status = Path.of("/proc", String.valueOf(managed.getProcess().pid()), "status");
@@ -126,6 +146,19 @@ public final class EmbedderCheck {
 			}
 		}
 		return 0;
+	}
+
+	/**
+	 * The preview of a picture, as the server would send it, <code>null</code> (and said why) where
+	 * none can be made: the original is never sent.
+	 */
+	static byte[] preview(Path image) throws IOException {
+		try {
+			return Files.readAllBytes(PreviewCache.createPreview(image.toFile()).toPath());
+		} catch (PreviewException ex) {
+			System.out.println("  " + image.getFileName() + ": no preview, not sent: " + ex.getMessage());
+			return null;
+		}
 	}
 
 	private static double seconds(long start) {

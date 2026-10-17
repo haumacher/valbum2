@@ -1,0 +1,57 @@
+# syntax=docker/dockerfile:1.7
+#
+# The embedder service of VAlbum's content search (issue #257) as a container image of its own,
+# for a machine other than the album server: amd64 and arm64 under one multi-arch tag. The
+# counterpart of the package valbum-embedder; the album server's own image does not need it (it
+# runs the same service as its child when no VALBUM_EMBEDDER_URL is set).
+#
+# Build context image-server/src, of which Dockerfile.embedder.dockerignore admits the service's
+# code (embedder/), its start script (deb-embedder/valbum-embedder) and the health check:
+#
+#   docker buildx build --platform linux/amd64,linux/arm64 -f image-server/src/docker/Dockerfile.embedder \
+#       -t ghcr.io/haumacher/valbum-embedder:<version> image-server/src
+#
+# The Python packages (the pinned wheels with their hashes, about 190 MB installed) are part of the
+# image; the model (1.8 GB) is not: the service fetches it into the volume /data at its first start,
+# every file checked against its pinned SHA-256, and answers "downloading" until then.
+#
+# Runtime contract: VALBUM_EMBEDDER_KEY (the key every request must carry; without one the service
+# warns that it is open to the network), port 8091, the volume /data, and optionally
+# VALBUM_EMBEDDER_TLS_CERT / _TLS_KEY (files mounted into the container), VALBUM_EMBEDDER_PRECISION,
+# VALBUM_EMBEDDER_THREADS. See the README, "Content search on another machine".
+
+ARG BASE=python:3.13-slim-trixie
+
+FROM ${BASE}
+
+# The service's user; /data is its volume, made here so that a named volume takes its owner.
+RUN useradd --system --uid 10001 --user-group --home-dir /data --no-create-home --shell /usr/sbin/nologin embedder \
+	&& mkdir -p /data && chown embedder:embedder /data && chmod 0750 /data
+
+# The Python environment, made by the very script the package and the album server run.
+COPY embedder/requirements.txt embedder/setup-venv /opt/valbum-embedder/
+RUN PYTHON=python3 sh /opt/valbum-embedder/setup-venv /opt/venv /opt/valbum-embedder/requirements.txt
+
+COPY embedder/embedder.py embedder/model.json /opt/valbum-embedder/
+COPY --chmod=755 deb-embedder/valbum-embedder /usr/bin/valbum-embedder
+COPY --chmod=755 docker/embedder-healthcheck /usr/local/bin/embedder-healthcheck
+
+ENV VALBUM_EMBEDDER_CONFIG=/etc/default/valbum-embedder \
+	VALBUM_EMBEDDER_CODE=/opt/valbum-embedder \
+	VALBUM_EMBEDDER_VENV=/opt/venv \
+	VALBUM_EMBEDDER_DIR=/data \
+	VALBUM_EMBEDDER_HOST=0.0.0.0 \
+	VALBUM_EMBEDDER_PORT=8091
+
+USER embedder
+VOLUME /data
+EXPOSE 8091
+
+# Answers while the model is downloaded and loaded too: the check tells a running service from a
+# hung one; whether it is ready, /health says.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 CMD ["/usr/local/bin/embedder-healthcheck"]
+
+ENTRYPOINT ["/usr/bin/valbum-embedder"]
+
+LABEL org.opencontainers.image.licenses="AGPL-3.0-or-later" \
+      org.opencontainers.image.source="https://github.com/haumacher/valbum2"

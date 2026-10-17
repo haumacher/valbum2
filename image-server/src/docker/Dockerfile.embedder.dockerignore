@@ -1,0 +1,8 @@
+# Only what the embedder image is built from.
+*
+!embedder/embedder.py
+!embedder/model.json
+!embedder/requirements.txt
+!embedder/setup-venv
+!deb-embedder/valbum-embedder
+!docker/embedder-healthcheck

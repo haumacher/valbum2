@@ -39,6 +39,17 @@ From the repository root:
 mvn test
 ```
 
+The embedder service of content search (`image-server/src/embedder`, Python) has tests of its
+own; CI runs them in a venv with the pinned packages:
+
+```
+python3 -m venv /tmp/embedder-venv
+/tmp/embedder-venv/bin/pip install --no-deps --only-binary=:all: --require-hashes \
+    -r image-server/src/embedder/requirements.txt
+/tmp/embedder-venv/bin/pip install pytest
+( cd image-server/src/embedder && /tmp/embedder-venv/bin/python -m pytest -q tests )
+```
+
 ## Trying it out
 
 After a successful build you can start a demo server with a sample album:
