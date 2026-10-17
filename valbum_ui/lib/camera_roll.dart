@@ -17,10 +17,19 @@
 /// * a failure stops the run, keeps the watermark, says why, and schedules a
 ///   retry with an exponential back-off (30 s, 1 min, 2 min, … 30 min).
 ///
-/// Nothing here decides whether a photo is a duplicate: [VAlbumClient.uploadNew]
-/// hashes every file and asks the server, and the server answers `present` for
-/// contents it already holds (issue #29). A reinstalled app therefore starts
-/// with an empty watermark, re-scans the whole library and transfers nothing.
+/// Nothing here decides whether a photo is a duplicate: the run hashes every
+/// file and asks the server, and the server answers `present` for contents it
+/// already holds (issue #29). A reinstalled app therefore starts with an empty
+/// watermark, re-scans the whole library and transfers nothing.
+///
+/// A photo is hashed once in its life (issue #299): its hash is remembered
+/// under its id, modification time and size ([HashCache]), the server is
+/// asked about a few hundred remembered hashes in one request before anything
+/// is read, and only what it does not hold is read again, to be uploaded —
+/// [defaultParallelUploads] batches at a time. A newly ticked album of photos
+/// that were synced already therefore reads no file at all. Every run that had
+/// something to look at leaves one timing record in the diagnostics log, see
+/// [SyncRunStats].
 library;
 
 import 'dart:async';
@@ -33,6 +42,9 @@ import 'background.dart';
 import 'caller.dart';
 import 'client.dart';
 import 'connectivity.dart';
+import 'diagnostics.dart';
+import 'hash_cache.dart';
+import 'platform.dart' show sha256OfFile;
 import 'photo_library.dart';
 import 'resource.dart';
 import 'notices.dart';
@@ -515,6 +527,148 @@ typedef TimerFactory = Timer Function(Duration delay, void Function() callback);
 /// server never accepts.
 const int maxRounds = 50;
 
+/// The greatest number of hashes one check asks the server about (issue
+/// #299).
+///
+/// The server sets no bound of its own (`ImageServlet.checkUploads` reads the
+/// whole body); 500 hashes are a request of some 40 KB, and as many as one
+/// platform scan answers, see `photoScanLimit`.
+const int checkBatchHashes = 500;
+
+/// The greatest number of photos a chunk hashes before the server is asked
+/// about it (issue #299): a phone that hashes a camera roll for the first
+/// time starts uploading after fifty photos, not after five hundred.
+const int hashedPerCheck = 50;
+
+/// How many upload batches a run has in flight at once (issue #299).
+///
+/// Two: a second request fills the time the first one waits for the server's
+/// answer, and more would only share the same uplink.
+const int defaultParallelUploads = 2;
+
+/// What one run did and where its time went (issue #299), see
+/// [CameraRollSync.lastRun] — one entry of the diagnostics log per run that
+/// had anything to look at.
+class SyncRunStats {
+  /// The photos the scans answered that were not handled before.
+  int seen = 0;
+
+  /// The hashes taken from the [HashCache], and the ones computed by reading.
+  int cached = 0;
+  int hashed = 0;
+
+  /// The bytes read to compute [hashed].
+  int hashedBytes = 0;
+
+  /// The check requests, and the hashes they asked about.
+  int checks = 0;
+  int checkedHashes = 0;
+
+  /// The upload batches the server accepted, their photos and bytes.
+  int uploads = 0;
+  int uploadedPhotos = 0;
+  int uploadedBytes = 0;
+
+  Duration scanTime = Duration.zero;
+  Duration hashTime = Duration.zero;
+  Duration checkTime = Duration.zero;
+  Duration uploadTime = Duration.zero;
+  Duration totalTime = Duration.zero;
+
+  static String _seconds(Duration time) =>
+      "${(time.inMilliseconds / 1000).toStringAsFixed(1)} s";
+
+  /// The headline of the diagnostics entry.
+  String get headline => "Camera-roll sync looked at $seen photos "
+      "in ${_seconds(totalTime)}";
+
+  /// The facts of the diagnostics entry; [outcome] is how the run ended.
+  List<String> facts(String outcome) => [
+        "Hashes: $cached remembered, $hashed computed "
+            "($hashedBytes bytes read)",
+        "Checks: $checks ($checkedHashes hashes)",
+        "Uploads: $uploads batches, $uploadedPhotos photos "
+            "($uploadedBytes bytes)",
+        "Time: scan ${_seconds(scanTime)}, hash ${_seconds(hashTime)}, "
+            "check ${_seconds(checkTime)}, upload ${_seconds(uploadTime)}",
+        "Outcome: $outcome",
+      ];
+}
+
+/// What a run collected over all its albums, see [CameraRollSync._transfer].
+class _Tally {
+  int stored = 0;
+  int present = 0;
+  final List<String> presentIn = [];
+  final List<String> skipped = [];
+  int transferred = 0;
+
+  /// An item that lies in two watched albums is uploaded once; the mark of
+  /// both albums still moves past it.
+  final Set<String> uploaded = {};
+
+  void add(UploadSummary summary) {
+    stored += summary.stored;
+    present += summary.present;
+    for (var refused in summary.refused) {
+      if (!skipped.contains(refused.name)) {
+        skipped.add(refused.name);
+      }
+    }
+    for (var where in summary.presentIn) {
+      if (!presentIn.contains(where)) {
+        presentIn.add(where);
+      }
+    }
+  }
+}
+
+/// A stretch of a chunk the watermark moves over at once: one upload batch
+/// ([send], possibly empty) and every photo of the stretch ([items]).
+class _Segment {
+  final List<PhotoItem> items = [];
+  final List<PhotoItem> send = [];
+}
+
+/// How the upload of a [_Segment] ended.
+class _Outcome {
+  /// Whether it was started at all; one queued behind a failure is not.
+  final bool started;
+  final UploadSummary? summary;
+  final Object? error;
+
+  const _Outcome({this.started = true, this.summary, this.error});
+}
+
+/// At most [size] tasks at a time; the others wait their turn, in order.
+class _Pool {
+  final int size;
+  int _running = 0;
+  final List<Completer<void>> _waiting = [];
+
+  _Pool(int size) : size = size < 1 ? 1 : size;
+
+  Future<T> run<T>(Future<T> Function() task) async {
+    if (_running < size) {
+      _running++;
+    } else {
+      var turn = Completer<void>();
+      _waiting.add(turn);
+      // The finishing task hands its place over, see below.
+      await turn.future;
+    }
+    try {
+      return await task();
+    } finally {
+      if (_waiting.isNotEmpty) {
+        _waiting.removeAt(0).complete();
+      } else {
+        _running--;
+      }
+    }
+  }
+}
+
 /// The delays a failed run is retried with: 30 s, doubling, capped at 30 min.
 const List<Duration> retryDelays = [
   Duration(seconds: 30),
@@ -574,6 +728,16 @@ class CameraRollSync extends ChangeNotifier {
   /// The number of items handed to the server in one request.
   final int batchSize;
 
+  /// How many upload requests a run has in flight at once, see
+  /// [defaultParallelUploads].
+  final int parallelUploads;
+
+  /// The content hashes of the photos, remembered across runs (issue #299).
+  final HashCache hashCache;
+
+  /// Hashes a file by its path off the UI isolate, see [PhotoItem.filePath].
+  final Future<({String hash, int bytes})> Function(String path) hashFile;
+
   /// How often the library is scanned while the app runs.
   final Duration interval;
 
@@ -599,6 +763,8 @@ class CameraRollSync extends ChangeNotifier {
   CameraRollStatus _status = const CameraRollStatus();
   bool _loaded = false;
   BackgroundRunRecord? _lastBackgroundRun;
+  SyncRunStats _stats = SyncRunStats();
+  SyncRunStats? _lastRun;
   AppNotice? _backgroundProblem;
 
   /// Whether a failed run may arm a retry timer.
@@ -628,11 +794,16 @@ class CameraRollSync extends ChangeNotifier {
     BackgroundScheduler? scheduler,
     ConnectivitySource? connectivity,
     this.batchSize = 10,
+    this.parallelUploads = defaultParallelUploads,
+    HashCache? hashCache,
+    Future<({String hash, int bytes})> Function(String path)? hashFile,
     this.interval = const Duration(minutes: 15),
     DateTime Function()? clock,
     TimerFactory? timerFactory,
     UploadTargets? targets,
-  })  : targets =
+  })  : hashCache = hashCache ?? MemoryHashCache(),
+        hashFile = hashFile ?? sha256OfFile,
+        targets =
             targets ?? UploadTargets(store: store, clock: clock ?? DateTime.now),
         callerOf = callerOf ?? _nobody,
         isOffline = isOffline ?? _never,
@@ -653,6 +824,13 @@ class CameraRollSync extends ChangeNotifier {
 
   /// What the sync is doing, see [CameraRollStatus].
   CameraRollStatus get status => _status;
+
+  /// What the last run that had anything to look at did, `null` before one
+  /// (issue #299); the same numbers its diagnostics entry says.
+  SyncRunStats? get lastRun => _lastRun;
+
+  /// The numbers of the run going on, see [lastRun].
+  SyncRunStats get stats => _stats;
 
   /// Whether [load] has finished.
   bool get loaded => _loaded;
@@ -784,7 +962,7 @@ class CameraRollSync extends ChangeNotifier {
     return _status;
   }
 
-  /// Asks the running sync to stop after the batch it is transferring.
+  /// Asks the running sync to stop after the batches it is transferring.
   void stop() {
     _stopRequested = true;
     _pending = false;
@@ -957,7 +1135,35 @@ class CameraRollSync extends ChangeNotifier {
     }
   }
 
+  /// [_runInner], and the timing record of it, see [SyncRunStats].
   Future<void> _runOnce() async {
+    _stats = SyncRunStats();
+    var watch = Stopwatch()..start();
+    try {
+      await _runInner();
+    } finally {
+      _stats.totalTime = watch.elapsed;
+      if (_stats.seen > 0) {
+        _lastRun = _stats;
+        // The one entry of the log that is not a failure (issue #299): a
+        // slow sync on a device says where its time went.
+        _logOf()?.add(
+          _stats.headline,
+          _stats.facts(_status.phase.name),
+        );
+      }
+    }
+  }
+
+  DiagnosticsLog? _logOf() {
+    try {
+      return clientOf()?.log;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _runInner() async {
     if (isOffline()) {
       _fail(notice: const ServerOffline());
       return;
@@ -1037,26 +1243,29 @@ class CameraRollSync extends ChangeNotifier {
       _succeed(0, 0, const [], const [], route);
       return;
     }
-    var stored = 0;
-    var present = 0;
-    var presentIn = <String>[];
-    var skipped = <String>[];
-    var transferred = 0;
-    // An item that lies in two watched albums is uploaded once; the mark of
-    // both albums still moves past it, see below.
-    var uploaded = <String>{};
+    var tally = _Tally();
+    // Whether every watched album is scanned from its very beginning in this
+    // run — then the ids it saw are every photo the sync watches, and the
+    // hash cache may forget the rest, see [HashCache.retainOnly].
+    var fullScan = true;
+    var seen = <String>{};
     // Every watched album has its own watermark, so a newly ticked one is
     // fetched from the beginning without the others losing their place
     // (issue #117).
     for (var source in sources) {
+      if (_config.markOf(source).since != null) {
+        fullScan = false;
+      }
       // A platform scan is bounded (see [PhotoLibrary.scanLimit]), so a full
       // answer may have left items behind; the watermark has advanced by
       // then, so the next round picks exactly those up. A round that was not
       // full — and every round of a library that answers with everything —
       // ends this album.
+      var finished = false;
       for (var round = 0; round < maxRounds; round++) {
         var mark = _config.markOf(source);
         List<PhotoItem> items;
+        var scanning = Stopwatch()..start();
         try {
           items = await library.itemsSince(
             mark.since,
@@ -1066,7 +1275,10 @@ class CameraRollSync extends ChangeNotifier {
         } catch (error) {
           _fail(notice: PhotoLibraryFailed(platformErrorText(error)));
           return;
+        } finally {
+          stats.scanTime += scanning.elapsed;
         }
+        seen.addAll([for (var item in items) item.id]);
 
         var alreadyDone = mark.done.toSet();
         var pending = [
@@ -1074,96 +1286,327 @@ class CameraRollSync extends ChangeNotifier {
             if (!alreadyDone.contains(item.id)) item
         ];
         if (pending.isEmpty) {
+          finished = true;
           break;
         }
+        stats.seen += pending.length;
         var truncated =
             library.scanLimit > 0 && items.length >= library.scanLimit;
 
-        var total = transferred + pending.length;
+        var total = tally.transferred + pending.length;
         _publish(_status.copyWith(
           phase: CameraRollPhase.running,
-          done: transferred,
+          done: tally.transferred,
           total: total,
         ));
 
-        // The same splitter the explicit upload transfers by, see
-        // [UploadBatching] and issue #63: a batch is what the watermark may
-        // advance by, and it is bounded by the number of items *and* by their
-        // size, so a handful of videos never becomes one endless request.
-        for (var batch in UploadBatching(
-          maxFiles: batchSize,
-          maxBytes: uploadBatchBytes,
-        ).split(pending, (item) => item.length)) {
-          if (_stopRequested) {
-            _publish(_restingStatus());
-            return;
-          }
-          // What another watched album already handed over in this run is not
-          // handed over a second time — but this album's mark still moves
-          // past it, because the server has it.
-          var fresh = [
-            for (var item in batch)
-              if (!uploaded.contains(item.id)) item
-          ];
-          if (fresh.isNotEmpty) {
-            Future<UploadSummary> send(List<PhotoItem> items) =>
-                route.send((path) => client.uploadNew(
-                  path,
-                  [for (var item in items) item.upload],
-                  // While the server is still reading the library it cannot
-                  // say that a photo is already in some album, and a first
-                  // sync over an existing library would upload what is there.
-                  // The run waits -- unless the user said otherwise, see
-                  // issue #118.
-                  waitForIndex: !_config.syncWhileIndexing,
-                ));
-            Future<UploadSummary> transfer() =>
-                _sendSkippingUnsupported(fresh, send);
-
-            UploadSummary summary;
-            try {
-              summary = await transfer();
-            } on VAlbumException catch (error) {
-              _fail(message: error.message);
-              return;
-            } catch (error) {
-              _fail(notice: _reasonOf(error));
-              return;
-            }
-            if (summary.deferred) {
-              var indexed = summary.indexed!;
-              _defer(indexed.done, indexed.total);
-              return;
-            }
-            stored += summary.stored;
-            present += summary.present;
-            for (var refused in summary.refused) {
-              if (!skipped.contains(refused.name)) {
-                skipped.add(refused.name);
-              }
-            }
-            for (var where in summary.presentIn) {
-              if (!presentIn.contains(where)) {
-                presentIn.add(where);
-              }
-            }
-            uploaded.addAll([for (var item in fresh) item.id]);
-          }
-          transferred += batch.length;
-          // Only now: what was accepted is what the watermark may cover.
-          await _advance(source, batch);
-          _publish(_status.copyWith(
-            phase: CameraRollPhase.running,
-            done: transferred,
-            total: total,
-          ));
+        if (!await _transfer(source, pending, client, route, tally, total)) {
+          return;
         }
         if (!truncated) {
+          finished = true;
           break;
         }
       }
+      if (!finished) {
+        fullScan = false;
+      }
     }
-    _succeed(stored, present, presentIn, skipped, route);
+    if (fullScan) {
+      await hashCache.retainOnly(seen);
+    }
+    _succeed(
+        tally.stored, tally.present, tally.presentIn, tally.skipped, route);
+  }
+
+  /// Transfers [pending], scanned from [source], and moves the album's
+  /// watermark over what the server accepted (issue #299).
+  ///
+  /// [pending] is taken in chunks. A chunk is the photos up to the next
+  /// [checkBatchHashes], or up to the [hashedPerCheck]-th photo whose hash is
+  /// not remembered: a remembered hash is taken from the [hashCache] without
+  /// reading the photo, the others are hashed (off the UI isolate where the
+  /// platform names a file) and remembered. The server is asked about the
+  /// whole chunk in **one** request, and only what it does not hold is read
+  /// again, to be uploaded — in [batchSize] batches, [parallelUploads] of them
+  /// at once.
+  ///
+  /// The watermark moves exactly as it did when the batches went one after
+  /// the other: the chunk is cut into segments in order, each segment one
+  /// upload batch and the photos the server already holds around it, and the
+  /// watermark moves over a segment only once it and every segment before it
+  /// were accepted. A batch that fails stops the run: no further batch is
+  /// started, the ones in flight are waited for, and the watermark stays
+  /// before the failed one — a batch after it that did arrive is offered
+  /// again by the next run, which finds its hashes remembered and the server
+  /// holding them, and uploads nothing.
+  ///
+  /// Answers whether the run goes on; where it does not, it said why.
+  Future<bool> _transfer(
+    String source,
+    List<PhotoItem> pending,
+    VAlbumClient client,
+    UploadRoute route,
+    _Tally tally,
+    int total,
+  ) async {
+    var next = 0;
+    while (next < pending.length) {
+      if (_stopRequested) {
+        _publish(_restingStatus());
+        return false;
+      }
+      // The hashes of the chunk; what another watched album already handed
+      // over in this run is neither hashed nor handed over a second time —
+      // but this album's mark still moves past it, because the server has it.
+      var chunk = <PhotoItem>[];
+      var hashes = <String, String>{};
+      Object? unreadable;
+      var computed = 0;
+      var hashing = Stopwatch()..start();
+      while (next < pending.length &&
+          chunk.length < checkBatchHashes &&
+          computed < hashedPerCheck) {
+        var item = pending[next];
+        if (!tally.uploaded.contains(item.id)) {
+          var hash = await hashCache.lookup(item);
+          if (hash != null) {
+            stats.cached++;
+          } else {
+            try {
+              hash = await _hash(item);
+            } catch (error) {
+              // What comes before it is still transferred; the run then
+              // fails with this reason and keeps the watermark before it.
+              unreadable = error;
+              break;
+            }
+            computed++;
+            stats.hashed++;
+            hashCache.put(item, hash);
+          }
+          hashes[item.id] = hash;
+        }
+        chunk.add(item);
+        next++;
+      }
+      await hashCache.flush();
+      stats.hashTime += hashing.elapsed;
+      if (chunk.isEmpty) {
+        _failWith(unreadable!);
+        return false;
+      }
+
+      // One question for the whole chunk. Where the server cannot answer
+      // it — an older server, a target album that is gone, a lost
+      // connection — every photo is sent through [VAlbumClient.uploadNew]
+      // as before this existed, which asks for its own batch and tells each
+      // of those apart.
+      var fresh = {
+        for (var item in chunk)
+          if (hashes.containsKey(item.id)) item.id
+      };
+      Set<String>? known;
+      var checkedPath = route.path;
+      if (fresh.isNotEmpty) {
+        var checking = Stopwatch()..start();
+        try {
+          var check = await client.checkUploads(checkedPath, [
+            for (var item in chunk)
+              if (fresh.contains(item.id)) hashes[item.id]!
+          ]);
+          stats.checks++;
+          stats.checkedHashes += fresh.length;
+          var indexed = check.indexed;
+          if (!_config.syncWhileIndexing &&
+              indexed != null &&
+              indexed.done < indexed.total) {
+            // See [VAlbumClient.uploadNew] and issue #118: the server cannot
+            // yet say which of these it holds somewhere else.
+            _defer(indexed.done, indexed.total);
+            return false;
+          }
+          known = {for (var present in check.present) present.hash};
+          for (var present in check.present) {
+            if (present.name.contains("/") &&
+                !tally.presentIn.contains(present.name)) {
+              tally.presentIn.add(present.name);
+            }
+          }
+        } catch (_) {
+          known = null;
+        } finally {
+          stats.checkTime += checking.elapsed;
+        }
+      }
+
+      // The segments, in order: each one upload batch, bounded like the
+      // explicit upload's (see [UploadBatching] and issue #63), and the
+      // photos the server holds that come before the next batch.
+      var segments = <_Segment>[];
+      var current = _Segment();
+      var bytes = 0;
+      for (var item in chunk) {
+        var send = fresh.contains(item.id) &&
+            (known == null || !known.contains(hashes[item.id]));
+        if (send) {
+          if (current.items.isNotEmpty &&
+              (current.send.isEmpty ||
+                  current.send.length >= batchSize ||
+                  bytes + item.length > uploadBatchBytes)) {
+            segments.add(current);
+            current = _Segment();
+            bytes = 0;
+          }
+          current.send.add(item);
+          bytes += item.length;
+        }
+        current.items.add(item);
+      }
+      segments.add(current);
+
+      Future<UploadSummary> sendItems(List<PhotoItem> items) =>
+          route.send((path) => client.uploadNew(
+                path,
+                [
+                  for (var item in items)
+                    item.upload.withHash(hashes[item.id]!),
+                ],
+                // While the server is still reading the library it cannot
+                // say that a photo is already in some album, and a first sync
+                // over an existing library would upload what is there. The
+                // run waits -- unless the user said otherwise, see issue
+                // #118.
+                waitForIndex: !_config.syncWhileIndexing,
+                // Asked already, for this very path; a send that falls back
+                // to the inbox asks the inbox, see [UploadRoute.send].
+                checked: known != null && listEquals(path, checkedPath),
+              ));
+
+      var uploading = Stopwatch()..start();
+      var halt = false;
+      var pool = _Pool(parallelUploads);
+      var outcomes = [
+        for (var segment in segments)
+          segment.send.isEmpty
+              ? Future.value(const _Outcome())
+              : pool.run(() async {
+                  if (halt || _stopRequested) {
+                    return const _Outcome(started: false);
+                  }
+                  try {
+                    var summary = await _sendSkippingUnsupported(
+                        segment.send, sendItems);
+                    if (summary.deferred) {
+                      halt = true;
+                    } else {
+                      stats.uploads++;
+                      stats.uploadedPhotos += segment.send.length;
+                      stats.uploadedBytes += [
+                        for (var item in segment.send) item.length
+                      ].fold(0, (a, b) => a + b);
+                    }
+                    return _Outcome(summary: summary);
+                  } catch (error) {
+                    halt = true;
+                    return _Outcome(error: error);
+                  }
+                }),
+      ];
+
+      _Outcome? stopped;
+      for (var index = 0; index < segments.length; index++) {
+        var segment = segments[index];
+        var outcome = await outcomes[index];
+        var summary = outcome.summary;
+        if (!outcome.started ||
+            outcome.error != null ||
+            (summary != null && summary.deferred)) {
+          stopped = outcome;
+          break;
+        }
+        var sent = {for (var item in segment.send) item.id};
+        tally.present += [
+          for (var item in segment.items)
+            if (fresh.contains(item.id) && !sent.contains(item.id)) item
+        ].length;
+        if (summary != null) {
+          tally.add(summary);
+        }
+        tally.uploaded.addAll([
+          for (var item in segment.items)
+            if (fresh.contains(item.id)) item.id
+        ]);
+        tally.transferred += segment.items.length;
+        // Only now: what was accepted is what the watermark may cover.
+        await _advance(source, segment.items);
+        _publish(_status.copyWith(
+          phase: CameraRollPhase.running,
+          done: tally.transferred,
+          total: total,
+        ));
+      }
+      if (stopped != null) {
+        // Nothing of this run is still on its way when it ends.
+        await Future.wait(outcomes);
+        stats.uploadTime += uploading.elapsed;
+        var error = stopped.error;
+        var summary = stopped.summary;
+        if (error != null) {
+          _failWith(error);
+        } else if (summary != null && summary.deferred) {
+          var indexed = summary.indexed!;
+          _defer(indexed.done, indexed.total);
+        } else {
+          _publish(_restingStatus());
+        }
+        return false;
+      }
+      stats.uploadTime += uploading.elapsed;
+      if (unreadable != null) {
+        _failWith(unreadable);
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /// The SHA-256 of [item]'s contents: from its file in an isolate of its
+  /// own where the platform names one, see [PhotoItem.filePath], else read
+  /// through [PhotoItem.openRead].
+  Future<String> _hash(PhotoItem item) async {
+    var file = item.filePath;
+    var path = file == null ? null : await file();
+    if (path != null) {
+      try {
+        var result = await hashFile(path);
+        stats.hashedBytes += result.bytes;
+        return result.hash;
+      } on PhotoLibraryException {
+        rethrow;
+      } catch (error) {
+        // The file could not be read: the device's library failed, not the
+        // server, see [_reasonOf].
+        throw PhotoLibraryException(
+            PhotoLibraryFailed(platformErrorText(error)));
+      }
+    }
+    var read = 0;
+    var hash = await sha256Of(item.openRead().map((chunk) {
+      read += chunk.length;
+      return chunk;
+    }));
+    stats.hashedBytes += read;
+    return hash;
+  }
+
+  /// Ends the run with the reason [error] gives, see [_fail].
+  void _failWith(Object error) {
+    if (error is VAlbumException) {
+      _fail(message: error.message);
+    } else {
+      _fail(notice: _reasonOf(error));
+    }
   }
 
   /// Sends [items] by [send], and where the server refuses the batch as

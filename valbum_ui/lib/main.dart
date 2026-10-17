@@ -23,6 +23,7 @@ export 'connectivity.dart';
 export 'diagnostics.dart';
 export 'drag_scroll.dart';
 export 'group_view.dart';
+export 'hash_cache.dart';
 export 'image_view.dart';
 export 'invitation.dart';
 export 'listing_view.dart';

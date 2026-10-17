@@ -9,6 +9,7 @@ import 'dart:js_interop_unsafe';
 import 'background.dart';
 import 'client.dart';
 import 'downloads.dart';
+import 'hash_cache.dart';
 import 'connectivity.dart';
 import 'contact_session.dart';
 import 'device_code_scanner.dart';
@@ -30,6 +31,16 @@ export 'browser_upload.dart' show blobOfObjectUrl, sha256OfBlob, sendBlobForm;
 /// the browser's own HTTP cache is the offline story there; a second persisted
 /// copy in `IndexedDB` would duplicate it, see [MemoryOfflineCache].
 OfflineCache defaultOfflineCache() => MemoryOfflineCache();
+
+/// The memory of the photos' content hashes in a browser: memory only, see
+/// [HashCache]. A browser has no camera roll to sync (issue #30), so there is
+/// nothing to remember across a reload.
+HashCache defaultHashCache() => MemoryHashCache();
+
+/// The hash of a file by its path: a browser has no paths, and no
+/// [PhotoItem.filePath] is ever set there.
+Future<({String hash, int bytes})> sha256OfFile(String path) =>
+    throw UnimplementedError();
 
 /// Whether the given error is the network itself failing.
 ///

@@ -359,6 +359,58 @@ void main() {
       });
     }
 
+    test('refused to two sends at once ends once, and both reach the inbox',
+        () async {
+      // The camera-roll sync has two batches in flight (issue #299).
+      var server = FakeServer();
+      server.putStatus[folderUrl(mallorca)] = 403;
+      var harness = engine(server,
+          target: const UploadTarget(path: mallorca, title: "Mallorca 2026"),
+          items: [
+            for (var i = 0; i < 20; i++) photo("p$i.jpg", minute: i),
+          ]);
+      await harness.sync.load();
+
+      await harness.sync.syncNow();
+
+      expect(harness.sync.status.phase, CameraRollPhase.idle);
+      expect(server.uploads.map((upload) => upload.url).toSet(),
+          {folderUrl(inbox)});
+      expect(server.uploads.expand((upload) => upload.names).toSet(),
+          {for (var i = 0; i < 20; i++) "p$i.jpg"});
+      expect(harness.sync.status.lastStored, 20);
+      expect(harness.targets.targetOf(serverDataUrl), isNull);
+
+      // The route itself: one fallback, one notice.
+      var store = InMemorySettingsStore()
+        ..uploadTargets = jsonEncode({
+          serverDataUrl: const UploadTarget(path: mallorca, title: "Mallorca")
+              .toJson(),
+        });
+      var targets = UploadTargets(store: store, clock: () => today);
+      addTearDown(targets.dispose);
+      var route = await UploadRoute.open(
+        targets: targets,
+        client: VAlbumClient(
+            dataUrl: serverDataUrl, httpClient: server.transport),
+        inbox: inbox,
+      );
+      var sent = <List<String>>[];
+      Future<UploadSummary> attempt(List<String> path) async {
+        await Future<void>.delayed(Duration.zero);
+        if (path.join("/") == mallorca.join("/")) {
+          throw const VAlbumException("Refused", status: 403);
+        }
+        sent.add(path);
+        return const UploadSummary(stored: 1, present: 0);
+      }
+
+      await Future.wait([route.send(attempt), route.send(attempt)]);
+
+      expect(sent, [inbox, inbox]);
+      expect(route.notices, [const UploadTargetRefused("Mallorca")]);
+    });
+
     test('with a transport failure keeps the target and retries', () async {
       var client = VAlbumClient(
         dataUrl: serverDataUrl,

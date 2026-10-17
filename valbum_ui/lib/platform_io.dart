@@ -9,6 +9,8 @@ import 'package:flutter/foundation.dart';
 import 'background.dart';
 import 'client.dart';
 import 'downloads.dart';
+import 'hash_cache.dart';
+import 'hash_cache_file.dart';
 import 'background_workmanager.dart';
 import 'connectivity.dart';
 import 'connectivity_plugin.dart';
@@ -28,6 +30,15 @@ import 'wakelock_plugin.dart';
 /// The cache the app uses when it is not told otherwise: a directory on the
 /// device, so that what was seen survives the app being closed.
 OfflineCache defaultOfflineCache() => FileOfflineCache.underSupportDirectory();
+
+/// The memory of the photos' content hashes the camera-roll sync keeps, see
+/// [HashCache]: a file under the application support directory (issue #299).
+HashCache defaultHashCache() => FileHashCache.underSupportDirectory();
+
+/// The hash of the file at [path] and the bytes read, computed off the UI
+/// isolate, see [sha256OfFileInIsolate].
+Future<({String hash, int bytes})> sha256OfFile(String path) =>
+    sha256OfFileInIsolate(path);
 
 /// Whether the given error is the network itself failing.
 ///

@@ -33,6 +33,7 @@
 /// wrong album hides new photos where the inbox shows them.
 library;
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -533,6 +534,11 @@ class UploadRoute {
 
   UploadTarget? _target;
 
+  /// The fallback in progress, see [send]: the camera-roll sync sends more
+  /// than one batch at a time (issue #299), and two of them refused by a
+  /// target that is gone must end or follow it once, not twice.
+  Future<void> _settled = Future.value();
+
   /// What the route has to say, in the order it happened.
   final List<AppNotice> notices = [];
 
@@ -582,38 +588,62 @@ class UploadRoute {
       if (!refusesTarget(error)) {
         rethrow;
       }
-      var status = (error as VAlbumException).status;
-      if (status == 404) {
-        var moved = await _locate(target);
-        if (moved != null) {
-          try {
-            summary = await attempt(moved);
-            var followed = target.copyWith(path: moved, title: moved.last);
-            _target = followed;
-            await targets.follow(client.dataUrl, followed);
-            notices.add(UploadTargetFollowed(target.name, followed.name));
-            await _anchor(summary);
-            return summary;
-          } catch (again) {
-            if (!refusesTarget(again)) {
-              rethrow;
-            }
-          }
-        }
+      // One fallback at a time; a send refused while another one settled the
+      // target goes where that one decided.
+      var settled = Completer<void>();
+      var before = _settled;
+      _settled = settled.future;
+      await before;
+      if (!identical(_target, target)) {
+        settled.complete();
+        return send(attempt);
       }
-      AppNotice why = switch (status) {
-        403 => UploadTargetRefused(target.name),
-        400 => UploadTargetNotAlbum(target.name),
-        _ => UploadTargetGone(target.name),
-      };
-      _target = null;
-      await targets.end(client.dataUrl, why);
-      notices.add(why);
-      // Nothing is lost: the very photos go to the inbox, in this send.
-      return attempt(inbox);
+      try {
+        return await _fallBack(target, error as VAlbumException, attempt);
+      } finally {
+        settled.complete();
+      }
     }
     await _anchor(summary);
     return summary;
+  }
+
+  /// [send] after [target] refused with [error]: follows it where it moved,
+  /// else ends it and sends to the inbox.
+  Future<UploadSummary> _fallBack(
+    UploadTarget target,
+    VAlbumException error,
+    Future<UploadSummary> Function(List<String> path) attempt,
+  ) async {
+    var status = error.status;
+    if (status == 404) {
+      var moved = await _locate(target);
+      if (moved != null) {
+        try {
+          var summary = await attempt(moved);
+          var followed = target.copyWith(path: moved, title: moved.last);
+          _target = followed;
+          await targets.follow(client.dataUrl, followed);
+          notices.add(UploadTargetFollowed(target.name, followed.name));
+          await _anchor(summary);
+          return summary;
+        } catch (again) {
+          if (!refusesTarget(again)) {
+            rethrow;
+          }
+        }
+      }
+    }
+    AppNotice why = switch (status) {
+      403 => UploadTargetRefused(target.name),
+      400 => UploadTargetNotAlbum(target.name),
+      _ => UploadTargetGone(target.name),
+    };
+    _target = null;
+    await targets.end(client.dataUrl, why);
+    notices.add(why);
+    // Nothing is lost: the very photos go to the inbox, in this send.
+    return attempt(inbox);
   }
 
   /// Asks the hash index once where the target's [UploadTarget.anchors] lie

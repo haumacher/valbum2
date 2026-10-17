@@ -17,6 +17,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import 'client.dart';
+import 'hash_cache.dart';
 import 'notices.dart';
 
 /// A failure of the device's photo library, carrying its own reason.
@@ -82,12 +83,29 @@ class PhotoItem {
   /// Opens the contents of the item.
   final Stream<List<int>> Function() openRead;
 
+  /// When the contents were last changed, as the platform says, `null` where
+  /// it says nothing (issue #299).
+  ///
+  /// With [id] and [length] the key a content hash is remembered by, see
+  /// [HashCache]: a photo edited on the device has a new one and is hashed
+  /// again. An item without it is hashed on every scan.
+  final DateTime? modifiedAt;
+
+  /// The path of a file holding the contents, `null` where there is none or
+  /// the platform does not say (issue #299).
+  ///
+  /// Where it answers a path, the contents are hashed from that file in an
+  /// isolate of their own rather than through [openRead] on the UI isolate.
+  final Future<String?> Function()? filePath;
+
   const PhotoItem({
     required this.id,
     required this.name,
     required this.takenAt,
     required this.length,
     required this.openRead,
+    this.modifiedAt,
+    this.filePath,
   });
 
   /// The upload of this item.
@@ -379,11 +397,14 @@ class FakePhotoLibrary extends PhotoLibrary {
 }
 
 /// A photo of [contents] bytes, for tests and demos.
+///
+/// Without [modifiedAt] its hash is never remembered, see [HashCache].
 PhotoItem fakePhoto(
   String name,
   List<int> contents, {
   required DateTime takenAt,
   String? id,
+  DateTime? modifiedAt,
 }) =>
     PhotoItem(
       id: id ?? name,
@@ -391,6 +412,7 @@ PhotoItem fakePhoto(
       takenAt: takenAt,
       length: contents.length,
       openRead: () => Stream.value(contents),
+      modifiedAt: modifiedAt,
     );
 
 /// Makes the device's [PhotoLibrary] available to the widget tree.

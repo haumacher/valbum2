@@ -26,6 +26,7 @@ import 'diagnostics.dart';
 import 'duplicates_view.dart';
 import 'first_screen.dart';
 import 'group_view.dart';
+import 'hash_cache.dart';
 import 'identify_view.dart';
 import 'dialog_style.dart';
 import 'image_view.dart';
@@ -301,6 +302,9 @@ class VAlbumAppState extends State<VAlbumApp> {
     // The same targets the start page and the settings show (issue #240):
     // a run that clears or follows one is seen there at once.
     targets: uploadTargets,
+    // A file of the device (issue #299), unless a test or an embedder drives
+    // this app, see [_defaultCache].
+    hashCache: widget.client != null ? MemoryHashCache() : defaultHashCache(),
   );
 
   /// Where new photos of this device go besides the inbox, per server
