@@ -24,6 +24,7 @@ import 'package:jsontool/jsontool.dart';
 import 'album_model.dart';
 import 'app.dart';
 import 'client.dart';
+import 'dialog_style.dart';
 import 'l10n/app_localizations.dart';
 import 'manage_view.dart' show refusalMessage;
 import 'resource.dart';
@@ -45,6 +46,9 @@ const Key newsBellKey = Key("news-bell");
 
 /// The key of "Mark all as read" in the menu.
 const Key newsMarkAllKey = Key("news-mark-all");
+
+/// The key of "Close", the button bar of the menu (issue #283).
+const Key newsCloseKey = Key("news-close");
 
 /// The key of the entry of [key] in the menu.
 Key newsEntryKey(String key) => ValueKey("news-entry-$key");
@@ -334,7 +338,7 @@ class NewsMenuState extends State<NewsMenu> {
       body = _sentence(_problem!, const Key("news-problem"));
     } else if (_loading && widget.bell.news == null) {
       body = const Padding(
-        padding: EdgeInsets.all(24),
+        padding: EdgeInsets.all(DialogSpacing.edge),
         child: Center(child: CircularProgressIndicator()),
       );
     } else if (entries.isEmpty) {
@@ -351,7 +355,7 @@ class NewsMenuState extends State<NewsMenu> {
         ),
       );
     }
-    return Dialog(
+    return AppDialog(
       key: const Key("news-menu"),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 480, maxHeight: 640),
@@ -360,7 +364,13 @@ class NewsMenuState extends State<NewsMenu> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+              // The button's own padding stands beside the title.
+              padding: const EdgeInsets.fromLTRB(
+                DialogSpacing.edge,
+                DialogSpacing.buttonSpacing,
+                DialogSpacing.buttonSpacing,
+                DialogSpacing.buttonSpacing,
+              ),
               child: Row(
                 children: [
                   Expanded(
@@ -380,6 +390,20 @@ class NewsMenuState extends State<NewsMenu> {
             ),
             const Divider(height: 1),
             body,
+            // The way out, also where nothing has arrived and no entry leads
+            // anywhere (issue #283): on a phone the dialog leaves little
+            // barrier to tap. One bar at the bottom, see `form_dialog.dart`.
+            const Divider(height: 1),
+            DialogActions(
+              gap: DialogSpacing.dividedActionsGap,
+              children: [
+                TextButton(
+                  key: newsCloseKey,
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: Text(l10n.close),
+                ),
+              ],
+            ),
           ],
         ),
       ),
@@ -387,7 +411,7 @@ class NewsMenuState extends State<NewsMenu> {
   }
 
   static Widget _sentence(String text, Key key) => Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(DialogSpacing.edge),
         child: Text(text, key: key, textAlign: TextAlign.center),
       );
 
@@ -401,7 +425,8 @@ class NewsMenuState extends State<NewsMenu> {
       key: newsEntryKey(entry.id),
       onTap: () => widget.onOpen(entry),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: const EdgeInsets.symmetric(
+            horizontal: DialogSpacing.edge, vertical: 10),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

@@ -44,6 +44,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/link.dart';
 
 import 'contact_session.dart';
+import 'dialog_style.dart';
 import 'l10n/app_localizations.dart';
 import 'platform.dart';
 import 'routes.dart';
@@ -403,7 +404,7 @@ Future<bool> askToConnect(
   var l10n = AppLocalizations.of(context)!;
   var answer = await showAppDialog<bool>(
     context: context,
-    builder: (context) => AlertDialog(
+    builder: (context) => AppAlertDialog(
       key: connectToServerKey,
       title: Text(l10n.appLinkConnectTitle(link.host)),
       content: Text(l10n.appLinkConnectBody(link.serverUrl, current)),

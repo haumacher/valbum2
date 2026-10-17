@@ -172,6 +172,26 @@ void main() {
     expect(server.marks, isEmpty);
   });
 
+  group('"Close" leaves the menu on a phone (issue #283)', () {
+    for (var known in [false, true]) {
+      testWidgets(known ? 'with an entry' : 'with nothing new', (tester) async {
+        screen(tester, const Size(360, 640));
+        var server = _Server()..known = known;
+        await _open(tester, server, const ListingOrAlbumRoute(["other"]));
+        await _openMenu(tester);
+        expect(find.byKey(const Key("news-nothing")),
+            known ? findsNothing : findsOneWidget);
+        expect(find.byKey(newsEntryKey(_key)),
+            known ? findsOneWidget : findsNothing);
+
+        await settle(tester, () => tester.tap(find.byKey(newsCloseKey)));
+
+        expect(find.byKey(const Key("news-menu")), findsNothing);
+        expect(server.marks, isEmpty, reason: "closing marks nothing");
+      });
+    }
+  });
+
   testWidgets('"Mark all as read" marks every entry', (tester) async {
     screen(tester, const Size(800, 600));
     var server = _Server();

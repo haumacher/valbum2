@@ -30,6 +30,7 @@ import 'app.dart';
 import 'caller.dart';
 import 'client.dart';
 import 'crop.dart';
+import 'dialog_style.dart';
 import 'l10n/app_localizations.dart';
 import 'move_view.dart' show showRefusal;
 import 'offline.dart';
@@ -145,7 +146,7 @@ class TrashContentState extends State<TrashContent> {
     }
     var confirmed = await showAppDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => AppAlertDialog(
         key: const Key("trash-purge-dialog"),
         title: Text(_l10n.trashPurgeTitle),
         content: Text(_l10n.trashPurgeMessage),
@@ -202,10 +203,10 @@ class TrashContentState extends State<TrashContent> {
   void showPhoto(ImagePart image) {
     showAppDialog<void>(
       context: context,
-      builder: (context) => Dialog(
+      builder: (context) => AppDialog(
         key: const Key("trash-photo"),
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: DialogSpacing.picture,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [

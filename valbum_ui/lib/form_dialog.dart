@@ -34,6 +34,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import 'dialog_style.dart';
 import 'selectable.dart';
 
 /// Shows the form dialog [builder] builds, which a tap beside it does not
@@ -80,8 +81,7 @@ class _FormDialogRoute<T> extends DialogRoute<T> {
         );
 
   @override
-  Widget buildModalBarrier() =>
-      AbsorbPointer(child: super.buildModalBarrier());
+  Widget buildModalBarrier() => AbsorbPointer(child: super.buildModalBarrier());
 }
 
 /// The frame of a form dialog built on a plain [Dialog]: a title that stays,
@@ -102,8 +102,10 @@ class FormDialogFrame extends StatelessWidget {
   final List<Widget> fixed;
   final List<Widget> actions;
   final double fixedNeedsHeight;
-  final EdgeInsetsGeometry padding;
-  final double actionsGap;
+
+  /// Whether the content needs every line of the screen, and the frame keeps
+  /// [DialogSpacing.denseFrame] instead of [DialogSpacing.frame].
+  final bool dense;
 
   const FormDialogFrame({
     super.key,
@@ -112,16 +114,15 @@ class FormDialogFrame extends StatelessWidget {
     required this.actions,
     this.fixed = const [],
     this.fixedNeedsHeight = 0,
-    this.padding = const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-    this.actionsGap = 16,
+    this.dense = false,
   });
 
   @override
   Widget build(BuildContext context) {
     var theme = Theme.of(context);
-    return Dialog(
+    return AppDialog(
       child: Padding(
-        padding: padding,
+        padding: dense ? DialogSpacing.denseFrame : DialogSpacing.frame,
         // Decided on every layout, not once: the room changes while the
         // keyboard comes and goes, and with the turn of a phone.
         child: LayoutBuilder(
@@ -151,15 +152,13 @@ class FormDialogFrame extends StatelessWidget {
                 ),
               ),
               if (constraints.maxHeight >= fixedNeedsHeight) ...fixed,
-              Padding(
-                padding: EdgeInsets.only(top: actionsGap),
-                child: OverflowBar(
-                  alignment: MainAxisAlignment.end,
-                  overflowAlignment: OverflowBarAlignment.end,
-                  spacing: 8,
-                  overflowSpacing: 8,
-                  children: actions,
-                ),
+              DialogActions(
+                gap: dense
+                    ? DialogSpacing.denseActionsGap
+                    : DialogSpacing.actionsGap,
+                // The frame's padding is already around the bar.
+                padding: EdgeInsets.zero,
+                children: actions,
               ),
             ],
           ),

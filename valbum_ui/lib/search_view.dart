@@ -49,6 +49,7 @@ import 'album_model.dart';
 import 'album_view.dart';
 import 'app.dart';
 import 'client.dart';
+import 'dialog_style.dart';
 import 'downloads.dart';
 import 'filter_list.dart';
 import 'form_dialog.dart';
@@ -1377,7 +1378,7 @@ class _ChooseManyDialogState<T> extends State<_ChooseManyDialog<T>> {
           ),
       ],
     );
-    return AlertDialog(
+    return AppAlertDialog(
       key: const Key("search-choose-dialog"),
       title: Text(widget.title),
       content: SizedBox(
@@ -1456,7 +1457,7 @@ class _ExcludableChoiceDialogState<T>
   Widget build(BuildContext context) {
     var l10n = AppLocalizations.of(context)!;
     var (noValue, noName) = widget.none;
-    return SimpleDialog(
+    return AppSimpleDialog(
       title: Text(widget.title),
       children: [
         SwitchListTile(
@@ -1465,12 +1466,12 @@ class _ExcludableChoiceDialogState<T>
           title: Text(l10n.searchExclude),
           onChanged: (value) => setState(() => _excluded = value),
         ),
-        SimpleDialogOption(
+        AppDialogOption(
           onPressed: () => Navigator.of(context).pop((noValue, false)),
           child: Text(noName),
         ),
         for (var (key, value, name) in widget.choices)
-          SimpleDialogOption(
+          AppDialogOption(
             key: Key(key),
             onPressed: () => Navigator.of(context).pop((value, _excluded)),
             child: Text(_excluded ? l10n.searchExcluded(name) : name),

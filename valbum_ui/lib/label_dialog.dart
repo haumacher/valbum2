@@ -6,6 +6,7 @@ library;
 import 'package:flutter/material.dart';
 
 import 'album_labels.dart';
+import 'dialog_style.dart';
 import 'form_dialog.dart';
 import 'l10n/app_localizations.dart';
 import 'resource.dart';
@@ -246,7 +247,7 @@ Future<bool> confirmLabelDelete(BuildContext context, String label) async {
   var l10n = AppLocalizations.of(context)!;
   var confirmed = await showAppDialog<bool>(
     context: context,
-    builder: (context) => AlertDialog(
+    builder: (context) => AppAlertDialog(
       key: const Key("label-delete-dialog"),
       title: Text(l10n.labelDeleteTitle(label)),
       content: Text(l10n.labelDeleteExplanation),

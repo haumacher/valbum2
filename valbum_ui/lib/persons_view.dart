@@ -55,6 +55,7 @@ import 'album_view.dart' show LeaveEdit, dragFeedbackScale, dragHandleSize;
 import 'app.dart';
 import 'caller.dart';
 import 'client.dart';
+import 'dialog_style.dart';
 import 'drag_scroll.dart';
 import 'filter_list.dart';
 import 'form_dialog.dart';
@@ -1339,7 +1340,7 @@ class PersonsContentState extends State<PersonsContent>
     }
     var discard = await showAppDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => AppAlertDialog(
         key: const Key("persons-discard-dialog"),
         title: Text(_l10n.personsDiscardTitle),
         content: Text(_l10n.personsDiscardMessage),
@@ -1375,7 +1376,7 @@ class PersonsContentState extends State<PersonsContent>
     }
     var choice = await showAppDialog<LeaveEdit>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => AppAlertDialog(
         key: const Key("persons-leave-dialog"),
         title: Text(_l10n.personsSaveTitle),
         content: Text(_l10n.personsSaveMessage),
@@ -1993,10 +1994,10 @@ class PersonsContentState extends State<PersonsContent>
     _forgetClick();
     showAppDialog<void>(
       context: context,
-      builder: (context) => Dialog(
+      builder: (context) => AppDialog(
         key: const Key("persons-photo"),
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: DialogSpacing.picture,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -2219,7 +2220,7 @@ class MemberChooser extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     var l10n = AppLocalizations.of(context)!;
-    return AlertDialog(
+    return AppAlertDialog(
       key: const Key("persons-member-chooser"),
       title: Text(l10n.personsLinkChooseTitle),
       content: SizedBox(
@@ -2413,7 +2414,7 @@ class _PersonChooserState extends State<PersonChooser> {
     List<Person> here,
     List<Person> elsewhere,
   ) {
-    return AlertDialog(
+    return AppAlertDialog(
       key: const Key("persons-chooser"),
       title: Text(widget.title ?? l10n.personsChooseTitle),
       content: SizedBox(
@@ -2581,7 +2582,7 @@ class _PersonNameDialogState extends State<PersonNameDialog> {
   @override
   Widget build(BuildContext context) {
     var l10n = AppLocalizations.of(context)!;
-    return AlertDialog(
+    return AppAlertDialog(
       key: const Key("persons-name-dialog"),
       title: Text(widget.title),
       content: Column(

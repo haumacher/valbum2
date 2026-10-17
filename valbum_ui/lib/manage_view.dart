@@ -21,6 +21,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'caller.dart';
 import 'client.dart';
 import 'device_code_payload.dart';
+import 'dialog_style.dart';
 import 'form_dialog.dart';
 import 'l10n/app_localizations.dart';
 import 'recipient_send.dart';
@@ -62,7 +63,7 @@ Future<bool?> confirmHere({
 }) =>
     showAppDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => AppAlertDialog(
         key: Key(dialogKey),
         title: Text(title),
         content: Text(message),
@@ -943,7 +944,7 @@ class DeviceCodeDialogState extends State<DeviceCodeDialog> {
     var expired = left != null && left <= Duration.zero;
     var payload =
         code == null ? "" : encodeDeviceCodePayload(serverUrl, code.code);
-    return AlertDialog(
+    return AppAlertDialog(
       key: deviceCodeDialogKey,
       title: Text(widget.backup
           ? l10n.backupCodeTitle
@@ -1270,7 +1271,7 @@ class PermissionDialogState extends State<PermissionDialog> {
   Widget build(BuildContext context) {
     var l10n = AppLocalizations.of(context)!;
     var refusal = _refusal;
-    return AlertDialog(
+    return AppAlertDialog(
       key: const Key("permission-dialog"),
       title: Text(
         l10n.permissionDialogTitle(userDisplayName(l10n, widget.user.name)),
@@ -2293,7 +2294,7 @@ class OverviewLinkDialog extends StatelessWidget {
     var greeting = contact.displayName.trim().isNotEmpty
         ? contact.displayName.trim()
         : contact.name;
-    return AlertDialog(
+    return AppAlertDialog(
       key: const Key("overview-link-dialog"),
       title: Text(l10n.overviewLinkHeading(contact.name)),
       content: SingleChildScrollView(
@@ -2456,7 +2457,7 @@ class _ContactSessionsDialogState extends State<ContactSessionsDialog> {
         if (_liveAt(session.expires, now)) session,
     ];
     var problem = _problem;
-    return AlertDialog(
+    return AppAlertDialog(
       key: const Key("contact-sessions-dialog"),
       title: Text(l10n.contactSessionsTitle(_contact.name)),
       content: SizedBox(
@@ -2703,7 +2704,7 @@ class _HeldSignInsDialogState extends State<HeldSignInsDialog> {
     var l10n = AppLocalizations.of(context)!;
     var problem = _problem;
     var authenticator = _signIns.authenticator;
-    return AlertDialog(
+    return AppAlertDialog(
       key: Key("$_p-sign-ins-dialog"),
       title: Text(l10n.contactSignInsTitle(_signIns.name)),
       content: SizedBox(

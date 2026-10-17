@@ -23,6 +23,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'client.dart';
+import 'dialog_style.dart';
 import 'l10n/app_localizations.dart';
 
 /// The key of the dialog, so that a test can address it.
@@ -61,7 +62,7 @@ class UploadProgressDialog extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
+  Widget build(BuildContext context) => AppAlertDialog(
         key: uploadProgressDialogKey,
         title: Text(AppLocalizations.of(context)!.uploadProgressTitle),
         content: ValueListenableBuilder<UploadProgress>(

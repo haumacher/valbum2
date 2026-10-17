@@ -19,6 +19,7 @@ import 'package:flutter/material.dart';
 
 import 'app.dart';
 import 'client.dart';
+import 'dialog_style.dart';
 import 'l10n/app_localizations.dart';
 import 'move_view.dart';
 import 'offline.dart';
@@ -143,7 +144,7 @@ Future<bool> removeFromCollection({
   var messenger = ScaffoldMessenger.of(context);
   var confirmed = await showAppDialog<bool>(
     context: context,
-    builder: (context) => AlertDialog(
+    builder: (context) => AppAlertDialog(
       key: const Key("remove-from-collection-dialog"),
       title: Text(l10n.removeFromCollectionQuestion(names.length)),
       content: Text(l10n.removeFromCollectionExplanation),

@@ -1547,10 +1547,13 @@ bool teaserOnHoverSupported() =>
 ///
 /// The tile itself is [child] — the poster the album lays out — and the teaser
 /// is drawn over it, muted, and played once from the start each time the
-/// pointer enters the tile (issue #263). At its end, or when the pointer leaves
-/// before that, the controller is disposed and the poster is all that is left:
-/// a tile is a tile, and nothing of this survives the pointer leaving it. The
-/// next time the pointer enters, the teaser plays once more.
+/// pointer enters the tile (issue #263). At its end it stands on its last
+/// frame for as long as the pointer rests on the tile (issue #284): a jump
+/// back to the poster under a pointer that has not moved reads as a second
+/// start. When the pointer leaves, the controller is disposed and the poster
+/// is all that is left: a tile is a tile, and nothing of this survives the
+/// pointer leaving it. The next time the pointer enters, the teaser plays once
+/// more.
 ///
 /// A teaser the server has not made yet (`202`) is simply not played. Nothing
 /// is shown for it and nothing is said: a teaser is a nicety, and a row of
@@ -1686,7 +1689,6 @@ class VideoTeaserState extends State<VideoTeaser> {
     }
     _controller = controller;
     controller.addListener(_update);
-    controller.addListener(() => _checkEnd(controller, hover));
     try {
       await controller.initialize();
       if (!mounted || _hover != hover || _controller != controller) {
@@ -1704,35 +1706,6 @@ class VideoTeaserState extends State<VideoTeaser> {
       return;
     }
     _update();
-  }
-
-  /// Whether [value] says the teaser has played to its end.
-  ///
-  /// The player reports its end as [VideoPlayerValue.isCompleted]; a position
-  /// at or past a known duration counts as well, for a player that reaches the
-  /// end without saying so.
-  static bool _atEnd(VideoPlayerValue value) =>
-      value.isInitialized &&
-      (value.isCompleted ||
-          (value.duration > Duration.zero && value.position >= value.duration));
-
-  /// Releases the teaser of [hover] once [controller] has played to its end:
-  /// it plays once per pointer enter, not in a loop (issue #263).
-  void _checkEnd(VideoPlayerController controller, int hover) {
-    if (_controller != controller ||
-        _hover != hover ||
-        !_atEnd(controller.value)) {
-      return;
-    }
-    // Not from within the controller's own notification, which must not
-    // dispose it.
-    scheduleMicrotask(() {
-      if (_controller != controller || _hover != hover) {
-        // Already released, or a newer hover owns the tile.
-        return;
-      }
-      _release();
-    });
   }
 
   /// The pointer left: the tile is a poster again.

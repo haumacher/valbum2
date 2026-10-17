@@ -27,6 +27,7 @@ import 'client.dart';
 import 'collections.dart';
 import 'crop.dart';
 import 'crop_editor.dart';
+import 'dialog_style.dart';
 import 'downloads.dart';
 import 'drag_scroll.dart';
 import 'form_dialog.dart';
@@ -1160,7 +1161,7 @@ class AlbumContentState extends State<AlbumContent>
     }
     var discard = await showAppDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => AppAlertDialog(
         key: const Key("discard-dialog"),
         title: Text(_l10n.discardChangesTitle),
         content: Text(_l10n.discardChangesMessage),
@@ -1221,7 +1222,7 @@ class AlbumContentState extends State<AlbumContent>
     }
     var choice = await showAppDialog<LeaveEdit>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => AppAlertDialog(
         key: const Key("leave-dialog"),
         title: Text(_l10n.saveChangesTitle),
         content: Text(_l10n.saveChangesMessage),
@@ -2767,7 +2768,7 @@ class AlbumContentState extends State<AlbumContent>
   Future<void> refreshPreviews() async {
     var confirmed = await showAppDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => AppAlertDialog(
         key: const Key("refresh-previews-dialog"),
         title: Text(_l10n.refreshPreviews),
         content: Text(_l10n.refreshPreviewsMessage),
@@ -2823,7 +2824,7 @@ class AlbumContentState extends State<AlbumContent>
     }
     var confirmed = await showAppDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => AppAlertDialog(
         key: const Key("reanalyze-dialog"),
         title: Text(_l10n.reanalyze),
         content: Text(_l10n.reanalyzeExplanation),
@@ -3951,7 +3952,7 @@ Future<bool> confirmTrashing(BuildContext context, int count) async {
   var l10n = AppLocalizations.of(context)!;
   var confirmed = await showAppDialog<bool>(
     context: context,
-    builder: (context) => AlertDialog(
+    builder: (context) => AppAlertDialog(
       key: const Key("trash-confirm-dialog"),
       title: Text(l10n.trashSeveralQuestion(count)),
       actions: [
@@ -4772,7 +4773,7 @@ class HeadingDialogState extends State<HeadingDialog> {
           selected: level == value,
           onSelected: (_) => setState(() => level = value),
         );
-    return AlertDialog(
+    return AppAlertDialog(
       // The title and the fields scroll where a phone's keyboard leaves too
       // little room for them; the buttons stay (issue #178).
       scrollable: true,
@@ -5337,8 +5338,8 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
   Widget build(BuildContext context) {
     var l10n = AppLocalizations.of(context)!;
     return FormDialogFrame(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      actionsGap: 8,
+      // The crop editor needs every line a phone has, see issue #136.
+      dense: true,
       title: Text(l10n.albumProperties),
       fields: [
         TextField(

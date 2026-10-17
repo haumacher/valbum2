@@ -14,6 +14,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'album_view.dart' show TextInputDialog;
+import 'dialog_style.dart';
 import 'form_dialog.dart';
 import 'attribution.dart';
 import 'caller.dart';
@@ -437,7 +438,7 @@ class ImagePropertiesDialogState extends State<ImagePropertiesDialog> {
   Widget _reader(BuildContext context) {
     var l10n = AppLocalizations.of(context)!;
     var note = attributionShown(l10n, image);
-    return AlertDialog(
+    return AppAlertDialog(
       key: const Key("image-properties-read-only"),
       title: Text(l10n.imageProperties),
       content: SingleChildScrollView(
