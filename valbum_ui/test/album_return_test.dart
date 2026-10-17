@@ -24,6 +24,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:valbum_ui/main.dart';
+import 'package:valbum_ui/photo_actions.dart';
 import 'package:valbum_ui/resource.dart';
 
 import 'util/fake_image_http.dart';
@@ -182,7 +183,8 @@ void main() {
     // few above the viewport as well — tapped beside its toolbars, so that
     // the tap reaches the tile itself.
     var tiles = find.byWidgetPredicate((widget) =>
-        widget is GestureDetector &&
+        // The tile shell of issue #290.
+        widget is PhotoTileGestures &&
         widget.key is ValueKey<String> &&
         (widget.key as ValueKey<String>).value.startsWith("img"));
     var box = tiles

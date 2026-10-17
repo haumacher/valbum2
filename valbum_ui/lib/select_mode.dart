@@ -13,8 +13,11 @@
 /// selection the album menu's download takes.
 ///
 /// The unsaved search view (issue #243) has no edit mode, so there it is
-/// offered to whoever may download, editors included, and its bar carries a
-/// second action: "Add to collection…" for the selection.
+/// offered to whoever may download, editors included. Its bar carries a
+/// second action wherever the caller may collect (issue #290): "Add to
+/// collection…" for the selection; and a member who may collect but not
+/// download is offered the mode for that alone. A secondary click on a tile
+/// opens the tile's menu, on the selection (#290).
 ///
 /// The state lives in `AlbumContentState` (its `selection` is the one the edit
 /// mode uses); this file holds what the mode draws.
@@ -23,10 +26,13 @@ library;
 import 'package:flutter/material.dart';
 
 import 'l10n/app_localizations.dart';
+import 'photo_actions.dart';
 import 'selectable.dart';
 
-/// The bar of the select mode: the way out, how many are selected, and the
-/// download of the selection — nothing else (issue #209).
+/// The bar of the select mode: the way out, how many are selected, and what
+/// the catalogue of `photo_actions.dart` allows the selection: the download
+/// (issue #209) where [offerDownload] says so, the collection (#243, #290)
+/// where [offerCollect] does.
 ///
 /// [onDownload] is `null` while nothing is selected, which disables the
 /// button rather than taking it away, so that the bar does not jump; the same
@@ -37,6 +43,7 @@ PreferredSizeWidget selectModeAppBar({
   required int count,
   required VoidCallback onLeave,
   required VoidCallback? onDownload,
+  bool offerDownload = true,
   bool offerCollect = false,
   VoidCallback? onCollect,
 }) =>
@@ -63,15 +70,18 @@ PreferredSizeWidget selectModeAppBar({
             tooltip: l10n.addToCollection,
             onPressed: onCollect,
           ),
-        Padding(
-          padding: const EdgeInsets.only(right: 8),
-          child: TextButton.icon(
-            key: const Key("select-mode-download"),
-            onPressed: onDownload,
-            icon: const Icon(Icons.download),
-            label: Text(l10n.downloadSelection(count)),
+        // A member without `download` selects for a collection alone
+        // (issue #290).
+        if (offerDownload)
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: TextButton.icon(
+              key: const Key("select-mode-download"),
+              onPressed: onDownload,
+              icon: const Icon(Icons.download),
+              label: Text(l10n.downloadSelection(count)),
+            ),
           ),
-        ),
       ],
     );
 
@@ -92,6 +102,10 @@ class SelectableTile extends StatelessWidget {
   /// the selection or takes it out, leaving the rest of the selection alone.
   final VoidCallback onToggle;
 
+  /// A secondary click on the tile, at the pointer: the tile's menu (issue
+  /// #290); `null` for none.
+  final void Function(Offset globalPosition)? onMenu;
+
   /// The thumbnail.
   final Widget child;
 
@@ -100,6 +114,7 @@ class SelectableTile extends StatelessWidget {
     required this.selected,
     required this.onTap,
     required this.onToggle,
+    this.onMenu,
     required this.child,
   });
 
@@ -108,9 +123,10 @@ class SelectableTile extends StatelessWidget {
   Widget build(BuildContext context) =>
       SelectionExcluded(child: _buildTile(context));
 
-  Widget _buildTile(BuildContext context) => GestureDetector(
+  Widget _buildTile(BuildContext context) => PhotoTileGestures(
         onTap: onTap,
         onLongPress: onToggle,
+        onMenu: onMenu,
         child: Stack(
           fit: StackFit.expand,
           children: [

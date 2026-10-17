@@ -25,6 +25,7 @@ import 'resource.dart';
 import 'not_ready.dart';
 import 'offline.dart';
 import 'oriented_thumbnail.dart';
+import 'persons_view.dart' show BrowserMenuHold;
 import 'rights.dart';
 import 'routes.dart' show DuplicatesRoute, SearchRoute;
 import 'selectable.dart';
@@ -534,6 +535,23 @@ class ListingView extends StatelessWidget {
     double imageBorder,
   ) {
     var large = cell.isLarge;
+    // The browser's own menu is away while the pointer is over a tile whose
+    // menu has something to offer (issue #290), and only then: a secondary
+    // click never lands on nothing.
+    return TileMenuHold(
+      key: ValueKey<(String, String)>(("tile-menu-hold", folder.name)),
+      offers: offersTileMenu(context, folder),
+      child: _tileBody(context, folder, width, large, imageBorder),
+    );
+  }
+
+  Widget _tileBody(
+    BuildContext context,
+    FolderInfo folder,
+    double width,
+    bool large,
+    double imageBorder,
+  ) {
     return Padding(
       key: ValueKey<String>("tile-${folder.name}"),
       padding: EdgeInsets.all(imageBorder),
@@ -543,6 +561,9 @@ class ListingView extends StatelessWidget {
         // touch idiom the album already uses to reach a tile's tools, and
         // this menu holds only what a tile can do, see issue #47.
         onLongPressStart: (details) =>
+            showTileMenu(context, folder, details.globalPosition),
+        // A mouse's way to the same menu, at the pointer (issue #290).
+        onSecondaryTapUp: (details) =>
             showTileMenu(context, folder, details.globalPosition),
         child: SizedBox(
           width: width,
@@ -695,6 +716,12 @@ class ListingView extends StatelessWidget {
     );
   }
 
+  /// Whether the tile of [folder] has a menu for this caller, see
+  /// [showTileMenu]: the move of an editor, or a share link of the entry.
+  bool offersTileMenu(BuildContext context, FolderInfo folder) =>
+      (rightsIn(context).mayEdit && ShareSession.of(context) == null) ||
+      mayShare(context, [...albumState.path, folder.name]);
+
   /// The menu of one folder tile, at the point it was pressed.
   Future<void> showTileMenu(
     BuildContext context,
@@ -709,7 +736,7 @@ class ListingView extends StatelessWidget {
     var link = ShareSession.of(context);
     var mayMove = rightsIn(context).mayEdit && link == null;
     var mayShareChild = mayShare(context, childPath);
-    if (!context.mounted || (!mayMove && !mayShareChild)) {
+    if (!context.mounted || !offersTileMenu(context, folder)) {
       // Nothing this caller may do here: no menu rather than an empty one.
       return;
     }
@@ -1853,4 +1880,34 @@ class _TileCountHoverState extends State<TileCountHover> {
       ),
     );
   }
+}
+
+/// Holds the claim on the browser's context menu while the pointer is over a
+/// tile whose own menu [offers] something (issue #290), see
+/// [BrowserMenuClaim]: elsewhere — and on a tile without a menu — a secondary
+/// click keeps the browser's menu.
+class TileMenuHold extends StatefulWidget {
+  final bool offers;
+  final Widget child;
+
+  const TileMenuHold({super.key, required this.offers, required this.child});
+
+  @override
+  State<TileMenuHold> createState() => _TileMenuHoldState();
+}
+
+class _TileMenuHoldState extends State<TileMenuHold> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+        opaque: false,
+        hitTestBehavior: HitTestBehavior.translucent,
+        onEnter: (_) => setState(() => _hovered = true),
+        onExit: (_) => setState(() => _hovered = false),
+        child: BrowserMenuHold(
+          hold: widget.offers && _hovered,
+          child: widget.child,
+        ),
+      );
 }

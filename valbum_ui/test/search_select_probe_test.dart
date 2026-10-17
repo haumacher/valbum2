@@ -10,7 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:valbum_ui/main.dart';
 
 import 'search_select_test.dart'
-    show SelectSpace, listedChoices, markOf, tile;
+    show SelectSpace, listedChoices, markOf, tall, tile;
 import 'search_view_test.dart' show chooseAnne, pumpRoute, settle;
 import 'util/l10n.dart';
 
@@ -69,6 +69,7 @@ void main() {
 
   testWidgets('a found photograph keeps its caption tooltip in the select mode',
       (tester) async {
+    tall(tester);
     var space = SelectSpace()..searchAnswer = foundWithCaption();
     await pumpRoute(tester, space, const SearchRoute([]));
     await chooseAnne(tester);

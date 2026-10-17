@@ -195,7 +195,7 @@ void main() {
       await chooseAnne(tester);
 
       expect(
-          criteriaInLocation(delegate), const SearchCriteria(persons: ["p1"]));
+          criteriaInLocation(delegate), const SearchCriteria(persons: ["p1"], groupBy: [SearchGroup.album]));
       expect(reported, isNotEmpty);
       expect(reported.last.uri, startsWith("/.search/?q="));
       expect(reported.every((location) => location.replace), isTrue,
@@ -304,7 +304,7 @@ void main() {
       await chooseAnne(tester);
       expect(find.byKey(const Key("search-cannot-edit")), findsNothing);
       expect(criteriaOf(space.posts("search").single),
-          const SearchCriteria(persons: ["p1"]));
+          const SearchCriteria(persons: ["p1"], groupBy: [SearchGroup.album]));
     });
 
     testWidgets('a search started from the folder carries no criteria',
@@ -332,7 +332,7 @@ void main() {
       await settle(tester);
 
       expect(
-          criteriaInLocation(delegate), const SearchCriteria(persons: ["p1"]));
+          criteriaInLocation(delegate), const SearchCriteria(persons: ["p1"], groupBy: [SearchGroup.album]));
       expect(space.posts("search"), hasLength(1));
     });
   });

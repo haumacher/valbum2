@@ -347,17 +347,21 @@ void main() {
     });
   });
 
-  testWidgets('is not offered without the download right', (tester) async {
+  testWidgets(
+      'without the download right it gathers for a collection alone '
+      '(issue #290)', (tester) async {
     await withFakeImageHttp(() async {
       await pumpMember(tester, rights: const ["view"]);
       await openAlbumMenu(tester);
-      expect(menuKeys(tester), isNot(contains("select-mode")));
+      expect(menuKeys(tester), contains("select-mode"));
       await tester.tapAt(const Offset(5, 5));
       await tester.pumpAndSettle();
 
       await tester.longPress(tile("a.jpg"));
       await tester.pumpAndSettle();
-      expect(find.byKey(const Key("select-mode-bar")), findsNothing);
+      expect(find.byKey(const Key("select-mode-bar")), findsOneWidget);
+      expect(find.byKey(const Key("select-mode-collect")), findsOneWidget);
+      expect(find.byKey(const Key("select-mode-download")), findsNothing);
     });
   });
 

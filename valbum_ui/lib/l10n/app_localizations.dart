@@ -6698,6 +6698,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The video shows no picture yet. Start it and pause it at the moment the thumbnail should show.'**
   String get posterNotPlaying;
+
+  /// Entry of the context menu of a photo tile in the album's view mode that enters the album's edit mode with this photo selected (issue #290)
+  ///
+  /// In en, this message translates to:
+  /// **'Edit'**
+  String get tileEditAction;
+
+  /// Entry of the context menu of a photo tile acting on the selection: adds the selected photos to a collection, chosen or created (issues #221, #290)
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Add 1 photo to a collection…} other{Add {count} photos to a collection…}}'**
+  String addCountToCollection(int count);
 }
 
 class _AppLocalizationsDelegate

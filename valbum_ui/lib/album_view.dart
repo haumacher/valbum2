@@ -45,8 +45,10 @@ import 'return_reveal.dart';
 import 'not_ready.dart';
 import 'offline.dart';
 import 'persons_view.dart';
+import 'photo_actions.dart';
 import 'oriented_thumbnail.dart';
 import 'routes.dart';
+import 'search_grouping.dart' show albumOfHeading;
 import 'search_query.dart';
 import 'rights.dart';
 import 'select_mode.dart';
@@ -224,7 +226,10 @@ class AlbumContent extends StatefulWidget {
 }
 
 class AlbumContentState extends State<AlbumContent>
-    with SingleTickerProviderStateMixin, ReturnReveal<AlbumContent> {
+    with
+        SingleTickerProviderStateMixin,
+        ReturnReveal<AlbumContent>,
+        PhotoActionHost {
   /// The edit in progress: the mode, the selection and the click anchor.
   ///
   /// It lives with the router, not with this widget, so that a trip into an
@@ -397,6 +402,8 @@ class AlbumContentState extends State<AlbumContent>
     share = ShareSession.of(context);
     // The way back from a viewer opened by its address, issue #272.
     watchReturn();
+    // The photo "Show in album" opened this album for, issue #289.
+    _revealMarked();
   }
 
   @override
@@ -592,42 +599,30 @@ class AlbumContentState extends State<AlbumContent>
       WidgetsBinding.instance
           .addPostFrameCallback((_) => selectModeChanged(false));
     }
-    // A page left in the middle of an edit gives the browser its menu back:
-    // the edit session outlives this view, the menu must not (issue #156).
-    if (_browserMenuTaken) {
-      _browserMenuTaken = false;
-      browserMenu.enable();
-    }
+    // A page left in the middle of an edit gives its claim on the browser's
+    // menu back: the edit session outlives this view, the claim must not
+    // (issue #156).
+    _browserMenu.release();
     super.dispose();
   }
 
-  /// Whether this view has taken the browser's own context menu away, see
-  /// [_syncBrowserMenu].
-  bool _browserMenuTaken = false;
+  /// This view's claim on the browser's own context menu, see
+  /// [_syncBrowserMenu] and [BrowserMenuClaim].
+  final BrowserMenuClaim _browserMenu = BrowserMenuClaim();
 
-  /// Takes the browser's context menu away while the edit mode stands and
-  /// gives it back when it ends (issue #156), the [BrowserMenu] seam of the
-  /// persons editor (#144): on the web a secondary click on a tile would
+  /// Holds the claim on the browser's context menu while the tiles have a
+  /// menu of their own (issues #156, #290), the counted [BrowserMenuClaim] of
+  /// the persons editor (#144): on the web a secondary click on a tile would
   /// otherwise open the browser's menu over the tile's own, see
-  /// [ThumbnailEditorState.showTileMenu].
+  /// [showTileMenu].
   ///
-  /// Asked on every build, because the edit mode is not one switch but a
-  /// derived state — the session's mode, a "view as" preview, the rights, a
-  /// share link — changed in many places, and the session outlives this view.
-  /// While editing, the menu is taken away on every build: the call is
-  /// nothing where it is already away, and it takes the menu away again after
-  /// a page above (the persons editor) gave it back on leaving.
-  void _syncBrowserMenu() {
-    // The search view's tiles have a menu of their own as well (issue #243).
-    var editing = editMode || offersSearchTileMenu;
-    if (editing) {
-      browserMenu.disable();
-      _browserMenuTaken = true;
-    } else if (_browserMenuTaken) {
-      _browserMenuTaken = false;
-      browserMenu.enable();
-    }
-  }
+  /// Asked on every build, because whether the tiles have a menu is not one
+  /// switch but a derived state — the edit mode, a "view as" preview, what
+  /// the album holds — changed in many places. Holding a claim held already
+  /// is nothing; a page above holds a claim of its own, so its leaving never
+  /// gives the menu back under this one.
+  void _syncBrowserMenu() =>
+      _browserMenu.hold(editMode || (offersTileMenu && holdsImages));
 
   /// Handles a click on the tile of the given part.
   ///
@@ -1393,7 +1388,7 @@ class AlbumContentState extends State<AlbumContent>
   /// Never in a collection (issue #221): a collection holds references, and a
   /// photograph is taken out of it by "Remove from collection".
   bool get mayMoveSelection =>
-      editMode && selection.isNotEmpty && !showsOtherAlbums;
+      selection.isNotEmpty && PhotoAction.move.allowedFor(photoFacts);
 
   /// The photographs of the selection a collection can be given, see issue
   /// #221: every selected image (a group by its representative), never a
@@ -1409,7 +1404,9 @@ class AlbumContentState extends State<AlbumContent>
   /// Whether "Add to collection…" is offered: a selection of the edit mode
   /// holding a photograph (issue #221).
   bool get mayCollectSelection =>
-      editMode && share == null && collectableNames.isNotEmpty;
+      editMode &&
+      PhotoAction.collect.allowedFor(photoFacts) &&
+      collectableNames.isNotEmpty;
 
   /// Adds the selected photographs to a collection, chosen or created in the
   /// picker, see issue #221. Nothing changes in this album.
@@ -1424,8 +1421,7 @@ class AlbumContentState extends State<AlbumContent>
   /// Whether "Remove from collection" is offered: a selection of the edit
   /// mode of a collection holding a photograph, see issue #221.
   bool get mayRemoveFromCollection =>
-      editMode &&
-      isCollection(widget.album) &&
+      PhotoAction.removeFromCollection.allowedFor(photoFacts) &&
       selection.any((part) => part is AbstractImage);
 
   /// Takes the selected photographs out of this collection, see issue #221.
@@ -1485,7 +1481,8 @@ class AlbumContentState extends State<AlbumContent>
 
   /// Whether "Label…" is offered: a selection of the edit mode (issue #213).
   bool get mayLabelSelection =>
-      editMode && selection.any((part) => part is AbstractImage);
+      PhotoAction.labels.allowedFor(photoFacts) &&
+      selection.any((part) => part is AbstractImage);
 
   /// Gives the selected photographs labels or takes labels off them, in the
   /// edit buffer (issue #213): saved with the album like every other edit.
@@ -1777,8 +1774,12 @@ class AlbumContentState extends State<AlbumContent>
   /// The unsaved search view has no edit mode at all (issue #243): there the
   /// mode is offered to whoever may download, editors included. A saved
   /// search is an album like any other and keeps the rule of the album.
+  ///
+  /// What the mode is for decides as well (issue #290): the download, or the
+  /// collection of the selection ([mayCollectFrom]) — a member who may not
+  /// download still gathers photographs for a collection.
   bool get maySelect =>
-      rights.mayDownload &&
+      (rights.mayDownload || _mayCollectHere) &&
       !previewing &&
       (isSearchView || isNewsView || !mayEnterEditMode) &&
       !session.editMode &&
@@ -1812,51 +1813,220 @@ class AlbumContentState extends State<AlbumContent>
 
   /// The names the select mode's collection takes: the selected photographs
   /// the view shows (issue #243).
-  List<String> get selectedNames =>
-      [for (var image in selectedDownloads) image.name];
+  List<String> get selectedNames => [
+        for (var image in selectedDownloads)
+          if (image.hasPicture) image.name,
+      ];
 
-  /// Whether a secondary click on a tile opens the search view's menu (issue
-  /// #243): "Select" and the collection of that one photograph, at the
-  /// pointer, as the edit mode's tile menu (#156).
-  bool get offersSearchTileMenu =>
-      isSearchView &&
-      !selectMode &&
-      (maySelect || widget.collectSelected != null);
+  /// Whether photographs of this view may be added to a collection, see
+  /// [mayCollectFrom].
+  bool get _mayCollectHere => mayCollectFrom(
+        shareLink: share != null,
+        signedIn: _signedIn,
+        rights: rights,
+      );
 
-  /// The menu of the search view's tile [part] showing [image], at
-  /// [position], see [offersSearchTileMenu].
-  Future<void> showSearchTileMenu(
-    BuildContext context,
-    AbstractImage part,
-    ImagePart image,
-    Offset position,
-  ) async {
-    var collect = widget.collectSelected;
-    var overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
-    var action = await showMenu<void Function()>(
-      context: context,
-      position: RelativeRect.fromRect(
-        position & Size.zero,
-        Offset.zero & overlay.size,
-      ),
-      items: [
-        if (maySelect)
-          PopupMenuItem<void Function()>(
-            key: const Key("tile-context-select"),
-            value: () => enterSelectMode(part),
-            child: Text(_l10n.select),
-          ),
-        if (collect != null && image.hasPicture)
-          PopupMenuItem<void Function()>(
-            key: const Key("tile-context-collect"),
-            value: () => collect([image.name]),
-            child: Text(_l10n.addToCollection),
-          ),
-      ],
-    );
-    if (action != null && mounted) {
-      action();
+  /// Whether the caller is a signed-in member of the space; where the server
+  /// has not said who the caller is, nothing is hidden on a guess (as
+  /// [offeredRights] does) — the server refuses what it must.
+  bool get _signedIn =>
+      CallerInfo.peek(context) == null || _permission.named;
+
+  // --- The actions of a photo, see `photo_actions.dart` (issue #290). ---
+
+  @override
+  PhotoFacts get photoFacts => PhotoFacts(
+        view: isSearchView
+            ? PhotoView.search
+            : isNewsView
+                ? PhotoView.news
+                : isCollection(widget.album)
+                    ? PhotoView.collection
+                    : isSearch(widget.album)
+                        ? PhotoView.savedSearch
+                        : PhotoView.album,
+        mode: editMode
+            ? PhotoMode.edit
+            : selectMode
+                ? PhotoMode.select
+                : PhotoMode.view,
+        rights: rights,
+        signedIn: _signedIn,
+        shareLink: share != null,
+        previewing: previewing,
+        maySelect: maySelect,
+        // The search view and the view of an entry of the bell have none.
+        mayEnterEdit: mayEnterEditMode && !isSearchView && !isNewsView,
+      );
+
+  @override
+  BuildContext get photoContext => context;
+
+  @override
+  int get actedOnCount => selectMode ? selectedDownloads.length : selection.length;
+
+  @override
+  VAlbumRouterDelegate? get photoDelegate => widget.albumState.navigator.delegate;
+
+
+  /// Whether the tiles have a menu: on everything but a "view as" preview,
+  /// which is what somebody else sees, nothing to act on.
+  bool get offersTileMenu => !previewing;
+
+  /// The menu of the tile [tile], at [position] (issues #156, #243, #290):
+  /// in a mode with a selection it acts on the whole selection when the tile
+  /// is part of it; otherwise the tile first becomes the selection alone, so
+  /// that what the menu says is what it acts on. In the view mode it acts on
+  /// the tile alone.
+  Future<void> showTileMenu(PhotoTile tile, Offset position) async {
+    if ((editMode || selectMode) && !isSelected(tile.part)) {
+      selectOnly(tile.part);
     }
+    await showPhotoTileMenu(
+      host: this,
+      tile: tile,
+      position: position,
+      keyPrefix: "tile-context",
+    );
+  }
+
+  @override
+  void openPhoto(PhotoTile tile) =>
+      widget.pushPart(tile.part, tile.image.name);
+
+  @override
+  void selectPhoto(PhotoTile tile) => enterSelectMode(tile.part);
+
+  @override
+  void editPhoto(PhotoTile tile) => setEditMode(tile.part);
+
+  @override
+  Future<void> movePhotos(PhotoTile tile) =>
+      // The photo under the pointer covers an album made for it (#273).
+      moveSelection(cover: tile.image.name);
+
+  @override
+  Future<void> deletePhotos(PhotoTile tile) => rate(tile.part, trashRating);
+
+  @override
+  Future<void> labelPhotos(PhotoTile tile) => labelSelection();
+
+  @override
+  Future<void> collectPhotos(PhotoTile? tile) {
+    var names = tile != null && !photoFacts.onSelection
+        ? [tile.image.name]
+        : editMode
+            ? collectableNames
+            : selectedNames;
+    var own = widget.collectSelected;
+    if (own != null) {
+      return own(names);
+    }
+    return collectWithPicker(
+      context: context,
+      client: client,
+      source: widget.albumState.path,
+      names: names,
+      delegate: widget.albumState.navigator.delegate,
+    );
+  }
+
+  @override
+  Future<void> removePhotosFromCollection(PhotoTile tile) =>
+      removeSelectionFromCollection();
+
+  @override
+  Future<void> downloadPhotos(PhotoTile? tile) {
+    if (tile != null && !photoFacts.onSelection) {
+      return downloadSelection([tile.image]);
+    }
+    return downloadSelection(selectMode ? selectedDownloads : null);
+  }
+
+  @override
+  Future<void> adjustPhotoTime(PhotoTile tile) =>
+      adjustRecordingTimeOf(tile.part);
+
+  /// Edits what the photo of [tile] is in the edit mode, the one image
+  /// properties dialog the viewer opens as well (issue #122); shows it
+  /// read-only everywhere else.
+  @override
+  Future<void> showPhotoProperties(PhotoTile tile) async {
+    var image = tile.image;
+    if (!editMode) {
+      await showImageProperties(context, image, editable: false);
+      return;
+    }
+    var answer = await showImageProperties(context, image);
+    if (answer == null || !mounted) {
+      return;
+    }
+    editImage(() => answer.applyTo(image));
+  }
+
+  /// Crops the photo of [tile] (issue #212): the editor the viewer's menu
+  /// opens, on this photograph alone whatever is selected, written at once.
+  ///
+  /// The album's edit session may hold unsaved changes: the crop is its own
+  /// action and stores nothing else, and it lands in this very part of the
+  /// buffer, so Save writes it again unchanged and Cancel (which fetches the
+  /// album anew) finds it stored. Nothing is marked dirty for it.
+  @override
+  Future<void> cropPhotoOf(PhotoTile tile) async {
+    var image = tile.image;
+    var changed = await cropPhoto(
+      context,
+      client: client,
+      albumPath: widget.albumState.path,
+      imageUrl: "$albumUrl${image.name}",
+      image: image,
+      album: widget.album,
+    );
+    if (changed) {
+      // A photograph of a collection is cropped in its own album (#221).
+      forgetSourceOf(widget.albumState.navigator.delegate, image);
+    }
+    if (changed && mounted) {
+      // The tile has another aspect now: the album is laid out anew.
+      relayout();
+    }
+  }
+
+  /// Whether the tile of [image] is the one "Show in album" opened this
+  /// album for (issue #289), see [VAlbumRouterDelegate.markIn].
+  bool isMarked(ImagePart image) {
+    if (widget.albumState.route is! ListingOrAlbumRoute) {
+      return false;
+    }
+    var marked =
+        widget.albumState.navigator.delegate.markedIn(widget.albumState.path);
+    if (marked == null) {
+      return false;
+    }
+    var group = image.group;
+    return group == null
+        ? image.name == marked
+        : group.images.any((member) => member.name == marked);
+  }
+
+  /// The mark of [VAlbumRouterDelegate.markIn] this album brought into view
+  /// last.
+  int? _revealedMark;
+
+  /// Brings the photo "Show in album" opened this album for into view, once
+  /// per mark and once the album is the page on top (issue #289).
+  void _revealMarked() {
+    if (widget.albumState.route is! ListingOrAlbumRoute ||
+        !(ModalRoute.isCurrentOf(context) ?? true)) {
+      return;
+    }
+    var delegate = widget.albumState.navigator.delegate;
+    var marked = delegate.markedIn(widget.albumState.path);
+    if (marked == null || _revealedMark == delegate.markVersion) {
+      return;
+    }
+    _revealedMark = delegate.markVersion;
+    revealPhoto([marked]);
   }
 
   /// What the select mode's download takes: the selected images the album
@@ -2225,7 +2395,8 @@ class AlbumContentState extends State<AlbumContent>
     var up = wayUp();
 
     var selected = selecting ? selectedDownloads : const <ImagePart>[];
-    var collect = widget.collectSelected;
+    // The bar offers what the catalogue allows the select mode (#290).
+    var facts = photoFacts;
     return Scaffold(
       // The select mode's bar holds the way out, the count and the download,
       // nothing else (issue #209).
@@ -2234,12 +2405,11 @@ class AlbumContentState extends State<AlbumContent>
               l10n: _l10n,
               count: selected.length,
               onLeave: leaveSelectMode,
+              offerDownload: PhotoAction.download.allowedFor(facts),
               onDownload:
                   selected.isEmpty ? null : () => downloadSelection(selected),
-              offerCollect: collect != null,
-              onCollect: collect == null || selected.isEmpty
-                  ? null
-                  : () => collect(selectedNames),
+              offerCollect: PhotoAction.collect.allowedFor(facts),
+              onCollect: selected.isEmpty ? null : () => collectPhotos(null),
             )
           : immersive
               ? null
@@ -3420,7 +3590,20 @@ class AlbumContentState extends State<AlbumContent>
       child: row,
     );
     if (!selectable) {
-      return padded;
+      // The album a heading of a search grouped by album names, opened by a
+      // tap (issue #289) — where the server said where the photos lie.
+      var album = isSearch(widget.album) && share == null && !previewing
+          ? albumOfHeading(heading)
+          : null;
+      if (album == null) {
+        return padded;
+      }
+      return InkWell(
+        key: ValueKey(("heading-open-album", heading)),
+        onTap: () =>
+            widget.albumState.navigator.go(ListingOrAlbumRoute(album)),
+        child: padded,
+      );
     }
     return InkWell(
       key: ValueKey(("heading-select", heading)),
@@ -3658,6 +3841,10 @@ Offset tileCaptionPosition(TooltipPositionContext context) {
   return Offset(x, y);
 }
 
+/// The key of the mark on the tile of the photo "Show in album" opened its
+/// album for (issue #289).
+const Key shownInAlbumMarkKey = Key("shown-in-album-mark");
+
 class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
   final AlbumContentState state;
   final double width, height;
@@ -3688,7 +3875,16 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
         part,
         key: ValueKey(image.name),
       );
-    } else if (state.selectMode) {
+    }
+    // One tile shell for the other modes (issue #290): the mode says what a
+    // tap means, a secondary click always opens the tile's menu, and a long
+    // press switches the mode where there is one to switch to and opens the
+    // menu where there is none.
+    var tile = PhotoTile(part, image);
+    void Function(Offset)? menu = state.offersTileMenu
+        ? (position) => state.showTileMenu(tile, position)
+        : null;
+    if (state.selectMode) {
       // The select mode of issue #209: a tap selects, the viewer stays shut.
       return SizedBox(
         key: ValueKey(image.name),
@@ -3698,6 +3894,7 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
           selected: state.isSelected(part),
           onTap: () => state.handleTap(part),
           onToggle: () => state.toggleSelection(part),
+          onMenu: menu,
           child: imageThumbnail(image),
         ),
       );
@@ -3710,37 +3907,26 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
         height: height,
         child: imageThumbnail(image),
       );
-    } else {
-      return GestureDetector(
-        key: ValueKey(image.name),
-        // A photograph that is gone opens no viewer (issue #221).
-        onTap: image.missing
-            ? null
-            : () => state.widget.pushPart(part, image.name),
-        // The way into the edit mode, and for whoever has none the way into
-        // the select mode (issue #209) — in the search view, which has no
-        // edit mode, the select mode alone (issue #243).
-        onLongPress: () {
-          if (state.maySelect) {
-            state.enterSelectMode(part);
-          } else if (!state.isSearchView && !state.isNewsView) {
-            state.setEditMode(part);
-          }
-        },
-        // A mouse's way to "Select" and the collection of this photograph in
-        // the search view, at the pointer (issue #243, as #156); a finger
-        // keeps the long press.
-        onSecondaryTapUp: state.offersSearchTileMenu
-            ? (details) => state.showSearchTileMenu(
-                  state.context,
-                  part,
-                  image,
-                  details.globalPosition,
-                )
-            : null,
-        child: imageThumbnail(image),
-      );
     }
+    var facts = state.photoFacts;
+    // The way into the edit mode, and for whoever has none the way into the
+    // select mode (issue #209) — in the search view, which has no edit mode,
+    // the select mode alone (issue #243).
+    VoidCallback? modeSwitch = facts.maySelect
+        ? () => state.enterSelectMode(part)
+        : facts.mayEnterEdit
+            ? () => state.setEditMode(part)
+            : null;
+    return PhotoTileGestures(
+      key: ValueKey(image.name),
+      // A photograph that is gone opens no viewer (issue #221).
+      onTap: image.missing
+          ? null
+          : () => state.widget.pushPart(part, image.name),
+      onLongPress: modeSwitch,
+      onMenu: menu,
+      child: imageThumbnail(image),
+    );
   }
 
   /// The thumbnail of the given image, filling the tile box, with the
@@ -3803,7 +3989,9 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
     // New for this visit: it arrived with the entry of the bell the album was
     // reached from (issue #268).
     var fresh = state.isFresh(image);
-    if (image.kind == ImageKind.image && marker == null && !fresh) {
+    // The photo "Show in album" opened this album for (issue #289).
+    var shown = state.isMarked(image);
+    if (image.kind == ImageKind.image && marker == null && !fresh && !shown) {
       return thumbnail;
     }
     var tile = SizedBox(
@@ -3825,6 +4013,19 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
               ),
             ),
           if (marker != null) Positioned(top: 4, left: 4, child: marker),
+          if (shown)
+            const Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  key: shownInAlbumMarkKey,
+                  decoration: BoxDecoration(
+                    border: Border.fromBorderSide(
+                      BorderSide(color: Colors.amberAccent, width: 4),
+                    ),
+                  ),
+                ),
+              ),
+            ),
           if (fresh)
             Positioned(
               top: 4,
@@ -4036,15 +4237,14 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
           child: Stack(
             children: [
               Positioned.fill(
-                child: GestureDetector(
+                // The tile shell of every mode (issue #290): a tap selects,
+                // a long press toggles, a secondary click opens the tile's
+                // menu at the pointer (issue #156).
+                child: PhotoTileGestures(
                   behavior: HitTestBehavior.opaque,
                   onTap: () => album.handleTap(part),
                   onLongPress: () => album.toggleSelection(part),
-                  // A mouse's way to the move and the properties, at the
-                  // pointer (issue #156); a finger keeps the long press
-                  // and the album's menu.
-                  onSecondaryTapUp: (details) =>
-                      showTileMenu(details.globalPosition),
+                  onMenu: showTileMenu,
                   child: widget.builder.imageThumbnail(image),
                 ),
               ),
@@ -4316,110 +4516,19 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
         ));
   }
 
-  /// Edits the comment of the image shown by this tile.
-  ///
-  /// The one image properties dialog, which the viewer opens as well, see
-  /// `image_properties.dart` (issue #122).
   /// The context menu of this tile, opened by a secondary click at
-  /// [position] (issue #156), following the persons editor's (#139/#144).
-  ///
-  /// It acts on the whole selection when this tile is part of it; otherwise
-  /// this tile first becomes the selection alone, so that what the menu says
-  /// is what it acts on. Its entries call exactly what the album's menu and
-  /// the tile's tool call: [AlbumContentState.moveSelection] under the label
-  /// of the menu's `move-to`, and [editImageProperties].
-  Future<void> showTileMenu(Offset position) async {
-    if (!selected) {
-      album.selectOnly(part);
-    }
-    var overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
-    var action = await showMenu<void Function()>(
-      context: context,
-      position: RelativeRect.fromRect(
-        position & Size.zero,
-        Offset.zero & overlay.size,
-      ),
-      items: [
-        if (album.mayMoveSelection)
-          PopupMenuItem<void Function()>(
-            key: const Key("tile-context-move"),
-            // The photo under the pointer covers an album made for it (#273).
-            value: () => album.moveSelection(cover: image.name),
-            child: Text(_l10n.moveSubjectTo(
-                ImageSubject(album.selection.length).asked(_l10n))),
-          ),
-        if (album.mayLabelSelection)
-          PopupMenuItem<void Function()>(
-            key: const Key("tile-context-label"),
-            value: album.labelSelection,
-            child: Text(_l10n.labelSelectionAction),
-          ),
-        if (album.mayRemoveFromCollection)
-          PopupMenuItem<void Function()>(
-            key: const Key("tile-context-remove-from-collection"),
-            value: album.removeSelectionFromCollection,
-            child: Text(_l10n.removeFromCollection),
-          ),
-        if (!image.missing)
-          PopupMenuItem<void Function()>(
-            key: const Key("tile-context-properties"),
-            value: editImageProperties,
-            child: Text(_l10n.imageProperties),
-          ),
-        // The region of this photograph, and of no other (issue #212): the
-        // editor opens at once and writes at once, see [cropImage].
-        if (image.kind == ImageKind.image && image.hasPicture)
-          PopupMenuItem<void Function()>(
-            key: const Key("tile-context-crop"),
-            value: cropImage,
-            child: Text(_l10n.cropMenu),
-          ),
-      ],
-    );
-    // The move belongs to the album, which is still there; the properties
-    // write into this tile's image and need the tile.
-    if (action == null || !album.mounted) {
-      return;
-    }
-    if ((action == editImageProperties || action == cropImage) && !mounted) {
-      return;
-    }
-    action();
+  /// [position] (issue #156): the catalogue's tile menu, see
+  /// [AlbumContentState.showTileMenu] — on the whole selection when this tile
+  /// is part of it, otherwise this tile first becomes the selection alone.
+  Future<void> showTileMenu(Offset position) {
+    var self = part as AbstractImage;
+    return album.showTileMenu(PhotoTile(self, image), position);
   }
 
-  /// Crops this tile's photograph (issue #212): the editor the viewer's menu
-  /// opens, on this photograph alone whatever is selected, written at once.
-  ///
-  /// The album's edit session may hold unsaved changes: the crop is its own
-  /// action and stores nothing else, and it lands in this very part of the
-  /// buffer, so Save writes it again unchanged and Cancel (which fetches the
-  /// album anew) finds it stored. Nothing is marked dirty for it.
-  Future<void> cropImage() async {
-    var changed = await cropPhoto(
-      context,
-      client: album.client,
-      albumPath: album.widget.albumState.path,
-      imageUrl: "${album.albumUrl}${image.name}",
-      image: image,
-      album: album.widget.album,
-    );
-    if (changed) {
-      // A photograph of a collection is cropped in its own album (#221).
-      forgetSourceOf(album.widget.albumState.navigator.delegate, image);
-    }
-    if (changed && album.mounted) {
-      // The tile has another aspect now: the album is laid out anew.
-      album.relayout();
-    }
-  }
-
-  Future<void> editImageProperties() async {
-    var answer = await showImageProperties(context, image);
-    if (answer == null || !mounted) {
-      return;
-    }
-    album.editImage(() => answer.applyTo(image));
-  }
+  /// Edits the description of the image shown by this tile, see
+  /// [AlbumContentState.showPhotoProperties] (issue #122).
+  Future<void> editImageProperties() =>
+      album.showPhotoProperties(PhotoTile(part as AbstractImage, image));
 }
 
 /// The side of a tile the insert cursor of a drag is drawn on: the dragged

@@ -7161,5 +7161,20 @@
   "@posterNotPlaying": {
     "description": "Message (issue #285) when 'Use as thumbnail' is chosen before the video player shows any frame",
     "x-translated": "74f8d233"
+  },
+  "tileEditAction": "Edit",
+  "@tileEditAction": {
+    "description": "Entry of the context menu of a photo tile in the album's view mode that enters the album's edit mode with this photo selected (issue #290)",
+    "x-translated": "21077124"
+  },
+  "addCountToCollection": "{count, plural, =1{Add 1 photo to a collection…} other{Add {count} photos to a collection…}}",
+  "@addCountToCollection": {
+    "description": "Entry of the context menu of a photo tile acting on the selection: adds the selected photos to a collection, chosen or created (issues #221, #290)",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "5224914f"
   }
 }

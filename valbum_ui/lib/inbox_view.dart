@@ -63,7 +63,8 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart' hide Orientation;
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
-import 'package:flutter/services.dart' show HardwareKeyboard;
+import 'package:flutter/services.dart'
+    show HardwareKeyboard, KeyDownEvent, LogicalKeyboardKey;
 import 'package:intl/intl.dart';
 import 'package:valbum_ui/album_layout.dart' as layouter;
 
@@ -80,6 +81,7 @@ import 'client.dart';
 import 'crop.dart';
 import 'crop_editor.dart' show cropPhoto;
 import 'dialog_style.dart';
+import 'downloads.dart';
 import 'form_dialog.dart';
 import 'image_properties.dart';
 import 'keyboard_scroll.dart';
@@ -88,7 +90,8 @@ import 'listing_view.dart';
 import 'move_view.dart';
 import 'offline.dart';
 import 'oriented_thumbnail.dart';
-import 'persons_view.dart' show browserMenu;
+import 'persons_view.dart' show BrowserMenuClaim;
+import 'photo_actions.dart';
 import 'resource.dart';
 import 'return_reveal.dart';
 import 'rights.dart';
@@ -446,7 +449,7 @@ class InboxContent extends StatefulWidget {
 }
 
 class InboxContentState extends State<InboxContent>
-    with ReturnReveal<InboxContent> {
+    with ReturnReveal<InboxContent>, PhotoActionHost {
   /// The photographs currently selected, by identity.
   ///
   /// Held by the state and by nothing else: there is no edit session to keep
@@ -697,33 +700,21 @@ class InboxContentState extends State<InboxContent>
   // The browser's own context menu.
   // -------------------------------------------------------------------------
 
-  /// Whether this screen has taken the browser's context menu away, see
-  /// [_syncBrowserMenu].
-  bool _browserMenuTaken = false;
+  /// This screen's claim on the browser's context menu, see
+  /// [_syncBrowserMenu] and [BrowserMenuClaim].
+  final BrowserMenuClaim _browserMenu = BrowserMenuClaim();
 
   /// Takes the browser's context menu away while the inbox stands (issue
   /// #222), the [BrowserMenu] seam of #144: on the web a secondary click on a
   /// tile would otherwise open the browser's menu over the tile's own, see
   /// [InboxTileState.showTileMenu]. An inbox is always in its selection mode,
-  /// so the menu is away for as long as the screen is mounted; asked on every
-  /// build as the album's edit mode asks (#156), so that a page above giving
-  /// it back on leaving does not leave it given back here.
-  void _syncBrowserMenu() {
-    if (share == null) {
-      browserMenu.disable();
-      _browserMenuTaken = true;
-    } else if (_browserMenuTaken) {
-      _browserMenuTaken = false;
-      browserMenu.enable();
-    }
-  }
+  /// so the claim is held for as long as the screen is mounted, see
+  /// [BrowserMenuClaim]; asked on every build as the album asks (#156).
+  void _syncBrowserMenu() => _browserMenu.hold(share == null);
 
   @override
   void dispose() {
-    if (_browserMenuTaken) {
-      _browserMenuTaken = false;
-      browserMenu.enable();
-    }
+    _browserMenu.release();
     // What was sorted here, moved out or thrown away is no longer waiting: the
     // badge on the start page is asked anew once this screen is gone, and
     // never while the tree is being torn down.
@@ -732,6 +723,123 @@ class InboxContentState extends State<InboxContent>
       WidgetsBinding.instance.addPostFrameCallback((_) => refresh());
     }
     super.dispose();
+  }
+
+  // -------------------------------------------------------------------------
+  // The actions of a photo, see `photo_actions.dart` (issue #290).
+  // -------------------------------------------------------------------------
+
+  @override
+  PhotoFacts get photoFacts {
+    var permission =
+        CallerInfo.peek(context)?.permission ?? CallerPermission.unknown;
+    return PhotoFacts(
+      view: PhotoView.inbox,
+      mode: PhotoMode.select,
+      rights: rights,
+      // Where the server has not said who the caller is, nothing is hidden
+      // on a guess, see `offeredRights`.
+      signedIn: CallerInfo.peek(context) == null || permission.named,
+      shareLink: share != null,
+    );
+  }
+
+  @override
+  BuildContext get photoContext => context;
+
+  @override
+  int get actedOnCount => _selection.length;
+
+  @override
+  VAlbumRouterDelegate? get photoDelegate => widget.albumState.navigator.delegate;
+
+
+  @override
+  void openPhoto(PhotoTile tile) => widget.pushPart(tile.image, tile.image.name);
+
+  @override
+  Future<void> movePhotos(PhotoTile tile) =>
+      // The photo under the pointer covers an album made for it (#273).
+      moveSelection(cover: tile.image.name);
+
+  @override
+  Future<void> deletePhotos(PhotoTile tile) => deleteSelection();
+
+  /// Adds the selected photographs to a collection, chosen or created (issue
+  /// #221): nothing changes in the inbox.
+  @override
+  Future<void> collectPhotos(PhotoTile? tile) => collectWithPicker(
+        context: context,
+        client: client,
+        source: path,
+        names: [
+          for (var image in selected)
+            if (image.hasPicture) image.name,
+        ],
+        delegate: widget.albumState.navigator.delegate,
+      );
+
+  /// Downloads the originals of the selection (issue #164): one archive
+  /// named after the inbox where the platform keeps files, one original
+  /// after the other on a phone.
+  @override
+  Future<void> downloadPhotos(PhotoTile? tile) {
+    var names = [for (var image in selected) image.name];
+    if (names.isEmpty) {
+      showMessage(inboxNothingSelected(_l10n));
+      return Future.value();
+    }
+    return runDownload(
+      context,
+      (progress) => downloadOriginals(
+        client,
+        path,
+        names,
+        archiveName: archiveNameOf(album.title),
+        progress: progress,
+      ),
+    );
+  }
+
+  @override
+  Future<void> adjustPhotoTime(PhotoTile tile) =>
+      adjustRecordingTimeOf(tile.image);
+
+  @override
+  Future<void> showPhotoProperties(PhotoTile tile) =>
+      showProperties(tile.image);
+
+  /// Crops the photograph of [tile] (issue #212): the editor the viewer's
+  /// menu opens, on this photograph alone whatever is selected, written at
+  /// once through its own `?action=crop` — which is how the inbox writes
+  /// anyway.
+  @override
+  Future<void> cropPhotoOf(PhotoTile tile) async {
+    var image = tile.image;
+    var changed = await cropPhoto(
+      context,
+      client: client,
+      albumPath: path,
+      imageUrl: "$albumUrl${image.name}",
+      image: image,
+      album: album,
+    );
+    if (changed && mounted) {
+      // The tile has another aspect now: the day is laid out anew.
+      relayout();
+    }
+  }
+
+  /// `Escape` clears the selection (issue #290), as it leaves the album's
+  /// select mode.
+  KeyEventResult onKey(FocusNode node, KeyEvent event) {
+    if (event is KeyDownEvent &&
+        event.logicalKey == LogicalKeyboardKey.escape &&
+        _selection.isNotEmpty) {
+      clearSelection();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
   }
 
   /// The selected photographs, in the order the inbox shows them.
@@ -1238,6 +1346,7 @@ class InboxContentState extends State<InboxContent>
                   )
                 // A scrollbar and the paging keys, issue #168.
                 : KeyboardScroll(
+                    onKeyEvent: onKey,
                     child: LayoutBuilder(
                       builder: (context, constraints) {
                         // Clear of a cutout or the navigation bar at a side
@@ -1296,21 +1405,39 @@ class InboxContentState extends State<InboxContent>
   /// No "view as" (an inbox is shown to nobody else), no rating filter (the
   /// trashed are hidden, the rest is all shown), no share link (the server refuses one), no sort
   /// (the order *is* the date) — what is left is what an inbox is for.
-  List<PopupMenuEntry<void Function(BuildContext)>> inboxMenu(int count) => [
-        if (mayTakeOut && count > 0) ...[
+  List<PopupMenuEntry<void Function(BuildContext)>> inboxMenu(int count) {
+    // What is done with the selection, as the catalogue allows it (#290).
+    var facts = photoFacts;
+    return [
+        if (count > 0 && PhotoAction.move.allowedFor(facts))
           keyedMenuItem(
             const Key("move-to"),
             Icons.drive_file_move,
             inboxMoveLabel(_l10n, count),
             (_) => moveSelection(),
           ),
+        if (count > 0 && PhotoAction.delete.allowedFor(facts))
           keyedMenuItem(
             const Key("delete-selection"),
             Icons.delete_outline,
             inboxDeleteLabel(_l10n, count),
             (_) => deleteSelection(),
           ),
-        ],
+        if (count > 0 && PhotoAction.download.allowedFor(facts))
+          keyedMenuItem(
+            const Key("download-selection"),
+            Icons.download,
+            _l10n.downloadSelection(count),
+            (_) => downloadPhotos(null),
+          ),
+        if (selected.any((image) => image.hasPicture) &&
+            PhotoAction.collect.allowedFor(facts))
+          keyedMenuItem(
+            const Key("add-to-collection"),
+            Icons.collections_bookmark_outlined,
+            _l10n.addCountToCollection(count),
+            (_) => collectPhotos(null),
+          ),
         // What was deleted here, restored or purged where an album's is
         // (issues #152, #160).
         if (mayShowTrash)
@@ -1342,6 +1469,7 @@ class InboxContentState extends State<InboxContent>
         // What this app is, the last entry of every main menu (#187).
         aboutMenuItem(_l10n),
       ];
+  }
 
   /// The chips of the camera filter (issue #278), each with the number of
   /// photographs of its camera, in the style of the album's label chips
@@ -1639,14 +1767,14 @@ class InboxTileState extends State<InboxTile> {
           child: Stack(
             children: [
               Positioned.fill(
-                child: GestureDetector(
+                // The tile shell of every grid (issue #290): a tap selects,
+                // a long press toggles, a secondary click opens the tile's
+                // menu at the pointer (issue #222).
+                child: PhotoTileGestures(
                   behavior: HitTestBehavior.opaque,
                   onTap: () => inbox.handleTap(image),
                   onLongPress: () => inbox.toggleSelection(image),
-                  // The mouse's way to the actions, at the pointer (issue
-                  // #222); a finger keeps the long press and the menu.
-                  onSecondaryTapUp: (details) =>
-                      showTileMenu(details.globalPosition),
+                  onMenu: showTileMenu,
                   child: inbox.pictureOf(image, widget.width, widget.height),
                 ),
               ),
@@ -1688,7 +1816,8 @@ class InboxTileState extends State<InboxTile> {
             () => inbox.selectSameCamera(image),
             key: const Key("inbox-select-camera"),
           ),
-        if (inbox.mayWrite) ...[
+        // A file that cannot be read has no picture to turn (issue #253).
+        if (inbox.mayWrite && image.hasPicture) ...[
           toolButton(
             Icons.rotate_right,
             _l10n.turnRight,
@@ -1721,7 +1850,7 @@ class InboxTileState extends State<InboxTile> {
         () => inbox.widget.pushPart(image, image.name),
         key: const Key("inbox-open"),
       ),
-      if (inbox.mayWrite)
+      if (PhotoAction.time.offeredOn(image, inbox.photoFacts))
         toolButton(
           Icons.more_time,
           _l10n.adjustRecordingTimeAction,
@@ -1762,89 +1891,22 @@ class InboxTileState extends State<InboxTile> {
   }
 
   /// The context menu of this tile, opened by a secondary click at
-  /// [position] (issue #222), the album edit mode's (#156) for an inbox.
+  /// [position] (issue #222), the album edit mode's (#156) for an inbox: the
+  /// catalogue's tile menu (#290), see `photo_actions.dart`.
   ///
   /// It acts on the whole selection when this photograph is part of it;
   /// otherwise this photograph first becomes the selection alone, so that
-  /// what the menu says is what it acts on. Its entries call exactly what the
-  /// inbox's menu and the tile's tools call, each offered where they are: the
-  /// move and the delete ([InboxContentState.mayTakeOut] — for an editor the
-  /// −2 rating, for a contributor the trash folder with its question), the
-  /// properties (to everybody, read-only), the recording time and the crop
-  /// ([InboxContentState.mayWrite]; the crop on a photograph alone and on this
-  /// photograph whatever is selected, written at once as everything here is).
+  /// what the menu says is what it acts on.
   Future<void> showTileMenu(Offset position) async {
     if (!selected) {
       inbox.selectOnly(image);
     }
-    var count = inbox.selected.length;
-    var overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
-    var action = await showMenu<VoidCallback>(
-      context: context,
-      position: RelativeRect.fromRect(
-        position & Size.zero,
-        Offset.zero & overlay.size,
-      ),
-      items: [
-        if (inbox.mayTakeOut) ...[
-          PopupMenuItem<VoidCallback>(
-            key: const Key("inbox-context-move"),
-            // The photo under the pointer covers an album made for it (#273).
-            value: () => inbox.moveSelection(cover: image.name),
-            child: Text(inboxMoveLabel(_l10n, count)),
-          ),
-          PopupMenuItem<VoidCallback>(
-            key: const Key("inbox-context-delete"),
-            value: inbox.deleteSelection,
-            child: Text(inboxDeleteLabel(_l10n, count)),
-          ),
-        ],
-        PopupMenuItem<VoidCallback>(
-          key: const Key("inbox-context-properties"),
-          value: () => inbox.showProperties(image),
-          child: Text(_l10n.imageProperties),
-        ),
-        if (inbox.mayWrite)
-          PopupMenuItem<VoidCallback>(
-            key: const Key("inbox-context-time"),
-            value: () => inbox.adjustRecordingTimeOf(image),
-            child: Text(_l10n.adjustRecordingTimeAction),
-          ),
-        if (inbox.mayWrite && image.kind == ImageKind.image)
-          PopupMenuItem<VoidCallback>(
-            key: const Key("inbox-context-crop"),
-            value: cropImage,
-            child: Text(_l10n.cropMenu),
-          ),
-      ],
+    await showPhotoTileMenu(
+      host: inbox,
+      tile: PhotoTile(image, image),
+      position: position,
+      keyPrefix: "inbox-context",
     );
-    // Every entry belongs to the inbox, which is still there; the crop needs
-    // this tile's context as well.
-    if (action == null || !inbox.mounted) {
-      return;
-    }
-    if (action == cropImage && !mounted) {
-      return;
-    }
-    action();
-  }
-
-  /// Crops this tile's photograph (issue #212): the editor the viewer's menu
-  /// opens, on this photograph alone whatever is selected, written at once
-  /// through its own `?action=crop` — which is how the inbox writes anyway.
-  Future<void> cropImage() async {
-    var changed = await cropPhoto(
-      context,
-      client: inbox.client,
-      albumPath: inbox.path,
-      imageUrl: "${inbox.albumUrl}${image.name}",
-      image: image,
-      album: inbox.album,
-    );
-    if (changed && inbox.mounted) {
-      // The tile has another aspect now: the day is laid out anew.
-      inbox.relayout();
-    }
   }
 
   Widget toolbar(List<Widget> buttons) => FittedBox(

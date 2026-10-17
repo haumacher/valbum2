@@ -4359,4 +4359,18 @@ class AppLocalizationsDe extends AppLocalizations {
   @override
   String get posterNotPlaying =>
       'Das Video zeigt noch kein Bild. Starten Sie es und halten Sie es in dem Moment an, den das Vorschaubild zeigen soll.';
+
+  @override
+  String get tileEditAction => 'Bearbeiten';
+
+  @override
+  String addCountToCollection(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Fotos zu einer Sammlung hinzufügen…',
+      one: '1 Foto zu einer Sammlung hinzufügen…',
+    );
+    return '$_temp0';
+  }
 }

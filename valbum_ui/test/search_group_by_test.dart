@@ -120,9 +120,10 @@ void main() {
     await pumpRoute(tester, space, const SearchRoute([]));
     await chooseAnne(tester);
     expect(space.posts("search"), hasLength(1));
-    expect(headings(tester), isEmpty);
-    expect(find.text(l10n.groupByTitle), findsOneWidget,
-        reason: "The chip reads \"Group by\" alone while nothing is chosen.");
+    // A new search starts grouped by album (issue #289).
+    expect(headings(tester), ["# 2020 Trip", "# 2021 Zoo"]);
+    expect(find.text(l10n.searchGroupedBy(l10n.searchGroupByAlbum)),
+        findsOneWidget);
 
     await tester.tap(find.byKey(const Key("search-group-by")));
     await settle(tester);
@@ -167,6 +168,11 @@ tester
     var space = GroupSpace();
     await pumpRoute(tester, space, const SearchRoute([]));
     await chooseAnne(tester);
+    // Without the grouping a new search starts with (issue #289).
+    tester
+        .widget<InputChip>(find.byKey(const Key("search-group-by")))
+        .onDeleted!();
+    await settle(tester);
     await tester.tap(find.byKey(const Key("search-group-by")));
     await settle(tester);
 

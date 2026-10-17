@@ -27,7 +27,8 @@
 /// Some of what was found is taken by the select mode of issue #209, which
 /// the view offers to whoever may download, editors included — it has no edit
 /// mode (issue #243): a long press on a tile or "Select" of the tile's menu
-/// at the pointer enters it, its bar replaces the view's bar and criteria
+/// at the pointer enters it — a member who may not download enters it to
+/// collect alone (issue #290) —, its bar replaces the view's bar and criteria
 /// while it is on, and its actions download the selection and add it to a
 /// collection.
 ///
@@ -35,6 +36,10 @@
 /// year, month, place or camera, see `search_grouping.dart`: it travels in the
 /// query and is stored by "Save as view…", and a change of it alone groups the
 /// result already in anew, without asking the server again.
+/// A new search starts grouped by album ([freshSearchCriteria], issue #289),
+/// and the heading of an album opens it; a stored saved search keeps the
+/// grouping it stores. "Show in album" of a tile's menu opens the album a
+/// photograph lies in with it in view and marked, see `photo_actions.dart`.
 ///
 /// Every chosen criterion can be excluded (issue #242): a long press on its
 /// chip, or a secondary click, turns it into "Not: …", and the choosers say
@@ -69,8 +74,9 @@ import 'selectable.dart';
 /// While a saved search is edited ([edited]), the view searches where the
 /// saved search looks and "Save" writes the query back to it.
 class SearchSession extends ChangeNotifier {
-  /// What the user chose.
-  SearchCriteria criteria = const SearchCriteria();
+  /// What the user chose; a new search starts grouped by album (issue #289),
+  /// see [freshSearchCriteria].
+  SearchCriteria criteria = freshSearchCriteria;
 
   /// The search for [criteria], `null` while nothing is chosen.
   Future<AlbumInfo>? result;
@@ -136,7 +142,7 @@ class SearchSession extends ChangeNotifier {
     var read = SearchCriteria.fromAddress(query);
     if (read == null) {
       unreadable = query;
-      criteria = const SearchCriteria();
+      criteria = freshSearchCriteria;
       result = null;
       notifyListeners();
       return;
@@ -217,10 +223,18 @@ class SearchSession extends ChangeNotifier {
     edited = null;
     editedAlbum = null;
     unreadable = null;
-    criteria = const SearchCriteria();
+    criteria = freshSearchCriteria;
     result = null;
   }
 }
+
+/// What a new search starts with (issue #289): nothing chosen, the photos
+/// found grouped by the album they lie in — the question a search is asked
+/// most is where the photographs are. A stored saved search keeps the
+/// grouping it stores, see [SearchCriteria.fromQuery]: a persisted value is
+/// never changed behind the user's back.
+const SearchCriteria freshSearchCriteria =
+    SearchCriteria(groupBy: [SearchGroup.album]);
 
 /// The search view, see the library comment.
 class SearchView extends StatefulWidget {
@@ -683,7 +697,7 @@ class SearchViewState extends State<SearchView> {
     if (query == null) {
       // Nothing chosen here: nothing chosen there either, whatever the
       // search of the library held before.
-      wide.choose(const SearchCriteria(), client, const []);
+      wide.choose(freshSearchCriteria, client, const []);
     }
     navigator.go(SearchRoute(const [], query: query));
   }

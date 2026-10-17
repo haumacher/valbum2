@@ -29,13 +29,13 @@ import 'image_transform.dart';
 import 'move_view.dart';
 import 'offline.dart';
 import 'people_registry.dart';
+import 'photo_actions.dart';
 import 'platform.dart' show platformDescription;
 import 'person_names.dart';
 import 'persons_view.dart' show PersonChooser;
 import 'l10n/app_localizations.dart';
 import 'resource.dart';
 import 'rights.dart';
-import 'routes.dart' show ImageRoute;
 import 'selectable.dart';
 import 'share_session.dart';
 import 'thumbnails.dart';
@@ -719,25 +719,47 @@ class ImageViewState extends State<ImageView>
 
   // --- Collections, see issue #221. ---
 
-  /// Whether "Add to collection…" is offered for the picture shown: with
-  /// `edit`, outside a share session, where the viewer knows the album the
-  /// picture is answered from.
+  /// What the viewer says about itself to the catalogue of
+  /// `photo_actions.dart` (issue #290).
+  PhotoFacts get photoFacts {
+    var caller = CallerInfo.peek(context);
+    return PhotoFacts(
+      view: PhotoView.viewer,
+      mode: PhotoMode.view,
+      rights: offeredRights(rights, caller?.permission ?? CallerPermission.unknown),
+      // Where the server has not said who the caller is, nothing is hidden
+      // on a guess, see `offeredRights`.
+      signedIn: caller == null || caller.permission.named,
+      shareLink: ShareSession.of(context) != null,
+    );
+  }
+
+  /// Whether "Add to collection…" is offered for the picture shown: the one
+  /// rule of the server, [mayCollectFrom] (issue #290), where the viewer
+  /// knows the album the picture is answered from.
   bool get mayCollect =>
       album != null &&
       widget.editPath != null &&
-      rights.mayEdit &&
       part.hasPicture &&
-      ShareSession.of(context) == null;
+      mayCollectFrom(
+        shareLink: photoFacts.shareLink,
+        signedIn: photoFacts.signedIn,
+        rights: photoFacts.rights,
+      );
+
+  /// Whether "Show in album" is offered: the catalogue's rule (issue #289).
+  bool get mayShowInAlbum =>
+      widget.delegate != null &&
+      PhotoAction.showInAlbum.offeredOn(part, photoFacts);
 
   /// Opens the photograph shown in the album it lies in, where it is shown
-  /// from a collection or a search (issues #221, #227).
+  /// from a collection or a search (issues #221, #227), with it in view and
+  /// marked (#289): the catalogue's action.
   void showInAlbum() {
-    var folder = sourceFolderOf(part);
-    var ref = part.ref;
-    if (folder == null || ref == null) {
-      return;
+    var delegate = widget.delegate;
+    if (delegate != null) {
+      showPhotoInAlbum(delegate, part);
     }
-    widget.delegate?.go(ImageRoute(folder, ref.path.split("/").last));
   }
 
   /// Adds the picture shown to a collection, chosen or created in the picker.
@@ -2786,7 +2808,7 @@ class ImageViewState extends State<ImageView>
               ),
             // The album the photograph lies in, from a collection or a search
             // (issues #221, #227).
-            if (sourceFolderOf(part) != null && widget.delegate != null)
+            if (mayShowInAlbum)
               PopupMenuItem<void Function(BuildContext)>(
                 key: const Key("viewer-show-in-album"),
                 value: (_) => showInAlbum(),

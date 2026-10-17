@@ -182,7 +182,8 @@ void main() {
     expect(requests.where((r) => r.method == "POST"), isEmpty);
   });
 
-  testWidgets('no menu in the view mode', (tester) async {
+  testWidgets('the view mode has a menu of its own, without the edits',
+      (tester) async {
     await withFakeImageHttp(() async {
       await pumpAlbum(tester);
       var image = tester.getCenter(find.byType(Image).first);
@@ -190,15 +191,20 @@ void main() {
           buttons: kSecondaryMouseButton, kind: PointerDeviceKind.mouse);
       await tester.pumpAndSettle();
     });
+    // Issue #290: every tile has a menu; the view mode's opens the viewer
+    // and the edit mode, and moves nothing.
+    expect(find.byKey(const Key("tile-context-open")), findsOneWidget);
+    expect(find.byKey(const Key("tile-context-edit")), findsOneWidget);
     expect(moveEntry, findsNothing);
   });
 
-  testWidgets("the browser's menu is away while the edit mode stands",
+  testWidgets("the browser's menu is away while the album's tiles have one",
       (tester) async {
     await withFakeImageHttp(() async {
       await pumpAlbum(tester);
-      expect(browser.enabled, isTrue);
-      expect(browser.calls, isEmpty, reason: "the view mode leaves it alone");
+      // Every tile has a menu of its own since issue #290, the view mode's
+      // too: the browser's would open over it.
+      expect(browser.enabled, isFalse);
 
       await tester.longPress(find.byType(Image).first);
       await tester.pumpAndSettle();
@@ -206,16 +212,17 @@ void main() {
 
       await tester.tap(find.byKey(const Key("edit-cancel")));
       await tester.pumpAndSettle();
-      expect(browser.enabled, isTrue);
-      expect(browser.calls.last, "enable");
+      expect(browser.enabled, isFalse);
 
-      // A page left in the middle of an edit gives it back as well.
+      // A page left gives it back.
       await tester.longPress(find.byType(Image).first);
       await tester.pumpAndSettle();
       expect(browser.enabled, isFalse);
       await tester.pumpWidget(const SizedBox());
       await tester.pumpAndSettle();
       expect(browser.enabled, isTrue);
+      // One claim, counted (issue #290): taken once, given back once.
+      expect(browser.calls, ["disable", "enable"]);
     });
   });
 }

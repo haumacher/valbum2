@@ -134,6 +134,91 @@ class BrowserMenu {
 /// it is mounted and gives it back afterwards.
 BrowserMenu browserMenu = const BrowserMenu();
 
+/// One claim on the browser's context menu (issues #144, #290): every page
+/// whose tiles have a menu of their own holds one while it needs the
+/// browser's menu away — the album, the inbox, the persons editor, a listing.
+///
+/// The claims are counted: the menu is taken away when the first is taken
+/// and given back when the last is given back, and nothing else calls
+/// [browserMenu]. So a page that leaves never gives the menu back while the
+/// page it went to — built before the old one is disposed — still needs it.
+/// Taking a claim already held, or giving back one not held, is nothing.
+class BrowserMenuClaim {
+  /// How many claims are held, app-wide.
+  static int _held = 0;
+
+  /// How many claims are held, app-wide; for tests.
+  static int get held => _held;
+
+  bool _holds = false;
+
+  /// Whether this claim is held.
+  bool get holds => _holds;
+
+  /// Takes this claim; the first one held takes the menu away.
+  void acquire() {
+    if (_holds) {
+      return;
+    }
+    _holds = true;
+    if (_held++ == 0) {
+      browserMenu.disable();
+    }
+  }
+
+  /// Gives this claim back; the last one held gives the menu back.
+  void release() {
+    if (!_holds) {
+      return;
+    }
+    _holds = false;
+    if (--_held == 0) {
+      browserMenu.enable();
+    }
+  }
+
+  /// Holds the claim exactly while [wanted]: for a page whose need is a
+  /// derived state, asked on every build.
+  void hold(bool wanted) => wanted ? acquire() : release();
+}
+
+/// Holds a [BrowserMenuClaim] while [hold] is true and it is mounted: the
+/// claim of a page without a state of its own, a listing's tiles (#290).
+class BrowserMenuHold extends StatefulWidget {
+  final bool hold;
+  final Widget child;
+
+  const BrowserMenuHold({super.key, this.hold = true, required this.child});
+
+  @override
+  State<BrowserMenuHold> createState() => _BrowserMenuHoldState();
+}
+
+class _BrowserMenuHoldState extends State<BrowserMenuHold> {
+  final BrowserMenuClaim _claim = BrowserMenuClaim();
+
+  @override
+  void initState() {
+    super.initState();
+    _claim.hold(widget.hold);
+  }
+
+  @override
+  void didUpdateWidget(BrowserMenuHold oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _claim.hold(widget.hold);
+  }
+
+  @override
+  void dispose() {
+    _claim.release();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
 /// The prefix of the placement of a face whose decision was taken back.
 ///
 /// "Forget" is issue #138: a stored decision — confirmed, rejected, no face at
@@ -335,6 +420,10 @@ class PersonsContent extends StatefulWidget {
 
 class PersonsContentState extends State<PersonsContent>
     with TickerProviderStateMixin {
+  /// This editor's claim on the browser's context menu, see
+  /// [BrowserMenuClaim].
+  final BrowserMenuClaim _browserMenu = BrowserMenuClaim();
+
   /// Where every face stands now, by [AlbumFace.key].
   final Map<String, String> placement = {};
 
@@ -411,8 +500,8 @@ class PersonsContentState extends State<PersonsContent>
   void initState() {
     super.initState();
     // A right click belongs to the tile here, not to the browser (issue
-    // #144); the menu is given back in [dispose].
-    browserMenu.disable();
+    // #144); the claim is given back in [dispose].
+    _browserMenu.acquire();
     _dragScroller = DragEdgeScroller(this, onScrolled: _followScrolledContent);
     _read(widget.album);
     widget.albumState.navigator.delegate
@@ -438,7 +527,7 @@ class PersonsContentState extends State<PersonsContent>
 
   @override
   void dispose() {
-    browserMenu.enable();
+    _browserMenu.release();
     _poll?.cancel();
     widget.albumState.navigator.delegate
         .unregisterPersonsGuard(path, _leaveGuard);

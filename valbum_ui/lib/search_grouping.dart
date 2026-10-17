@@ -33,6 +33,15 @@ import 'collections.dart' show sourceFolderOf;
 import 'l10n/app_localizations.dart';
 import 'resource.dart';
 
+/// The album of every heading of a grouping by album, see [albumOfHeading].
+final Expando<List<String>> _headingAlbums = Expando("searchHeadingAlbum");
+
+/// The folder (relative to the space root) the photos under [heading] lie
+/// in, where [heading] is one of a grouping by album and the server named
+/// where they lie ([ImagePart.ref], to a member alone); `null` otherwise.
+/// A tap on such a heading opens that album (issue #289).
+List<String>? albumOfHeading(Heading heading) => _headingAlbums[heading];
+
 /// The number of keys honoured: the sections and the subsections.
 const int maxSearchGroups = 2;
 
@@ -201,10 +210,23 @@ class _Grouper {
     var sorted = buckets.values.toList()
       ..sort((a, b) => a.$1.order.compareTo(b.$1.order));
 
-    List<AlbumPart> section(String text, List<AlbumPart> members) => [
-          Heading(text: text, level: level),
-          ...rest.isEmpty ? members : group(members, rest, level + 1),
-        ];
+    List<AlbumPart> section(String text, List<AlbumPart> members) {
+      var heading = Heading(text: text, level: level);
+      if (key == SearchGroup.album && members.isNotEmpty) {
+        var first = members.first;
+        if (first is AbstractImage) {
+          // Where the server said where the photos lie: to a member alone.
+          var folder = sourceFolderOf(ToImage.toImage(first));
+          if (folder != null) {
+            _headingAlbums[heading] = folder;
+          }
+        }
+      }
+      return [
+        heading,
+        ...rest.isEmpty ? members : group(members, rest, level + 1),
+      ];
+    }
 
     return [
       for (var (value, members) in sorted) ...section(value.text, members),

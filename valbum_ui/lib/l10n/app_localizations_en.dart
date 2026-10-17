@@ -4303,4 +4303,18 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get posterNotPlaying =>
       'The video shows no picture yet. Start it and pause it at the moment the thumbnail should show.';
+
+  @override
+  String get tileEditAction => 'Edit';
+
+  @override
+  String addCountToCollection(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Add $count photos to a collection…',
+      one: 'Add 1 photo to a collection…',
+    );
+    return '$_temp0';
+  }
 }

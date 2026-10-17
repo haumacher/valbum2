@@ -152,6 +152,10 @@ mixin ReturnReveal<T extends StatefulWidget> on State<T> {
     return key;
   }
 
+  /// Scrolls to the tile of the photo named [names] once the album is laid
+  /// out: the photo "Show in album" opened the album for (issue #289).
+  void revealPhoto(List<String> names) => _revealLater(names, _revealFrames);
+
   void _revealLater(List<String> names, int frames) {
     SchedulerBinding.instance.addPostFrameCallback((timeStamp) {
       if (!mounted) {

@@ -93,9 +93,18 @@ bool marked(String name) => find
 String countText(WidgetTester tester) =>
     tester.widget<Text>(find.byKey(const Key("select-mode-count"))).data!;
 
+/// A screen tall enough for every result: a new search shows the album
+/// headings (issue #289), which push the last photograph out of a small one.
+void tall(WidgetTester tester) {
+  tester.view.physicalSize = const Size(1200, 2400);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+}
+
 /// Opens the search view, finds the three photographs and long-presses [first].
 Future<SelectSpace> pumpSelected(WidgetTester tester, String first,
     {List<String> rights = const ["view", "download"]}) async {
+  tall(tester);
   var space = SelectSpace(rights: rights);
   await pumpRoute(tester, space, const SearchRoute([]));
   await chooseAnne(tester);
@@ -299,10 +308,13 @@ void main() {
       expect(countText(tester), l10n.selectedCount(1));
     });
 
-    testWidgets('without download a long press opens nothing', (tester) async {
+    testWidgets(
+        'without download the mode gathers for a collection alone '
+        '(issue #290)', (tester) async {
       await pumpSelected(tester, "2020 Trip/x.jpg", rights: const ["view"]);
-      expect(find.byKey(const Key("select-mode-bar")), findsNothing);
-      expect(find.byKey(const Key("search-criteria")), findsOneWidget);
+      expect(find.byKey(const Key("select-mode-bar")), findsOneWidget);
+      expect(find.byKey(const Key("select-mode-collect")), findsOneWidget);
+      expect(find.byKey(const Key("select-mode-download")), findsNothing);
       expect(find.byKey(const Key("edit-cancel")), findsNothing,
           reason: "Not the edit mode either: the view has none.");
     });
@@ -333,6 +345,7 @@ void main() {
 
     testWidgets('"Add to collection…" collects that one photograph',
         (tester) async {
+      tall(tester);
       var space = SelectSpace();
       await pumpRoute(tester, space, const SearchRoute([]));
       await chooseAnne(tester);

@@ -2103,6 +2103,13 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
   /// visit, and their names, see [freshIn]; `null` for none.
   (String, Set<String>)? _fresh;
 
+  /// The album "Show in album" opened and the photo it brings into view and
+  /// marks there, see [markIn]; `null` for none.
+  (String, String)? _marked;
+
+  /// Counts the calls of [markIn], so that a view reveals each mark once.
+  int _markVersion = 0;
+
   VAlbumRoute _route;
 
   /// Incremented by [reload], so that the view re-runs its load.
@@ -2141,6 +2148,7 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
     _searchSessions.clear();
     _newsSessions.clear();
     _fresh = null;
+    _marked = null;
     _version++;
     notifyListeners();
   }
@@ -2174,6 +2182,11 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
       // The visit of the album an entry of the bell was opened on is over:
       // its photographs are new no more (issue #268).
       _fresh = null;
+    }
+    var marked = _marked;
+    if (marked != null && marked.$1 != _pathKey(target.albumPath)) {
+      // The visit of the album "Show in album" opened is over (#289).
+      _marked = null;
     }
     if (target is SearchRoute) {
       var query = target.query;
@@ -2479,6 +2492,25 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
     var fresh = _fresh;
     return fresh != null && fresh.$1 == _pathKey(path) ? fresh.$2 : null;
   }
+
+  /// Marks the photo [name] of the album at [path] as the one "Show in album"
+  /// opened that album for (issue #289): the album brings it into view once
+  /// and marks its tile for as long as the visit of the album lasts, see
+  /// [markedIn].
+  void markIn(List<String> path, String name) {
+    _marked = (_pathKey(path), name);
+    _markVersion++;
+  }
+
+  /// The name of the photo of the album at [path] that "Show in album" opened
+  /// it for, `null` for none, see [markIn].
+  String? markedIn(List<String> path) {
+    var marked = _marked;
+    return marked != null && marked.$1 == _pathKey(path) ? marked.$2 : null;
+  }
+
+  /// Which call of [markIn] the current mark stems from.
+  int get markVersion => _markVersion;
 
   /// The album of the view of the entry of the bell of [key] in the album at
   /// [path]: its photographs alone, see [newsAlbumOf]. Marks them as new for

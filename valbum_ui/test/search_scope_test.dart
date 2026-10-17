@@ -8,6 +8,7 @@ import 'package:flutter/material.dart' hide Orientation;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:valbum_ui/main.dart';
+import 'package:valbum_ui/resource.dart';
 import 'package:valbum_ui/search_query.dart';
 
 import 'search_address_test.dart'
@@ -107,7 +108,7 @@ void main() {
 
     expect(delegate.route, const SearchRoute([]));
     expect(space.searched, ["/valbum/data/2024/Zoo/", "/valbum/data/"]);
-    var anne = const SearchCriteria(persons: ["p1"]);
+    var anne = const SearchCriteria(persons: ["p1"], groupBy: [SearchGroup.album]);
     expect(criteriaOf(space.posts("search").last), anne,
         reason: "The criteria are kept, the scope alone is widened.");
     expect(criteriaInLocation(delegate), anne,

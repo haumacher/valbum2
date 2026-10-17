@@ -865,6 +865,9 @@
   "newCollectionTitle": "Neue Sammlung",
   "newCollectionHint": "Eine Sammlung zeigt Fotos anderer Alben, ohne sie zu kopieren.",
   "collectionTakesNoMove": "Eine Sammlung enthält keine Dateien; Fotos kommen mit „Zur Sammlung hinzufügen“ hinein.",
+  "pickerNotCollection": "Keine Sammlung.",
+  "searchTakesNoPhotos": "Eine gespeicherte Suche enthält keine eigenen Fotos.",
+  "pickerNeedsCollection": "Fotos werden einer Sammlung hinzugefügt – wählen Sie eine aus oder erstellen Sie eine.",
   "createNewCollection": "Neue Sammlung erstellen…",
   "nothingToCollect": "Wählen Sie zuerst die Fotos aus.",
   "addToCollectionTitle": "Zur Sammlung hinzufügen",
@@ -1094,10 +1097,9 @@
   "letInDone": "Darf den Link wieder öffnen: {name}",
   "sharesOfAlbum": "Alle Freigaben…",
   "contactSharesEntry": "Freigaben…",
-  "pickerNotCollection": "Keine Sammlung.",
-  "searchTakesNoPhotos": "Eine gespeicherte Suche enthält keine eigenen Fotos.",
-  "pickerNeedsCollection": "Fotos werden einer Sammlung hinzugefügt – wählen Sie eine aus oder erstellen Sie eine.",
   "posterUse": "Als Vorschaubild verwenden",
   "posterReset": "Vorschaubild zurücksetzen",
-  "posterNotPlaying": "Das Video zeigt noch kein Bild. Starten Sie es und halten Sie es in dem Moment an, den das Vorschaubild zeigen soll."
+  "posterNotPlaying": "Das Video zeigt noch kein Bild. Starten Sie es und halten Sie es in dem Moment an, den das Vorschaubild zeigen soll.",
+  "tileEditAction": "Bearbeiten",
+  "addCountToCollection": "{count, plural, =1{1 Foto zu einer Sammlung hinzufügen…} other{{count} Fotos zu einer Sammlung hinzufügen…}}"
 }
