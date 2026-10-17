@@ -103,6 +103,17 @@ const Key cameraRollNoSpaceKey = Key("cameraRoll.noSpace");
 /// The key of the app-bar indicator shown while a sync runs.
 const Key cameraRollIndicatorKey = Key("cameraRoll.indicator");
 
+/// The dialog saying why the app asks to show notifications (issue #300), and
+/// its button that goes on to the system's question.
+const Key cameraRollNotificationsWhyKey = Key("cameraRoll.notificationsWhy");
+const Key cameraRollNotificationsAllowKey =
+    Key("cameraRoll.notificationsAllow");
+const Key cameraRollNotificationsNotNowKey =
+    Key("cameraRoll.notificationsNotNow");
+
+/// The line saying that the app may show no notifications (issue #300).
+const Key cameraRollNotificationsOffKey = Key("cameraRoll.notificationsOff");
+
 /// Makes the [CameraRollSync] available to the widget tree.
 class CameraRollScope extends InheritedNotifier<CameraRollSync> {
   const CameraRollScope({
@@ -141,6 +152,12 @@ class _CameraRollSectionState extends State<CameraRollSection> {
   /// where it failed — never an empty list that hides the failure.
   Loadable<List<PhotoAlbum>>? _albums;
 
+  /// Whether the device shows the notification of an upload (issue #300),
+  /// `null` until it was asked — and where there is no such notification.
+  bool? _notificationsAllowed;
+
+  bool _notificationsChecked = false;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -148,6 +165,64 @@ class _CameraRollSectionState extends State<CameraRollSection> {
       _albums = Loadable<List<PhotoAlbum>>(_loadAlbums);
       _albums!.load().ignore();
     }
+    if (!_notificationsChecked) {
+      _notificationsChecked = true;
+      unawaited(_checkNotifications());
+    }
+  }
+
+  /// Asks the device whether it shows the notification of an upload; asking
+  /// asks nobody, see [_askForNotifications].
+  Future<void> _checkNotifications() async {
+    var notifier = CameraRollScope.maybeOf(context)?.notifier;
+    if (notifier == null || !notifier.available) {
+      return;
+    }
+    var allowed = await notifier.allowed();
+    if (mounted) {
+      setState(() => _notificationsAllowed = allowed);
+    }
+  }
+
+  /// Asks for the permission to show the notification of an upload, when
+  /// the sync was just switched on (issue #300).
+  ///
+  /// The app says first what the notification is for and what doing without
+  /// it costs — nothing but the sight of the progress — and only then lets
+  /// the system ask; "Not now" asks nothing. The section says afterwards that
+  /// the notifications are off, where they are.
+  Future<void> _askForNotifications(CameraRollSync sync) async {
+    var notifier = sync.notifier;
+    if (!notifier.available) {
+      return;
+    }
+    if (!await notifier.allowed() && await notifier.askable() && mounted) {
+      var l10n = AppLocalizations.of(context)!;
+      var ask = await showAppDialog<bool>(
+        context: context,
+        builder: (context) => AppAlertDialog(
+          key: cameraRollNotificationsWhyKey,
+          title: Text(l10n.notificationsWhyTitle),
+          content: Text(l10n.notificationsWhyBody),
+          actions: [
+            TextButton(
+              key: cameraRollNotificationsNotNowKey,
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(l10n.notificationsNotNow),
+            ),
+            FilledButton(
+              key: cameraRollNotificationsAllowKey,
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text(l10n.notificationsAllow),
+            ),
+          ],
+        ),
+      );
+      if (ask == true) {
+        await notifier.request();
+      }
+    }
+    await _checkNotifications();
   }
 
   @override
@@ -307,6 +382,17 @@ class _CameraRollSectionState extends State<CameraRollSection> {
         const SizedBox(height: 16),
         Text(cameraRollLine(status, l10n), key: cameraRollStatusKey),
         _backgroundLine(sync),
+        // Refusals speak (issue #300): without the permission the upload runs
+        // all the same, and this says that only its progress is not seen.
+        if (config.enabled && _notificationsAllowed == false)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              l10n.cameraRollNotificationsOff,
+              key: cameraRollNotificationsOffKey,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
         if (status.running)
           Padding(
             padding: const EdgeInsets.only(top: 8),
@@ -552,6 +638,9 @@ class _CameraRollSectionState extends State<CameraRollSection> {
     // Switching the sync on is where the library is asked for access; the
     // albums it refused to name a moment ago can be named now.
     _reloadAlbums();
+    if (value && problem == null) {
+      await _askForNotifications(sync);
+    }
   }
 
   Future<void> _toggleWifiOnly(CameraRollSync sync, bool value) async {
@@ -566,7 +655,6 @@ class _CameraRollSectionState extends State<CameraRollSection> {
     setState(() => refusal = null);
     await sync.syncNow();
   }
-
 }
 
 /// How many albums [sourcesSummary] names before it counts the rest.
@@ -845,6 +933,11 @@ String cameraRollLine(CameraRollStatus status, AppLocalizations l10n) {
       return noticeOr(
           status.notice, status.message ?? l10n.noPhotoLibrary, l10n);
     case CameraRollPhase.running:
+      // A run handed over to the platform has not said yet what it found
+      // (issue #300).
+      if (status.total == 0) {
+        return l10n.cameraRollLooking;
+      }
       return l10n.cameraRollUploading(status.total, status.done + 1);
     case CameraRollPhase.waiting:
       // A run that waits for the index has not failed: it is postponed, and

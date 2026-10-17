@@ -49,6 +49,8 @@ import 'photo_library.dart';
 import 'resource.dart';
 import 'notices.dart';
 import 'settings.dart';
+import 'sync_notifier.dart';
+import 'sync_relay.dart';
 import 'upload_target.dart';
 
 /// What a guest is answered instead of a camera-roll sync, see issue #54.
@@ -466,6 +468,62 @@ class CameraRollStatus {
     this.lastTarget,
   });
 
+  /// This status as the plain values that cross from one isolate to another
+  /// (issue #300): a run carried out by a background work tells the app on
+  /// the screen what it is doing, see `sync_relay.dart`.
+  Map<String, Object?> toWire() => {
+        "phase": phase.name,
+        "done": done,
+        "total": total,
+        if (message != null) "message": message,
+        if (notice != null) "notice": noticeToWire(notice!),
+        if (nextAttempt != null)
+          "nextAttempt": nextAttempt!.toUtc().toIso8601String(),
+        if (lastSuccess != null)
+          "lastSuccess": lastSuccess!.toUtc().toIso8601String(),
+        "lastStored": lastStored,
+        "lastPresent": lastPresent,
+        "lastPresentIn": lastPresentIn,
+        if (indexingDone != null) "indexingDone": indexingDone,
+        if (indexingTotal != null) "indexingTotal": indexingTotal,
+        "lastSkipped": lastSkipped,
+        if (targetNotice != null) "targetNotice": noticeToWire(targetNotice!),
+        if (lastTarget != null) "lastTarget": lastTarget,
+      };
+
+  /// The status [wire] holds, see [toWire]; what it cannot read is left at
+  /// its default — a report is never a reason to fail.
+  static CameraRollStatus fromWire(Map<String, Object?> wire) {
+    int count(String key) => wire[key] is int ? wire[key] as int : 0;
+    int? optional(String key) => wire[key] is int ? wire[key] as int : null;
+    DateTime? time(String key) =>
+        wire[key] is String ? DateTime.tryParse(wire[key] as String) : null;
+    List<String> names(String key) => [
+          for (var name in (wire[key] is List ? wire[key] as List : [])) "$name"
+        ];
+    var phase = CameraRollPhase.values
+        .where((value) => value.name == wire["phase"])
+        .firstOrNull;
+    return CameraRollStatus(
+      phase: phase ?? CameraRollPhase.idle,
+      done: count("done"),
+      total: count("total"),
+      message: wire["message"] is String ? wire["message"] as String : null,
+      notice: noticeFromWire(wire["notice"]),
+      nextAttempt: time("nextAttempt"),
+      lastSuccess: time("lastSuccess"),
+      lastStored: count("lastStored"),
+      lastPresent: count("lastPresent"),
+      lastPresentIn: names("lastPresentIn"),
+      indexingDone: optional("indexingDone"),
+      indexingTotal: optional("indexingTotal"),
+      lastSkipped: names("lastSkipped"),
+      targetNotice: noticeFromWire(wire["targetNotice"]),
+      lastTarget:
+          wire["lastTarget"] is String ? wire["lastTarget"] as String : null,
+    );
+  }
+
   /// Whether the run is waiting for the server to finish indexing (issue #118).
   bool get indexing => indexingDone != null && indexingTotal != null;
 
@@ -759,6 +817,41 @@ class CameraRollSync extends ChangeNotifier {
   /// this device, read from the same [store] before every run.
   final UploadTargets targets;
 
+  /// The meeting point of the runs of this process (issue #300), `null` where
+  /// this engine is the only one that runs — every platform but Android, and
+  /// the tests that do not say otherwise.
+  ///
+  /// Every run of an engine with one holds its claim while it runs, so that no
+  /// two runs of the process upload side by side; the app on the screen
+  /// watches it and shows what a run elsewhere is doing. The configuration is
+  /// then read afresh before every change written to it: the other runs write
+  /// the same store.
+  final SyncRelay? relay;
+
+  /// Where the app on the screen hands its runs to (issue #300), `null` where
+  /// it carries them out itself.
+  ///
+  /// On Android a run of the app is carried out by a foreground work, which
+  /// the platform does not freeze when the screen goes off; this engine then
+  /// answers only what the device answers on its own — offline, no Wi-Fi —
+  /// and shows the progress the work reports through [relay].
+  final SyncHandover? handover;
+
+  /// The task name this engine's own runs carry over [relay].
+  final String runTask;
+
+  /// How long a run of this engine waits for another run of the process to
+  /// end, see [SyncRelay.claim].
+  final Duration claimPatience;
+
+  /// How often a handed-over run is looked after while it says nothing, see
+  /// [SyncHandover.pending].
+  final Duration handoverPoll;
+
+  /// The notification of the runs (issue #300): the settings section asks
+  /// through it for the permission to show one when the sync is switched on.
+  final SyncNotifier notifier;
+
   CameraRollConfig _config = CameraRollConfig.disabled;
   CameraRollStatus _status = const CameraRollStatus();
   bool _loaded = false;
@@ -778,6 +871,25 @@ class CameraRollSync extends ChangeNotifier {
   bool _pending = false;
   bool _stopRequested = false;
   int _attempt = 0;
+
+  /// Whether the last run ended for a reason a retry may fix, see
+  /// [RelayMessage.retryable].
+  bool _retryable = false;
+
+  /// The claim this engine's run holds, `null` while it holds none.
+  RunClaim? _claim;
+
+  /// Whether the last [runOnce] left the photos to another run, see
+  /// [claimMissed].
+  bool _claimMissed = false;
+
+  /// The end of the run handed over to [handover], while one is going on.
+  Completer<RelayMessage?>? _handoverEnd;
+  Timer? _handoverTimer;
+
+  /// The task of the run that spoke last over [relay].
+  String? _relayTask;
+  StreamSubscription<RelayMessage>? _relayWatch;
 
   Timer? _retryTimer;
   Timer? _scanTimer;
@@ -801,10 +913,16 @@ class CameraRollSync extends ChangeNotifier {
     DateTime Function()? clock,
     TimerFactory? timerFactory,
     UploadTargets? targets,
+    this.relay,
+    this.handover,
+    this.runTask = appRunTask,
+    this.claimPatience = Duration.zero,
+    this.handoverPoll = const Duration(seconds: 5),
+    this.notifier = const NoSyncNotifier(),
   })  : hashCache = hashCache ?? MemoryHashCache(),
         hashFile = hashFile ?? sha256OfFile,
-        targets =
-            targets ?? UploadTargets(store: store, clock: clock ?? DateTime.now),
+        targets = targets ??
+            UploadTargets(store: store, clock: clock ?? DateTime.now),
         callerOf = callerOf ?? _nobody,
         isOffline = isOffline ?? _never,
         scheduler = scheduler ?? const UnavailableBackgroundScheduler(),
@@ -869,6 +987,9 @@ class CameraRollSync extends ChangeNotifier {
       return;
     }
     _watch ??= library.changes.listen((_) => trigger());
+    // What a run elsewhere in the process does is shown here (issue #300):
+    // the one this app handed over, and the one a new photo started.
+    _relayWatch ??= relay?.watch().listen(_onRelay);
     // A run refused for the lack of Wi-Fi must start again when Wi-Fi is
     // back, without the user waiting for the next periodic scan (issue #36).
     _network ??= connectivity.changes.listen((kind) {
@@ -897,6 +1018,8 @@ class CameraRollSync extends ChangeNotifier {
   void _disarm() {
     _watch?.cancel();
     _watch = null;
+    _relayWatch?.cancel();
+    _relayWatch = null;
     _network?.cancel();
     _network = null;
     _scanTimer?.cancel();
@@ -941,7 +1064,17 @@ class CameraRollSync extends ChangeNotifier {
   /// completes, and the platform schedules the next run itself. The state
   /// machine, the watermark and every refusal are the ones of a foreground
   /// run, because it is the same run.
-  Future<CameraRollStatus> runOnce() async {
+  ///
+  /// Up to [passes] scans are made, one after the other while each found
+  /// something: a background run is started by a change of the library and
+  /// sees no change that comes while it runs, so a photo taken during an
+  /// upload is picked up by the next pass rather than by the next trigger
+  /// (issue #300).
+  ///
+  /// With a [relay] the run first waits for the claim; where it does not get
+  /// it within [claimPatience], it leaves the photos to the run that holds it
+  /// and says so in [claimMissed].
+  Future<CameraRollStatus> runOnce({int passes = 1}) async {
     if (_disposed || _running) {
       return _status;
     }
@@ -952,8 +1085,9 @@ class CameraRollSync extends ChangeNotifier {
     _running = true;
     _stopRequested = false;
     _armRetries = false;
+    _claimMissed = false;
     try {
-      await _runOnce();
+      _claimMissed = !await _runClaimed(passes: passes);
     } finally {
       _armRetries = true;
       _running = false;
@@ -962,10 +1096,37 @@ class CameraRollSync extends ChangeNotifier {
     return _status;
   }
 
+  /// Whether the last [runOnce] did not run, because another run of the
+  /// process held the claim for longer than [claimPatience] (issue #300).
+  bool get claimMissed => _claimMissed;
+
   /// Asks the running sync to stop after the batches it is transferring.
+  ///
+  /// A run carried out elsewhere in the process is asked through [relay]
+  /// (issue #300): the Stop button stops what the section shows, wherever it
+  /// runs.
   void stop() {
     _stopRequested = true;
     _pending = false;
+    if (_claim == null && relay != null) {
+      unawaited(_stopElsewhere());
+    }
+  }
+
+  Future<void> _stopElsewhere() async {
+    try {
+      var handover = this.handover;
+      var reached = await relay!.requestStop();
+      // A handed-over run that has not started yet is dropped instead: it
+      // would start the moment the run that was stopped gives way.
+      if (handover != null &&
+          _handoverEnd != null &&
+          (!reached || _relayTask != handover.task)) {
+        await handover.cancel();
+      }
+    } catch (_) {
+      // Nothing to stop is nothing to say.
+    }
   }
 
   /// Switches the sync on or off.
@@ -980,7 +1141,7 @@ class CameraRollSync extends ChangeNotifier {
     if (value && !await library.requestAccess()) {
       return library.accessProblem ?? const PhotoLibraryUnreadable();
     }
-    await _store(_config.copyWith(enabled: value));
+    await _update((config) => config.copyWith(enabled: value));
     if (value) {
       start();
     } else {
@@ -997,13 +1158,16 @@ class CameraRollSync extends ChangeNotifier {
   /// Never throws: a plugin that refuses is a reason to show, not a reason to
   /// keep the user from switching the sync on — the foreground sync works
   /// either way, see [backgroundProblem].
-  Future<void> _arrangeBackground(bool enabled) async {
+  Future<void> _arrangeBackground(bool enabled, {bool changed = false}) async {
     if (!scheduler.available) {
       return;
     }
     try {
       if (enabled) {
-        await scheduler.schedule(BackgroundNetwork.of(_config.wifiOnly));
+        await scheduler.schedule(
+          BackgroundNetwork.of(_config.wifiOnly),
+          changed: changed,
+        );
       } else {
         await scheduler.cancel();
       }
@@ -1034,9 +1198,9 @@ class CameraRollSync extends ChangeNotifier {
     if (value == _config.wifiOnly) {
       return;
     }
-    await _store(_config.copyWith(wifiOnly: value));
+    await _update((config) => config.copyWith(wifiOnly: value));
     if (_config.enabled) {
-      await _arrangeBackground(true);
+      await _arrangeBackground(true, changed: true);
     }
     if (!value && _config.enabled) {
       trigger();
@@ -1063,14 +1227,16 @@ class CameraRollSync extends ChangeNotifier {
     List<String> chosen, {
     List<PhotoAlbum> albums = const [],
   }) async {
-    var watched = _config.sourcesOf(albums).toSet();
-    var marks = {..._config.marks};
-    for (var source in chosen) {
-      if (!watched.contains(source) && !marks.containsKey(source)) {
-        marks[source] = SourceMark.beginning;
+    await _update((config) {
+      var watched = config.sourcesOf(albums).toSet();
+      var marks = {...config.marks};
+      for (var source in chosen) {
+        if (!watched.contains(source) && !marks.containsKey(source)) {
+          marks[source] = SourceMark.beginning;
+        }
       }
-    }
-    await _store(_config.copyWith(sources: [...chosen], marks: marks));
+      return config.copyWith(sources: [...chosen], marks: marks);
+    });
     _publish(_restingStatus());
     if (_config.enabled) {
       trigger();
@@ -1083,17 +1249,35 @@ class CameraRollSync extends ChangeNotifier {
   /// What is watched is not forgotten — that is a decision of the user, not
   /// progress.
   Future<void> forgetProgress() async {
-    await _store(CameraRollConfig(
-      enabled: _config.enabled,
-      wifiOnly: _config.wifiOnly,
-      sources: _config.sources,
-    ));
+    await _update((config) => CameraRollConfig(
+          enabled: config.enabled,
+          wifiOnly: config.wifiOnly,
+          sources: config.sources,
+        ));
     _publish(_restingStatus());
   }
 
   Future<void> _store(CameraRollConfig config) async {
     _config = config;
     await store.saveCameraRollConfig(config);
+  }
+
+  /// Writes [change] of the stored configuration.
+  ///
+  /// With a [relay], other runs of the process write the same store (issue
+  /// #300): the configuration is read afresh first, so that a watermark one
+  /// of them moved and a switch the user toggled meanwhile both survive.
+  Future<void> _update(
+      CameraRollConfig Function(CameraRollConfig stored) change) async {
+    if (relay != null) {
+      try {
+        await store.reload();
+      } catch (_) {
+        // What this engine read last is the best it has.
+      }
+      _config = await store.loadCameraRollConfig();
+    }
+    await _store(change(_config));
   }
 
   /// The status of a sync that is not doing anything at the moment.
@@ -1106,6 +1290,9 @@ class CameraRollSync extends ChangeNotifier {
 
   void _publish(CameraRollStatus status) {
     _status = status;
+    // Whoever watches the process sees the run this engine carries out
+    // (issue #300).
+    _claim?.publish(status.toWire());
     if (!_disposed) {
       notifyListeners();
     }
@@ -1123,7 +1310,9 @@ class CameraRollSync extends ChangeNotifier {
     _running = true;
     _stopRequested = false;
     try {
-      await _runOnce();
+      if (!await _handOver()) {
+        await _runClaimed();
+      }
     } finally {
       _running = false;
     }
@@ -1133,6 +1322,312 @@ class CameraRollSync extends ChangeNotifier {
     } else {
       _pending = false;
     }
+  }
+
+  /// Runs [passes] scans (see [runOnce]) holding the claim of [relay] where
+  /// there is one; answers `false` where another run held it for longer than
+  /// [claimPatience] and nothing ran.
+  Future<bool> _runClaimed({int passes = 1}) async {
+    var relay = this.relay;
+    if (relay == null) {
+      await _runPasses(passes);
+      return true;
+    }
+    var claim = await relay.claim(task: runTask, patience: claimPatience);
+    if (claim == null) {
+      // The run that holds it scans after this one asked, and the app on the
+      // screen shows what it does.
+      return false;
+    }
+    _claim = claim;
+    var stops = claim.stopRequests.listen((_) => stop());
+    try {
+      await _runPasses(passes);
+      claim.publish(_status.toWire(), finished: true, retryable: _retryable);
+    } finally {
+      _claim = null;
+      await stops.cancel();
+      await claim.release();
+    }
+    return true;
+  }
+
+  /// Runs up to [passes] scans, see [runOnce]; the status of the last one
+  /// sums up what all of them transferred.
+  Future<void> _runPasses(int passes) async {
+    var stored = 0;
+    var present = 0;
+    var presentIn = <String>[];
+    var skipped = <String>[];
+    AppNotice? targetNotice;
+    var ran = 0;
+    for (var pass = 0; pass < passes; pass++) {
+      await _runOnce();
+      ran++;
+      var status = _status;
+      if (status.phase == CameraRollPhase.idle) {
+        stored += status.lastStored;
+        present += status.lastPresent;
+        presentIn.addAll(
+            status.lastPresentIn.where((where) => !presentIn.contains(where)));
+        skipped.addAll(
+            status.lastSkipped.where((name) => !skipped.contains(name)));
+        targetNotice ??= status.targetNotice;
+      }
+      if (_stopRequested ||
+          status.phase != CameraRollPhase.idle ||
+          _stats.seen == 0) {
+        break;
+      }
+    }
+    if (ran > 1 && _status.phase == CameraRollPhase.idle) {
+      _publish(_status.copyWith(
+        lastStored: stored,
+        lastPresent: present,
+        lastPresentIn: presentIn,
+        lastSkipped: skipped,
+        targetNotice: targetNotice,
+      ));
+    }
+  }
+
+  /// Hands the run over to [handover] and follows it to its end (issue #300);
+  /// answers `false` where there is nobody to hand it to, nothing to upload,
+  /// or the platform refused it — the engine then runs it itself.
+  ///
+  /// What the device answers on its own is answered here, before the
+  /// platform is asked for anything: a run that is refused for the lack of
+  /// Wi-Fi does not need a foreground work to say so, and one that finds
+  /// nothing new — the scan at every start of the app, the periodic one —
+  /// ends in a moment, screen or no screen.
+  Future<bool> _handOver() async {
+    var handover = this.handover;
+    if (handover == null || relay == null) {
+      return false;
+    }
+    if (await _refusedOnDevice()) {
+      return true;
+    }
+    if (!await _somethingNew()) {
+      return false;
+    }
+    var end = Completer<RelayMessage?>();
+    _handoverEnd = end;
+    try {
+      // A run handed over before may still be finishing after it said its
+      // last word; asked for now, the platform would take this request for
+      // that run and drop it.
+      await _whileStillPending(handover);
+      bool accepted;
+      try {
+        accepted = await handover.request();
+      } catch (_) {
+        accepted = false;
+      }
+      if (!accepted) {
+        return false;
+      }
+      if (!_status.running) {
+        // Until the work reports, the section says that something happens.
+        _publish(_status.copyWith(
+          phase: CameraRollPhase.running,
+          done: 0,
+          total: 0,
+        ));
+      }
+      _lookAfter(handover, end);
+      var message = await end.future;
+      if (_disposed) {
+        return true;
+      }
+      await _reloadAfterRemote();
+      _applyRemoteEnd(message);
+      return true;
+    } finally {
+      _handoverTimer?.cancel();
+      _handoverTimer = null;
+      _handoverEnd = null;
+    }
+  }
+
+  /// Whether a watched album holds a photo its watermark has not passed — the
+  /// first question of a run, asked before a foreground work is (issue #300).
+  ///
+  /// Where the library cannot answer, the answer is "yes": the run that is
+  /// handed over finds out and says why.
+  Future<bool> _somethingNew() async {
+    try {
+      if (!await library.requestAccess()) {
+        // The run of this engine says so, without a foreground work.
+        return false;
+      }
+      for (var source in await _sources()) {
+        var mark = _config.markOf(source);
+        var items = await library.itemsSince(
+          mark.since,
+          sources:
+              source == CameraRollConfig.wholeLibrary ? const [] : [source],
+        );
+        var done = mark.done.toSet();
+        if (items.any((item) => !done.contains(item.id))) {
+          return true;
+        }
+      }
+      return false;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// Waits, a few [handoverPoll]s at most, while a run handed over before is
+  /// still pending.
+  Future<void> _whileStillPending(SyncHandover handover) async {
+    for (var round = 0; round < 3 && !_disposed; round++) {
+      bool pending;
+      try {
+        pending = await handover.pending();
+      } catch (_) {
+        return;
+      }
+      if (!pending) {
+        return;
+      }
+      var waited = Completer<void>();
+      _handoverTimer = timerFactory(handoverPoll, waited.complete);
+      await waited.future;
+      _handoverTimer = null;
+    }
+  }
+
+  /// Checks every [handoverPoll] whether the handed-over run is still to come
+  /// or going on; a work the platform dropped or that ended without a word —
+  /// stopped, cut off, crashed — ends the wait.
+  void _lookAfter(SyncHandover handover, Completer<RelayMessage?> end) {
+    _handoverTimer = timerFactory(handoverPoll, () async {
+      _handoverTimer = null;
+      if (end.isCompleted) {
+        return;
+      }
+      bool pending;
+      try {
+        pending = await handover.pending();
+      } catch (_) {
+        pending = false;
+      }
+      if (end.isCompleted) {
+        return;
+      }
+      if (pending && !_disposed) {
+        _lookAfter(handover, end);
+      } else {
+        end.complete(null);
+      }
+    });
+  }
+
+  /// What a run elsewhere in the process says (issue #300).
+  void _onRelay(RelayMessage message) {
+    if (_disposed || _claim != null) {
+      // This engine's own run speaks for itself.
+      return;
+    }
+    _relayTask = message.task;
+    if (!message.finished) {
+      _publish(CameraRollStatus.fromWire(message.status));
+      return;
+    }
+    var end = _handoverEnd;
+    if (end != null && !end.isCompleted && message.task == handover?.task) {
+      end.complete(message);
+      return;
+    }
+    unawaited(_afterRemoteRun(message));
+  }
+
+  /// A run this engine did not hand over ended — one a new photo started, or
+  /// the periodic one — while the app looks.
+  Future<void> _afterRemoteRun(RelayMessage message) async {
+    await _reloadAfterRemote();
+    if (_disposed) {
+      return;
+    }
+    if (_running) {
+      // A run of this engine is still to come; it says what it does, and no
+      // retry of the other one is armed beside it.
+      _publish(CameraRollStatus.fromWire(message.status));
+      return;
+    }
+    _applyRemoteEnd(message);
+  }
+
+  /// Reads what a run elsewhere in the process wrote: the watermark, its
+  /// report and the upload target it may have cleared or followed.
+  Future<void> _reloadAfterRemote() async {
+    try {
+      await store.reload();
+    } catch (_) {
+      // What this engine read last is the best it has.
+    }
+    _config = await store.loadCameraRollConfig();
+    _lastBackgroundRun = await store.loadBackgroundRunRecord();
+    await targets.load();
+  }
+
+  /// Takes over how a run elsewhere ended, [message]; `null` where it ended
+  /// without a word.
+  ///
+  /// A failure that a retry may fix is retried from here, with this engine's
+  /// back-off: the run that failed is gone, the app is still looking.
+  void _applyRemoteEnd(RelayMessage? message) {
+    if (_disposed) {
+      return;
+    }
+    if (message == null) {
+      _publish(_restingStatus());
+      return;
+    }
+    var status = CameraRollStatus.fromWire(message.status);
+    if (!_config.enabled) {
+      _publish(_restingStatus());
+      return;
+    }
+    switch (status.phase) {
+      case CameraRollPhase.idle:
+        _attempt = 0;
+        _retryTimer?.cancel();
+        _retryTimer = null;
+        _publish(status);
+      case CameraRollPhase.waiting when status.indexing:
+        _status = status;
+        _defer(status.indexingDone!, status.indexingTotal!);
+      case CameraRollPhase.waiting || CameraRollPhase.failed
+          when message.retryable:
+        _status = status;
+        _fail(message: status.message, notice: status.notice);
+      default:
+        _publish(status);
+    }
+  }
+
+  /// The refusals the device answers on its own, before anything is asked of
+  /// the server or of the platform; `true` where the run was refused, which
+  /// it said.
+  Future<bool> _refusedOnDevice() async {
+    if (isOffline()) {
+      _fail(notice: const ServerOffline());
+      return true;
+    }
+    if (_config.wifiOnly) {
+      var kind = await connectivity.current();
+      if (!kind.unmetered) {
+        // Retried, not abandoned: the device moves back onto a Wi-Fi sooner
+        // or later, and the change stream starts a run right then, see
+        // [start].
+        _fail(notice: kind.refusal);
+        return true;
+      }
+    }
+    return false;
   }
 
   /// [_runInner], and the timing record of it, see [SyncRunStats].
@@ -1164,19 +1659,8 @@ class CameraRollSync extends ChangeNotifier {
   }
 
   Future<void> _runInner() async {
-    if (isOffline()) {
-      _fail(notice: const ServerOffline());
+    if (await _refusedOnDevice()) {
       return;
-    }
-    if (_config.wifiOnly) {
-      var kind = await connectivity.current();
-      if (!kind.unmetered) {
-        // Retried, not abandoned: the device moves back onto a Wi-Fi sooner
-        // or later, and the change stream starts a run right then, see
-        // [start].
-        _fail(notice: kind.refusal);
-        return;
-      }
     }
     var client = clientOf();
     if (client == null) {
@@ -1495,8 +1979,8 @@ class CameraRollSync extends ChangeNotifier {
                     return const _Outcome(started: false);
                   }
                   try {
-                    var summary = await _sendSkippingUnsupported(
-                        segment.send, sendItems);
+                    var summary =
+                        await _sendSkippingUnsupported(segment.send, sendItems);
                     if (summary.deferred) {
                       halt = true;
                     } else {
@@ -1713,24 +2197,26 @@ class CameraRollSync extends ChangeNotifier {
   /// can never be offered again, because the next scan of this album starts
   /// at its watermark.
   Future<void> _advance(String source, List<PhotoItem> batch) async {
-    var previous = _config.markOf(source);
-    var stamp = previous.since;
-    for (var item in batch) {
-      if (stamp == null || item.takenAt.isAfter(stamp)) {
-        stamp = item.takenAt;
+    await _update((config) {
+      var previous = config.markOf(source);
+      var stamp = previous.since;
+      for (var item in batch) {
+        if (stamp == null || item.takenAt.isAfter(stamp)) {
+          stamp = item.takenAt;
+        }
       }
-    }
-    var kept = <String>{
-      // The previously recorded ids belong to the previous watermark; they
-      // survive only while that watermark is still the current one.
-      if (stamp == previous.since) ...previous.done,
-      for (var item in batch)
-        if (item.takenAt == stamp) item.id,
-    };
-    await _store(_config.withMark(
-      source,
-      SourceMark(since: stamp, done: kept.toList()),
-    ));
+      var kept = <String>{
+        // The previously recorded ids belong to the previous watermark; they
+        // survive only while that watermark is still the current one.
+        if (stamp == previous.since) ...previous.done,
+        for (var item in batch)
+          if (item.takenAt == stamp) item.id,
+      };
+      return config.withMark(
+        source,
+        SourceMark(since: stamp, done: kept.toList()),
+      );
+    });
   }
 
   void _succeed(
@@ -1741,6 +2227,7 @@ class CameraRollSync extends ChangeNotifier {
     UploadRoute route,
   ) {
     _attempt = 0;
+    _retryable = false;
     _retryTimer?.cancel();
     _retryTimer = null;
     _publish(CameraRollStatus(
@@ -1762,6 +2249,7 @@ class CameraRollSync extends ChangeNotifier {
   /// — the index finishes on its own — and the attempt counter is left alone,
   /// so a real failure afterwards still starts its backoff at the beginning.
   void _defer(int done, int total) {
+    _retryable = true;
     var delay = nextDelay;
     _retryTimer?.cancel();
     _retryTimer = timerFactory(delay, () {
@@ -1787,7 +2275,7 @@ class CameraRollSync extends ChangeNotifier {
     if (_config.syncWhileIndexing == value) {
       return;
     }
-    await _store(_config.copyWith(syncWhileIndexing: value));
+    await _update((config) => config.copyWith(syncWhileIndexing: value));
     if (value && _config.enabled) {
       trigger();
     }
@@ -1798,6 +2286,7 @@ class CameraRollSync extends ChangeNotifier {
   /// Exactly one of the two is given: [message] is what the **server** said,
   /// verbatim, and [notice] is the app's own reason as data, see issue #108.
   void _fail({String? message, AppNotice? notice, bool retry = true}) {
+    _retryable = retry;
     if (!retry || !_armRetries) {
       _publish(_status.copyWith(
         phase: CameraRollPhase.failed,
@@ -1857,6 +2346,12 @@ class CameraRollSync extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _disarm();
+    _handoverTimer?.cancel();
+    _handoverTimer = null;
+    var end = _handoverEnd;
+    if (end != null && !end.isCompleted) {
+      end.complete(null);
+    }
     super.dispose();
   }
 }

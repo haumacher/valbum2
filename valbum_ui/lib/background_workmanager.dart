@@ -8,13 +8,39 @@
 ///
 /// What the platform needs beside this file:
 ///
-///  * Android: nothing in the app's manifest. The plugin's own manifest brings
-///    `WorkManager` and its permissions; the periodic work is registered from
-///    Dart, with the platform minimum of fifteen minutes and the constraints
-///    "the battery is not low" and the network requirement the sync asks for
-///    — `unmetered` while the Wi-Fi-only switch is on, `connected` otherwise
-///    (issue #43). `WorkManager` then keeps the wake-up back instead of
-///    starting the app on a mobile connection just to have the run refuse.
+///  * Android: the plugin's own manifest brings `WorkManager` and its
+///    permissions; the periodic work is registered from Dart, with the
+///    platform minimum of fifteen minutes and the constraints "the battery is
+///    not low" and the network requirement the sync asks for — `unmetered`
+///    while the Wi-Fi-only switch is on, `connected` otherwise (issue #43).
+///    `WorkManager` then keeps the wake-up back instead of starting the app on
+///    a mobile connection just to have the run refuse.
+///
+///    Beside it two one-off works (issue #300), both run as foreground works
+///    of the type `dataSync`, which `android/gradle.properties` switches on
+///    for the plugin (`workmanager.enableDataSyncForegroundService`, which
+///    brings `FOREGROUND_SERVICE_DATA_SYNC`):
+///
+///     - [backgroundTriggerTaskName], with a content trigger on the images
+///       and the videos of `MediaStore` and the same constraints as the
+///       periodic work: the platform starts it some ten seconds after the
+///       library changed — a photo was taken — with the app closed. A work
+///       with a content trigger runs once, so its run registers the next one
+///       behind itself ([rearmTrigger], policy `append`); [schedule] keeps
+///       the one that waits or runs, and replaces it where the Wi-Fi-only
+///       switch was toggled;
+///     - [backgroundUploadTaskName], the run the app on the screen hands over
+///       ([WorkmanagerHandover]), without constraints: the app answered what
+///       the device answers on its own before it asked, and the run says why
+///       it refuses the rest instead of waiting silently for a network.
+///
+///    A foreground work shows a notification for as long as it runs; the
+///    platform does not freeze an app that has one and keeps the device awake
+///    for it, so an upload goes on with the screen off. From Android 12 on the
+///    platform may refuse a foreground work an app starts from the background
+///    — a new photo, with the app closed; the plugin then runs the work as an
+///    ordinary one, which the platform gives some minutes, enough for a photo
+///    or two, and the next trigger or the app picks up the rest.
 ///  * iOS: the [backgroundSyncTaskName] listed under
 ///    `BGTaskSchedulerPermittedIdentifiers` and `fetch` under
 ///    `UIBackgroundModes` in `Runner/Info.plist`. The plugin registers the
@@ -37,7 +63,17 @@ import 'dart:io';
 import 'package:workmanager/workmanager.dart';
 
 import 'background.dart';
+import 'locales.dart';
 import 'notices.dart';
+import 'sync_notifier.dart';
+
+/// The library of `MediaStore` a new photo or video lands in, observed by the
+/// trigger work (issue #300). The sync uploads both, see
+/// `photo_library_manager.dart`.
+const List<String> mediaStoreTriggerUris = [
+  "content://media/external/images/media",
+  "content://media/external/video/media",
+];
 
 /// Periodic background execution through `workmanager`.
 class WorkmanagerScheduler extends BackgroundScheduler {
@@ -50,8 +86,16 @@ class WorkmanagerScheduler extends BackgroundScheduler {
   /// platform round trip, so it happens once.
   bool _initialized = false;
 
-  WorkmanagerScheduler({Workmanager? workmanager})
-      : _workmanager = workmanager ?? Workmanager();
+  /// Whether this is Android, which has the content trigger and the
+  /// foreground works (issue #300); iOS keeps its one periodic task.
+  final bool _android;
+
+  WorkmanagerScheduler({Workmanager? workmanager, bool? android})
+      : _workmanager = workmanager ?? Workmanager(),
+        _android = android ?? Platform.isAndroid;
+
+  /// The workmanager this scheduler registers with, for [WorkmanagerHandover].
+  Workmanager get workmanager => _workmanager;
 
   @override
   bool get available => true;
@@ -60,7 +104,8 @@ class WorkmanagerScheduler extends BackgroundScheduler {
   AppNotice? get unavailableReason => null;
 
   @override
-  Future<void> schedule(BackgroundNetwork network) async {
+  Future<void> schedule(BackgroundNetwork network,
+      {bool changed = false}) async {
     await _initialize();
     await _workmanager.registerPeriodicTask(
       backgroundSyncTaskName,
@@ -81,12 +126,62 @@ class WorkmanagerScheduler extends BackgroundScheduler {
       // and `update` keeps the timing of the task that is already waiting.
       existingWorkPolicy: ExistingPeriodicWorkPolicy.update,
     );
+    if (_android) {
+      // `keep` leaves a trigger that waits or runs as it is — a running one
+      // registers its successor itself — and registers one anew where there
+      // is none; a changed requirement replaces it, so that the constraint
+      // follows the switch. The state of the work is not asked: the plugin
+      // answers it for the first work of the name, which for a chain of
+      // triggers is one that finished long ago.
+      await _registerTrigger(
+        network,
+        changed ? ExistingWorkPolicy.replace : ExistingWorkPolicy.keep,
+      );
+    }
   }
+
+  @override
+  Future<void> rearmTrigger(BackgroundNetwork network) async {
+    if (!_android) {
+      return;
+    }
+    // No initialize: this runs in the background isolate the plugin started
+    // with the dispatcher it has stored already.
+    await _registerTrigger(network, ExistingWorkPolicy.append);
+  }
+
+  /// Registers the work started by a change of the photo library, see the
+  /// library comment.
+  Future<void> _registerTrigger(
+    BackgroundNetwork network,
+    ExistingWorkPolicy policy,
+  ) =>
+      _workmanager.registerOneOffTask(
+        backgroundTriggerTaskName,
+        backgroundTriggerTaskName,
+        constraints: Constraints(
+          networkType: _networkType(network),
+          // Like the periodic work: a nearly empty battery waits for the
+          // charger, and the app on the screen still syncs on request.
+          requiresBatteryNotLow: true,
+          contentUriTriggers: [
+            for (var uri in mediaStoreTriggerUris)
+              ContentUriTrigger(uri: uri, triggerForDescendants: true),
+          ],
+        ),
+        existingWorkPolicy: policy,
+        foregroundServiceConfig:
+            syncForegroundConfig(backgroundTriggerTaskName),
+      );
 
   @override
   Future<void> cancel() async {
     await _initialize();
     await _workmanager.cancelByUniqueName(backgroundSyncTaskName);
+    if (_android) {
+      await _workmanager.cancelByUniqueName(backgroundTriggerTaskName);
+      await _workmanager.cancelByUniqueName(backgroundUploadTaskName);
+    }
   }
 
   /// The plugin's constraint for [network].
@@ -107,7 +202,64 @@ class WorkmanagerScheduler extends BackgroundScheduler {
   }
 }
 
+/// The foreground work of a run of [task] (issue #300): the notification the
+/// platform shows from the moment the work starts, until the run reports what
+/// it uploads, see `sync_notifier.dart`.
+///
+/// Worded with [platformMessages]: the work is registered from whichever
+/// isolate, and the notification is read on the device, in its language.
+ForegroundServiceConfig syncForegroundConfig(String task) {
+  var messages = platformMessages;
+  return ForegroundServiceConfig(
+    notificationTitle: messages.syncNotificationTitle,
+    notificationText: messages.cameraRollLooking,
+    notificationChannelId: syncNotificationChannelId,
+    notificationChannelName: messages.syncNotificationChannel,
+    notificationId: syncNotificationIdOf(task),
+    foregroundServiceType: ForegroundServiceType.dataSync,
+  );
+}
+
+/// The [SyncHandover] of Android: the foreground work
+/// [backgroundUploadTaskName] (issue #300).
+class WorkmanagerHandover extends SyncHandover {
+  final WorkmanagerScheduler scheduler;
+
+  const WorkmanagerHandover(this.scheduler);
+
+  @override
+  String get task => backgroundUploadTaskName;
+
+  @override
+  Future<bool> request() async {
+    await scheduler._initialize();
+    await scheduler.workmanager.registerOneOffTask(
+      backgroundUploadTaskName,
+      backgroundUploadTaskName,
+      // A run that is waiting or going on is the run asked for: the app
+      // follows it, and asks again once it is over if something came
+      // meanwhile.
+      existingWorkPolicy: ExistingWorkPolicy.keep,
+      constraints: Constraints(networkType: NetworkType.notRequired),
+      foregroundServiceConfig: syncForegroundConfig(backgroundUploadTaskName),
+    );
+    return true;
+  }
+
+  @override
+  Future<bool> pending() async {
+    var info =
+        await scheduler.workmanager.getWorkInfo(backgroundUploadTaskName);
+    return info?.state == WorkState.scheduled ||
+        info?.state == WorkState.running;
+  }
+
+  @override
+  Future<void> cancel() =>
+      scheduler.workmanager.cancelByUniqueName(backgroundUploadTaskName);
+}
+
 /// Hands [task] to the plugin as the body of the background run, see
-/// [backgroundSyncDispatcher].
-void runWorkmanagerTask(Future<bool> Function() task) =>
-    Workmanager().executeTask((name, input) => task());
+/// [backgroundSyncDispatcher]; it is handed the name of the task.
+void runWorkmanagerTask(Future<bool> Function(String task) task) =>
+    Workmanager().executeTask((name, input) => task(name));

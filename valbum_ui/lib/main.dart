@@ -36,6 +36,8 @@ export 'routes.dart';
 export 'settings.dart';
 export 'share_session.dart';
 export 'share_view.dart';
+export 'sync_notifier.dart';
+export 'sync_relay.dart';
 export 'thumbnails.dart';
 export 'upload_progress.dart';
 export 'urls.dart';

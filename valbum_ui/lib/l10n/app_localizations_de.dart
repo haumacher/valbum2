@@ -4472,4 +4472,46 @@ class AppLocalizationsDe extends AppLocalizations {
   @override
   String get cameraRollNoDeviceAlbums =>
       'Das Gerät nennt keine Alben, aus denen ausgewählt werden kann.';
+
+  @override
+  String get cameraRollLooking => 'Suche nach neuen Fotos...';
+
+  @override
+  String get syncNotificationTitle => 'Synchronisierung der Kamerarolle';
+
+  @override
+  String get syncNotificationChannel => 'Foto-Upload';
+
+  @override
+  String syncNotificationUploading(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Fotos werden hochgeladen...',
+      one: '1 Foto wird hochgeladen...',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get notificationsWhyTitle =>
+      'Den Upload in einer Benachrichtigung anzeigen?';
+
+  @override
+  String get notificationsWhyBody =>
+      'Während neue Fotos hochgeladen werden, zeigt VAlbum eine Benachrichtigung mit dem Fortschritt an, auch bei ausgeschaltetem Bildschirm. Ohne diese Berechtigung läuft der Upload trotzdem, Sie sehen ihn nur nicht.';
+
+  @override
+  String get notificationsAllow => 'Zulassen';
+
+  @override
+  String get notificationsNotNow => 'Nicht jetzt';
+
+  @override
+  String get cameraRollNotificationsOff =>
+      'Benachrichtigungen sind deaktiviert: Neue Fotos werden trotzdem hochgeladen, aber Sie sehen den Fortschritt nicht. Erlauben Sie die Benachrichtigungen von VAlbum in den Systemeinstellungen, um den Fortschritt zu sehen.';
+
+  @override
+  String get backgroundSyncBusy =>
+      'Eine andere Synchronisierung lief bereits und hat die neuen Fotos mitgenommen.';
 }

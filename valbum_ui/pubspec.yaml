@@ -68,6 +68,11 @@ dependencies:
   # repository, reached only through `lib/phone_contacts.dart`.
   contact_pick:
     path: packages/contact_pick
+  # The notification of a camera-roll upload and the permission to show it
+  # (issue #300); a plugin of this repository, reached only through
+  # `lib/sync_notifier.dart`, and only on Android.
+  sync_notification:
+    path: packages/sync_notification
   # Keeping the screen on while an upload runs (issue #63); reached only through
   # `lib/wakelock_plugin.dart`.
   wakelock_plus: ^1.8.0

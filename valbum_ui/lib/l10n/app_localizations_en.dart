@@ -4415,4 +4415,45 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get cameraRollNoDeviceAlbums =>
       'The device names no albums to choose from.';
+
+  @override
+  String get cameraRollLooking => 'Looking for new photos...';
+
+  @override
+  String get syncNotificationTitle => 'Camera-roll sync';
+
+  @override
+  String get syncNotificationChannel => 'Photo upload';
+
+  @override
+  String syncNotificationUploading(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Uploading $count photos...',
+      one: 'Uploading 1 photo...',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get notificationsWhyTitle => 'Show the upload in a notification?';
+
+  @override
+  String get notificationsWhyBody =>
+      'While new photos are uploaded, VAlbum shows a notification with the progress, also with the screen off. Without the permission the upload runs all the same, but you do not see it.';
+
+  @override
+  String get notificationsAllow => 'Allow';
+
+  @override
+  String get notificationsNotNow => 'Not now';
+
+  @override
+  String get cameraRollNotificationsOff =>
+      'Notifications are off: new photos are uploaded all the same, but you do not see the progress. Allow VAlbum\'s notifications in the system settings to see it.';
+
+  @override
+  String get backgroundSyncBusy =>
+      'Another sync was running and took the new photos along.';
 }

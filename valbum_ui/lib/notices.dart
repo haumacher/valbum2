@@ -309,3 +309,127 @@ String noticeText(AppNotice notice, AppLocalizations l10n) => switch (notice) {
       UploadTargetFollowed(before: var before, album: var album) =>
         l10n.noticeUploadTargetFollowed(before, album),
     };
+
+/// [notice] as plain values that cross from one isolate to another (issue
+/// #300).
+///
+/// A background run reports what it is doing to the app on the screen, and the
+/// two run in isolates of different engines, which exchange nothing but plain
+/// values. A tag of its own per kind rather than the class name, which a
+/// release build may shorten; [noticeFromWire] reads it back.
+List<Object?> noticeToWire(AppNotice notice) => switch (notice) {
+      GuestHasNoSpace() => const ["guestNoSpace"],
+      NoInboxForCaller() => const ["noInbox"],
+      NoServerConfigured() => const ["noServer"],
+      ServerOffline() => const ["offline"],
+      ServerUnreachable(problem: var problem) => ["unreachable", problem],
+      PhotoLibraryUnreadable() => const ["libraryUnreadable"],
+      PhotoLibraryFailed(problem: var problem) => ["libraryFailed", problem],
+      PhotoLibraryOpenFailed(problem: var problem) => [
+          "libraryOpenFailed",
+          problem
+        ],
+      PhotoAccessDenied() => const ["accessDenied"],
+      MediaLocationNotGranted() => const ["mediaLocation"],
+      PhotoNotOnDevice(name: var name) => ["notOnDevice", name],
+      NoPhotoLibraryHere() => const ["noLibraryHere"],
+      NoPhotoLibraryPlatform() => const ["noLibraryPlatform"],
+      NoPhotoLibraryBrowser() => const ["noLibraryBrowser"],
+      BackgroundScheduleFailed(problem: var problem) => [
+          "scheduleFailed",
+          problem
+        ],
+      BackgroundUnscheduleFailed(problem: var problem) => [
+          "unscheduleFailed",
+          problem
+        ],
+      NoBackgroundSyncHere() => const ["noBackgroundHere"],
+      NoBackgroundSyncInBrowser() => const ["noBackgroundBrowser"],
+      NoBackgroundSyncInApp() => const ["noBackgroundApp"],
+      NoBackgroundSyncInTest() => const ["noBackgroundTest"],
+      NoNetworkForSync() => const ["noNetwork"],
+      NoWifiMobile() => const ["noWifiMobile"],
+      NoWifiOther() => const ["noWifiOther"],
+      UploadTargetExpired(album: var album, until: var until) => [
+          "targetExpired",
+          album,
+          until.toIso8601String()
+        ],
+      UploadTargetGone(album: var album) => ["targetGone", album],
+      UploadTargetRefused(album: var album) => ["targetRefused", album],
+      UploadTargetNotAlbum(album: var album) => ["targetNotAlbum", album],
+      UploadTargetFollowed(before: var before, album: var album) => [
+          "targetFollowed",
+          before,
+          album
+        ],
+    };
+
+/// The notice [wire] holds, see [noticeToWire]; `null` for anything this
+/// version does not know — a report is never a reason to fail.
+AppNotice? noticeFromWire(Object? wire) {
+  if (wire is! List || wire.isEmpty) {
+    return null;
+  }
+  String at(int index) => index < wire.length ? "${wire[index] ?? ""}" : "";
+  switch (wire.first) {
+    case "guestNoSpace":
+      return const GuestHasNoSpace();
+    case "noInbox":
+      return const NoInboxForCaller();
+    case "noServer":
+      return const NoServerConfigured();
+    case "offline":
+      return const ServerOffline();
+    case "unreachable":
+      return ServerUnreachable(at(1));
+    case "libraryUnreadable":
+      return const PhotoLibraryUnreadable();
+    case "libraryFailed":
+      return PhotoLibraryFailed(at(1));
+    case "libraryOpenFailed":
+      return PhotoLibraryOpenFailed(at(1));
+    case "accessDenied":
+      return const PhotoAccessDenied();
+    case "mediaLocation":
+      return const MediaLocationNotGranted();
+    case "notOnDevice":
+      return PhotoNotOnDevice(at(1));
+    case "noLibraryHere":
+      return const NoPhotoLibraryHere();
+    case "noLibraryPlatform":
+      return const NoPhotoLibraryPlatform();
+    case "noLibraryBrowser":
+      return const NoPhotoLibraryBrowser();
+    case "scheduleFailed":
+      return BackgroundScheduleFailed(at(1));
+    case "unscheduleFailed":
+      return BackgroundUnscheduleFailed(at(1));
+    case "noBackgroundHere":
+      return const NoBackgroundSyncHere();
+    case "noBackgroundBrowser":
+      return const NoBackgroundSyncInBrowser();
+    case "noBackgroundApp":
+      return const NoBackgroundSyncInApp();
+    case "noBackgroundTest":
+      return const NoBackgroundSyncInTest();
+    case "noNetwork":
+      return const NoNetworkForSync();
+    case "noWifiMobile":
+      return const NoWifiMobile();
+    case "noWifiOther":
+      return const NoWifiOther();
+    case "targetExpired":
+      var until = DateTime.tryParse(at(2));
+      return until == null ? null : UploadTargetExpired(at(1), until);
+    case "targetGone":
+      return UploadTargetGone(at(1));
+    case "targetRefused":
+      return UploadTargetRefused(at(1));
+    case "targetNotAlbum":
+      return UploadTargetNotAlbum(at(1));
+    case "targetFollowed":
+      return UploadTargetFollowed(at(1), at(2));
+  }
+  return null;
+}

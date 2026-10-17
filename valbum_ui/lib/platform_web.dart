@@ -7,6 +7,8 @@ import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 
 import 'background.dart';
+import 'sync_notifier.dart';
+import 'sync_relay.dart';
 import 'client.dart';
 import 'downloads.dart';
 import 'hash_cache.dart';
@@ -90,7 +92,17 @@ BackgroundScheduler defaultBackgroundScheduler() =>
     const UnavailableBackgroundScheduler(NoBackgroundSyncInBrowser());
 
 /// Runs [task] as the platform's background task: never, in a browser.
-void executeBackgroundTask(Future<bool> Function() task) {}
+void executeBackgroundTask(Future<bool> Function(String task) task) {}
+
+/// The meeting point of the camera-roll runs (issue #300): a browser has one
+/// run, the tab's.
+SyncRelay? defaultSyncRelay() => null;
+
+/// The notification of a camera-roll upload: none in a browser.
+SyncNotifier defaultSyncNotifier() => const NoSyncNotifier();
+
+/// Where the camera-roll runs are handed to: nowhere in a browser.
+SyncHandover? defaultSyncHandover(BackgroundScheduler scheduler) => null;
 
 /// Where a downloaded original goes in a browser: the browser's downloads,
 /// see [BrowserDownloadSaver].

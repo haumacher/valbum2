@@ -127,6 +127,14 @@ abstract class SettingsStore {
 
   /// Stores the camera filters of the inboxes.
   Future<void> saveInboxCameraFilters(String json);
+
+  /// Reads again what another isolate of this process may have written since
+  /// (issue #300).
+  ///
+  /// A background run of the camera-roll sync writes the same store as the
+  /// app on the screen, from an engine of its own; a store that keeps what it
+  /// read in memory must forget it here. One that keeps nothing does nothing.
+  Future<void> reload() async {}
 }
 
 /// A [SettingsStore] keeping the value in memory only, used by tests.
@@ -256,6 +264,12 @@ class PreferencesSettingsStore extends SettingsStore {
   static const String inboxCameraFiltersKey = "inboxCameraFilters";
 
   const PreferencesSettingsStore();
+
+  /// `shared_preferences` keeps what it read per isolate; the platform's own
+  /// preferences are the one copy the isolates of the app share.
+  @override
+  Future<void> reload() async =>
+      (await SharedPreferences.getInstance()).reload();
 
   @override
   Future<String?> load() async =>

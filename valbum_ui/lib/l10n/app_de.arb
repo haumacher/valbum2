@@ -1126,5 +1126,15 @@
   "cameraRollSourcesSummary": "{more, plural, =0{Synchronisiert: {names}} =1{Synchronisiert: {names} und 1 weiteres} other{Synchronisiert: {names} und {more} weitere}}",
   "cameraRollSourcesFilter": "Alben filtern",
   "cameraRollSourcesNoMatch": "Kein Album passt.",
-  "cameraRollNoDeviceAlbums": "Das Gerät nennt keine Alben, aus denen ausgewählt werden kann."
+  "cameraRollNoDeviceAlbums": "Das Gerät nennt keine Alben, aus denen ausgewählt werden kann.",
+  "cameraRollLooking": "Suche nach neuen Fotos...",
+  "syncNotificationTitle": "Synchronisierung der Kamerarolle",
+  "syncNotificationChannel": "Foto-Upload",
+  "syncNotificationUploading": "{count, plural, =1{1 Foto wird hochgeladen...} other{{count} Fotos werden hochgeladen...}}",
+  "notificationsWhyTitle": "Den Upload in einer Benachrichtigung anzeigen?",
+  "notificationsWhyBody": "Während neue Fotos hochgeladen werden, zeigt VAlbum eine Benachrichtigung mit dem Fortschritt an, auch bei ausgeschaltetem Bildschirm. Ohne diese Berechtigung läuft der Upload trotzdem, Sie sehen ihn nur nicht.",
+  "notificationsAllow": "Zulassen",
+  "notificationsNotNow": "Nicht jetzt",
+  "cameraRollNotificationsOff": "Benachrichtigungen sind deaktiviert: Neue Fotos werden trotzdem hochgeladen, aber Sie sehen den Fortschritt nicht. Erlauben Sie die Benachrichtigungen von VAlbum in den Systemeinstellungen, um den Fortschritt zu sehen.",
+  "backgroundSyncBusy": "Eine andere Synchronisierung lief bereits und hat die neuen Fotos mitgenommen."
 }

@@ -44,6 +44,7 @@ import 'persons_view.dart';
 import 'photo_library.dart';
 import 'photo_picker_view.dart';
 import 'platform.dart';
+import 'sync_notifier.dart';
 import 'resource.dart';
 import 'routes.dart';
 import 'search_view.dart';
@@ -305,6 +306,14 @@ class VAlbumAppState extends State<VAlbumApp> {
     // A file of the device (issue #299), unless a test or an embedder drives
     // this app, see [_defaultCache].
     hashCache: widget.client != null ? MemoryHashCache() : defaultHashCache(),
+    // On Android a run is handed to a foreground work, which goes on with the
+    // screen off, and every run of the process meets the others in one relay
+    // (issue #300); nothing of it where a test or an embedder drives this
+    // app, exactly as with the scheduler.
+    relay: widget.client != null ? null : defaultSyncRelay(),
+    handover: defaultSyncHandover(backgroundScheduler),
+    notifier:
+        widget.client != null ? const NoSyncNotifier() : defaultSyncNotifier(),
   );
 
   /// Where new photos of this device go besides the inbox, per server

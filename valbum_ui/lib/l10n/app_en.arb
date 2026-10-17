@@ -7342,5 +7342,60 @@
   "@cameraRollNoDeviceAlbums": {
     "description": "Said in the dialog choosing the albums to sync (issue #298) where the device lists no album at all",
     "x-translated": "4c5c38a6"
+  },
+  "cameraRollLooking": "Looking for new photos...",
+  "@cameraRollLooking": {
+    "description": "The status line of a camera-roll run that has started but has not yet found photos to upload (issue #300); also the text of its notification",
+    "x-translated": "dbe95c4b"
+  },
+  "syncNotificationTitle": "Camera-roll sync",
+  "@syncNotificationTitle": {
+    "description": "The title of the notification shown while the camera-roll sync runs with the screen off (issue #300)",
+    "x-translated": "f3ab6a0c"
+  },
+  "syncNotificationChannel": "Photo upload",
+  "@syncNotificationChannel": {
+    "description": "The name of the notification channel of the camera-roll upload, as Android's notification settings list it (issue #300)",
+    "x-translated": "4013ea0d"
+  },
+  "syncNotificationUploading": "{count, plural, =1{Uploading 1 photo...} other{Uploading {count} photos...}}",
+  "@syncNotificationUploading": {
+    "description": "The text of the notification of a running camera-roll upload (issue #300): how many photos are still to be uploaded",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "954aeb4"
+  },
+  "notificationsWhyTitle": "Show the upload in a notification?",
+  "@notificationsWhyTitle": {
+    "description": "Title of the dialog explaining, when the camera-roll sync is switched on, why the app asks for the notification permission (issue #300)",
+    "x-translated": "5c990707"
+  },
+  "notificationsWhyBody": "While new photos are uploaded, VAlbum shows a notification with the progress, also with the screen off. Without the permission the upload runs all the same, but you do not see it.",
+  "@notificationsWhyBody": {
+    "description": "Body of the dialog explaining why the app asks for the notification permission (issue #300)",
+    "x-translated": "81349029"
+  },
+  "notificationsAllow": "Allow",
+  "@notificationsAllow": {
+    "description": "Button of the dialog explaining the notification permission (issue #300) that goes on to the system's question",
+    "x-translated": "bf886fec"
+  },
+  "notificationsNotNow": "Not now",
+  "@notificationsNotNow": {
+    "description": "Button of the dialog explaining the notification permission (issue #300) that does not ask",
+    "x-translated": "b2d7f039"
+  },
+  "cameraRollNotificationsOff": "Notifications are off: new photos are uploaded all the same, but you do not see the progress. Allow VAlbum's notifications in the system settings to see it.",
+  "@cameraRollNotificationsOff": {
+    "description": "Said in the camera-roll settings (issue #300) while the sync is on and the app may not show notifications",
+    "x-translated": "aedea7d6"
+  },
+  "backgroundSyncBusy": "Another sync was running and took the new photos along.",
+  "@backgroundSyncBusy": {
+    "description": "Says why a background run did nothing: another run of the camera-roll sync was going on (issue #300)",
+    "x-translated": "b23a0b38"
   }
 }

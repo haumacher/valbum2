@@ -19,6 +19,16 @@
 ///    [ServerSettings] → [VAlbumClient] → [PhotoLibrary] → [CameraRollSync] →
 ///    one run. A test calls it with fakes; the dispatcher only wraps it.
 ///
+/// On Android there are three works, all of them running the same
+/// [runBackgroundSync] (issue #300): the periodic one
+/// ([backgroundSyncTaskName]), one the platform starts a few seconds after the
+/// photo library changed ([backgroundTriggerTaskName]) — a photo that was just
+/// taken is uploaded with the app closed — and the one the app on the screen
+/// hands its own runs to ([backgroundUploadTaskName]), which runs as a
+/// foreground work and is therefore not frozen when the screen goes off. The
+/// runs of the three meet in one [SyncRelay], so that only one of them uploads
+/// at a time and the app shows what the one that does is doing.
+///
 /// A background run refuses for exactly the same reasons the foreground one
 /// does — switched off, no server, signed out, a guest with no space of their
 /// own (issue #54) — and it creates the inbox album the same way a foreground
@@ -43,6 +53,8 @@ import 'hash_cache.dart';
 import 'photo_library.dart';
 import 'platform.dart';
 import 'settings.dart';
+import 'sync_notifier.dart';
+import 'sync_relay.dart';
 
 /// The identity of the periodic task, on Android its unique name and on iOS
 /// the `BGTaskScheduler` identifier registered in `Info.plist`.
@@ -51,6 +63,49 @@ import 'settings.dart';
 /// task registered across app restarts and updates, and a name that changed
 /// would leave the old one running forever.
 const String backgroundSyncTaskName = "de.haumacher.valbum.cameraRollSync";
+
+/// The identity of the work the platform starts when the photo library
+/// changed (issue #300); Android only.
+///
+/// One-off by nature — a work with a content trigger runs once — so every run
+/// of it registers the next one, see [BackgroundScheduler.rearmTrigger].
+const String backgroundTriggerTaskName =
+    "de.haumacher.valbum.cameraRollTrigger";
+
+/// The identity of the foreground work the app on the screen hands its runs
+/// to (issue #300); Android only, see [SyncHandover].
+const String backgroundUploadTaskName = "de.haumacher.valbum.cameraRollUpload";
+
+/// Whether the platform runs [task] as a foreground work, with a notification
+/// of its own, see `background_workmanager.dart`.
+///
+/// The periodic work is not one: it would show a notification every quarter
+/// of an hour only to find nothing new.
+bool foregroundSyncTask(String task) =>
+    task == backgroundUploadTaskName || task == backgroundTriggerTaskName;
+
+/// The id of the notification of a run of [task].
+///
+/// One per work, so that two works the platform has in the foreground at the
+/// same time do not take each other's notification away.
+int syncNotificationIdOf(String task) => switch (task) {
+      backgroundUploadTaskName => 3001,
+      backgroundTriggerTaskName => 3002,
+      _ => 3003,
+    };
+
+/// How long a background run waits for another run of the process to end
+/// before it leaves the photos to that one, see [SyncRelay.claim].
+///
+/// The run the app handed over waits long: the app is waiting for it. The
+/// others give way soon — the run that holds the claim scans again before it
+/// ends, see [CameraRollSync.runOnce].
+Duration claimPatienceOf(String task) => task == backgroundUploadTaskName
+    ? const Duration(minutes: 10)
+    : const Duration(seconds: 30);
+
+/// The scans a background run makes at most, see [CameraRollSync.runOnce].
+const int backgroundPasses = 3;
 
 /// How often the platform is asked to run the sync.
 ///
@@ -106,10 +161,104 @@ abstract class BackgroundScheduler {
   /// [network] is what the caller wants of the platform, not what it reads
   /// from a configuration: the scheduler knows nothing about the sync, and a
   /// test can therefore state the requirement it expects.
-  Future<void> schedule(BackgroundNetwork network);
+  ///
+  /// [changed] says that the requirement was just changed — the Wi-Fi-only
+  /// switch was toggled — rather than registered again as it was: a work
+  /// that waits for a change of the photo library is then replaced, which a
+  /// start of the app leaves alone (issue #300).
+  Future<void> schedule(BackgroundNetwork network, {bool changed = false});
 
   /// Removes the periodic task; the app stops syncing while it is closed.
+  ///
+  /// On Android also the work started by a change of the photo library and
+  /// the run the app handed over (issue #300).
   Future<void> cancel();
+
+  /// Registers the next run on a change of the photo library, after the one
+  /// that is running (issue #300).
+  ///
+  /// Called by that run itself, from its background isolate: a work with a
+  /// content trigger runs once. A platform without one does nothing.
+  Future<void> rearmTrigger(BackgroundNetwork network) async {}
+}
+
+/// Where the app on the screen hands its runs to, so that switching the
+/// screen off does not stop them (issue #300).
+///
+/// On Android a foreground work ([backgroundUploadTaskName]): the platform
+/// does not freeze an app that runs one, and keeps the device awake for it.
+/// The run reports through the [SyncRelay], and [CameraRollSync] shows what it
+/// reports.
+abstract class SyncHandover {
+  const SyncHandover();
+
+  /// The task name the handed-over run carries over the relay.
+  String get task;
+
+  /// Asks the platform to carry out a run now; `false` where it refused, and
+  /// the app carries it out itself.
+  ///
+  /// A run that is asked for while one is waiting or going on is that one.
+  Future<bool> request();
+
+  /// Whether the run asked for is still to come or going on.
+  Future<bool> pending();
+
+  /// Drops the run asked for.
+  Future<void> cancel();
+}
+
+/// A [SyncHandover] that records what it was asked, used by tests.
+///
+/// [onRequest] is the platform: a test lets it start the run it stands for —
+/// [runBackgroundSync] with the same relay — or nothing at all.
+class FakeSyncHandover extends SyncHandover {
+  @override
+  final String task;
+
+  /// Whether [request] is accepted.
+  bool accepts;
+
+  /// What [pending] answers: from an accepted [request] until the run
+  /// [onRequest] started is over.
+  bool isPending = false;
+
+  /// The number of [request] and [cancel] calls.
+  int requests = 0;
+  int cancelled = 0;
+
+  /// What the platform does when it accepts a request: the run it starts;
+  /// `null` for a work that never runs.
+  Future<void> Function()? onRequest;
+
+  FakeSyncHandover({
+    this.task = backgroundUploadTaskName,
+    this.accepts = true,
+    this.onRequest,
+  });
+
+  @override
+  Future<bool> request() async {
+    requests++;
+    if (!accepts) {
+      return false;
+    }
+    isPending = true;
+    var run = onRequest?.call();
+    if (run != null) {
+      unawaited(run.whenComplete(() => isPending = false));
+    }
+    return true;
+  }
+
+  @override
+  Future<bool> pending() async => isPending;
+
+  @override
+  Future<void> cancel() async {
+    cancelled++;
+    isPending = false;
+  }
 }
 
 /// The [BackgroundScheduler] of a platform that has no background execution.
@@ -129,7 +278,8 @@ class UnavailableBackgroundScheduler extends BackgroundScheduler {
   bool get available => false;
 
   @override
-  Future<void> schedule(BackgroundNetwork network) async {}
+  Future<void> schedule(BackgroundNetwork network,
+      {bool changed = false}) async {}
 
   @override
   Future<void> cancel() async {}
@@ -158,6 +308,12 @@ class FakeBackgroundScheduler extends BackgroundScheduler {
   /// The number of times [cancel] was called.
   int cancelled = 0;
 
+  /// Whether each [schedule] call said the requirement changed, in order.
+  final List<bool> changes = [];
+
+  /// The network requirement of every [rearmTrigger] call, in order.
+  final List<BackgroundNetwork> rearms = [];
+
   /// What every call throws, `null` while the platform is happy.
   Object? problem;
 
@@ -168,8 +324,10 @@ class FakeBackgroundScheduler extends BackgroundScheduler {
   });
 
   @override
-  Future<void> schedule(BackgroundNetwork network) async {
+  Future<void> schedule(BackgroundNetwork network,
+      {bool changed = false}) async {
     requests.add(network);
+    changes.add(changed);
     var failure = problem;
     if (failure != null) {
       throw failure;
@@ -183,6 +341,11 @@ class FakeBackgroundScheduler extends BackgroundScheduler {
     if (failure != null) {
       throw failure;
     }
+  }
+
+  @override
+  Future<void> rearmTrigger(BackgroundNetwork network) async {
+    rearms.add(network);
   }
 }
 
@@ -337,6 +500,12 @@ class BackgroundRunResult {
 /// real HTTP client, [connectivity] instead of the device's network,
 /// [clock] instead of the wall clock, [hashCache] instead of the file of
 /// remembered hashes.
+///
+/// [task] is the work the platform runs (issue #300): the run of
+/// [backgroundTriggerTaskName] registers the next one first, with [scheduler];
+/// with a [relay] the run waits its turn behind another run of the process
+/// and reports to the app on the screen; [notifier] shows its progress while
+/// it uploads.
 Future<BackgroundRunResult> runBackgroundSync({
   SettingsStore store = const PreferencesSettingsStore(),
   PhotoLibrary? library,
@@ -344,6 +513,10 @@ Future<BackgroundRunResult> runBackgroundSync({
   ConnectivitySource? connectivity,
   DateTime Function()? clock,
   HashCache? hashCache,
+  String task = backgroundSyncTaskName,
+  SyncRelay? relay,
+  SyncNotifier notifier = const NoSyncNotifier(),
+  BackgroundScheduler? scheduler,
 }) async {
   var now = clock ?? DateTime.now;
 
@@ -354,6 +527,20 @@ Future<BackgroundRunResult> runBackgroundSync({
     return BackgroundRunResult(
       skipped: platformMessages.backgroundSyncOff,
     );
+  }
+
+  if (task == backgroundTriggerTaskName && scheduler != null) {
+    // First, not last: a run the platform cuts off must not take the next
+    // trigger with it. Registered behind this one, it observes the library
+    // from the moment this run is over; what changes meanwhile, the passes of
+    // this run pick up.
+    try {
+      await scheduler.rearmTrigger(BackgroundNetwork.of(config.wifiOnly));
+    } catch (error) {
+      if (kDebugMode) {
+        print("background sync task: no next trigger !! $error");
+      }
+    }
   }
 
   Future<BackgroundRunResult> record(BackgroundRunRecord entry) async {
@@ -413,10 +600,38 @@ Future<BackgroundRunResult> runBackgroundSync({
     // The same file the app on the screen keeps (issue #299): a photo the
     // app hashed is not hashed again in the background, nor the reverse.
     hashCache: hashCache ?? defaultHashCache(),
+    relay: relay,
+    runTask: task,
+    claimPatience: claimPatienceOf(task),
   );
+
+  // The notification says how many photos are still to go (issue #300); a
+  // run that uploads nothing leaves the one the platform shows for a
+  // foreground work as it is.
+  var notificationId = syncNotificationIdOf(task);
+  var messages = platformMessages;
+  var channelName = messages.syncNotificationChannel;
+  SyncNotice? shown;
+  void notify() {
+    var notice = syncNoticeOf(sync.status, messages);
+    if (notice != null && notice != shown) {
+      shown = notice;
+      unawaited(
+          notifier.show(notificationId, notice, channelName: channelName));
+    }
+  }
+
+  sync.addListener(notify);
   try {
     await sync.load();
-    var status = await sync.runOnce();
+    // More than one pass only where a change of the library starts the run
+    // (Android): iOS keeps its one scan in the little time it grants.
+    var status =
+        await sync.runOnce(passes: relay == null ? 1 : backgroundPasses);
+    if (sync.claimMissed) {
+      // Not a report either: the run that held the claim reports its own.
+      return BackgroundRunResult(skipped: messages.backgroundSyncBusy);
+    }
     return await record(switch (status.phase) {
       CameraRollPhase.idle => BackgroundRunRecord(
           at: status.lastSuccess ?? now(),
@@ -427,8 +642,15 @@ Future<BackgroundRunResult> runBackgroundSync({
       _ => BackgroundRunRecord.failed(now(), reasonOfStatus(status)),
     });
   } catch (error) {
-    return await record(BackgroundRunRecord.failed(now(), platformErrorText(error)));
+    return await record(
+        BackgroundRunRecord.failed(now(), platformErrorText(error)));
   } finally {
+    sync.removeListener(notify);
+    if (shown != null) {
+      // A foreground work's notification goes with the work; one posted for
+      // a run that was none is taken away here.
+      await notifier.clear(notificationId);
+    }
     sync.dispose();
     ownLibrary?.dispose();
     ownNetwork?.dispose();
@@ -449,9 +671,14 @@ Future<BackgroundRunResult> runBackgroundSync({
 /// itself threw — then something is wrong with this code, not with the sync.
 @pragma('vm:entry-point')
 void backgroundSyncDispatcher() {
-  executeBackgroundTask(() async {
+  executeBackgroundTask((task) async {
     try {
-      await runBackgroundSync();
+      await runBackgroundSync(
+        task: task,
+        relay: defaultSyncRelay(),
+        notifier: defaultSyncNotifier(),
+        scheduler: defaultBackgroundScheduler(),
+      );
       return true;
     } catch (error) {
       if (kDebugMode) {

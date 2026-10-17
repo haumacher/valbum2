@@ -6860,6 +6860,66 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The device names no albums to choose from.'**
   String get cameraRollNoDeviceAlbums;
+
+  /// The status line of a camera-roll run that has started but has not yet found photos to upload (issue #300); also the text of its notification
+  ///
+  /// In en, this message translates to:
+  /// **'Looking for new photos...'**
+  String get cameraRollLooking;
+
+  /// The title of the notification shown while the camera-roll sync runs with the screen off (issue #300)
+  ///
+  /// In en, this message translates to:
+  /// **'Camera-roll sync'**
+  String get syncNotificationTitle;
+
+  /// The name of the notification channel of the camera-roll upload, as Android's notification settings list it (issue #300)
+  ///
+  /// In en, this message translates to:
+  /// **'Photo upload'**
+  String get syncNotificationChannel;
+
+  /// The text of the notification of a running camera-roll upload (issue #300): how many photos are still to be uploaded
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Uploading 1 photo...} other{Uploading {count} photos...}}'**
+  String syncNotificationUploading(int count);
+
+  /// Title of the dialog explaining, when the camera-roll sync is switched on, why the app asks for the notification permission (issue #300)
+  ///
+  /// In en, this message translates to:
+  /// **'Show the upload in a notification?'**
+  String get notificationsWhyTitle;
+
+  /// Body of the dialog explaining why the app asks for the notification permission (issue #300)
+  ///
+  /// In en, this message translates to:
+  /// **'While new photos are uploaded, VAlbum shows a notification with the progress, also with the screen off. Without the permission the upload runs all the same, but you do not see it.'**
+  String get notificationsWhyBody;
+
+  /// Button of the dialog explaining the notification permission (issue #300) that goes on to the system's question
+  ///
+  /// In en, this message translates to:
+  /// **'Allow'**
+  String get notificationsAllow;
+
+  /// Button of the dialog explaining the notification permission (issue #300) that does not ask
+  ///
+  /// In en, this message translates to:
+  /// **'Not now'**
+  String get notificationsNotNow;
+
+  /// Said in the camera-roll settings (issue #300) while the sync is on and the app may not show notifications
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications are off: new photos are uploaded all the same, but you do not see the progress. Allow VAlbum\'s notifications in the system settings to see it.'**
+  String get cameraRollNotificationsOff;
+
+  /// Says why a background run did nothing: another run of the camera-roll sync was going on (issue #300)
+  ///
+  /// In en, this message translates to:
+  /// **'Another sync was running and took the new photos along.'**
+  String get backgroundSyncBusy;
 }
 
 class _AppLocalizationsDelegate

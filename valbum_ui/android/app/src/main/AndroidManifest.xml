@@ -10,6 +10,15 @@
         No intent filter and no URL handler goes with it: the payload of such a
         code is not a link, see `lib/device_code_payload.dart`. -->
    <uses-permission android:name="android.permission.CAMERA"/>
+   <!-- Uploading new photos with the screen off and the app closed (issue #300): the upload runs
+        as a WorkManager foreground work of the type dataSync, which shows a notification while it
+        runs. The workmanager plugin declares these too (dataSync through
+        `workmanager.enableDataSyncForegroundService` in gradle.properties); they are named here
+        because this app depends on them. POST_NOTIFICATIONS is asked at runtime (Android 13+)
+        when the sync is switched on; without it the upload runs all the same, unseen. -->
+   <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
+   <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
    <!-- Plain http:// to a self-hosted server on the home network, which is
         what the native players need (issue #73); the reasoning is in the
         referenced file. -->

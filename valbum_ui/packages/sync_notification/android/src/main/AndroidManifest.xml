@@ -1,0 +1,5 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Showing the progress of an upload (issue #300); a runtime permission from Android 13 on,
+         asked when the camera-roll sync is switched on. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+</manifest>

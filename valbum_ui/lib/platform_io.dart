@@ -24,6 +24,9 @@ import 'phone_contacts.dart';
 import 'photo_library.dart';
 import 'notices.dart';
 import 'photo_library_manager.dart';
+import 'sync_notifier.dart';
+import 'sync_relay.dart';
+import 'sync_relay_io.dart';
 import 'wakelock.dart';
 import 'wakelock_plugin.dart';
 
@@ -137,12 +140,36 @@ BackgroundScheduler defaultBackgroundScheduler() =>
         : const UnavailableBackgroundScheduler(NoBackgroundSyncHere());
 
 /// Runs [task] as the platform's background task, see
-/// [backgroundSyncDispatcher].
+/// [backgroundSyncDispatcher]; it is handed the name of the task the platform
+/// runs.
 ///
 /// Named here rather than imported from `workmanager` directly, so that the
 /// web build never sees the plugin's Dart code.
-void executeBackgroundTask(Future<bool> Function() task) =>
+void executeBackgroundTask(Future<bool> Function(String task) task) =>
     runWorkmanagerTask(task);
+
+/// The meeting point of the camera-roll runs of the app process (issue #300),
+/// `null` where there is only ever one run.
+///
+/// Android only: there the app on the screen hands its runs to a foreground
+/// work and a new photo starts one, all in engines of their own. iOS keeps
+/// its one background run as it was. `Platform.isAndroid`, the device's real
+/// answer: a widget test that says it is a phone must not reach the isolate
+/// name server of the test binary.
+SyncRelay? defaultSyncRelay() => Platform.isAndroid ? IsolateSyncRelay() : null;
+
+/// The notification of a camera-roll upload (issue #300): the plugin on
+/// Android, nothing anywhere else.
+SyncNotifier defaultSyncNotifier() =>
+    Platform.isAndroid ? const PluginSyncNotifier() : const NoSyncNotifier();
+
+/// Where the app on the screen hands its camera-roll runs to (issue #300):
+/// the foreground work of [scheduler] on Android, nobody anywhere else — the
+/// app runs them itself there, as it always did.
+SyncHandover? defaultSyncHandover(BackgroundScheduler scheduler) =>
+    Platform.isAndroid && scheduler is WorkmanagerScheduler
+        ? WorkmanagerHandover(scheduler)
+        : null;
 
 /// Where a downloaded original goes off the web, see [DownloadSaver].
 ///
