@@ -14,10 +14,10 @@ library;
 
 import 'package:flutter/material.dart';
 
+import 'action_guard.dart';
 import 'client.dart';
 import 'l10n/app_localizations.dart';
 import 'manage_view.dart' show refusalMessage;
-import 'offline.dart';
 import 'page_insets.dart';
 import 'resource.dart';
 import 'selectable.dart';
@@ -177,9 +177,6 @@ class SpaceSettingsScreenState extends State<SpaceSettingsScreen> {
     if (current == null || _saving) {
       return;
     }
-    if (refuseWhileOffline(context)) {
-      return;
-    }
     var l10n = AppLocalizations.of(context)!;
     var messenger = ScaffoldMessenger.of(context);
     var wanted = SpaceSettings(
@@ -192,26 +189,33 @@ class SpaceSettingsScreenState extends State<SpaceSettingsScreen> {
       // The content search of issue #257 joins here as a switch of its own
       // once the space can ask for it.
     );
-    setState(() {
-      _saving = true;
-      _saveProblem = null;
-    });
-    try {
-      var saved = await widget.client.saveSpaceSettings(wanted);
-      if (!mounted) {
-        return;
-      }
-      setState(() => _show(saved));
-      messenger.showSnackBar(SnackBar(content: Text(l10n.spaceSettingsSaved)));
-    } catch (error) {
-      if (mounted) {
-        setState(() => _saveProblem = refusalMessage(error));
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _saving = false);
-      }
+    var done = await writeAction(
+      context,
+      () {
+        setState(() {
+          _saving = true;
+          _saveProblem = null;
+        });
+        return widget.client.saveSpaceSettings(wanted);
+      },
+      speaks: false,
+      onRefused: (error) {
+        if (mounted) {
+          setState(() {
+            _saveProblem = refusalMessage(error);
+            _saving = false;
+          });
+        }
+      },
+    );
+    if (done == null || !mounted) {
+      return;
     }
+    setState(() {
+      _show(done.value);
+      _saving = false;
+    });
+    messenger.showSnackBar(SnackBar(content: Text(l10n.spaceSettingsSaved)));
   }
 
   @override

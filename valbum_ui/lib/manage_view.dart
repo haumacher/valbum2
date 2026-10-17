@@ -18,12 +18,14 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import 'action_guard.dart';
 import 'caller.dart';
 import 'client.dart';
 import 'device_code_payload.dart';
 import 'dialog_style.dart';
 import 'form_dialog.dart';
 import 'l10n/app_localizations.dart';
+import 'offline.dart';
 import 'recipient_send.dart';
 import 'resource.dart';
 import 'selectable.dart';
@@ -584,6 +586,10 @@ class DevicesSectionState extends State<DevicesSection> {
   /// a code to type, a QR code to scan and a link to send. What differs is
   /// that this one does not count down, and that it says to write it down.
   Future<void> _createBackupCode() async {
+    // A code is minted by the server: nothing to show while offline.
+    if (refuseWhileOffline(context)) {
+      return;
+    }
     await showAppDialog<void>(
       context: context,
       builder: (context) => DeviceCodeDialog(
@@ -615,28 +621,31 @@ class DevicesSectionState extends State<DevicesSection> {
     if (confirmed != true || !mounted) {
       return;
     }
-    setState(() {
-      _busy = true;
-      _problem = null;
-    });
-    DeviceList answer;
-    try {
-      answer = await widget.client.revokeBackupCode();
-    } catch (error) {
-      if (mounted) {
+    var done = await writeAction(
+      context,
+      () {
         setState(() {
-          _busy = false;
-          _problem = refusalMessage(error);
+          _busy = true;
+          _problem = null;
         });
-      }
-      return;
-    }
-    if (!mounted) {
+        return widget.client.revokeBackupCode();
+      },
+      speaks: false,
+      onRefused: (error) {
+        if (mounted) {
+          setState(() {
+            _busy = false;
+            _problem = refusalMessage(error);
+          });
+        }
+      },
+    );
+    if (done == null || !mounted) {
       return;
     }
     setState(() {
       _busy = false;
-      _took(answer);
+      _took(done.value);
     });
   }
 
@@ -648,6 +657,10 @@ class DevicesSectionState extends State<DevicesSection> {
   /// open is the other device arriving, which is also what makes a stranger
   /// using the code visible at once.
   Future<void> _addDevice() async {
+    // A code is minted by the server: nothing to show while offline.
+    if (refuseWhileOffline(context)) {
+      return;
+    }
     await showAppDialog<void>(
       context: context,
       builder: (context) => DeviceCodeDialog(
@@ -703,22 +716,29 @@ class DevicesSectionState extends State<DevicesSection> {
     if (confirmed != true || !mounted) {
       return;
     }
-    setState(() {
-      _busy = true;
-      _problem = null;
-    });
-    DeviceList answer;
-    try {
-      answer = await widget.client.unpair(device.id);
-    } catch (error) {
-      if (mounted) {
+    var done = await writeAction(
+      context,
+      () {
         setState(() {
-          _busy = false;
-          _problem = refusalMessage(error);
+          _busy = true;
+          _problem = null;
         });
-      }
+        return widget.client.unpair(device.id);
+      },
+      speaks: false,
+      onRefused: (error) {
+        if (mounted) {
+          setState(() {
+            _busy = false;
+            _problem = refusalMessage(error);
+          });
+        }
+      },
+    );
+    if (done == null) {
       return;
     }
+    var answer = done.value;
     if (device.current) {
       // The token this section was talking with is gone; the device forgets
       // it, and the settings take the section away with the sign-in.
@@ -807,11 +827,24 @@ class DeviceCodeDialogState extends State<DeviceCodeDialog> {
   /// How many ticks have passed, so that the list is read every third one.
   int _ticksSeen = 0;
 
+  /// Whether the code was asked for, see [didChangeDependencies].
+  bool _asked = false;
+
   @override
   void initState() {
     super.initState();
-    _ask();
     _ticks = widget.ticker().listen((_) => _tick());
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Asked here rather than in `initState`: whether the app is offline is
+    // read off the tree, see [writeAction].
+    if (!_asked) {
+      _asked = true;
+      _ask();
+    }
   }
 
   @override
@@ -827,23 +860,31 @@ class DeviceCodeDialogState extends State<DeviceCodeDialog> {
       _problem = null;
       _joined = null;
     });
-    try {
-      var answer = widget.backup
-          ? await widget.client.backupCode()
-          : await widget.client.deviceCode(userName: widget.forUser);
-      if (mounted) {
-        setState(() {
-          _code = answer;
-          _problem = null;
-        });
-      }
-    } catch (error) {
-      if (mounted) {
-        setState(() {
-          _problem = refusalMessage(error);
-        });
-      }
+    var offline = AppLocalizations.of(context)!.offlineRefusal;
+    var refused = false;
+    var done = await writeAction(
+      context,
+      () => widget.backup
+          ? widget.client.backupCode()
+          : widget.client.deviceCode(userName: widget.forUser),
+      speaks: false,
+      onRefused: (error) {
+        refused = true;
+        if (mounted) {
+          setState(() {
+            _problem = refusalMessage(error);
+          });
+        }
+      },
+    );
+    if (!mounted || refused) {
+      return;
     }
+    setState(() {
+      // Nothing asked while offline: the dialog says why there is no code.
+      _code = done?.value;
+      _problem = done == null ? offline : null;
+    });
   }
 
   /// One beat: the countdown moves, and every third one asks who is here.
@@ -1325,31 +1366,34 @@ class PermissionDialogState extends State<PermissionDialog> {
   }
 
   Future<void> _save() async {
-    setState(() {
-      _busy = true;
-      _refusal = null;
-    });
-    UserList answer;
-    try {
-      answer = await widget.client.setPermission(UserPermission(
-        name: widget.user.name,
-        role: _role,
-        clearance: _clearance,
-        mayShare: _mayShare,
-      ));
-    } catch (error) {
-      if (mounted) {
+    var done = await writeAction(
+      context,
+      () {
         setState(() {
-          _busy = false;
-          _refusal = refusalMessage(error);
+          _busy = true;
+          _refusal = null;
         });
-      }
-      return;
-    }
-    if (mounted) {
+        return widget.client.setPermission(UserPermission(
+          name: widget.user.name,
+          role: _role,
+          clearance: _clearance,
+          mayShare: _mayShare,
+        ));
+      },
+      speaks: false,
+      onRefused: (error) {
+        if (mounted) {
+          setState(() {
+            _busy = false;
+            _refusal = refusalMessage(error);
+          });
+        }
+      },
+    );
+    if (done != null && mounted) {
       // The whole list comes back: the section shows what the server holds
       // now, not what was asked for.
-      Navigator.of(context).pop(answer);
+      Navigator.of(context).pop(done.value);
     }
   }
 }
@@ -1758,6 +1802,10 @@ class PeopleSectionState extends State<PeopleSection> {
   /// Shows a code signing a device of [user] in, for somebody who lost theirs
   /// (issue #89).
   Future<void> _recoveryCode(UserEntry user) async {
+    // A code is minted by the server: nothing to show while offline.
+    if (refuseWhileOffline(context)) {
+      return;
+    }
     await showAppDialog<void>(
       context: context,
       builder: (context) => DeviceCodeDialog(
@@ -1799,27 +1847,30 @@ class PeopleSectionState extends State<PeopleSection> {
     if (confirmed != true || !mounted) {
       return;
     }
-    setState(() {
-      _busy = true;
-      _problem = null;
-    });
-    UserList answer;
-    try {
-      answer = await widget.client!.removeUser(user.name);
-    } catch (error) {
-      if (mounted) {
-        // The server's own sentence: the last administrator stays.
+    var done = await writeAction(
+      context,
+      () {
         setState(() {
-          _busy = false;
-          _problem = refusalMessage(error);
+          _busy = true;
+          _problem = null;
         });
-      }
-      return;
-    }
-    if (mounted) {
+        return widget.client!.removeUser(user.name);
+      },
+      speaks: false,
+      onRefused: (error) {
+        if (mounted) {
+          // The server's own sentence: the last administrator stays.
+          setState(() {
+            _busy = false;
+            _problem = refusalMessage(error);
+          });
+        }
+      },
+    );
+    if (done != null && mounted) {
       setState(() {
         _busy = false;
-        _users = answer.users;
+        _users = done.value.users;
       });
     }
   }
@@ -1841,28 +1892,31 @@ class PeopleSectionState extends State<PeopleSection> {
     if (confirmed != true || !mounted) {
       return;
     }
-    setState(() {
-      _busy = true;
-      _problem = null;
-    });
-    InvitationList answer;
-    try {
-      answer = await widget.client!.uninvite(row.invitationId);
-    } catch (error) {
-      if (mounted) {
+    var done = await writeAction(
+      context,
+      () {
         setState(() {
-          _busy = false;
-          _problem = refusalMessage(error);
+          _busy = true;
+          _problem = null;
         });
-      }
-      return;
-    }
-    if (!mounted) {
+        return widget.client!.uninvite(row.invitationId);
+      },
+      speaks: false,
+      onRefused: (error) {
+        if (mounted) {
+          setState(() {
+            _busy = false;
+            _problem = refusalMessage(error);
+          });
+        }
+      },
+    );
+    if (done == null || !mounted) {
       return;
     }
     setState(() {
       _busy = false;
-      _invitations = answer.invitations;
+      _invitations = done.value.invitations;
     });
     // The withdrawal answers the invitations, not the users; the
     // administrator's list says who is there by asking again.
@@ -2059,7 +2113,8 @@ class ContactsSectionState extends State<ContactsSection> {
   }
 
   /// Runs one request of this section and shows the contact it answers in
-  /// the place of the one shown; `null` from [request] removes it.
+  /// the place of the one shown; `null` from [request] removes it. Refused
+  /// while offline before anything is sent, see [writeAction].
   Future<void> _act(
     Contact contact,
     Future<Contact?> Function(VAlbumClient client) request,
@@ -2068,25 +2123,29 @@ class ContactsSectionState extends State<ContactsSection> {
     if (client == null) {
       return;
     }
-    setState(() {
-      _busy = true;
-      _problem = null;
-    });
-    Contact? answer;
-    try {
-      answer = await request(client);
-    } catch (error) {
-      if (mounted) {
+    var done = await writeAction(
+      context,
+      () {
         setState(() {
-          _busy = false;
-          _problem = refusalMessage(error);
+          _busy = true;
+          _problem = null;
         });
-      }
+        return request(client);
+      },
+      speaks: false,
+      onRefused: (error) {
+        if (mounted) {
+          setState(() {
+            _busy = false;
+            _problem = refusalMessage(error);
+          });
+        }
+      },
+    );
+    if (done == null || !mounted) {
       return;
     }
-    if (!mounted) {
-      return;
-    }
+    var answer = done.value;
     setState(() {
       _busy = false;
       _contacts = [
@@ -2423,29 +2482,34 @@ class _ContactSessionsDialogState extends State<ContactSessionsDialog> {
   bool _busy = false;
 
   Future<void> _end({String session = ""}) async {
-    setState(() {
-      _busy = true;
-      _problem = null;
-    });
-    try {
-      var answer =
-          await widget.client.endContactSession(_contact.id, session: session);
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _busy = false;
-        _contact = answer;
-      });
-      widget.onChanged(answer);
-    } catch (error) {
-      if (mounted) {
+    var done = await writeAction(
+      context,
+      () {
         setState(() {
-          _busy = false;
-          _problem = refusalMessage(error);
+          _busy = true;
+          _problem = null;
         });
-      }
+        return widget.client.endContactSession(_contact.id, session: session);
+      },
+      speaks: false,
+      onRefused: (error) {
+        if (mounted) {
+          setState(() {
+            _busy = false;
+            _problem = refusalMessage(error);
+          });
+        }
+      },
+    );
+    if (done == null || !mounted) {
+      return;
     }
+    var answer = done.value;
+    setState(() {
+      _busy = false;
+      _contact = answer;
+    });
+    widget.onChanged(answer);
   }
 
   @override
@@ -2578,11 +2642,18 @@ class ContactSignInsDialog extends StatelessWidget {
         keyPrefix: "contact",
         signIns: HeldSignIns.ofContact(contact),
         removeMessage: AppLocalizations.of(context)!.contactSignInRemoveMessage,
-        remove: (method, id) async {
-          var answer =
-              await client.removeContactSignIn(contact.id, method, id: id);
-          onChanged(answer);
-          return HeldSignIns.ofContact(answer);
+        remove: (context, method, id, onRefused) async {
+          var done = await writeAction(
+            context,
+            () => client.removeContactSignIn(contact.id, method, id: id),
+            speaks: false,
+            onRefused: onRefused,
+          );
+          if (done == null) {
+            return null;
+          }
+          onChanged(done.value);
+          return HeldSignIns.ofContact(done.value);
         },
       );
 }
@@ -2609,8 +2680,17 @@ class UserSignInsDialog extends StatelessWidget {
         keyPrefix: "user",
         signIns: HeldSignIns.ofUser(user),
         removeMessage: AppLocalizations.of(context)!.userSignInRemoveMessage,
-        remove: (method, id) async {
-          var answer = await client.removeUserSignIn(user.name, method, id: id);
+        remove: (context, method, id, onRefused) async {
+          var done = await writeAction(
+            context,
+            () => client.removeUserSignIn(user.name, method, id: id),
+            speaks: false,
+            onRefused: onRefused,
+          );
+          if (done == null) {
+            return null;
+          }
+          var answer = done.value;
           onChanged(answer);
           var changed = answer.users
               .where((entry) => entry.name == user.name)
@@ -2634,9 +2714,15 @@ class HeldSignInsDialog extends StatefulWidget {
   /// What the question before a removal says.
   final String removeMessage;
 
-  /// Removes one way (`totp`, `passkey`, `email` with its id) and answers
-  /// what is left.
-  final Future<HeldSignIns> Function(String method, String id) remove;
+  /// Removes one way (`totp`, `passkey`, `email` with its id) through
+  /// `writeAction` in [BuildContext], telling a refusal to the given
+  /// callback, and answers what is left — `null` where nothing was removed.
+  final Future<HeldSignIns?> Function(
+    BuildContext context,
+    String method,
+    String id,
+    void Function(Object error) onRefused,
+  ) remove;
 
   const HeldSignInsDialog({
     super.key,
@@ -2680,23 +2766,20 @@ class _HeldSignInsDialogState extends State<HeldSignInsDialog> {
       _busy = true;
       _problem = null;
     });
-    try {
-      var answer = await widget.remove(method, id);
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _busy = false;
-        _signIns = answer;
-      });
-    } catch (error) {
+    var answer = await widget.remove(context, method, id, (error) {
       if (mounted) {
-        setState(() {
-          _busy = false;
-          _problem = refusalMessage(error);
-        });
+        setState(() => _problem = refusalMessage(error));
       }
+    });
+    if (!mounted) {
+      return;
     }
+    setState(() {
+      _busy = false;
+      if (answer != null) {
+        _signIns = answer;
+      }
+    });
   }
 
   @override

@@ -16,6 +16,7 @@ import 'package:valbum_ui/main.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
+import 'util/l10n.dart';
 
 /// The server the tests talk to.
 const String dataUrl = "http://server/valbum/data";
@@ -97,9 +98,14 @@ List<http.Request> refreshesIn(List<http.Request> requests) => [
 ///
 /// The album menu carries the entry in the edit session, where the album shows
 /// its app bar at all; outside of it the same menu floats over the photos.
-Future<void> pumpAlbum(WidgetTester tester, VAlbumClient client) async {
+Future<void> pumpAlbum(
+  WidgetTester tester,
+  VAlbumClient client, {
+  OfflineState? offlineState,
+}) async {
   await tester.pumpWidget(VAlbumApp(
     client: client,
+    offlineState: offlineState,
     initialRoute: const ListingOrAlbumRoute(["Zoo"]),
     // The app asks `?type=auth` for a signed-in device only, and the device
     // it signs in as is the one the settings name, see `app.dart`.
@@ -250,5 +256,28 @@ void main() {
         findsOneWidget,
       );
     });
+  });
+
+  testWidgets('it is refused while the app is offline (issue #293)',
+      (tester) async {
+    var requests = <http.Request>[];
+    var state = OfflineState();
+    await withFakeImageHttp(() async {
+      await pumpAlbum(
+        tester,
+        server(role: "admin", thumbnails: [], requests: requests),
+        offlineState: state,
+      );
+      state.goneOffline(null);
+      await tester.pumpAndSettle();
+
+      await openMenu(tester);
+      await tester.tap(find.byKey(const Key("refresh-previews")));
+      await tester.pumpAndSettle();
+
+      expect(find.text(testL10n.offlineRefusal), findsOneWidget);
+      expect(find.byKey(const Key("refresh-previews-dialog")), findsNothing);
+    });
+    expect(refreshesIn(requests), isEmpty);
   });
 }

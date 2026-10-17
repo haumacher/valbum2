@@ -110,10 +110,12 @@ VAlbumClient facesClient(
   String Function(Map<String, dynamic> body)? answerFor,
   int tagStatus = 200,
   String tagBody = "",
+  List<http.Request>? requests,
 }) =>
     VAlbumClient(
       dataUrl: viewerDataUrl,
       httpClient: MockClient((request) async {
+        requests?.add(request);
         if (request.url.query.contains("type=people")) {
           return http.Response(
             people,
@@ -168,6 +170,7 @@ Future<ImagePart> pumpEditor(
   ShareSession? share,
   bool offline = false,
   Locale? locale,
+  String role = roleMember,
 }) async {
   var shown = image ?? facesImage();
   viewerAlbum(album ?? [shown], rights: rights);
@@ -176,7 +179,7 @@ Future<ImagePart> pumpEditor(
     tester,
     shown,
     client: client,
-    caller: CallerInfo(userName: "anna", role: roleMember, faces: faces),
+    caller: CallerInfo(userName: "anna", role: role, faces: faces),
     share: share,
     editPath: albumPath,
     offline: offline,
@@ -250,6 +253,31 @@ void main() {
     testWidgets('is not offered where the space looks for no face',
         (tester) async {
       await pumpEditor(tester, client: facesClient([]), faces: false);
+      await expectNoEditPersons(tester);
+    });
+
+    testWidgets('is offered by the role where the album carries no rights',
+        (tester) async {
+      // An older server answers the album without rights: the caller's role
+      // decides what is offered, as in the album itself (issue #293).
+      await pumpEditor(
+        tester,
+        client: facesClient([]),
+        rights: const [],
+        role: roleEdit,
+      );
+      await enterMode(tester);
+      expect(find.byKey(const Key("viewer-edit-persons-done")), findsOneWidget);
+    });
+
+    testWidgets('is not offered to a viewer where the album carries no rights',
+        (tester) async {
+      await pumpEditor(
+        tester,
+        client: facesClient([]),
+        rights: const [],
+        role: roleView,
+      );
       await expectNoEditPersons(tester);
     });
 
@@ -760,6 +788,31 @@ void main() {
 
       expect(posted, isEmpty);
       expect(find.text(testL10n.offlineRefusal), findsOneWidget);
+    });
+
+    testWidgets('no person is created while the app is offline',
+        (tester) async {
+      var requests = <http.Request>[];
+      await pumpEditor(
+        tester,
+        client: facesClient([], requests: requests),
+      );
+      await enterMode(tester);
+      await tapFace(tester, 2);
+      await tester.tap(find.byKey(const Key("face-decision-name")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key("persons-new-person")));
+      await tester.pumpAndSettle();
+      // The connection goes while the name is typed.
+      OfflineScope.of(tester.element(find.byKey(const Key("persons-name"))))
+          .state
+          .goneOffline(null);
+      await tester.enterText(find.byKey(const Key("persons-name")), "Carl");
+      await tester.tap(find.byKey(const Key("persons-name-ok")));
+      await tester.pumpAndSettle();
+
+      expect(find.text(testL10n.offlineRefusal), findsOneWidget);
+      expect(requests.where((request) => request.method == "POST"), isEmpty);
     });
 
     testWidgets('a refusal is said in the words of the server',

@@ -25,13 +25,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'action_guard.dart';
 import 'client.dart';
 import 'contact_session.dart';
 import 'form_dialog.dart';
 import 'l10n/app_localizations.dart';
+import 'loadable.dart' show reasonOf;
 import 'manage_view.dart' show DeviceCodeQr, dayOf;
 import 'identify_view.dart' show oidcMethodPrefix, usePasskey;
-import 'offline.dart';
 import 'passkeys.dart';
 import 'resource.dart';
 import 'settings.dart' show defaultDeviceName;
@@ -271,25 +272,27 @@ class SignInOptionsDialogState extends State<SignInOptionsDialog> {
 
   void _update(VoidCallback change) => setState(change);
 
+  /// Runs one request of this dialog: refused while offline before anything
+  /// is sent, see [writeAction], the server's reason said in the dialog.
   Future<void> _run(Future<void> Function() request) async {
-    if (refuseWhileOffline(context)) {
-      return;
-    }
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      await request();
-    } catch (error) {
-      if (mounted) {
-        setState(
-            () => _error = error is VAlbumException ? error.message : "$error");
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _busy = false);
-      }
+    await writeAction(
+      context,
+      () async {
+        setState(() {
+          _busy = true;
+          _error = null;
+        });
+        await request();
+      },
+      speaks: false,
+      onRefused: (error) {
+        if (mounted) {
+          setState(() => _error = reasonOf(error));
+        }
+      },
+    );
+    if (mounted) {
+      setState(() => _busy = false);
     }
   }
 

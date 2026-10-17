@@ -25,6 +25,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart' hide Orientation;
 
+import 'action_guard.dart';
 import 'album_edit.dart' show PlaneTransform;
 import 'app.dart';
 import 'caller.dart';
@@ -32,7 +33,6 @@ import 'client.dart';
 import 'crop.dart';
 import 'dialog_style.dart';
 import 'l10n/app_localizations.dart';
-import 'move_view.dart' show showRefusal;
 import 'offline.dart';
 import 'oriented_thumbnail.dart';
 import 'resource.dart';
@@ -102,6 +102,17 @@ class TrashContentState extends State<TrashContent> {
   /// The photographs shown, see [trashedImages].
   List<ImagePart> get trashed => trashedImages(album);
 
+  /// Whether the caller may restore a photograph: `edit` on this album, as
+  /// [rightsOf] answers it (issue #293).
+  ///
+  /// The restore is the album's sidecar PUT, which the server grants to
+  /// `edit` alone. It answers trashed photographs to editors alone as well
+  /// (#152), so a non-editor who reaches this page by a deep link mostly sees
+  /// none; but an album whose rights the server did not answer falls back on
+  /// the role, and a share link never edits — the tool is not offered where
+  /// it would be refused.
+  bool get mayRestore => rightsOf(context, album).mayEdit;
+
   /// Whether the caller may purge: an administrator, outside a share link.
   ///
   /// The server decides (issue #152: purging deletes from disk and is the
@@ -114,20 +125,20 @@ class TrashContentState extends State<TrashContent> {
   /// Applies [edit], writes the album and takes [edit] back through [undo]
   /// where the server refuses — the inbox's `writeNow` (#136).
   Future<void> writeNow(VoidCallback edit, VoidCallback undo) async {
-    if (refuseWhileOffline(context)) {
-      return;
-    }
-    var messenger = ScaffoldMessenger.of(context);
-    setState(edit);
-    try {
-      await client.saveAlbum(path, album);
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      setState(undo);
-      showRefusal(messenger, error);
-    }
+    // Applied only once [writeAction] lets the write go out: offline nothing
+    // changes on the screen either.
+    await writeAction(
+      context,
+      () {
+        setState(edit);
+        return client.saveAlbum(path, album);
+      },
+      onRefused: (_) {
+        if (mounted) {
+          setState(undo);
+        }
+      },
+    );
   }
 
   /// Gives [image] its rating back — unrated — and writes it at once.
@@ -168,21 +179,24 @@ class TrashContentState extends State<TrashContent> {
     }
 
     var messenger = ScaffoldMessenger.of(context);
-    setState(() => _purging = true);
-    MoveResult answer;
-    try {
-      answer = await client.purge(path);
-    } catch (error) {
-      if (mounted) {
-        setState(() => _purging = false);
-        // The server's own reason — a refusal speaks, see issue #49.
-        showRefusal(messenger, error);
-      }
+    // The server's own reason where it refuses — a refusal speaks, see issue
+    // #49.
+    var done = await writeAction(
+      context,
+      () {
+        setState(() => _purging = true);
+        return client.purge(path);
+      },
+      onRefused: (_) {
+        if (mounted) {
+          setState(() => _purging = false);
+        }
+      },
+    );
+    if (done == null || !mounted) {
       return;
     }
-    if (!mounted) {
-      return;
-    }
+    var answer = done.value;
     setState(() => _purging = false);
     messenger.showSnackBar(
       SnackBar(
@@ -359,21 +373,22 @@ class TrashContentState extends State<TrashContent> {
                 ),
               ),
             ),
-            Positioned(
-              right: 4,
-              bottom: 4,
-              child: Material(
-                color: Colors.black54,
-                shape: const CircleBorder(),
-                child: IconButton(
-                  key: const Key("trash-restore"),
-                  icon: const Icon(Icons.restore_from_trash),
-                  color: Colors.white,
-                  tooltip: _l10n.trashRestore,
-                  onPressed: () => restore(image),
+            if (mayRestore)
+              Positioned(
+                right: 4,
+                bottom: 4,
+                child: Material(
+                  color: Colors.black54,
+                  shape: const CircleBorder(),
+                  child: IconButton(
+                    key: const Key("trash-restore"),
+                    icon: const Icon(Icons.restore_from_trash),
+                    color: Colors.white,
+                    tooltip: _l10n.trashRestore,
+                    onPressed: () => restore(image),
+                  ),
                 ),
               ),
-            ),
           ],
         ),
       );

@@ -9,9 +9,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'action_guard.dart';
 import 'album_date.dart';
 import 'app.dart';
-import 'caller.dart';
 import 'client.dart';
 import 'dialog_style.dart';
 import 'filter_list.dart';
@@ -183,12 +183,13 @@ Future<void> moveWithPicker({
   // was asked for, as the listing says it when it creates one.
   var placement = "";
   if (newAlbum != null) {
-    CreateResult creation;
-    try {
-      creation = await client.createAlbum(target, newAlbum);
-    } catch (error) {
-      // Nothing was created, so nothing is moved: the server's own reason.
-      showRefusal(messenger, error);
+    // Nothing was created, so nothing is moved: the server's own reason.
+    var creation = (await writeAction(
+      context,
+      () => client.createAlbum(target, newAlbum),
+    ))
+        ?.value;
+    if (creation == null) {
       return;
     }
     created = true;
@@ -200,24 +201,24 @@ Future<void> moveWithPicker({
     }
   }
 
-  MoveResult result;
-  try {
-    result = await client.move(
+  // The server's own reason, as every other refused write shows it — and,
+  // where the album was created a moment ago, the plain fact that it is there
+  // and empty.
+  var moved = await writeAction(
+    context,
+    () => client.move(
       source,
       targetPath(target),
       names,
       // Only an album made for this move is given a cover, see issue #277.
       created: created,
       cover: cover,
-    );
-  } catch (error) {
-    // The server's own reason, as every other refused write shows it — and,
-    // where the album was created a moment ago, the plain fact that it is
-    // there and empty.
-    showRefusal(
-      messenger,
-      created ? albumKept(l10n, target, reasonOf(error)) : error,
-    );
+    ),
+    refusal: created
+        ? (error) => albumKept(l10n, target, reasonOf(error))
+        : null,
+  );
+  if (moved == null) {
     if (created) {
       // The tree changed although nothing moved: the new album is in it.
       delegate?.forgetTree(pickedPath);
@@ -225,6 +226,7 @@ Future<void> moveWithPicker({
     }
     return;
   }
+  var result = moved.value;
 
   // What moved is gone from where it was, and it is now in the target: both
   // sides have to be fetched again before the outcome is read out. The source
@@ -305,28 +307,34 @@ Future<void> collectWithPicker({
   var target = picked.path;
   var created = picked.newAlbum;
   if (created != null) {
-    try {
-      target = splitPath((await client.createAlbum(target, created)).path);
-    } catch (error) {
-      showRefusal(messenger, error);
+    var creation = await writeAction(
+      context,
+      () => client.createAlbum(target, created),
+    );
+    if (creation == null) {
       return;
     }
+    target = splitPath(creation.value.path);
     delegate?.forgetTree(picked.path);
+    if (!context.mounted) {
+      return;
+    }
   }
-  MoveResult result;
-  try {
-    // Only a collection made for these photographs is given a cover by
-    // them, see issue #277.
-    result = await client.collect(
+  // Only a collection made for these photographs is given a cover by them,
+  // see issue #277.
+  var collected = await writeAction(
+    context,
+    () => client.collect(
       source,
       targetPath(target),
       names,
       created: created != null,
-    );
-  } catch (error) {
-    showRefusal(messenger, error);
+    ),
+  );
+  if (collected == null) {
     return;
   }
+  var result = collected.value;
   delegate?.forgetTree(target);
   var added = [
     for (var outcome in result.outcomes)
@@ -407,14 +415,15 @@ Future<bool> deleteWithConfirmation({
     return false;
   }
 
-  MoveResult result;
-  try {
-    result = await client.delete(parent, names);
-  } catch (error) {
-    // The server's own reason, as every other refused write shows it.
-    showRefusal(messenger, error);
+  // The server's own reason, as every other refused write shows it.
+  var deleted = await writeAction(
+    context,
+    () => client.delete(parent, names),
+  );
+  if (deleted == null) {
     return false;
   }
+  var result = deleted.value;
 
   // What was deleted is gone from where it was: the view is fetched again
   // before the outcome is read out.
@@ -502,17 +511,6 @@ Future<void> reportOutcomes({
     ),
   );
 }
-
-/// Shows the server's own reason for a refused write, as every refused write
-/// is shown.
-void showRefusal(ScaffoldMessengerState messenger, Object error) =>
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(reasonOf(error)),
-        backgroundColor: Colors.red.shade700,
-        duration: const Duration(seconds: 8),
-      ),
-    );
 
 /// What is said when the album of issue #114 was created but the move into it
 /// was refused.
@@ -1103,10 +1101,7 @@ class FolderPickerState extends State<FolderPicker> {
       var l10n = AppLocalizations.of(context)!;
       if (album is! AlbumInfo) {
         refusal = l10n.folderCannotBeShown;
-      } else if (!offeredRights(
-        Rights.of(album),
-        CallerInfo.permissionOf(context),
-      ).mayContribute) {
+      } else if (!rightsOf(context, album).mayContribute) {
         refusal = l10n.uploadTargetNoContribute;
       }
     } catch (error) {
@@ -1198,10 +1193,7 @@ class FolderPickerState extends State<FolderPicker> {
   bool _mayCreateCollectionHere(BuildContext context) =>
       widget.targetIsCollection &&
       _known &&
-      offeredRights(
-        Rights.of(_listing),
-        CallerInfo.permissionOf(context),
-      ).mayEdit;
+      rightsOf(context, _listing).mayEdit;
 
   /// Whether an album may be created in the folder shown, see issue #114.
   ///
@@ -1212,10 +1204,7 @@ class FolderPickerState extends State<FolderPicker> {
   bool _mayCreateAlbumHere(BuildContext context) =>
       widget.mayCreateAlbum &&
       _known &&
-      offeredRights(
-        Rights.of(_listing),
-        CallerInfo.permissionOf(context),
-      ).mayContribute;
+      rightsOf(context, _listing).mayContribute;
 
   @override
   Widget build(BuildContext context) {

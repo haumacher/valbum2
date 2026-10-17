@@ -237,3 +237,32 @@ String? sharingNotice(
       owner == null ? l10n.sharedWithYou : l10n.sharedByOwner(owner);
   return "$by — ${rights.phrase(l10n)}";
 }
+
+/// The rights the app offers on the strength of [offered] (see
+/// [offeredRights]) once the session's own limits are applied (issue #293):
+///
+///  * through a **share link** (issue #51) nothing is edited — a link is not
+///    an account, and whatever it was made with it changes no album, no
+///    listing and no person, so `edit` is never offered there (what the link
+///    allows besides — `download`, `contribute` — stays);
+///  * a **"view as" preview** (issue #85) acts on nothing: it shows what
+///    somebody else would see, and is looked at, never changed.
+///
+/// Pure, so the rule can be tested by itself; the views ask `rightsOf` in
+/// `action_guard.dart`, which reads the session from the widget tree.
+Rights sessionRights(
+  Rights offered, {
+  bool shareLink = false,
+  bool previewing = false,
+}) {
+  if (previewing) {
+    return Rights.ofNames(const [rightView]);
+  }
+  if (shareLink && offered.mayEdit) {
+    return Rights.ofNames([
+      for (var name in offered.names)
+        if (name != rightEdit) name,
+    ]);
+  }
+  return offered;
+}

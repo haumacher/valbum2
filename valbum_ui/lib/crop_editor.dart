@@ -21,11 +21,11 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart' hide Orientation;
 import 'package:flutter/services.dart';
 
+import 'action_guard.dart';
 import 'album_layout.dart' show Orientations;
 import 'client.dart';
 import 'crop.dart';
 import 'l10n/app_localizations.dart';
-import 'offline.dart';
 import 'oriented_thumbnail.dart';
 import 'resource.dart';
 
@@ -97,40 +97,31 @@ Future<bool> cropPhoto(
   if (sameCrop(result.crop, effectiveCrop(image))) {
     return false;
   }
-  if (refuseWhileOffline(context)) {
+  // Refused offline; a refusal in the server's own words (key `crop-failed`).
+  var done = await writeAction(
+    context,
+    () => client.cropImage(albumPath, image.name, result.crop),
+    refusalKey: const Key("crop-failed"),
+  );
+  if (done == null) {
     return false;
   }
-  var messenger = ScaffoldMessenger.of(context);
-  try {
-    var answer = await client.cropImage(albumPath, image.name, result.crop);
-    var stored = result.crop;
-    ThumbnailInfo? cover;
-    if (answer != null) {
-      for (var part in imagesOfAlbum(answer)) {
-        if (part.name == image.name) {
-          stored = part.crop;
-        }
+  var answer = done.value;
+  var stored = result.crop;
+  ThumbnailInfo? cover;
+  if (answer != null) {
+    for (var part in imagesOfAlbum(answer)) {
+      if (part.name == image.name) {
+        stored = part.crop;
       }
-      cover = answer.indexPicture;
     }
-    image.crop = stored;
-    if (album != null && cover != null && cover.image == image.name) {
-      album.indexPicture = cover;
-    }
-    return true;
-  } catch (error) {
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(
-          error is VAlbumException ? error.message : "$error",
-          key: const Key("crop-failed"),
-        ),
-        backgroundColor: Colors.red.shade700,
-        duration: const Duration(seconds: 8),
-      ),
-    );
-    return false;
+    cover = answer.indexPicture;
   }
+  image.crop = stored;
+  if (album != null && cover != null && cover.image == image.name) {
+    album.indexPicture = cover;
+  }
+  return true;
 }
 
 /// Every photograph of [album], the members of a group included.

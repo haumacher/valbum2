@@ -8,6 +8,7 @@ import 'package:date_field/date_field.dart';
 import 'package:flutter/material.dart';
 
 import 'about.dart';
+import 'action_guard.dart';
 import 'album_date.dart';
 import 'album_view.dart' show keyedMenuItem;
 import 'app.dart';
@@ -146,11 +147,9 @@ class ListingView extends StatelessWidget {
   ///
   /// Where the server answered no rights at all, the caller's *role* decides
   /// what is offered instead, and that is why this takes a context: the role
-  /// is published to the tree, see [offeredRights] and issue #85.
-  Rights rightsIn(BuildContext context) => offeredRights(
-        Rights.of(listing),
-        CallerInfo.permissionOf(context),
-      );
+  /// is published to the tree, see [rightsOf] and issue #85. Nothing is
+  /// edited through a share link (issue #51), which [rightsOf] says as well.
+  Rights rightsIn(BuildContext context) => rightsOf(context, listing);
 
   /// The line saying that this folder belongs to somebody else, `null` while
   /// the caller is its owner.
@@ -203,7 +202,7 @@ class ListingView extends StatelessWidget {
     // twice.
     var link = ShareSession.of(context);
     var sharedLine = sharedLineIn(context);
-    var mayChange = rightsIn(context).mayEdit && link == null;
+    var mayChange = rightsIn(context).mayEdit;
     // The inbox of the space is no tile of any listing; it is reached from the
     // start page, by an icon carrying how much waits there and by the same
     // entry in the menu -- for whoever may put something in it, which is
@@ -719,7 +718,7 @@ class ListingView extends StatelessWidget {
   /// Whether the tile of [folder] has a menu for this caller, see
   /// [showTileMenu]: the move of an editor, or a share link of the entry.
   bool offersTileMenu(BuildContext context, FolderInfo folder) =>
-      (rightsIn(context).mayEdit && ShareSession.of(context) == null) ||
+      rightsIn(context).mayEdit ||
       mayShare(context, [...albumState.path, folder.name]);
 
   /// The menu of one folder tile, at the point it was pressed.
@@ -733,8 +732,7 @@ class ListingView extends StatelessWidget {
     var childPath = [...albumState.path, folder.name];
     // Moving an entry out of this folder is an edit *of this folder*; sharing
     // the entry is a question about the entry itself, so the two are asked
-    var link = ShareSession.of(context);
-    var mayMove = rightsIn(context).mayEdit && link == null;
+    var mayMove = rightsIn(context).mayEdit;
     var mayShareChild = mayShare(context, childPath);
     if (!context.mounted || !offersTileMenu(context, folder)) {
       // Nothing this caller may do here: no menu rather than an empty one.
@@ -870,10 +868,6 @@ class ListingView extends StatelessWidget {
   /// again — the tile of this folder up there is what has just changed
   /// (issue #134).
   Future<void> setFolderPicture(BuildContext context, String name) async {
-    if (refuseWhileOffline(context)) {
-      return;
-    }
-    var messenger = ScaffoldMessenger.of(context);
     var stored = ListingInfo(
       path: listing.path,
       title: listing.title,
@@ -883,11 +877,10 @@ class ListingView extends StatelessWidget {
       starred: listing.starred,
       folders: listing.folders,
     );
-    try {
-      await client.saveListing(albumState.path, stored);
-    } catch (error) {
-      // The server's own reason, as every other refused write shows it.
-      showRefusal(messenger, error);
+    // Refused offline, and the server's own reason where it refuses.
+    var done = await writeAction(
+        context, () => client.saveListing(albumState.path, stored));
+    if (done == null) {
       return;
     }
     var self = albumState.path;
@@ -907,25 +900,23 @@ class ListingView extends StatelessWidget {
   /// name, issue #130), the server says so and the listing shows the new
   /// name.
   Future<void> toggleChildStar(BuildContext context, FolderInfo folder) async {
-    if (refuseWhileOffline(context)) {
-      return;
-    }
     var messenger = ScaffoldMessenger.of(context);
     var childPath = [...albumState.path, folder.name];
-    CreateResult? written;
-    try {
+    var done = await writeAction(context, () async {
       var child = await client.loadResource(childPath);
       if (child is AlbumInfo) {
-        written =
-            await client.saveAlbum(childPath, child..starred = !folder.starred);
+        return await client.saveAlbum(
+            childPath, child..starred = !folder.starred);
       } else if (child is ListingInfo) {
-        written = await client.saveListing(
+        return await client.saveListing(
             childPath, child..starred = !folder.starred);
       }
-    } catch (error) {
-      showRefusal(messenger, error);
+      return null;
+    });
+    if (done == null) {
       return;
     }
+    var written = done.value;
     if (written == null) {
       // Nothing there that could carry a star: the listing is stale.
       albumState.reload();
@@ -951,9 +942,6 @@ class ListingView extends StatelessWidget {
   /// Written like its properties, see [editFolder]: what was loaded, with the
   /// one field changed.
   void toggleStar(BuildContext context) async {
-    if (refuseWhileOffline(context)) {
-      return;
-    }
     var messenger = ScaffoldMessenger.of(context);
     var stored = ListingInfo(
       path: listing.path,
@@ -963,14 +951,12 @@ class ListingView extends StatelessWidget {
       starred: !listing.starred,
       folders: listing.folders,
     );
-    CreateResult written;
-    try {
-      written = await client.saveListing(albumState.path, stored);
-    } catch (error) {
-      showRefusal(messenger, error);
+    var done = await writeAction(
+        context, () => client.saveListing(albumState.path, stored));
+    if (done == null) {
       return;
     }
-    followWritten(written, messenger);
+    followWritten(done.value, messenger);
   }
 
   /// Shows the folder where it is after its sidecar was written, see
@@ -1013,7 +999,6 @@ class ListingView extends StatelessWidget {
     if (refuseWhileOffline(context)) {
       return;
     }
-    var messenger = ScaffoldMessenger.of(context);
     // A form dialog: Escape and its own Cancel are the way back (issue #35),
     // a tap beside it is not, since that would throw the input away (#178).
     ListingInfo? folder = await showFormDialog<ListingInfo>(
@@ -1021,14 +1006,13 @@ class ListingView extends StatelessWidget {
       builder: (context) => const CreateFolderDialog(),
     );
 
-    if (folder == null) {
+    if (folder == null || !context.mounted) {
       return;
     }
 
-    try {
-      await client.putResource("$baseUrl/${folder.path}", folder);
-    } catch (error) {
-      showRefusal(messenger, error);
+    var done = await writeAction(
+        context, () => client.putResource("$baseUrl/${folder.path}", folder));
+    if (done == null) {
       return;
     }
 
@@ -1046,17 +1030,16 @@ class ListingView extends StatelessWidget {
       builder: (context) => const CreateAlbumDialog(),
     );
 
-    if (album == null) {
+    if (album == null || !context.mounted) {
       return;
     }
 
-    CreateResult result;
-    try {
-      result = await client.createAlbum(albumState.path, album);
-    } catch (error) {
-      showRefusal(messenger, error);
+    var done = await writeAction(
+        context, () => client.createAlbum(albumState.path, album));
+    if (done == null) {
       return;
     }
+    var result = done.value;
 
     // The whole tree below this folder, not this folder alone: a placement
     // rule files the new album into a year folder *inside* it, and a year
@@ -1091,16 +1074,15 @@ class ListingView extends StatelessWidget {
       context: context,
       builder: (context) => const CreateCollectionDialog(),
     );
-    if (collection == null) {
+    if (collection == null || !context.mounted) {
       return;
     }
-    CreateResult result;
-    try {
-      result = await client.createAlbum(albumState.path, collection);
-    } catch (error) {
-      showRefusal(messenger, error);
+    var done = await writeAction(
+        context, () => client.createAlbum(albumState.path, collection));
+    if (done == null) {
       return;
     }
+    var result = done.value;
     albumState.navigator.delegate.forgetTree(albumState.path);
     albumState.reload();
     albumState.showPath(splitPath(result.path));
@@ -1130,7 +1112,7 @@ class ListingView extends StatelessWidget {
       ),
     );
 
-    if (edited == null) {
+    if (edited == null || !context.mounted) {
       return;
     }
 
@@ -1148,13 +1130,12 @@ class ListingView extends StatelessWidget {
       folders: listing.folders,
     );
 
-    CreateResult written;
-    try {
-      written = await client.saveListing(albumState.path, stored);
-    } catch (error) {
-      showRefusal(messenger, error);
+    var done = await writeAction(
+        context, () => client.saveListing(albumState.path, stored));
+    if (done == null) {
       return;
     }
+    var written = done.value;
 
     if (written.message.isEmpty) {
       albumState.reload();
@@ -1182,19 +1163,14 @@ class ListingView extends StatelessWidget {
 
   /// Applies the placement rule of this folder to what is already in it.
   void applyRule(BuildContext context) async {
-    if (refuseWhileOffline(context)) {
-      return;
-    }
     var l10n = AppLocalizations.of(context)!;
     var messenger = ScaffoldMessenger.of(context);
 
-    MoveResult result;
-    try {
-      result = await client.place(albumState.path);
-    } catch (error) {
-      showRefusal(messenger, error);
+    var done = await writeAction(context, () => client.place(albumState.path));
+    if (done == null) {
       return;
     }
+    var result = done.value;
 
     // What was filed is no longer where it was: the listing on the screen has
     // to be fetched again before the outcome is read out -- and so has every

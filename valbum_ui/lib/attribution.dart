@@ -19,10 +19,10 @@ library;
 
 import 'package:flutter/material.dart';
 
+import 'action_guard.dart';
 import 'caller.dart';
 import 'l10n/app_localizations.dart';
 import 'resource.dart';
-import 'rights.dart';
 import 'share_session.dart';
 
 /// The prefix the server spells a signed-in user's subject with.
@@ -105,9 +105,11 @@ String? attributionShown(AppLocalizations l10n, ImagePart image) {
 ///    (`AuthService.SHARE_MOVE_REFUSED`) and a guest's root is not a library
 ///    (`AuthService.GUEST_SPACE_REFUSED`), so neither is offered the button.
 ///
-/// An album carrying no rights at all reads as [Rights.everything] (an older
-/// server, a view pumped on its own), which holds `edit` — so the button is
-/// not offered there either.
+/// The rights are what the app offers for the album, see [rightsOf]: where the
+/// server answered none (an older server), the caller's role stands in, so a
+/// `contribute` member is offered the take-back and an editor is not; where
+/// nobody said anything at all (a view pumped on its own) everything is held,
+/// `edit` included — so the button is not offered there.
 bool mayTakeBack(BuildContext context, ImagePart image) {
   if (ShareSession.of(context) != null || CallerInfo.isGuestCaller(context)) {
     return false;
@@ -116,6 +118,6 @@ bool mayTakeBack(BuildContext context, ImagePart image) {
   if (subject == null || image.contributor != subject) {
     return false;
   }
-  var rights = Rights.of(image.owner);
+  var rights = rightsOf(context, image.owner);
   return rights.mayContribute && !rights.mayEdit;
 }

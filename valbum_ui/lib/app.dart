@@ -10,6 +10,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
+import 'action_guard.dart';
 import 'add_email.dart';
 import 'album_model.dart';
 import 'album_view.dart';
@@ -1188,9 +1189,6 @@ class VAlbumAppState extends State<VAlbumApp> {
   /// a forwarded link opened before the real recipient. Said in a snack bar,
   /// a refusal in the server's own words.
   Future<void> _signOutOthers(BuildContext context) async {
-    if (refuseWhileOffline(context)) {
-      return;
-    }
     var messenger = ScaffoldMessenger.maybeOf(context);
     var l10n = AppLocalizations.of(context)!;
     var current = shareSession;
@@ -1198,14 +1196,8 @@ class VAlbumAppState extends State<VAlbumApp> {
     if (current == null || speaker == null) {
       return;
     }
-    try {
-      await speaker.endOtherSessions();
-    } catch (error) {
-      messenger?.showSnackBar(SnackBar(
-          content: Text(error is VAlbumException ? error.message : "$error")));
-      return;
-    }
-    if (!mounted) {
+    var done = await writeAction(context, () => speaker.endOtherSessions());
+    if (done == null || !mounted) {
       return;
     }
     current.info.otherSessions = 0;

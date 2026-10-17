@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'about.dart';
+import 'action_guard.dart';
 import 'album_layout.dart' show Orientations, ToImage;
 import 'app.dart';
 import 'attribution.dart';
@@ -561,18 +562,18 @@ class ImageViewState extends State<ImageView>
   /// edit is saved, see [editDescription] and [VAlbumClient.saveAlbum].
   AlbumInfo? get album => widget.image.owner;
 
-  /// What the caller may do with that album, as the server answered it with
-  /// the album itself (issue #49).
-  Rights get rights => Rights.of(album);
+  /// What the app offers for that album (issue #293): the rights the server
+  /// answered with the album itself (issue #49), the caller's role where it
+  /// answered none (issue #85), and never an edit through a share link (issue
+  /// #51), see [rightsOf].
+  Rights get rights => rightsOf(context, album);
 
   /// Whether a description may be edited here at all.
   ///
-  /// The `edit` right, an album to write into, and never inside a share link:
-  /// a link is not an account, see issue #51.
+  /// The `edit` right and an album to write into.
   bool get mayEditDescription =>
       album != null &&
       rights.mayEdit &&
-      ShareSession.of(context) == null &&
       (widget.editPath != null || inEditSession);
 
   /// Whether the album this image belongs to is being edited (issue #80).
@@ -657,32 +658,25 @@ class ImageViewState extends State<ImageView>
       // Guarded by [mayEditDescription]; here for the reader.
       return;
     }
-    if (refuseWhileOffline(context)) {
-      setState(() => before.applyTo(image));
+    // Nothing was stored where the write was refused, offline or by the
+    // server, so nothing has changed: the caption says what the server
+    // holds, not what was attempted.
+    var refused = false;
+    var written = await writeAction(
+      context,
+      () async {
+        await widget.client.saveAlbum(path, owner);
+        // Written to the album a photograph of a collection lies in (#221).
+        forgetSourceOf(widget.delegate, image);
+      },
+      refusalKey: const Key("image-description-failed"),
+      onRefused: (_) => refused = true,
+    );
+    if (written != null || !mounted) {
       return;
     }
-    var messenger = ScaffoldMessenger.of(context);
-    try {
-      await widget.client.saveAlbum(path, owner);
-      // Written to the album a photograph of a collection lies in (#221).
-      forgetSourceOf(widget.delegate, image);
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      // Nothing was stored, so nothing has changed: the caption says what the
-      // server holds, not what was attempted.
-      setState(() => before.applyTo(image));
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            error is VAlbumException ? error.message : "$error",
-            key: const Key("image-description-failed"),
-          ),
-          backgroundColor: Colors.red.shade700,
-          duration: const Duration(seconds: 8),
-        ),
-      );
+    setState(() => before.applyTo(image));
+    if (refused) {
       // The text is not thrown away with the request: the dialog comes back
       // holding it, so that a retry costs no typing.
       await _askForDescription(owner, image, answer);
@@ -726,7 +720,7 @@ class ImageViewState extends State<ImageView>
     return PhotoFacts(
       view: PhotoView.viewer,
       mode: PhotoMode.view,
-      rights: offeredRights(rights, caller?.permission ?? CallerPermission.unknown),
+      rights: rights,
       // Where the server has not said who the caller is, nothing is hidden
       // on a guess, see `offeredRights`.
       signedIn: caller == null || caller.permission.named,
@@ -797,8 +791,7 @@ class ImageViewState extends State<ImageView>
       album!.kind != AlbumKind.search &&
       widget.editPath != null &&
       rights.mayEdit &&
-      CallerInfo.facesOf(context) &&
-      ShareSession.of(context) == null;
+      CallerInfo.facesOf(context);
 
   /// Whether the photograph shown may be cropped here (issue #212).
   ///
@@ -811,8 +804,7 @@ class ImageViewState extends State<ImageView>
       !isBroken &&
       album != null &&
       widget.editPath != null &&
-      rights.mayEdit &&
-      ShareSession.of(context) == null;
+      rights.mayEdit;
 
   /// Opens the crop editor on the photograph shown and writes what it
   /// answers at once, see [cropPhoto].
@@ -869,8 +861,7 @@ class ImageViewState extends State<ImageView>
       !isBroken &&
       album != null &&
       widget.editPath != null &&
-      rights.mayEdit &&
-      ShareSession.of(context) == null;
+      rights.mayEdit;
 
   /// Whether the video shown has a poster chosen, which "Reset thumbnail"
   /// takes away.
@@ -956,44 +947,35 @@ class ImageViewState extends State<ImageView>
     if (path == null || !mayChoosePoster) {
       return;
     }
-    if (refuseWhileOffline(context)) {
-      return;
-    }
     var image = part;
     var shown = album;
-    var messenger = ScaffoldMessenger.of(context);
-    try {
-      var answer = await widget.client.posterVideo(path, image.name, millis);
-      VideoPoster? stored = millis > 0 ? VideoPoster(millis: millis) : null;
-      ThumbnailInfo? cover;
-      if (answer != null) {
-        for (var answered in imagesOfAlbum(answer)) {
-          if (answered.name == image.name) {
-            stored = answered.poster;
-          }
+    var written = await writeAction(
+      context,
+      () => widget.client.posterVideo(path, image.name, millis),
+      refusalKey: const Key("poster-failed"),
+    );
+    if (written == null) {
+      return;
+    }
+    var answer = written.value;
+    VideoPoster? stored = millis > 0 ? VideoPoster(millis: millis) : null;
+    ThumbnailInfo? cover;
+    if (answer != null) {
+      for (var answered in imagesOfAlbum(answer)) {
+        if (answered.name == image.name) {
+          stored = answered.poster;
         }
-        cover = answer.indexPicture;
       }
-      image.poster = stored;
-      if (shown != null && cover != null && cover.image == image.name) {
-        shown.indexPicture = cover;
-      }
-      // A video of a collection has its poster in its own album (#221).
-      forgetSourceOf(widget.delegate, image);
-      if (mounted) {
-        setState(() {});
-      }
-    } catch (error) {
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            error is VAlbumException ? error.message : "$error",
-            key: const Key("poster-failed"),
-          ),
-          backgroundColor: Colors.red.shade700,
-          duration: const Duration(seconds: 8),
-        ),
-      );
+      cover = answer.indexPicture;
+    }
+    image.poster = stored;
+    if (shown != null && cover != null && cover.image == image.name) {
+      shown.indexPicture = cover;
+    }
+    // A video of a collection has its poster in its own album (#221).
+    forgetSourceOf(widget.delegate, image);
+    if (mounted) {
+      setState(() {});
     }
   }
 
@@ -1221,14 +1203,12 @@ class ImageViewState extends State<ImageView>
         // Who already carries a face in this album stands at the top, see
         // issue #150 — the people of the shown album, not of this picture.
         inAlbum: _personsOfAlbum,
-        onCreate: (name) async {
-          try {
-            return await widget.client.createPerson(name);
-          } catch (error) {
-            _refused(error);
-            return null;
-          }
-        },
+        onCreate: (name) async => (await writeAction(
+          context,
+          () => widget.client.createPerson(name),
+          refusalKey: const Key("face-person-failed"),
+        ))
+            ?.value,
       ),
     );
     if (chosen == null) {
@@ -1271,10 +1251,9 @@ class ImageViewState extends State<ImageView>
     required FaceState state,
   }) async {
     var path = widget.editPath;
-    if (path == null || refuseWhileOffline(context)) {
+    if (path == null) {
       return false;
     }
-    var messenger = ScaffoldMessenger.of(context);
     var assignment = FaceAssignment(
       image: part.name,
       face: face,
@@ -1287,35 +1266,21 @@ class ImageViewState extends State<ImageView>
       w: box?.w ?? 0,
       h: box?.h ?? 0,
     );
-    try {
-      var answer = await widget.client.tagFaces(path, [assignment]);
-      if (!mounted) {
-        return false;
-      }
-      _adopt(answer);
-      return true;
-    } catch (error) {
-      if (!mounted) {
-        return false;
-      }
-      _tagFailed(messenger, error);
+    var written = await writeAction(
+      context,
+      () => widget.client.tagFaces(path, [assignment]),
+      refusalKey: _tagFailed,
+    );
+    if (written == null || !mounted) {
       return false;
     }
+    _adopt(written.value);
+    return true;
   }
 
-  /// Says in the server's own words that a write about a face was refused.
-  void _tagFailed(ScaffoldMessengerState messenger, Object error) {
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(
-          error is VAlbumException ? error.message : "$error",
-          key: const Key("face-tag-failed"),
-        ),
-        backgroundColor: Colors.red.shade700,
-        duration: const Duration(seconds: 8),
-      ),
-    );
-  }
+  /// The key of the bar saying in the server's own words that a write about a
+  /// face was refused.
+  static const Key _tagFailed = Key("face-tag-failed");
 
   /// Gives the given face the given box, at once (issue #157).
   ///
@@ -1328,10 +1293,9 @@ class ImageViewState extends State<ImageView>
   /// changes nothing, so the box snaps back to where the server has it.
   Future<bool> adjustFace(FaceInfo face, MarkedBox box) async {
     var path = widget.editPath;
-    if (path == null || refuseWhileOffline(context)) {
+    if (path == null) {
       return false;
     }
-    var messenger = ScaffoldMessenger.of(context);
     var decided =
         face.state == FaceState.confirmed || face.state == FaceState.rejected;
     var assignment = FaceAssignment(
@@ -1344,21 +1308,16 @@ class ImageViewState extends State<ImageView>
       w: box.w,
       h: box.h,
     );
-    try {
-      var answer =
-          await widget.client.adjustFaces(path, TagFaces(faces: [assignment]));
-      if (!mounted) {
-        return false;
-      }
-      _adopt(answer);
-      return true;
-    } catch (error) {
-      if (!mounted) {
-        return false;
-      }
-      _tagFailed(messenger, error);
+    var written = await writeAction(
+      context,
+      () => widget.client.adjustFaces(path, TagFaces(faces: [assignment])),
+      refusalKey: _tagFailed,
+    );
+    if (written == null || !mounted) {
       return false;
     }
+    _adopt(written.value);
+    return true;
   }
 
   /// Begins moving (without [corner]) or resizing the box of [face] (#157).
@@ -1544,23 +1503,6 @@ class ImageViewState extends State<ImageView>
       }
     }
     return result;
-  }
-
-  /// Says what the server said about a refused request about a person.
-  void _refused(Object error) {
-    if (!mounted) {
-      return;
-    }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          error is VAlbumException ? error.message : "$error",
-          key: const Key("face-person-failed"),
-        ),
-        backgroundColor: Colors.red.shade700,
-        duration: const Duration(seconds: 8),
-      ),
-    );
   }
 
   /// The group the displayed image belongs to, `null` if it is a single image.

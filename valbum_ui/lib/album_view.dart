@@ -14,6 +14,7 @@ import 'package:intl/intl.dart';
 import 'package:valbum_ui/album_layout.dart' as layouter;
 
 import 'about.dart';
+import 'action_guard.dart';
 import 'album_date.dart';
 import 'album_edit.dart';
 import 'album_labels.dart';
@@ -251,8 +252,7 @@ class AlbumContentState extends State<AlbumContent>
   /// there and the album is still the one being edited.
   /// Never inside a share link: a link is not an account, and the app offers
   /// nothing it would have to refuse, see issue #51.
-  bool get editMode =>
-      session.editMode && !previewing && rights.mayEdit && share == null;
+  bool get editMode => session.editMode && rights.mayEdit;
   set editMode(bool value) => session.editMode = value;
 
   /// What the caller may do with this album, as the server answered it with
@@ -263,11 +263,22 @@ class AlbumContentState extends State<AlbumContent>
   /// because they are looking at somebody else's view of it.
   ///
   /// Where the server answered no rights at all, the caller's role decides
-  /// what is offered instead, see [offeredRights] and issue #85. `peek`, not
-  /// a dependency: this is read from [initState] as well, and the view is a
-  /// dependent of the caller scope through [didChangeDependencies] anyway, so
-  /// the answer arriving rebuilds it.
-  Rights get rights => offeredRights(Rights.of(widget.album), _permission);
+  /// what is offered instead, and nothing is edited through a share link, see
+  /// [rightsOf] and issues #85, #293. `peek`, not a dependency: this is read
+  /// from [initState] as well, and the view is a dependent of the caller
+  /// scope through [didChangeDependencies] anyway, so the answer arriving
+  /// rebuilds it.
+  ///
+  /// What the caller *holds*, which is what the sharing notice says and what
+  /// sharing and searching ask; what may be *done* on the screen is
+  /// [rights], which a "view as" preview narrows.
+  Rights get heldRights => rightsOf(context, widget.album, listen: false);
+
+  /// What may be done on the screen: [heldRights], and nothing at all while
+  /// a "view as" preview is shown ([rightsOf]) — the edit mode, the tools
+  /// and the download are all off over it.
+  Rights get rights =>
+      rightsOf(context, widget.album, previewing: previewing, listen: false);
 
   /// What the caller may do and see, as the server said it (issue #85).
   ///
@@ -280,7 +291,7 @@ class AlbumContentState extends State<AlbumContent>
   /// The line saying that this album belongs to somebody else, `null` while
   /// the caller is its owner.
   String? get sharedLine =>
-      sharingNotice(_l10n, widget.albumState.path, rights);
+      sharingNotice(_l10n, widget.albumState.path, heldRights);
 
   /// The words this view reads in.
   AppLocalizations get _l10n => AppLocalizations.of(context)!;
@@ -302,7 +313,7 @@ class AlbumContentState extends State<AlbumContent>
       mayShareFolder(
         client,
         widget.albumState.path,
-        rights,
+        heldRights,
         // A caller nobody named is offered it as before, see issue #85.
         mayShare: _permission.mayShare || !_permission.named,
       );
@@ -436,7 +447,7 @@ class AlbumContentState extends State<AlbumContent>
   void setEditMode(AlbumPart selected) {
     // Nothing is greyed out: a caller without `edit` is simply not offered the
     // way in, and the album stays the album, see issue #49.
-    if (!rights.mayEdit || share != null) {
+    if (!rights.mayEdit) {
       return;
     }
     if (refuseWhileOffline(context)) {
@@ -823,7 +834,7 @@ class AlbumContentState extends State<AlbumContent>
 
   /// Whether the caller may open an edit session on this album — the
   /// conditions of [setEditMode], without the offline check.
-  bool get mayEnterEditMode => rights.mayEdit && share == null && !previewing;
+  bool get mayEnterEditMode => rights.mayEdit;
 
   /// Appends a heading at the end of the album, the menu entry "Add heading…"
   /// (issue #158).
@@ -1070,25 +1081,19 @@ class AlbumContentState extends State<AlbumContent>
   /// the album asks, so that a failed write keeps the user here with the
   /// message instead of leaving the changes behind, see [confirmLeave].
   Future<bool> save() async {
-    if (refuseWhileOffline(context)) {
-      return false;
-    }
+    var l10n = _l10n;
     var messenger = ScaffoldMessenger.of(context);
 
-    CreateResult stored;
-    try {
-      stored = await client.saveAlbum(widget.albumState.path, widget.album);
-    } catch (error) {
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(_l10n.saveFailed("$error")),
-          backgroundColor: Colors.red.shade700,
-          duration: const Duration(seconds: 8),
-        ),
-      );
+    var done = await writeAction(
+      context,
+      () => client.saveAlbum(widget.albumState.path, widget.album),
+      refusal: (error) => l10n.saveFailed("$error"),
+    );
+    if (done == null) {
       // Stay in edit mode, the changes are not persisted yet.
       return false;
     }
+    var stored = done.value;
 
     if (!mounted) {
       return true;
@@ -1299,7 +1304,7 @@ class AlbumContentState extends State<AlbumContent>
   /// then written by themselves, see [editProperties]. Never inside a share
   /// link — a link is not an account — and never over somebody else's view of
   /// the album, which is read-only, see [setViewAs].
-  bool get mayEditAlbum => rights.mayEdit && share == null && !previewing;
+  bool get mayEditAlbum => rights.mayEdit;
 
   // --- Searches, see issue #227 and `search_view.dart`. ---
 
@@ -1363,7 +1368,7 @@ class AlbumContentState extends State<AlbumContent>
       !isSearchView &&
       !editMode &&
       share == null &&
-      (_permission.named || rights.mayEdit) &&
+      (_permission.named || heldRights.mayEdit) &&
       holdsImages;
 
   /// Turns every photograph shown into a collection, chosen or created, see
@@ -1657,19 +1662,12 @@ class AlbumContentState extends State<AlbumContent>
   }
 
   Future<void> _relabel(String from, String to) async {
-    var messenger = ScaffoldMessenger.of(context);
-    AlbumInfo? answer;
-    try {
-      answer = await client.relabel(widget.albumState.path, from, to);
-    } catch (error) {
-      if (mounted) {
-        showRefusal(messenger, error);
-      }
+    var done = await writeAction(
+        context, () => client.relabel(widget.albumState.path, from, to));
+    if (done == null || !mounted) {
       return;
     }
-    if (!mounted) {
-      return;
-    }
+    var answer = done.value;
     setState(() {
       var album = widget.album;
       if (answer != null) {
@@ -1700,7 +1698,7 @@ class AlbumContentState extends State<AlbumContent>
   /// alone, the photograph its tile shows (#230) — and a photograph rated as
   /// trash (#152), which no filter shows. Always the originals.
   List<ImagePart> get downloadImages {
-    if (!rights.mayDownload || previewing || isSearchView) {
+    if (!rights.mayDownload || isSearchView) {
       return const [];
     }
     // A photograph of a collection that is gone has no original (#221).
@@ -1823,14 +1821,13 @@ class AlbumContentState extends State<AlbumContent>
   bool get _mayCollectHere => mayCollectFrom(
         shareLink: share != null,
         signedIn: _signedIn,
-        rights: rights,
+        rights: heldRights,
       );
 
   /// Whether the caller is a signed-in member of the space; where the server
   /// has not said who the caller is, nothing is hidden on a guess (as
   /// [offeredRights] does) — the server refuses what it must.
-  bool get _signedIn =>
-      CallerInfo.peek(context) == null || _permission.named;
+  bool get _signedIn => CallerInfo.peek(context) == null || _permission.named;
 
   // --- The actions of a photo, see `photo_actions.dart` (issue #290). ---
 
@@ -1863,11 +1860,12 @@ class AlbumContentState extends State<AlbumContent>
   BuildContext get photoContext => context;
 
   @override
-  int get actedOnCount => selectMode ? selectedDownloads.length : selection.length;
+  int get actedOnCount =>
+      selectMode ? selectedDownloads.length : selection.length;
 
   @override
-  VAlbumRouterDelegate? get photoDelegate => widget.albumState.navigator.delegate;
-
+  VAlbumRouterDelegate? get photoDelegate =>
+      widget.albumState.navigator.delegate;
 
   /// Whether the tiles have a menu: on everything but a "view as" preview,
   /// which is what somebody else sees, nothing to act on.
@@ -1891,8 +1889,7 @@ class AlbumContentState extends State<AlbumContent>
   }
 
   @override
-  void openPhoto(PhotoTile tile) =>
-      widget.pushPart(tile.part, tile.image.name);
+  void openPhoto(PhotoTile tile) => widget.pushPart(tile.part, tile.image.name);
 
   @override
   void selectPhoto(PhotoTile tile) => enterSelectMode(tile.part);
@@ -2263,22 +2260,18 @@ class AlbumContentState extends State<AlbumContent>
     }
 
     var messenger = ScaffoldMessenger.of(context);
-    CreateResult stored;
-    try {
-      stored = await client.saveAlbum(widget.albumState.path, album);
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      // Nothing was stored, so nothing has changed: the screen says what the
-      // server holds, not what was attempted.
-      setState(() => apply(before));
-      showRefusal(messenger, error);
-      return;
-    }
+    var done = await writeAction(
+        context, () => client.saveAlbum(widget.albumState.path, album));
     if (!mounted) {
       return;
     }
+    if (done == null) {
+      // Nothing was stored, so nothing has changed: the screen says what the
+      // server holds, not what was attempted.
+      setState(() => apply(before));
+      return;
+    }
+    var stored = done.value;
 
     // The listing above shows this album by its title and its index picture,
     // both of which may have just changed -- and so may the album's own folder
@@ -2316,20 +2309,16 @@ class AlbumContentState extends State<AlbumContent>
       return;
     }
     var messenger = ScaffoldMessenger.of(context);
-    CreateResult stored;
-    try {
-      stored = await client.saveAlbum(widget.albumState.path, album);
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      setState(() => album.starred = before);
-      showRefusal(messenger, error);
-      return;
-    }
+    var done = await writeAction(
+        context, () => client.saveAlbum(widget.albumState.path, album));
     if (!mounted) {
       return;
     }
+    if (done == null) {
+      setState(() => album.starred = before);
+      return;
+    }
+    var stored = done.value;
     // The tile in the listing above is what has changed.
     var path = widget.albumState.path;
     widget.albumState.navigator.delegate
@@ -2517,7 +2506,7 @@ class AlbumContentState extends State<AlbumContent>
       share == null &&
       !isSearchView &&
       !isSearch(widget.album) &&
-      (_permission.named || rights.mayEdit);
+      (_permission.named || heldRights.mayEdit);
 
   /// The search of this album, see [maySearch]: it finds the album's own
   /// photographs alone (issue #249), and the search view offers to widen it
@@ -2936,6 +2925,10 @@ class AlbumContentState extends State<AlbumContent>
   /// *reached* is answered from it, so the next request overwrites it, see
   /// [VAlbumClient.thumbnailBytes].
   Future<void> refreshPreviews() async {
+    // Refused offline before the question is asked (issue #293).
+    if (refuseWhileOffline(context)) {
+      return;
+    }
     var confirmed = await showAppDialog<bool>(
       context: context,
       builder: (context) => AppAlertDialog(
@@ -2959,19 +2952,14 @@ class AlbumContentState extends State<AlbumContent>
       return;
     }
 
-    CacheRefreshed answer;
-    try {
-      answer = await client.refreshCache(widget.albumState.path);
-    } catch (error) {
-      if (mounted) {
-        // The server's own reason — a refusal speaks, see issue #49.
-        showMessage(error is VAlbumException ? error.message : "$error");
-      }
+    // The server's own reason where it refuses — a refusal speaks, see
+    // issue #49.
+    var done = await writeAction(
+        context, () => client.refreshCache(widget.albumState.path));
+    if (done == null || !mounted) {
       return;
     }
-    if (!mounted) {
-      return;
-    }
+    var answer = done.value;
 
     // Said before the album is thrown away and fetched again, so that the
     // count survives the rebuild that follows it.
@@ -3015,19 +3003,14 @@ class AlbumContentState extends State<AlbumContent>
       return;
     }
 
-    ReanalyzeResult answer;
-    try {
-      answer = await client.reanalyze(widget.albumState.path);
-    } catch (error) {
-      if (mounted) {
-        // The server's own reason -- a refusal speaks, see issue #49.
-        showMessage(error is VAlbumException ? error.message : "$error");
-      }
+    // The server's own reason where it refuses -- a refusal speaks, see
+    // issue #49.
+    var done = await writeAction(
+        context, () => client.reanalyze(widget.albumState.path));
+    if (done == null || !mounted) {
       return;
     }
-    if (!mounted) {
-      return;
-    }
+    var answer = done.value;
 
     var counts = answer.running
         ? _l10n.reanalyzeRunning(answer.examined, answer.filled)
@@ -3600,8 +3583,7 @@ class AlbumContentState extends State<AlbumContent>
       }
       return InkWell(
         key: ValueKey(("heading-open-album", heading)),
-        onTap: () =>
-            widget.albumState.navigator.go(ListingOrAlbumRoute(album)),
+        onTap: () => widget.albumState.navigator.go(ListingOrAlbumRoute(album)),
         child: padded,
       );
     }
@@ -3920,9 +3902,8 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
     return PhotoTileGestures(
       key: ValueKey(image.name),
       // A photograph that is gone opens no viewer (issue #221).
-      onTap: image.missing
-          ? null
-          : () => state.widget.pushPart(part, image.name),
+      onTap:
+          image.missing ? null : () => state.widget.pushPart(part, image.name),
       onLongPress: modeSwitch,
       onMenu: menu,
       child: imageThumbnail(image),

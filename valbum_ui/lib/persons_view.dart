@@ -50,6 +50,7 @@ import 'package:flutter/material.dart' hide Orientation;
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
+import 'action_guard.dart';
 import 'album_edit.dart' show PlaneTransform;
 import 'album_view.dart' show LeaveEdit, dragFeedbackScale, dragHandleSize;
 import 'app.dart';
@@ -661,8 +662,7 @@ class PersonsContentState extends State<PersonsContent>
   }
 
   /// What this caller may do with the album, as the server answered it.
-  Rights get rights =>
-      offeredRights(Rights.of(widget.album), CallerInfo.permissionOf(context));
+  Rights get rights => rightsOf(context, widget.album);
 
   /// The name the caller is signed in under, empty for an anonymous one.
   String get callerName => CallerInfo.maybeOf(context)?.userName ?? "";
@@ -681,9 +681,9 @@ class PersonsContentState extends State<PersonsContent>
 
   /// Whether this caller may name and correct faces.
   ///
-  /// Never inside a share link: a link is not an account, and the server
-  /// answers it no face at all, see issue #124.
-  bool get mayEdit => rights.mayEdit && share == null;
+  /// Never inside a share link — a link is not an account, and the server
+  /// answers it no face at all, see issue #124 — which [rightsOf] says.
+  bool get mayEdit => rights.mayEdit;
 
   /// Whether anything was changed that is not on the server yet.
   ///
@@ -1186,14 +1186,12 @@ class PersonsContentState extends State<PersonsContent>
   ///
   /// Posted at once: it is not a change to this album, so Cancel does not take
   /// it back and Save does not write it.
-  Future<Person?> createPerson(String name) async {
-    try {
-      return await client.createPerson(name);
-    } catch (error) {
-      _refused(error);
-      return null;
-    }
-  }
+  Future<Person?> createPerson(String name) async => (await writeAction(
+        context,
+        () => client.createPerson(name),
+        refusalKey: _refusal,
+      ))
+          ?.value;
 
   /// Renames the person of the given group, everywhere in the space.
   Future<void> renamePerson(FaceGroup group) async {
@@ -1212,16 +1210,15 @@ class PersonsContentState extends State<PersonsContent>
     if (name == null || !mounted) {
       return;
     }
-    Person renamed;
-    try {
-      renamed = await client.renamePerson(group.person, name);
-    } catch (error) {
-      _refused(error);
+    var written = await writeAction(
+      context,
+      () => client.renamePerson(group.person, name),
+      refusalKey: _refusal,
+    );
+    if (written == null || !mounted) {
       return;
     }
-    if (!mounted) {
-      return;
-    }
+    var renamed = written.value;
     setState(() => people[renamed.id] = renamed);
     _syncRegister();
   }
@@ -1246,16 +1243,15 @@ class PersonsContentState extends State<PersonsContent>
     if (into == null || !mounted) {
       return;
     }
-    Person survivor;
-    try {
-      survivor = await client.mergePersons(into.id, group.person);
-    } catch (error) {
-      _refused(error);
+    var written = await writeAction(
+      context,
+      () => client.mergePersons(into.id, group.person),
+      refusalKey: _refusal,
+    );
+    if (written == null || !mounted) {
       return;
     }
-    if (!mounted) {
-      return;
-    }
+    var survivor = written.value;
     setState(() {
       people.remove(group.person);
       people[survivor.id] = survivor;
@@ -1305,18 +1301,15 @@ class PersonsContentState extends State<PersonsContent>
 
   /// Posts the link and shows the register as the server then has it.
   Future<void> linkTo(String id, String user) async {
-    Person linked;
-    try {
-      linked = await client.linkPerson(id, user);
-    } catch (error) {
-      if (mounted) {
-        _refused(error);
-      }
+    var written = await writeAction(
+      context,
+      () => client.linkPerson(id, user),
+      refusalKey: _refusal,
+    );
+    if (written == null || !mounted) {
       return;
     }
-    if (!mounted) {
-      return;
-    }
+    var linked = written.value;
     setState(() => people[linked.id] = linked);
     _syncRegister();
     try {
@@ -1405,15 +1398,22 @@ class PersonsContentState extends State<PersonsContent>
     if (assignments.isEmpty) {
       return true;
     }
-    setState(() => _saving = true);
-    try {
-      await client.tagFaces(path, assignments);
-    } catch (error) {
-      if (mounted) {
-        setState(() => _saving = false);
-        _refused(error);
-      }
-      // The buffer stays: a refusal must not throw away what was sorted.
+    // The buffer stays where the write is refused: a refusal must not throw
+    // away what was sorted.
+    var written = await writeAction(
+      context,
+      () {
+        setState(() => _saving = true);
+        return client.tagFaces(path, assignments);
+      },
+      refusalKey: _refusal,
+      onRefused: (_) {
+        if (mounted) {
+          setState(() => _saving = false);
+        }
+      },
+    );
+    if (written == null) {
       return false;
     }
     if (!mounted) {
@@ -1432,10 +1432,14 @@ class PersonsContentState extends State<PersonsContent>
     return true;
   }
 
-  /// Says what the server refused, in the server's own words.
+  /// The key of the text saying what the server refused, see [_refused].
+  static const Key _refusal = Key("persons-refusal");
+
+  /// Says what the server refused, in the server's own words: the writes say
+  /// it through [writeAction], under the same [_refusal].
   void _refused(Object error) => ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          key: const Key("persons-refusal"),
+          key: _refusal,
           content: Text(
             error is VAlbumException ? error.message : "$error",
           ),

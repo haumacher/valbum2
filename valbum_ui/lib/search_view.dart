@@ -49,6 +49,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import 'action_guard.dart';
 import 'album_date.dart';
 import 'album_model.dart';
 import 'album_view.dart';
@@ -1249,9 +1250,9 @@ class SearchViewState extends State<SearchView> {
       return;
     }
     var name = title.trim();
-    CreateResult created;
-    try {
-      created = await client.createAlbum(
+    var done = await writeAction(
+      context,
+      () => client.createAlbum(
         picked.path,
         AlbumInfo(
           kind: AlbumKind.search,
@@ -1259,11 +1260,12 @@ class SearchViewState extends State<SearchView> {
           path: albumFolderName(null, name),
           query: criteria.toQuery(),
         ),
-      );
-    } catch (error) {
-      showRefusal(messenger, error);
+      ),
+    );
+    if (done == null) {
       return;
     }
+    var created = done.value;
     var delegate = widget.albumState.navigator.delegate;
     delegate.forgetTree(picked.path);
     if (created.message.isNotEmpty) {
@@ -1282,10 +1284,9 @@ class SearchViewState extends State<SearchView> {
   Future<void> saveEdit() async {
     var edited = session.edited;
     var album = session.editedAlbum;
-    if (edited == null || album == null || refuseWhileOffline(context)) {
+    if (edited == null || album == null) {
       return;
     }
-    var messenger = ScaffoldMessenger.of(context);
     // The saved search's own statements and the new query; no photograph:
     // what a saved search shows is never stored.
     var stored = AlbumInfo(
@@ -1297,10 +1298,9 @@ class SearchViewState extends State<SearchView> {
       indexPicture: album.indexPicture,
       query: session.criteria.toQuery(),
     );
-    try {
-      await client.saveAlbum(edited, stored);
-    } catch (error) {
-      showRefusal(messenger, error);
+    var done =
+        await writeAction(context, () => client.saveAlbum(edited, stored));
+    if (done == null) {
       return;
     }
     var delegate = widget.albumState.navigator.delegate;

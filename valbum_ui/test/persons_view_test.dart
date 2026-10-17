@@ -1228,4 +1228,87 @@ void main() {
       expect(find.byKey(const Key("persons-member-badge")), findsNothing);
     });
   });
+
+  group("offline (issue #293)", () {
+    /// Anna and Bob, so that Anna has somebody to be merged into.
+    String annaAndBob() => '{"people": [{"id": "p-anna", "name": "Anna"}, '
+        '{"id": "p-bob", "name": "Bob"}]}';
+
+    /// Opens the editor and then loses the server: every write that follows
+    /// is to be refused before it is sent.
+    Future<List<http.Request>> pumpOffline(WidgetTester tester) async {
+      var requests = <http.Request>[];
+      await pumpEditor(
+        tester,
+        editorClient(
+          requests,
+          auth: authOf(),
+          album: albumOf(),
+          people: annaAndBob,
+          post: (request) => http.Response("Unexpected: ${request.url}", 500),
+        ),
+      );
+      OfflineScope.of(tester.element(find.byKey(const Key("persons-save"))))
+          .state
+          .goneOffline(null);
+      await tester.pumpAndSettle();
+      return requests;
+    }
+
+    /// Asserts the offline refusal was said and nothing was posted.
+    void expectRefused(List<http.Request> requests) {
+      expect(find.text(testL10n.offlineRefusal), findsOneWidget);
+      expect(requests.where((request) => request.method == "POST"), isEmpty);
+    }
+
+    testWidgets("a new person is not created", (tester) async {
+      var requests = await pumpOffline(tester);
+      await tester.tap(header("cluster:c1"));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key("persons-new-person")));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key("persons-name")), "Bert");
+      await withFakeImageHttp(() async {
+        await tester.tap(find.byKey(const Key("persons-name-ok")));
+        await tester.pumpAndSettle();
+      });
+      expectRefused(requests);
+    });
+
+    testWidgets("a person is not renamed", (tester) async {
+      var requests = await pumpOffline(tester);
+      await openPersonMenu(tester);
+      await tester.tap(find.byKey(const Key("persons-rename")));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key("persons-name")), "Annie");
+      await withFakeImageHttp(() async {
+        await tester.tap(find.byKey(const Key("persons-name-ok")));
+        await tester.pumpAndSettle();
+      });
+      expectRefused(requests);
+    });
+
+    testWidgets("a person is not merged", (tester) async {
+      var requests = await pumpOffline(tester);
+      await openPersonMenu(tester);
+      await tester.tap(find.byKey(const Key("persons-merge")));
+      await tester.pumpAndSettle();
+      await withFakeImageHttp(() async {
+        await tester.tap(find.byKey(const Key("persons-pick-p-bob")));
+        await tester.pumpAndSettle();
+      });
+      expectRefused(requests);
+    });
+
+    testWidgets("a person is not linked", (tester) async {
+      var requests = await pumpOffline(tester);
+      await openPersonMenu(tester);
+      await withFakeImageHttp(() async {
+        await tester.tap(find.byKey(const Key("persons-link-me")));
+        await tester.pumpAndSettle();
+      });
+      expectRefused(requests);
+      expect(find.byKey(const Key("persons-member-badge")), findsNothing);
+    });
+  });
 }

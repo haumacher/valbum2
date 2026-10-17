@@ -17,11 +17,11 @@ library;
 
 import 'package:flutter/material.dart';
 
+import 'action_guard.dart';
 import 'app.dart';
 import 'client.dart';
 import 'dialog_style.dart';
 import 'l10n/app_localizations.dart';
-import 'move_view.dart';
 import 'offline.dart';
 import 'resource.dart';
 import 'selectable.dart';
@@ -164,13 +164,11 @@ Future<bool> removeFromCollection({
   if (confirmed != true || !context.mounted) {
     return false;
   }
-  MoveResult result;
-  try {
-    result = await client.delete(path, names);
-  } catch (error) {
-    showRefusal(messenger, error);
+  var done = await writeAction(context, () => client.delete(path, names));
+  if (done == null) {
     return false;
   }
+  var result = done.value;
   var said = {
     for (var outcome in result.outcomes)
       if (outcome.message.isNotEmpty) outcome.message,

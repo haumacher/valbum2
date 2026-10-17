@@ -35,6 +35,7 @@ const List<String> generatedArbs = ["lib/l10n/app_de.arb"];
 /// spite of that is named in [allowedLiterals], and each entry says why.
 const List<String> convertedFiles = [
   "lib/about.dart",
+  "lib/action_guard.dart",
   "lib/album_date.dart",
   "lib/add_email.dart",
   "lib/album_edit.dart",

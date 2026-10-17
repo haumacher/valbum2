@@ -24,13 +24,14 @@ library;
 import 'package:flutter/material.dart';
 
 import 'about.dart';
+import 'action_guard.dart';
 import 'client.dart';
 import 'contact_session.dart';
 import 'crop.dart';
 import 'identify_view.dart';
 import 'l10n/app_localizations.dart';
 import 'listing_view.dart' show indexPictureTile;
-import 'manage_view.dart' show dayOf, refusalMessage;
+import 'manage_view.dart' show dayOf;
 import 'page_insets.dart';
 import 'resource.dart';
 import 'share_session.dart';
@@ -260,13 +261,9 @@ class SharedOverviewPageState extends State<SharedOverviewPage> {
   Future<void> _signOutOthers(BuildContext context) async {
     var messenger = ScaffoldMessenger.maybeOf(context);
     var l10n = AppLocalizations.of(context)!;
-    try {
-      await _client.endOtherSessions();
-    } catch (error) {
-      messenger?.showSnackBar(SnackBar(content: Text(refusalMessage(error))));
-      return;
-    }
-    if (!mounted) {
+    // Refused offline, a refusal said in the server's words (#293).
+    var done = await writeAction(context, () => _client.endOtherSessions());
+    if (done == null || !mounted) {
       return;
     }
     setState(() => _shared?.otherSessions = 0);

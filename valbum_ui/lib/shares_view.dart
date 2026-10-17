@@ -21,6 +21,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import 'action_guard.dart';
 import 'album_edit.dart' show privacyMembers, privacyPublic;
 import 'caller.dart';
 import 'client.dart';
@@ -675,20 +676,30 @@ class SharesScreenState extends State<SharesScreen> {
 
   /// Runs one request of this screen; answers whether it went through, and
   /// shows the server's reason where it did not.
+  ///
+  /// Refused while offline before anything is sent, see [writeAction]; the
+  /// server's reason is said in the line of this screen.
   Future<bool> _run(Future<void> Function() request) async {
-    setState(() {
-      _busy = true;
-      _problem = null;
-    });
-    try {
-      await request();
-    } catch (error) {
-      if (mounted) {
+    var done = await writeAction(
+      context,
+      () async {
         setState(() {
-          _busy = false;
-          _problem = refusalMessage(error);
+          _busy = true;
+          _problem = null;
         });
-      }
+        await request();
+      },
+      speaks: false,
+      onRefused: (error) {
+        if (mounted) {
+          setState(() {
+            _busy = false;
+            _problem = refusalMessage(error);
+          });
+        }
+      },
+    );
+    if (done == null) {
       return false;
     }
     if (mounted) {
@@ -1029,25 +1040,29 @@ class ShareEditDialogState extends State<ShareEditDialog> {
         return;
       }
     }
-    setState(() {
-      _busy = true;
-      _refusal = null;
-    });
-    ShareLinkList answer;
-    try {
-      answer = await widget.client.editShare(changed);
-    } catch (error) {
-      if (mounted) {
+    var done = await writeAction(
+      context,
+      () {
         setState(() {
-          _busy = false;
-          _refusal = refusalMessage(error);
+          _busy = true;
+          _refusal = null;
         });
-      }
+        return widget.client.editShare(changed);
+      },
+      speaks: false,
+      onRefused: (error) {
+        if (mounted) {
+          setState(() {
+            _busy = false;
+            _refusal = refusalMessage(error);
+          });
+        }
+      },
+    );
+    if (done == null || !mounted) {
       return;
     }
-    if (!mounted) {
-      return;
-    }
+    var answer = done.value;
     Navigator.of(context)
         .pop(answer.links.isEmpty ? changed : answer.links.first);
   }

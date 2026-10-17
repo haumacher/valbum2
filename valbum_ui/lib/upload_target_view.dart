@@ -7,6 +7,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import 'action_guard.dart';
 import 'caller.dart';
 import 'client.dart';
 import 'dialog_style.dart';
@@ -294,7 +295,6 @@ Future<void> chooseUploadTarget(BuildContext context) async {
   var targets = scope.targets;
   var dataUrl = client.dataUrl;
   var l10n = AppLocalizations.of(context)!;
-  var messenger = ScaffoldMessenger.of(context);
   var picked = await showFormDialog<PickedTarget>(
     context: context,
     builder: (context) => FolderPicker(
@@ -316,13 +316,13 @@ Future<void> chooseUploadTarget(BuildContext context) async {
   var title = picked.title;
   var newAlbum = picked.newAlbum;
   if (newAlbum != null) {
-    try {
-      // Where the album landed, never where it was asked for (issue #48).
-      path = splitPath((await client.createAlbum(path, newAlbum)).path);
-    } catch (error) {
-      showRefusal(messenger, error);
+    var done = await writeAction(
+        context, () => client.createAlbum(path, newAlbum));
+    if (done == null) {
       return;
     }
+    // Where the album landed, never where it was asked for (issue #48).
+    path = splitPath(done.value.path);
     title = newAlbum.title;
     if (!context.mounted) {
       return;

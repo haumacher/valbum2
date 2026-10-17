@@ -17,12 +17,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
+import 'action_guard.dart';
 import 'album_edit.dart' show privacyMembers, privacyPublic;
 import 'caller.dart';
 import 'client.dart';
 import 'dialog_style.dart';
 import 'form_dialog.dart';
 import 'l10n/app_localizations.dart';
+import 'loadable.dart' show reasonOf;
 import 'manage_view.dart' show dayOf;
 import 'offline.dart';
 import 'phone_contacts.dart';
@@ -550,37 +552,39 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
   /// Shuts [contact] out of [link], or lets them in again (issue #203), and
   /// shows the link as the server answers it.
   Future<void> _shutOut(ShareLink link, String contact, bool shutOut) async {
-    if (refuseWhileOffline(context)) {
+    var done = await writeAction(
+      context,
+      () {
+        setState(() {
+          _busy = true;
+          _refusal = null;
+        });
+        return widget.client.shutOut(widget.path, link.id, contact, shutOut);
+      },
+      speaks: false,
+      onRefused: (error) {
+        if (mounted) {
+          setState(() {
+            _busy = false;
+            _refusal = reasonOf(error);
+          });
+        }
+      },
+    );
+    if (done == null || !mounted) {
       return;
     }
+    var answer = done.value;
+    var changed = answer.links.isEmpty ? null : answer.links.first;
     setState(() {
-      _busy = true;
-      _refusal = null;
+      _busy = false;
+      if (changed != null) {
+        _links = [
+          for (var shown in _links ?? const <ShareLink>[])
+            shown.id == changed.id ? changed : shown,
+        ];
+      }
     });
-    try {
-      var answer =
-          await widget.client.shutOut(widget.path, link.id, contact, shutOut);
-      if (!mounted) {
-        return;
-      }
-      var changed = answer.links.isEmpty ? null : answer.links.first;
-      setState(() {
-        _busy = false;
-        if (changed != null) {
-          _links = [
-            for (var shown in _links ?? const <ShareLink>[])
-              shown.id == changed.id ? changed : shown,
-          ];
-        }
-      });
-    } catch (error) {
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _refusal = error is VAlbumException ? error.message : "$error";
-        });
-      }
-    }
   }
 
   /// Whether the given link was made further up and can only be deleted
@@ -930,49 +934,50 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
 
   /// Creates the link and shows its URL, once.
   Future<void> _create() async {
-    if (refuseWhileOffline(context)) {
-      return;
-    }
-    setState(() {
-      _busy = true;
-      _refusal = null;
-    });
-    ShareLinkCreated answer;
-    try {
-      answer = await widget.client.share(
-        widget.path,
-        ShareLink(
-          type: _kind == LinkKind.anonymous
-              ? ShareType.anonymous
-              : ShareType.personal,
-          recipients: _kind == LinkKind.selected ? _recipients : const [],
-          label: _label.text.trim(),
-          expires: _expiresAt,
-          maxPrivacy: _maxPrivacy,
-          minRating: _minRating,
-          photoLabel: _photoLabel,
-          // What the check boxes show, `view` included: the server closes the
-          // set again, so sending it only means that what was shown was sent.
-          rights: [
-            for (var right in allRights)
-              if (_picked.contains(right)) RightName(name: right),
-          ],
-        ),
-      );
-    } catch (error) {
-      if (mounted) {
+    var done = await writeAction(
+      context,
+      () {
         setState(() {
-          _busy = false;
-          _refusal = error is VAlbumException ? error.message : "$error";
-          // Back to the list, where the reason is shown.
-          _creating = false;
+          _busy = true;
+          _refusal = null;
         });
-      }
+        return widget.client.share(
+          widget.path,
+          ShareLink(
+            type: _kind == LinkKind.anonymous
+                ? ShareType.anonymous
+                : ShareType.personal,
+            recipients: _kind == LinkKind.selected ? _recipients : const [],
+            label: _label.text.trim(),
+            expires: _expiresAt,
+            maxPrivacy: _maxPrivacy,
+            minRating: _minRating,
+            photoLabel: _photoLabel,
+            // What the check boxes show, `view` included: the server closes the
+            // set again, so sending it only means that what was shown was sent.
+            rights: [
+              for (var right in allRights)
+                if (_picked.contains(right)) RightName(name: right),
+            ],
+          ),
+        );
+      },
+      speaks: false,
+      onRefused: (error) {
+        if (mounted) {
+          setState(() {
+            _busy = false;
+            _refusal = reasonOf(error);
+            // Back to the list, where the reason is shown.
+            _creating = false;
+          });
+        }
+      },
+    );
+    if (done == null || !mounted) {
       return;
     }
-    if (!mounted) {
-      return;
-    }
+    var answer = done.value;
     setState(() {
       _busy = false;
       _creating = false;
@@ -1103,31 +1108,33 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
   /// "Send again" (#198's `resend`): a fresh link of their own for one
   /// recipient, the earlier one void, shown with the ways to send it.
   Future<void> _resend(ShareLink link, ShareRecipient recipient) async {
-    if (refuseWhileOffline(context)) {
+    var done = await writeAction(
+      context,
+      () {
+        setState(() {
+          _busy = true;
+          _refusal = null;
+        });
+        return widget.client.resend(widget.path, link.id, recipient.contact);
+      },
+      speaks: false,
+      onRefused: (error) {
+        if (mounted) {
+          setState(() {
+            _busy = false;
+            _refusal = reasonOf(error);
+          });
+        }
+      },
+    );
+    if (done == null || !mounted) {
       return;
     }
     setState(() {
-      _busy = true;
-      _refusal = null;
+      _busy = false;
+      _created = done.value;
+      _resentTo = recipient.name;
     });
-    try {
-      var answer =
-          await widget.client.resend(widget.path, link.id, recipient.contact);
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _created = answer;
-          _resentTo = recipient.name;
-        });
-      }
-    } catch (error) {
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _refusal = error is VAlbumException ? error.message : "$error";
-        });
-      }
-    }
   }
 
   Future<void> _copy(String url) async {
@@ -1165,22 +1172,26 @@ class ShareLinkDialogState extends State<ShareLinkDialog> {
     if (confirmed != true || !mounted) {
       return;
     }
-    setState(() {
-      _busy = true;
-      _refusal = null;
-    });
-    try {
-      await widget.client.unshare(widget.path, link.id);
-    } catch (error) {
-      if (mounted) {
+    var done = await writeAction(
+      context,
+      () {
         setState(() {
-          _busy = false;
-          _refusal = error is VAlbumException ? error.message : "$error";
+          _busy = true;
+          _refusal = null;
         });
-      }
-      return;
-    }
-    if (!mounted) {
+        return widget.client.unshare(widget.path, link.id);
+      },
+      speaks: false,
+      onRefused: (error) {
+        if (mounted) {
+          setState(() {
+            _busy = false;
+            _refusal = reasonOf(error);
+          });
+        }
+      },
+    );
+    if (done == null || !mounted) {
       return;
     }
     setState(() => _busy = false);

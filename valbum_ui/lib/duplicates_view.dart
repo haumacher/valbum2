@@ -26,18 +26,16 @@ library;
 
 import 'package:flutter/material.dart' hide Orientation;
 
+import 'action_guard.dart';
 import 'album_date.dart';
 import 'app.dart';
-import 'caller.dart';
 import 'client.dart';
 import 'dialog_style.dart';
 import 'l10n/app_localizations.dart';
-import 'move_view.dart' show showRefusal;
 import 'offline.dart';
 import 'oriented_thumbnail.dart';
 import 'page_insets.dart';
 import 'resource.dart';
-import 'rights.dart';
 import 'routes.dart';
 import 'selectable.dart';
 import 'trash_view.dart' show trashRating;
@@ -175,12 +173,15 @@ class DuplicatesViewState extends State<DuplicatesView> {
   }
 
   /// Whether the caller may take a copy out of its album: whoever may edit
-  /// the albums of the space — every album alike, a role being the space's
-  /// (#83) — and everybody where the server names nobody (`--auth off`).
-  bool get mayDelete => offeredRights(
-        Rights.unanswered,
-        CallerInfo.permissionOf(context),
-      ).mayEdit;
+  /// that album, and everybody where the server names nobody (`--auth off`).
+  ///
+  /// The delete is the album's ordinary sidecar PUT, which the server grants
+  /// to `edit` on that album. The page holds no album, so it asks [rightsOf]
+  /// for the space: for a paired caller that *is* the album's answer — the
+  /// server derives a paired caller's rights from the role alone, the same in
+  /// every album of the space (`AuthService.rights`: "one role, one answer,
+  /// no path to consult"), so no request per album is needed to know it (#293).
+  bool get mayDelete => rightsOf(context, null).mayEdit;
 
   /// The name [copy]'s album is spoken of by in a sentence.
   String _albumWord(DuplicateCopy copy) {
@@ -219,13 +220,12 @@ class DuplicatesViewState extends State<DuplicatesView> {
     if (confirmed != true || !mounted) {
       return;
     }
-    // Asked again: the connection may have gone while the question stood.
-    if (refuseWhileOffline(context)) {
-      return;
-    }
     var messenger = ScaffoldMessenger.of(context);
     var path = duplicateAlbumPath(copy);
-    try {
+    // Asked again by [writeAction]: the connection may have gone while the
+    // question stood. A refusal is the server's own reason, nothing changed
+    // (issue #49).
+    var done = await writeAction(context, () async {
       // The album as the server holds it now, not a copy the router may have
       // kept: only the one rating is changed in what is written back.
       var resource = await client.loadResource(path);
@@ -237,12 +237,9 @@ class DuplicatesViewState extends State<DuplicatesView> {
         throw VAlbumException(_l10n.noSuchImage(copy.name));
       }
       image.rating = trashRating;
-      await client.saveAlbum(path, resource);
-    } catch (error) {
-      if (mounted) {
-        // The server's own reason, nothing changed (issue #49).
-        showRefusal(messenger, error);
-      }
+      return await client.saveAlbum(path, resource);
+    });
+    if (done == null) {
       return;
     }
     // The album holds something else now: the next visit asks the server.

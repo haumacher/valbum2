@@ -29,6 +29,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
+import 'action_guard.dart';
 import 'caller.dart';
 import 'dialog_style.dart';
 import 'l10n/app_localizations.dart';
@@ -626,36 +627,35 @@ class InviteDialogState extends State<InviteDialog> {
       DateTime.now().toUtc().add(_expiry.duration).toIso8601String();
 
   Future<void> _create() async {
-    setState(() {
-      _busy = true;
-      _refusal = null;
-    });
-    InvitationCreated answer;
-    try {
-      answer = await widget.client.invite(Invitation(
-        role: _role,
-        clearance: _clearance,
-        mayShare: _mayShare,
-        note: _note.text.trim(),
-        recipient: _recipient.text.trim(),
-        expires: _expiresAt,
-      ));
-    } on VAlbumException catch (failure) {
-      _refused(failure.message);
-      return;
-    } on http.ClientException catch (failure) {
-      _refused(failure.message);
-      return;
-    } catch (failure) {
-      _refused("$failure");
-      return;
-    }
-    if (!mounted) {
+    var done = await writeAction(
+      context,
+      () {
+        setState(() {
+          _busy = true;
+          _refusal = null;
+        });
+        return widget.client.invite(Invitation(
+          role: _role,
+          clearance: _clearance,
+          mayShare: _mayShare,
+          note: _note.text.trim(),
+          recipient: _recipient.text.trim(),
+          expires: _expiresAt,
+        ));
+      },
+      speaks: false,
+      onRefused: (failure) => _refused(switch (failure) {
+        VAlbumException() => failure.message,
+        http.ClientException() => failure.message,
+        _ => "$failure",
+      }),
+    );
+    if (done == null || !mounted) {
       return;
     }
     setState(() {
       _busy = false;
-      _created = answer;
+      _created = done.value;
     });
   }
 

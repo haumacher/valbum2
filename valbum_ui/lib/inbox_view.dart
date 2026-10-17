@@ -69,6 +69,7 @@ import 'package:intl/intl.dart';
 import 'package:valbum_ui/album_layout.dart' as layouter;
 
 import 'about.dart';
+import 'action_guard.dart';
 import 'album_date.dart' show localDayOf;
 import 'album_edit.dart';
 import 'album_model.dart';
@@ -579,11 +580,10 @@ class InboxContentState extends State<InboxContent>
     _loadCameraFilter();
   }
 
-  /// What the caller may do with this inbox, as the server answered it.
-  Rights get rights => offeredRights(
-        Rights.of(album),
-        CallerInfo.peek(context)?.permission ?? CallerPermission.unknown,
-      );
+  /// What the caller may do with this inbox, as the server answered it, see
+  /// [rightsOf]: never `edit` through a share link. Asked without a
+  /// dependency, as before: this is read from `initState` as well.
+  Rights get rights => rightsOf(context, album, listen: false);
 
   /// Whether this caller may write the inbox's sidecar.
   ///
@@ -591,7 +591,7 @@ class InboxContentState extends State<InboxContent>
   /// PUT, which the server grants to `edit` alone; a member with `contribute`
   /// sees their own contributions here (issue #135) and may take them out —
   /// see [mayTakeOut] — but not rewrite the album.
-  bool get mayWrite => rights.mayEdit && share == null;
+  bool get mayWrite => rights.mayEdit;
 
   /// Whether this caller may move photographs out of the inbox and delete
   /// them.
@@ -873,20 +873,20 @@ class InboxContentState extends State<InboxContent>
   /// grouping for an inbox (`Inboxes.restoreArrangement`), so a round trip
   /// carries the edit and nothing else.
   Future<void> writeNow(VoidCallback edit, VoidCallback undo) async {
-    if (refuseWhileOffline(context)) {
-      return;
-    }
-    var messenger = ScaffoldMessenger.of(context);
-    setState(edit);
-    try {
-      await client.saveAlbum(path, album);
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      setState(undo);
-      showRefusal(messenger, error);
-    }
+    // Applied only once [writeAction] lets the write go out: offline nothing
+    // changes on the screen either.
+    await writeAction(
+      context,
+      () {
+        setState(edit);
+        return client.saveAlbum(path, album);
+      },
+      onRefused: (_) {
+        if (mounted) {
+          setState(undo);
+        }
+      },
+    );
   }
 
   /// Turns [image] by [operation] and writes it, see [writeNow].
@@ -1171,17 +1171,17 @@ class InboxContentState extends State<InboxContent>
       return;
     }
 
-    MoveResult result;
-    try {
-      result = await client.delete(
+    var done = await writeAction(
+      context,
+      () => client.delete(
         path,
         [for (var image in chosen) image.thumbnailName],
-      );
-    } catch (error) {
-      // The server's own reason, as every other refused write shows it.
-      showRefusal(messenger, error);
+      ),
+    );
+    if (done == null) {
       return;
     }
+    var result = done.value;
 
     clearSelection();
     if (path.isNotEmpty) {
@@ -1248,23 +1248,23 @@ class InboxContentState extends State<InboxContent>
       album.indexPicture = values.indexPicture;
     }
 
-    setState(() => apply(result));
-
     var messenger = ScaffoldMessenger.of(context);
-    CreateResult stored;
-    try {
-      stored = await client.saveAlbum(path, album);
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      setState(() => apply(before));
-      showRefusal(messenger, error);
+    var done = await writeAction(
+      context,
+      () {
+        setState(() => apply(result));
+        return client.saveAlbum(path, album);
+      },
+      onRefused: (_) {
+        if (mounted) {
+          setState(() => apply(before));
+        }
+      },
+    );
+    if (done == null || !mounted) {
       return;
     }
-    if (!mounted) {
-      return;
-    }
+    var stored = done.value;
     if (stored.message.isEmpty) {
       // The same address, the new title shown.
       widget.albumState.navigator.delegate.forget(path);
