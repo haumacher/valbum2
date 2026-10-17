@@ -542,7 +542,7 @@ class SharedOverviewView extends StatelessWidget {
     var client = clientOf(album.link);
     return indexPictureTile(
       client,
-      withRegion("${client.dataUrl}/${picture.image}", coverRegion(picture)),
+      coverImageUrl("${client.dataUrl}/${picture.image}", picture),
       picture,
       size,
       key: Key("shared-album-picture-${album.link}"),

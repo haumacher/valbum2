@@ -1096,5 +1096,8 @@
   "contactSharesEntry": "Freigaben…",
   "pickerNotCollection": "Keine Sammlung.",
   "searchTakesNoPhotos": "Eine gespeicherte Suche enthält keine eigenen Fotos.",
-  "pickerNeedsCollection": "Fotos werden einer Sammlung hinzugefügt – wählen Sie eine aus oder erstellen Sie eine."
+  "pickerNeedsCollection": "Fotos werden einer Sammlung hinzugefügt – wählen Sie eine aus oder erstellen Sie eine.",
+  "posterUse": "Als Vorschaubild verwenden",
+  "posterReset": "Vorschaubild zurücksetzen",
+  "posterNotPlaying": "Das Video zeigt noch kein Bild. Starten Sie es und halten Sie es in dem Moment an, den das Vorschaubild zeigen soll."
 }

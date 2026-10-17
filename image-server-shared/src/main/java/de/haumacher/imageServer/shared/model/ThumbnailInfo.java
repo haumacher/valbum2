@@ -33,6 +33,9 @@ public class ThumbnailInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getCrop() */
 	private static final String CROP__PROP = "crop";
 
+	/** @see #getPoster() */
+	private static final String POSTER__PROP = "poster";
+
 	private String _image = "";
 
 	private double _scale = 0.0d;
@@ -44,6 +47,8 @@ public class ThumbnailInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private de.haumacher.imageServer.shared.model.Orientation _orientation = de.haumacher.imageServer.shared.model.Orientation.IDENTITY;
 
 	private de.haumacher.imageServer.shared.model.Crop _crop = null;
+
+	private de.haumacher.imageServer.shared.model.VideoPoster _poster = null;
 
 	/**
 	 * Creates a {@link ThumbnailInfo} instance.
@@ -206,6 +211,41 @@ public class ThumbnailInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 		return _crop != null;
 	}
 
+	/**
+	 * The moment of the video a tile of this picture shows, <code>null</code> for the video's first
+	 * frame and for every photograph, see issue #285.
+	 *
+	 * <p>
+	 * The {@link ImagePart#getPoster() poster} of the video, so that the listing can ask for
+	 * <code>?type=tn&amp;poster=&hellip;</code> without knowing the video's part. <b>Derived</b> by
+	 * the server where it builds the cover of a listing entry and never stored, exactly like
+	 * {@link #getCrop() crop}.
+	 * </p>
+	 */
+	public final de.haumacher.imageServer.shared.model.VideoPoster getPoster() {
+		return _poster;
+	}
+
+	/**
+	 * @see #getPoster()
+	 */
+	public de.haumacher.imageServer.shared.model.ThumbnailInfo setPoster(de.haumacher.imageServer.shared.model.VideoPoster value) {
+		internalSetPoster(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getPoster()} without chain call utility. */
+	protected final void internalSetPoster(de.haumacher.imageServer.shared.model.VideoPoster value) {
+		_poster = value;
+	}
+
+	/**
+	 * Checks, whether {@link #getPoster()} has a value.
+	 */
+	public final boolean hasPoster() {
+		return _poster != null;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.ThumbnailInfo readThumbnailInfo(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.ThumbnailInfo result = new de.haumacher.imageServer.shared.model.ThumbnailInfo();
@@ -235,6 +275,10 @@ public class ThumbnailInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 			out.name(CROP__PROP);
 			getCrop().writeTo(out);
 		}
+		if (hasPoster()) {
+			out.name(POSTER__PROP);
+			getPoster().writeTo(out);
+		}
 	}
 
 	@Override
@@ -246,6 +290,7 @@ public class ThumbnailInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 			case TY__PROP: setTy(in.nextDouble()); break;
 			case ORIENTATION__PROP: setOrientation(de.haumacher.imageServer.shared.model.Orientation.readOrientation(in)); break;
 			case CROP__PROP: setCrop(de.haumacher.imageServer.shared.model.Crop.readCrop(in)); break;
+			case POSTER__PROP: setPoster(de.haumacher.imageServer.shared.model.VideoPoster.readVideoPoster(in)); break;
 			default: super.readField(in, field);
 		}
 	}

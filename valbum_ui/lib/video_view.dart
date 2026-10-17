@@ -1204,6 +1204,38 @@ class VideoViewState extends State<VideoView> {
     }
   }
 
+  /// The moment of the video the player shows, `null` while it shows none
+  /// (not yet playable, failed): what "Use as thumbnail" stores (issue #285).
+  Duration? get shownPosition {
+    var controller = _controller;
+    if (controller == null || !controller.value.isInitialized) {
+      return null;
+    }
+    return controller.value.position;
+  }
+
+  /// The moment the player is at, asked of the platform (the position the
+  /// controller reports is only refreshed while it plays); `null` while it
+  /// shows nothing, see [shownPosition].
+  Future<Duration?> currentPosition() async {
+    var controller = _controller;
+    if (controller == null || !controller.value.isInitialized) {
+      return null;
+    }
+    return await controller.position ?? controller.value.position;
+  }
+
+  /// Stops playback where it is, so that the frame chosen as the poster is
+  /// the frame on the screen (issue #285); nothing where nothing plays.
+  Future<void> pauseHere() async {
+    var controller = _controller;
+    if (controller != null &&
+        controller.value.isInitialized &&
+        controller.value.isPlaying) {
+      await controller.pause();
+    }
+  }
+
   /// Starts or stops playback.
   void togglePlay() {
     var controller = _controller;

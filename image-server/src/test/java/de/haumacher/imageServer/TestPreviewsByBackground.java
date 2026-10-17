@@ -239,6 +239,13 @@ public class TestPreviewsByBackground extends SpaceTestCase {
 			+ "\"indexPicture\":{\"image\":\"cut.jpg\",\"scale\":1.0},\"parts\":["
 			+ "[\"ImagePart\",{\"name\":\"cut.jpg\",\"width\":1600,\"height\":1200,"
 			+ "\"crop\":{\"x\":0.25,\"y\":0.25,\"w\":0.5,\"h\":0.5}}]]}]").getBytes(StandardCharsets.UTF_8));
+		// A video shown by the poster its author chose, see issue #285.
+		Path poster = Files.createDirectories(_base.resolve("Library/Poster"));
+		Files.copy(Path.of("src/test/fixtures/video/clip.m4v"), poster.resolve("clip.m4v"));
+		Files.write(poster.resolve("index.json"), ("[\"AlbumInfo\",{\"title\":\"Poster\","
+			+ "\"indexPicture\":{\"image\":\"clip.m4v\",\"scale\":1.0},\"parts\":["
+			+ "[\"ImagePart\",{\"kind\":\"VIDEO\",\"name\":\"clip.m4v\",\"poster\":{\"millis\":500}}]]}]")
+			.getBytes(StandardCharsets.UTF_8));
 
 		List<Kind> kinds = new ArrayList<>(Arrays.asList(
 			new Kind("preview", "/Library/Kinds/plain.jpg", "type", "tn"),
@@ -246,7 +253,8 @@ public class TestPreviewsByBackground extends SpaceTestCase {
 			new Kind("large preview", "/Library/Kinds/plain.jpg", "type", "tn", "size", "large"),
 			new Kind("large cut preview", "/Library/Cut/cut.jpg", "type", "tn", "size", "large", "crop",
 				"0.25,0.25,0.5,0.5"),
-			new Kind("video poster", "/Library/Kinds/clip.m4v", "type", "tn")));
+			new Kind("video poster", "/Library/Kinds/clip.m4v", "type", "tn"),
+			new Kind("chosen video poster", "/Library/Poster/clip.m4v", "type", "tn", "poster", "500")));
 		if (jxl) {
 			kinds.add(new Kind("preview of a coded picture", "/Library/Kinds/coded.jxl", "type", "tn"));
 			kinds.add(new Kind("display rendition", "/Library/Kinds/coded.jxl", "type", "display"));
@@ -257,6 +265,7 @@ public class TestPreviewsByBackground extends SpaceTestCase {
 		servlet();
 		record("Library/Kinds");
 		record("Library/Cut");
+		record("Library/Poster");
 		long made = PreviewCache.made();
 		long analyses = ImageData.analyses();
 		for (Kind kind : kinds) {
@@ -268,6 +277,7 @@ public class TestPreviewsByBackground extends SpaceTestCase {
 
 		background("Library/Kinds");
 		background("Library/Cut");
+		background("Library/Poster");
 		for (Kind kind : kinds) {
 			FakeResponse answer = getWithParameters(kind._path, TOKEN, kind._parameters);
 			assertEquals("Made by the background: " + kind._name, HttpServletResponse.SC_OK, answer.status());

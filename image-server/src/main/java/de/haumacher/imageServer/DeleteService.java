@@ -467,6 +467,8 @@ public class DeleteService {
 		// The previews of a cropped photograph, one per region it was ever cut to, see issue #212.
 		String cutPrefix = PreviewCache.PREVIEW_PREFIX + name + PreviewCache.CROP_INFIX;
 		String largeCutPrefix = PreviewCache.PREVIEW_PREFIX + name + PreviewCache.LARGE_INFIX + PreviewCache.CROP_INFIX;
+		// The posters of a video, one per moment it was ever shown at, see issue #285.
+		String posterPrefix = PreviewCache.PREVIEW_PREFIX + name + PreviewCache.POSTER_INFIX;
 		for (File file : files) {
 			String fileName = file.getName();
 			if (!file.isFile() || Files.isSymbolicLink(file.toPath()) || !CacheRefresh.isGenerated(fileName)) {
@@ -478,7 +480,9 @@ public class DeleteService {
 				|| (plain.startsWith(cropPrefix) && CROP_KEY.matcher(plain.substring(cropPrefix.length())).matches())
 				|| (plain.startsWith(cutPrefix) && CUT_KEY.matcher(plain.substring(cutPrefix.length())).matches())
 				|| (plain.startsWith(largeCutPrefix)
-					&& CUT_KEY.matcher(plain.substring(largeCutPrefix.length())).matches())) {
+					&& CUT_KEY.matcher(plain.substring(largeCutPrefix.length())).matches())
+				|| (plain.startsWith(posterPrefix)
+					&& POSTER_KEY.matcher(plain.substring(posterPrefix.length())).matches())) {
 				result.add(file);
 			}
 		}
@@ -487,6 +491,9 @@ public class DeleteService {
 
 	/** What follows <code>preview-&lt;name&gt;-c</code> in the name of a cut preview, see issue #212. */
 	private static final Pattern CUT_KEY = Pattern.compile("[0-9a-f]{12}\\.(jpg|png)");
+
+	/** What follows <code>preview-&lt;name&gt;-p</code> in the name of a video's poster, see issue #285. */
+	private static final Pattern POSTER_KEY = Pattern.compile("[1-9][0-9]*\\.jpg");
 
 	/** What follows <code>face-&lt;name&gt;-</code> in the name of a crop, see issues #124 and #141. */
 	private static final Pattern CROP_KEY = Pattern.compile("(f[0-9a-fA-F]{12}|[0-9]+)\\.[jJ][pP][gG]");

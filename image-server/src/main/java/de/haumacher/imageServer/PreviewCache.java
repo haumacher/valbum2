@@ -526,6 +526,68 @@ public class PreviewCache {
 		return previewCache;
 	}
 
+	/** What follows <code>preview-&lt;name&gt;</code> in the name of a video's chosen poster, see issue #285. */
+	public static final String POSTER_INFIX = "-p";
+
+	/**
+	 * Where the poster of the given video at the given moment lies, made or not, see
+	 * {@link #createPoster(File, long)}: <code>preview-&lt;name&gt;-p&lt;millis&gt;.jpg</code>, the
+	 * {@link #previewFile(File) preview} itself for the first frame (a moment of <code>0</code> or
+	 * less).
+	 *
+	 * <p>
+	 * The moment is part of the name, as the region of a cut preview is (issue #212): a poster chosen
+	 * anew is another file, so neither a cache on the server nor one in the app can show the frame
+	 * chosen before, and a poster being made for the old moment while the new one is chosen lands
+	 * under its own name instead of overwriting the new one.
+	 * </p>
+	 */
+	public static File posterFile(File file, long millis) {
+		if (millis <= 0) {
+			return previewFile(file);
+		}
+		return new File(new File(file.getParentFile(), CACHE_DIRECTORY_NAME),
+			PREVIEW_PREFIX + file.getName() + POSTER_INFIX + millis + "." + JPG);
+	}
+
+	/**
+	 * Looks up or creates the poster of the given video at the given moment, see issue #285 and
+	 * {@link de.haumacher.imageServer.shared.model.ImagePart#getPoster()}.
+	 *
+	 * <p>
+	 * The frame shown at the moment (the first one at or after it, decoded from the key frame before
+	 * it, never that key frame itself), drawn exactly as the {@link #createPreview(File) preview} of
+	 * the first frame is &mdash; the field and the aspect of {@link #shownFrame} (issue #192), the
+	 * rotation of the container &mdash; cached under its moment ({@link #posterFile(File, long)}),
+	 * made under the same permits and dropped by the same rule. A moment of <code>0</code> or less is
+	 * the preview of the first frame.
+	 * </p>
+	 *
+	 * @param millis
+	 *        The moment in milliseconds from the start of the video.
+	 */
+	public static File createPoster(File file, long millis) throws PreviewException {
+		if (millis <= 0) {
+			return createPreview(file);
+		}
+		String fileName = file.getName();
+		if (!VIDEO_EXTENSIONS.contains(Util.suffix(fileName))) {
+			throw new PreviewException("No poster of '" + fileName + "', it is no video.");
+		}
+		File poster = posterFile(file, millis);
+		if (!present(poster)) {
+			generate(file, poster, tmp -> {
+				try {
+					createVideoPreview(file, tmp, millis);
+				} catch (ImageProcessingException | MetadataException | IOException ex) {
+					throw new PreviewException("Cannot create the poster of '" + fileName + "' at " + millis + " ms.",
+						ex);
+				}
+			});
+		}
+		return poster;
+	}
+
 	/** Writes the preview of the given region, see {@link #createPreview(File, double[])}. */
 	private static void createCroppedPreview(File file, double[] region, File tmp, String imgType, int factor)
 			throws IOException {
@@ -722,7 +784,7 @@ public class PreviewCache {
 				break;
 			default:
 				try {
-					createVideoPreview(file, tmp);
+					createVideoPreview(file, tmp, 0);
 				} catch (ImageProcessingException | MetadataException | IOException ex) {
 					throw new PreviewException("Cannot create video preview for '" + fileName + "'.", ex);
 				}
@@ -847,6 +909,19 @@ public class PreviewCache {
 	 *         Where there is no such preview at all: a format of no preview, a cut preview of a video.
 	 */
 	public static File previewTarget(File file, double[] region, boolean large) throws PreviewException {
+		return previewTarget(file, region, large, 0);
+	}
+
+	/**
+	 * Where the preview a request asks for lies, see {@link #previewTarget(File, double[], boolean)}:
+	 * for a video with a chosen moment (issue #285) its {@link #posterFile(File, long) poster} at that
+	 * moment, of every size.
+	 *
+	 * @param posterMillis
+	 *        The moment of a video's poster, <code>0</code> for the first frame.
+	 */
+	public static File previewTarget(File file, double[] region, boolean large, long posterMillis)
+			throws PreviewException {
 		String fileName = file.getName();
 		String suffix = Util.suffix(fileName);
 		if (!SUPPORTED_EXTENSIONS.contains(suffix)) {
@@ -856,7 +931,10 @@ public class PreviewCache {
 			if (region != null) {
 				throw new PreviewException("No cut preview of '" + fileName + "'.");
 			}
-			return previewFile(file);
+			return posterFile(file, posterMillis);
+		}
+		if (posterMillis > 0) {
+			throw new PreviewException("No poster of '" + fileName + "', it is no video.");
 		}
 		if (large) {
 			return largePreviewFile(file, region);
@@ -1324,9 +1402,16 @@ public class PreviewCache {
 		return ImageData.orientationCode(metadata);
 	}
 
-	private static void createVideoPreview(File file, File previewCache) throws Exception,
+	/**
+	 * Writes the poster of the given video: the frame at the given moment, see
+	 * {@link #createPoster(File, long)}, the first key frame for a moment of <code>0</code>.
+	 */
+	private static void createVideoPreview(File file, File previewCache, long millis) throws Exception,
 			ImageProcessingException, IOException, MetadataException {
-		BufferedImage image = getPreviewFrame(file);
+		BufferedImage image = getPreviewFrame(file, millis);
+		if (image == null) {
+			throw new IOException("No picture in '" + file.getName() + "'.");
+		}
 
 		VideoProbe probe = VideoProbe.handles(file.getName()) ? VideoProbe.probe(file) : null;
 		if (probe != null) {
@@ -1406,14 +1491,58 @@ public class PreviewCache {
 		return shown;
 	}
 
-	private static BufferedImage getPreviewFrame(File file) throws Exception {
-		try (FFmpegFrameGrabber g = new FFmpegFrameGrabber(file)) {
+	/**
+	 * The raw frame of the given video at the given moment, before {@link #shownFrame} and the
+	 * rotation: the first key frame for a moment of <code>0</code> or less, the poster every video had
+	 * before issue #285.
+	 *
+	 * <p>
+	 * For a later moment the grabber seeks to the key frame before it and decodes forward to the
+	 * first frame at or after it ({@link FFmpegFrameGrabber#setVideoTimestamp(long)}, then frames are
+	 * read on until one is at the moment, whatever the seek left behind): what the player showed when
+	 * it was stopped there, not the key frame a plain seek lands on, which may be seconds earlier. A
+	 * moment past the last frame (the container's duration rounds up, or the player stopped on its
+	 * last frame) is the last frame there is.
+	 * </p>
+	 */
+	static BufferedImage getPreviewFrame(File file, long millis) throws Exception {
+		try (FFmpegFrameGrabber g = new FFmpegFrameGrabber(file);
+				Java2DFrameConverter converter = new Java2DFrameConverter()) {
 			g.start();
-			Frame firstFrame = g.grabKeyFrame();
-			try (Java2DFrameConverter converter = new Java2DFrameConverter()) {
-				return converter.convert(firstFrame);
+			if (millis <= 0) {
+				return converter.convert(g.grabKeyFrame());
 			}
+			long target = millis * 1000L;
+			// Half a frame early still is the frame at the moment: a time stamp of the decoder is
+			// rounded to its own time base.
+			double rate = g.getFrameRate();
+			long slack = rate > 0 ? (long) (500_000 / rate) : 0;
+			g.setVideoTimestamp(target);
+			Frame frame;
+			while ((frame = g.grabImage()) != null) {
+				if (frame.timestamp >= target - slack) {
+					return converter.convert(frame);
+				}
+			}
+			// Past the last frame: the last one, read from a key frame a little before the moment.
+			g.setTimestamp(Math.max(0, target - LAST_FRAME_WINDOW));
+			BufferedImage last = null;
+			while ((frame = g.grabImage()) != null) {
+				last = Java2DFrameConverter.cloneBufferedImage(converter.convert(frame));
+			}
+			if (last != null) {
+				return last;
+			}
+			g.setTimestamp(0);
+			return converter.convert(g.grabKeyFrame());
 		}
 	}
+
+	/**
+	 * How far before a moment past the last frame the last frame is looked for, in microseconds, see
+	 * {@link #getPreviewFrame(File, long)}.
+	 */
+	private static final long LAST_FRAME_WINDOW = 3_000_000L;
+
 
 }

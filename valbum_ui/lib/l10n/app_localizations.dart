@@ -6680,6 +6680,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Shares…'**
   String get contactSharesEntry;
+
+  /// Entry of the video viewer's menu and of its context menu (issue #285): makes the frame the paused video shows the video's thumbnail (poster) in the album
+  ///
+  /// In en, this message translates to:
+  /// **'Use as thumbnail'**
+  String get posterUse;
+
+  /// Entry of the video viewer's menu and of its context menu (issue #285), where a frame was chosen as the video's thumbnail: the thumbnail is the video's first frame again
+  ///
+  /// In en, this message translates to:
+  /// **'Reset thumbnail'**
+  String get posterReset;
+
+  /// Message (issue #285) when 'Use as thumbnail' is chosen before the video player shows any frame
+  ///
+  /// In en, this message translates to:
+  /// **'The video shows no picture yet. Start it and pause it at the moment the thumbnail should show.'**
+  String get posterNotPlaying;
 }
 
 class _AppLocalizationsDelegate

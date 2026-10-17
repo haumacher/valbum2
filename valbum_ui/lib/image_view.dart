@@ -818,6 +818,185 @@ class ImageViewState extends State<ImageView>
     }
   }
 
+  // --- The poster of a video, see issue #285. ---
+
+  /// The player of the video shown, from which "Use as thumbnail" takes the
+  /// moment; a new one for every video, see [videoKey].
+  GlobalKey<VideoViewState>? _videoKey;
+
+  /// The address [_videoKey] belongs to.
+  String? _videoKeyUrl;
+
+  /// The key of the player of the video at [dataUrl]: a new player for a new
+  /// video, as the `ValueKey` of the address it replaced made it.
+  GlobalKey<VideoViewState> get videoKey {
+    if (_videoKey == null || _videoKeyUrl != dataUrl) {
+      _videoKey = GlobalKey<VideoViewState>();
+      _videoKeyUrl = dataUrl;
+    }
+    return _videoKey!;
+  }
+
+  /// Whether the poster of the video shown may be chosen here (issue #285).
+  ///
+  /// The rule of [mayCrop], turned round: with `edit`, never in a share
+  /// session, only on a video, and only where the viewer knows the album to
+  /// write to. The poster is written at once, edit mode or not.
+  bool get mayChoosePoster =>
+      isVideo &&
+      !isBroken &&
+      album != null &&
+      widget.editPath != null &&
+      rights.mayEdit &&
+      ShareSession.of(context) == null;
+
+  /// Whether the video shown has a poster chosen, which "Reset thumbnail"
+  /// takes away.
+  bool get hasChosenPoster => posterMillisOf(part) > 0;
+
+  /// The entries of the poster in a menu: "Use as thumbnail", and "Reset
+  /// thumbnail" where a moment is chosen. Empty where [mayChoosePoster] is
+  /// not given.
+  List<PopupMenuEntry<void Function(BuildContext)>> posterEntries(
+    AppLocalizations l10n,
+  ) =>
+      [
+        if (mayChoosePoster)
+          PopupMenuItem<void Function(BuildContext)>(
+            key: const Key("viewer-use-as-poster"),
+            value: (_) => useShownAsPoster(),
+            child: Row(
+              children: [
+                const Padding(
+                  padding: EdgeInsets.only(right: 16),
+                  child: Icon(Icons.photo_size_select_actual_outlined,
+                      color: Colors.blueAccent),
+                ),
+                Flexible(child: Text(l10n.posterUse)),
+              ],
+            ),
+          ),
+        if (mayChoosePoster && hasChosenPoster)
+          PopupMenuItem<void Function(BuildContext)>(
+            key: const Key("viewer-reset-poster"),
+            value: (_) => storePoster(0),
+            child: Row(
+              children: [
+                const Padding(
+                  padding: EdgeInsets.only(right: 16),
+                  child: Icon(Icons.restart_alt, color: Colors.blueAccent),
+                ),
+                Flexible(child: Text(l10n.posterReset)),
+              ],
+            ),
+          ),
+      ];
+
+  /// Makes the moment the player shows the poster of the video (issue #285).
+  ///
+  /// A playing video is stopped first, so that the poster is the frame on the
+  /// screen; a player that shows no frame yet has no moment to give, which is
+  /// said.
+  Future<void> useShownAsPoster() async {
+    if (!mayChoosePoster) {
+      return;
+    }
+    var player = _videoKey?.currentState;
+    if (player == null || player.shownPosition == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppLocalizations.of(context)!.posterNotPlaying,
+            key: const Key("poster-not-playing"),
+          ),
+        ),
+      );
+      return;
+    }
+    await player.pauseHere();
+    var position = await player.currentPosition();
+    if (!mounted || position == null) {
+      return;
+    }
+    await storePoster(position.inMilliseconds);
+  }
+
+  /// Writes the moment [millis] as the poster of the video shown, `0` taking
+  /// it away, at once (issue #285).
+  ///
+  /// Refused offline with the usual reason, a refusal of the server said in
+  /// its own words and nothing changed. What the server stored is put into
+  /// the part — the very part the album shows, so its tile asks for the new
+  /// poster when the album is shown again, as a crop does (see `cropPhoto`) —
+  /// and the album picture's moment, where the video is the album's picture.
+  Future<void> storePoster(int millis) async {
+    var path = widget.editPath;
+    if (path == null || !mayChoosePoster) {
+      return;
+    }
+    if (refuseWhileOffline(context)) {
+      return;
+    }
+    var image = part;
+    var shown = album;
+    var messenger = ScaffoldMessenger.of(context);
+    try {
+      var answer = await widget.client.posterVideo(path, image.name, millis);
+      VideoPoster? stored = millis > 0 ? VideoPoster(millis: millis) : null;
+      ThumbnailInfo? cover;
+      if (answer != null) {
+        for (var answered in imagesOfAlbum(answer)) {
+          if (answered.name == image.name) {
+            stored = answered.poster;
+          }
+        }
+        cover = answer.indexPicture;
+      }
+      image.poster = stored;
+      if (shown != null && cover != null && cover.image == image.name) {
+        shown.indexPicture = cover;
+      }
+      // A video of a collection has its poster in its own album (#221).
+      forgetSourceOf(widget.delegate, image);
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (error) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            error is VAlbumException ? error.message : "$error",
+            key: const Key("poster-failed"),
+          ),
+          backgroundColor: Colors.red.shade700,
+          duration: const Duration(seconds: 8),
+        ),
+      );
+    }
+  }
+
+  /// The poster's menu at [position], where the video is clicked with the
+  /// secondary button (issue #285): the entries the viewer's own menu has.
+  Future<void> showPosterMenu(Offset position) async {
+    var l10n = AppLocalizations.of(context)!;
+    var entries = posterEntries(l10n);
+    if (entries.isEmpty) {
+      return;
+    }
+    var overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    var action = await showMenu<void Function(BuildContext)>(
+      context: context,
+      position: RelativeRect.fromRect(
+        position & const Size(1, 1),
+        Offset.zero & overlay.size,
+      ),
+      items: entries,
+    );
+    if (action != null && mounted) {
+      action(context);
+    }
+  }
+
   /// Whether the mode is on, see [_editPersons].
   bool get editPersons => _editPersons && mayEditPersons;
 
@@ -2265,6 +2444,10 @@ class ImageViewState extends State<ImageView>
       // A video has a description like every other part of the album
       // (issue #80).
       onLongPress: editDescription,
+      // The poster's menu, where the video is right-clicked (issue #285).
+      onSecondaryTapUp: mayChoosePoster
+          ? (details) => showPosterMenu(details.globalPosition)
+          : null,
       onScaleStart: (details) {},
       onScaleEnd: (details) {
         if (details.pointerCount <= 1) {
@@ -2275,7 +2458,9 @@ class ImageViewState extends State<ImageView>
         child: AspectRatio(
           aspectRatio: aspectRatio,
           child: VideoView(
-            key: ValueKey(dataUrl),
+            // A new player for a new video; the key also lets "Use as
+            // thumbnail" ask the player for its moment (issue #285).
+            key: videoKey,
             // The original is the fallback and the download; what is played
             // is the rendition, where the server has one (issue #75).
             videoUrl: widget.client.originalUrl(dataUrl),
@@ -2284,7 +2469,10 @@ class ImageViewState extends State<ImageView>
             // A QuickTime movie or a 3GPP file plays in a browser only through
             // the rendition (issue #189).
             originalPlayable: originalPlaysHere(self),
-            posterUrl: widget.client.thumbnailUrl(dataUrl),
+            // The poster the album's tile shows, at its chosen moment
+            // (issue #285).
+            posterUrl:
+                widget.client.thumbnailUrl(croppedImageUrl(dataUrl, self)),
             // Poster and player turned together, see [VideoView.orientation].
             orientation: self.orientation,
             headers: widget.client.authHeaders,
@@ -2634,6 +2822,8 @@ class ImageViewState extends State<ImageView>
                   ],
                 ),
               ),
+            // The moment of a video its thumbnail shows (issue #285).
+            ...posterEntries(l10n),
             if (mayEditPersons)
               PopupMenuItem<void Function(BuildContext)>(
                 key: const Key("viewer-edit-persons"),

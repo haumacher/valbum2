@@ -301,6 +301,12 @@ public final class AlbumDate {
 				album.getIndexPicture().setCrop(null);
 				changed = true;
 			}
+			if (album.getIndexPicture() != null && album.getIndexPicture().getPoster() != null) {
+				// The moment a listing tile of a video asks for is the video's poster, derived like
+				// the region above, see issue #285.
+				album.getIndexPicture().setPoster(null);
+				changed = true;
+			}
 		} else if (resource instanceof ListingInfo) {
 			ListingInfo listing = (ListingInfo) resource;
 			// Every entry of a listing is rebuilt from the disk on every read -- its title, its

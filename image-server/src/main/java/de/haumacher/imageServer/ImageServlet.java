@@ -516,6 +516,59 @@ public class ImageServlet extends HttpServlet {
 	/** The message a crop is refused with for a caller who may not edit the album. */
 	public static final String CROP_REFUSED = "Only an editor of this album may crop its photographs.";
 
+	/** The <code>action</code> that stores the moment a video's poster shows, see issue #285. */
+	public static final String POSTER_ACTION = "poster";
+
+	/**
+	 * The parameter of a <code>?type=tn</code> naming the moment of a video's poster in
+	 * milliseconds, see issue #285 and {@link Posters}.
+	 */
+	public static final String POSTER_PARAMETER = "poster";
+
+	/** The message a poster is refused with by a caller who may not edit the album. */
+	public static final String POSTER_REFUSED = "Only an editor of this album may choose the thumbnail of its videos.";
+
+	/** The message a poster request is refused with whose body cannot be read. */
+	public static final String POSTER_REQUEST_UNREADABLE = "The thumbnail request cannot be read.";
+
+	/** The message a poster is refused with outside an album. */
+	public static final String POSTER_NOT_AN_ALBUM = "There are no videos to choose a thumbnail of here.";
+
+	/** The message a poster is refused with on a photograph, or asked of one. */
+	public static final String POSTER_NOT_A_VIDEO = "Only a video has a moment to show as its thumbnail.";
+
+	/** The message a <code>?type=tn&amp;poster=</code> is refused with that names no moment. */
+	public static final String POSTER_UNREADABLE = "The poster names no moment of the video.";
+
+	/**
+	 * A poster asked by a caller who may not edit the album, of a moment the video does not store,
+	 * see {@link #askedPoster}.
+	 */
+	public static final String POSTER_NOT_STORED =
+		"This video shows another moment as its thumbnail now; reload the album.";
+
+	/** The message a poster is refused with that lies after the end of the video. */
+	static String posterBeyondEnd(String video, long millis, long duration) {
+		return "The moment " + seconds(millis) + " is after the end of '" + video + "' (" + seconds(duration) + ").";
+	}
+
+	/** The message a poster is refused with where the video cannot be read for its length. */
+	static String posterUnreadableVideo(String video) {
+		return "The length of '" + video + "' cannot be read, so no moment of it can be its thumbnail.";
+	}
+
+	/** A number of milliseconds as seconds with one decimal, <code>3.2 s</code>. */
+	private static String seconds(long millis) {
+		return String.format(java.util.Locale.ROOT, "%.1f s", millis / 1000.0);
+	}
+
+	/**
+	 * How far after the end the container says a poster may still lie, in milliseconds: the player
+	 * stopped on the last frame of the playback rendition, whose length is the original's rounded to
+	 * its own frames. Such a moment is the last frame, see {@link PreviewCache#getPreviewFrame}.
+	 */
+	static final long POSTER_END_SLACK = 1000;
+
 	/** The <code>action</code> that answers a selection of originals as one archive, see issue #164. */
 	public static final String ZIP_ACTION = "zip";
 
@@ -5775,6 +5828,10 @@ public class ImageServlet extends HttpServlet {
 			cropImage(context);
 			return;
 		}
+		if (POSTER_ACTION.equals(action)) {
+			posterVideo(context);
+			return;
+		}
 		if ("find-duplicates".equals(action)) {
 			// Retired by issue #219, for every caller and before anything is read.
 			retired(context, RETIRED_FIND_DUPLICATES);
@@ -6281,6 +6338,8 @@ public class ImageServlet extends HttpServlet {
 			rearranged |= Labels.keepUnknown(contents, resource, existing);
 			// Nor the place captions it does not know either.
 			rearranged |= keepPlaceCaptions(contents, resource, existing);
+			// The poster of a video is written by its action alone, see issue #285.
+			rearranged |= keepPosters(resource, existing);
 		}
 
 		PathInfo target = resourcePath;
@@ -6586,6 +6645,47 @@ public class ImageServlet extends HttpServlet {
 		}
 		image.setLabels(labels);
 		return true;
+	}
+
+	/**
+	 * Keeps the stored {@link ImagePart#getPoster() posters} of the album's videos in an album
+	 * written by a sidecar <code>PUT</code>, whatever it carries, see issue #285.
+	 *
+	 * <p>
+	 * The poster is written by <code>?action=poster</code> alone: an app that does not know the field
+	 * writes back what it read without it, and an edit session holds the album as it was when it
+	 * began. Neither may take a chosen poster away or bring an old one back.
+	 * </p>
+	 *
+	 * @return Whether the received album was changed.
+	 */
+	static boolean keepPosters(FolderResource received, Resource stored) {
+		if (!(received instanceof AlbumInfo)) {
+			return false;
+		}
+		Map<String, Long> byName = new HashMap<>();
+		if (stored instanceof AlbumInfo) {
+			for (AlbumPart part : ((AlbumInfo) stored).getParts()) {
+				for (ImagePart image : imagesOf(part)) {
+					long millis = Posters.millis(image);
+					if (millis > 0) {
+						byName.put(image.getName(), millis);
+					}
+				}
+			}
+		}
+		boolean kept = false;
+		for (AlbumPart part : ((AlbumInfo) received).getParts()) {
+			for (ImagePart image : imagesOf(part)) {
+				Long millis = byName.get(image.getName());
+				long wanted = millis == null ? 0 : millis;
+				if (Posters.millis(image) != wanted || (wanted == 0 && image.getPoster() != null)) {
+					image.setPoster(Posters.of(wanted));
+					kept = true;
+				}
+			}
+		}
+		return kept;
 	}
 
 	/** Recognises a body that names the place caption at all, see {@link #keepPlaceCaptions}. */
@@ -7100,6 +7200,14 @@ public class ImageServlet extends HttpServlet {
 					return;
 				}
 			}
+			long poster = 0;
+			String posterParameter = context.getParameter(POSTER_PARAMETER);
+			if (posterParameter != null) {
+				poster = askedPoster(context, pathInfo, caller, posterParameter);
+				if (poster < 0) {
+					return;
+				}
+			}
 			File data;
 			try {
 				if (_cache.hasBackground()) {
@@ -7107,12 +7215,16 @@ public class ImageServlet extends HttpServlet {
 					// preview and never looks at the original, see issue #256.
 					File original = pathInfo.toFile();
 					double[] cut = region;
-					data = PreviewCache.previewTarget(original, cut, large);
+					long moment = poster;
+					data = PreviewCache.previewTarget(original, cut, large, moment);
 					if (!PreviewCache.present(data)) {
 						notMadeYet(context, original, data, failure -> previewFailed(original, failure),
 							() -> {
-								// The large preview of a starred tile (#241), a cut one, the plain one.
-								if (large) {
+								// The poster of a video at its chosen moment (#285), the large preview
+								// of a starred tile (#241), a cut one, the plain one.
+								if (moment > 0) {
+									PreviewCache.createPoster(original, moment);
+								} else if (large) {
 									PreviewCache.createLargePreview(original, cut);
 								} else {
 									PreviewCache.createPreview(original, cut);
@@ -7120,6 +7232,9 @@ public class ImageServlet extends HttpServlet {
 							});
 						return;
 					}
+				} else if (poster > 0) {
+					// A video's poster has one size, see PreviewCache#createLargePreview.
+					data = PreviewCache.createPoster(pathInfo.toFile(), poster);
 				} else {
 					// Nobody else makes it, see ResourceCache#setBackground(boolean). The large preview
 					// of a starred tile is made like the preview, only larger (#241).
@@ -7823,6 +7938,45 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	/**
+	 * The moment a <code>?type=tn&amp;poster=&hellip;</code> asks for, <code>-1</code> where the
+	 * request was answered with a refusal, see issue #285.
+	 *
+	 * <p>
+	 * The rule of {@link #askedRegion}: whoever may see the video may ask for the moment its part
+	 * stores &mdash; that is what every tile of it asks &mdash;, an editor of the album for any moment,
+	 * because the app shows the poster it has just chosen before the album is read again, and anybody
+	 * else is refused <code>409 POSTER_NOT_STORED</code>, so that a visitor cannot fill the cache
+	 * with posters nobody chose. A moment of <code>0</code> is the first frame, which needs no
+	 * permission.
+	 * </p>
+	 */
+	private long askedPoster(Context context, PathInfo pathInfo, Caller caller, String parameter)
+			throws IOException {
+		long millis = Posters.parse(parameter);
+		if (millis < 0) {
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, POSTER_UNREADABLE);
+			return -1;
+		}
+		if (!PreviewCache.isVideoName(pathInfo.getName())) {
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, POSTER_NOT_A_VIDEO);
+			return -1;
+		}
+		if (millis == 0) {
+			return 0;
+		}
+		Resource resource = _cache.lookup(pathInfo);
+		if (resource instanceof ImagePart && Posters.millis((ImagePart) resource) == millis) {
+			return millis;
+		}
+		if (!caller.isShareLink() && _auth.mayEdit(caller, pathInfo.parent())) {
+			return millis;
+		}
+		LOG.info("Refusing the poster " + parameter + " of '" + pathInfo.toPath() + "': " + POSTER_NOT_STORED);
+		errorInfo(context, HttpServletResponse.SC_CONFLICT, POSTER_NOT_STORED);
+		return -1;
+	}
+
+	/**
 	 * Stores the crop of one photograph, <code>POST &lt;album&gt;/?action=crop</code>, see issue
 	 * #212.
 	 *
@@ -8030,6 +8184,148 @@ public class ImageServlet extends HttpServlet {
 		storeSidecar(folder, sidecarOf(album));
 		_cache.invalidate(folderPath);
 		LOG.info("Cropped '" + image.getName() + "' in '" + folder.getAbsolutePath() + "'.");
+		answerAlbum(context, answerPath, caller);
+	}
+
+	/**
+	 * Stores the moment the poster of one video shows, <code>POST &lt;album&gt;/?action=poster</code>,
+	 * see issue #285.
+	 *
+	 * <p>
+	 * The body is an {@link ImagePart} carrying the {@link ImagePart#getName() name} of the video and
+	 * the {@link ImagePart#getPoster() poster} to store; no poster (or a moment of <code>0</code>)
+	 * takes it away, which is the first frame again. Nothing else of the part is read. An action and
+	 * not a meaning of the sidecar <code>PUT</code> for the reason {@link #cropImage} gives, and the
+	 * <code>PUT</code> keeps the stored poster whatever it carries ({@link #keepPosters}).
+	 * </p>
+	 *
+	 * <p>
+	 * Needs {@link Rights#EDIT} on the album (a share link and a contributor are refused
+	 * <code>403</code>); refuses a photograph and a moment after the end of the video with
+	 * <code>400</code> and an unknown video with <code>404</code>, writing nothing. A moment up to
+	 * {@link #POSTER_END_SLACK} after the end the container says is taken: the player stopped on
+	 * the last frame of the rendition, and the poster is the last frame. The video itself is only
+	 * read for its length; only the sidecar is written. Through a collection or a saved search the
+	 * poster is the video's own, written to the album it lies in. The answer is the album as the
+	 * caller is answered it.
+	 * </p>
+	 */
+	private void posterVideo(Context context) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		Location location = resolve(context, caller);
+		if (location == null) {
+			return;
+		}
+		PathInfo folderPath = location.getPath();
+		if (caller.isShareLink()) {
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, POSTER_REFUSED);
+			return;
+		}
+		if (!_auth.writeAllowed(caller) && !_auth.mayContribute(caller, folderPath)) {
+			unauthorized(context, caller, true);
+			return;
+		}
+		if (!_auth.mayEdit(caller, folderPath)) {
+			if (!identified(caller)) {
+				unauthorized(context, caller, true);
+				return;
+			}
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, POSTER_REFUSED);
+			return;
+		}
+		File folder = folderPath.toFile();
+		if (!folder.isDirectory()) {
+			error404(context);
+			return;
+		}
+		ImagePart request;
+		try {
+			// The part as every part is written, ["ImagePart", {...}].
+			AlbumPart part = AlbumPart.readAlbumPart(json(readBody(context.request())));
+			if (!(part instanceof ImagePart)) {
+				throw new IllegalArgumentException("Not an image: " + part);
+			}
+			request = (ImagePart) part;
+		} catch (IOException | RuntimeException ex) {
+			LOG.warning("Rejecting unparsable poster request: " + ex.getMessage());
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, POSTER_REQUEST_UNREADABLE);
+			return;
+		}
+		Resource resource = _cache.lookup(folderPath);
+		PathInfo answerPath = folderPath;
+		String name = request.getName();
+		if (PhotoCollections.isCollection(resource)) {
+			// The poster is the video's own, written to the album it lies in, see issue #221.
+			ImagePart reference = PhotoCollections.referenceNamed((AlbumInfo) resource, name);
+			ImagePart shown = reference == null ? null
+				: Crops.findImage(resolveCollection((AlbumInfo) resource, folderPath, caller, Privacy.PRIVATE), name);
+			if (shown == null) {
+				errorInfo(context, HttpServletResponse.SC_NOT_FOUND, unknownImage(name));
+				return;
+			}
+			PathInfo source = shown.isMissing() ? null : _collections.locate(reference.getRef());
+			if (source == null) {
+				errorInfo(context, HttpServletResponse.SC_NOT_FOUND, PhotoCollections.MISSING);
+				return;
+			}
+			folderPath = source.parent();
+			folder = folderPath.toFile();
+			name = source.getName();
+			resource = _cache.lookup(folderPath);
+		} else if (PhotoSearch.isSearch(resource)) {
+			// The poster is the video's own as well, written to its album, see issue #227.
+			ImagePart shown = Crops.findImage(searchAnswer((AlbumInfo) resource, folderPath, caller, Privacy.PRIVATE),
+				name);
+			PathInfo source = shown == null ? null : photoNamed(folderPath, resource, name);
+			if (source == null) {
+				errorInfo(context, HttpServletResponse.SC_NOT_FOUND, unknownImage(name));
+				return;
+			}
+			folderPath = source.parent();
+			folder = folderPath.toFile();
+			name = source.getName();
+			resource = _cache.lookup(folderPath);
+		}
+		if (!(resource instanceof AlbumInfo)) {
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, POSTER_NOT_AN_ALBUM);
+			return;
+		}
+		AlbumInfo album = (AlbumInfo) resource;
+		ImagePart image = Crops.findImage(album, name);
+		if (image == null) {
+			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, unknownImage(request.getName()));
+			return;
+		}
+		if (!Posters.isVideo(image) || !image.getBroken().isEmpty()) {
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, POSTER_NOT_A_VIDEO);
+			return;
+		}
+		long millis = request.getPoster() == null ? 0 : request.getPoster().getMillis();
+		if (millis < 0) {
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, POSTER_UNREADABLE);
+			return;
+		}
+		if (millis > 0) {
+			long duration;
+			try {
+				duration = de.haumacher.imageServer.cache.VideoProbe.probe(new File(folder, image.getName()))
+					.getDurationMillis();
+			} catch (IOException | RuntimeException | UnsatisfiedLinkError ex) {
+				LOG.log(Level.WARNING, "Cannot read the length of '" + image.getName() + "'.", ex);
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, posterUnreadableVideo(image.getName()));
+				return;
+			}
+			if (duration >= 0 && millis > duration + POSTER_END_SLACK) {
+				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, posterBeyondEnd(image.getName(), millis, duration));
+				return;
+			}
+		}
+		if (Posters.millis(image) != millis) {
+			image.setPoster(Posters.of(millis));
+			storeSidecar(folder, sidecarOf(album));
+			_cache.invalidate(folderPath);
+			LOG.info("Poster of '" + image.getName() + "' in '" + folder.getAbsolutePath() + "' at " + millis + " ms.");
+		}
 		answerAlbum(context, answerPath, caller);
 	}
 
@@ -9314,6 +9610,8 @@ public class ImageServlet extends HttpServlet {
 			copy.setCrop(region == null ? null
 				: Crop.create().setX(region[0]).setY(region[1])
 					.setW(region[2]).setH(region[3]));
+			// The moment of a video's poster, see issue #285.
+			copy.setPoster(Posters.of(Posters.millis(shown)));
 			result.setIndexPicture(copy);
 		}
 		return result;

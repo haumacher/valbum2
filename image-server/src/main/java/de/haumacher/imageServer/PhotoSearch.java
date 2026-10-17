@@ -449,6 +449,7 @@ public final class PhotoSearch {
 			.setTags(image.getTags())
 			.setRaw(image.getRaw())
 			.setCrop(image.getCrop())
+			.setPoster(image.getPoster())
 			.setLabels(image.getLabels())
 			.setRef(image.getRef())
 			.setMissing(image.isMissing())

@@ -7146,5 +7146,20 @@
   "@contactSharesEntry": {
     "description": "Menu entry of a contact opening the shares screen filtered to that person (issue #269).",
     "x-translated": "43fb549f"
+  },
+  "posterUse": "Use as thumbnail",
+  "@posterUse": {
+    "description": "Entry of the video viewer's menu and of its context menu (issue #285): makes the frame the paused video shows the video's thumbnail (poster) in the album",
+    "x-translated": "4cae614e"
+  },
+  "posterReset": "Reset thumbnail",
+  "@posterReset": {
+    "description": "Entry of the video viewer's menu and of its context menu (issue #285), where a frame was chosen as the video's thumbnail: the thumbnail is the video's first frame again",
+    "x-translated": "6a85acbb"
+  },
+  "posterNotPlaying": "The video shows no picture yet. Start it and pause it at the moment the thumbnail should show.",
+  "@posterNotPlaying": {
+    "description": "Message (issue #285) when 'Use as thumbnail' is chosen before the video player shows any frame",
+    "x-translated": "74f8d233"
   }
 }

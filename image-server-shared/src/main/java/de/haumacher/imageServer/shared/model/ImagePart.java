@@ -66,6 +66,9 @@ public class ImagePart extends AbstractImage {
 	/** @see #getCrop() */
 	private static final String CROP__PROP = "crop";
 
+	/** @see #getPoster() */
+	private static final String POSTER__PROP = "poster";
+
 	/** @see #getLabels() */
 	private static final String LABELS__PROP = "labels";
 
@@ -125,6 +128,8 @@ public class ImagePart extends AbstractImage {
 	private String _raw = "";
 
 	private de.haumacher.imageServer.shared.model.Crop _crop = null;
+
+	private de.haumacher.imageServer.shared.model.VideoPoster _poster = null;
 
 	private final java.util.List<de.haumacher.imageServer.shared.model.LabelName> _labels = new java.util.ArrayList<>();
 
@@ -727,6 +732,45 @@ public class ImagePart extends AbstractImage {
 	}
 
 	/**
+	 * The moment of this video its poster shows, <code>null</code> for the first frame, see issue
+	 * #285 and {@link VideoPoster}.
+	 *
+	 * <p>
+	 * <b>Stored</b> in <code>index.json</code>, and absent in a sidecar written before this field
+	 * existed, which reads as "the first frame" &mdash; the poster every video had before. It is a
+	 * statement about how the video is shown and nothing else: the original is never touched. The
+	 * poster and every tile of the video are the frame at this moment
+	 * (<code>?type=tn&amp;poster=&lt;millis&gt;</code>), cached under it, so that another moment is
+	 * another picture and never a stale one. Written by <code>?action=poster</code> alone: the
+	 * sidecar <code>PUT</code> keeps the stored one whatever it carries, so an app that does not
+	 * know the field cannot take it away. A photograph carries none.
+	 * </p>
+	 */
+	public final de.haumacher.imageServer.shared.model.VideoPoster getPoster() {
+		return _poster;
+	}
+
+	/**
+	 * @see #getPoster()
+	 */
+	public de.haumacher.imageServer.shared.model.ImagePart setPoster(de.haumacher.imageServer.shared.model.VideoPoster value) {
+		internalSetPoster(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getPoster()} without chain call utility. */
+	protected final void internalSetPoster(de.haumacher.imageServer.shared.model.VideoPoster value) {
+		_poster = value;
+	}
+
+	/**
+	 * Checks, whether {@link #getPoster()} has a value.
+	 */
+	public final boolean hasPoster() {
+		return _poster != null;
+	}
+
+	/**
 	 * The labels of this photograph, see issue #213: the author's sub-views of the album, "the day
 	 * we met Anna and Ben".
 	 *
@@ -1104,6 +1148,10 @@ public class ImagePart extends AbstractImage {
 			out.name(CROP__PROP);
 			getCrop().writeTo(out);
 		}
+		if (hasPoster()) {
+			out.name(POSTER__PROP);
+			getPoster().writeTo(out);
+		}
 		out.name(LABELS__PROP);
 		out.beginArray();
 		for (de.haumacher.imageServer.shared.model.LabelName x : getLabels()) {
@@ -1164,6 +1212,7 @@ public class ImagePart extends AbstractImage {
 			break;
 			case RAW__PROP: setRaw(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case CROP__PROP: setCrop(de.haumacher.imageServer.shared.model.Crop.readCrop(in)); break;
+			case POSTER__PROP: setPoster(de.haumacher.imageServer.shared.model.VideoPoster.readVideoPoster(in)); break;
 			case LABELS__PROP: {
 				in.beginArray();
 				while (in.hasNext()) {

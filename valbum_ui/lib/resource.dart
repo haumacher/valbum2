@@ -1205,6 +1205,59 @@ class Crop extends _JsonObject {
 
 }
 
+///  The moment of a video its poster shows, see issue #285 and {@link ImagePart#getPoster()}.
+/// 
+///  <p>
+///  A message rather than a number beside the other fields of the part, so that a video without a
+///  chosen moment carries nothing at all in its sidecar, exactly as a sidecar written before this
+///  existed.
+///  </p>
+class VideoPoster extends _JsonObject {
+	///  The position in the video in milliseconds from its start: the poster is the frame shown at
+	///  this moment (the first one at or after it), never the key frame before it.
+	int millis;
+
+	/// Creates a VideoPoster.
+	VideoPoster({
+			this.millis = 0, 
+	});
+
+	/// Parses a VideoPoster from a string source.
+	static VideoPoster? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a VideoPoster instance from the given reader.
+	static VideoPoster read(JsonReader json) {
+		VideoPoster result = VideoPoster();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "VideoPoster";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "millis": {
+				millis = json.expectInt();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("millis");
+		json.addNumber(millis);
+	}
+
+}
+
 ///  {@link Resource} describing a single image or video file.
 class ImagePart extends AbstractImage {
 	///  The kind of this {@link ImagePart}.
@@ -1404,6 +1457,21 @@ class ImagePart extends AbstractImage {
 	///  </p>
 	Crop? crop;
 
+	///  The moment of this video its poster shows, <code>null</code> for the first frame, see issue
+	///  #285 and {@link VideoPoster}.
+	/// 
+	///  <p>
+	///  <b>Stored</b> in <code>index.json</code>, and absent in a sidecar written before this field
+	///  existed, which reads as "the first frame" &mdash; the poster every video had before. It is a
+	///  statement about how the video is shown and nothing else: the original is never touched. The
+	///  poster and every tile of the video are the frame at this moment
+	///  (<code>?type=tn&amp;poster=&lt;millis&gt;</code>), cached under it, so that another moment is
+	///  another picture and never a stale one. Written by <code>?action=poster</code> alone: the
+	///  sidecar <code>PUT</code> keeps the stored one whatever it carries, so an app that does not
+	///  know the field cannot take it away. A photograph carries none.
+	///  </p>
+	VideoPoster? poster;
+
 	///  The labels of this photograph, see issue #213: the author's sub-views of the album, "the day
 	///  we met Anna and Ben".
 	/// 
@@ -1543,6 +1611,7 @@ class ImagePart extends AbstractImage {
 			this.tags = const [], 
 			this.raw = "", 
 			this.crop, 
+			this.poster, 
 			this.labels = const [], 
 			this.ref, 
 			this.missing = false, 
@@ -1657,6 +1726,10 @@ class ImagePart extends AbstractImage {
 				crop = json.tryNull() ? null : Crop.read(json);
 				break;
 			}
+			case "poster": {
+				poster = json.tryNull() ? null : VideoPoster.read(json);
+				break;
+			}
 			case "labels": {
 				json.expectArray();
 				labels = [];
@@ -1769,6 +1842,12 @@ class ImagePart extends AbstractImage {
 		if (_crop != null) {
 			json.addKey("crop");
 			_crop.writeContent(json);
+		}
+
+		var _poster = poster;
+		if (_poster != null) {
+			json.addKey("poster");
+			_poster.writeContent(json);
 		}
 
 		json.addKey("labels");
@@ -3081,6 +3160,17 @@ class ThumbnailInfo extends _JsonObject {
 	///  </p>
 	Crop? crop;
 
+	///  The moment of the video a tile of this picture shows, <code>null</code> for the video's first
+	///  frame and for every photograph, see issue #285.
+	/// 
+	///  <p>
+	///  The {@link ImagePart#getPoster() poster} of the video, so that the listing can ask for
+	///  <code>?type=tn&amp;poster=&hellip;</code> without knowing the video's part. <b>Derived</b> by
+	///  the server where it builds the cover of a listing entry and never stored, exactly like
+	///  {@link #getCrop() crop}.
+	///  </p>
+	VideoPoster? poster;
+
 	/// Creates a ThumbnailInfo.
 	ThumbnailInfo({
 			this.image = "", 
@@ -3089,6 +3179,7 @@ class ThumbnailInfo extends _JsonObject {
 			this.ty = 0.0, 
 			this.orientation = Orientation.identity, 
 			this.crop, 
+			this.poster, 
 	});
 
 	/// Parses a ThumbnailInfo from a string source.
@@ -3133,6 +3224,10 @@ class ThumbnailInfo extends _JsonObject {
 				crop = json.tryNull() ? null : Crop.read(json);
 				break;
 			}
+			case "poster": {
+				poster = json.tryNull() ? null : VideoPoster.read(json);
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -3160,6 +3255,12 @@ class ThumbnailInfo extends _JsonObject {
 		if (_crop != null) {
 			json.addKey("crop");
 			_crop.writeContent(json);
+		}
+
+		var _poster = poster;
+		if (_poster != null) {
+			json.addKey("poster");
+			_poster.writeContent(json);
 		}
 	}
 
