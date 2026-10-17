@@ -55,6 +55,7 @@ import 'filter_list.dart';
 import 'form_dialog.dart';
 import 'l10n/app_localizations.dart';
 import 'listing_view.dart' show splitPath;
+import 'loadable.dart';
 import 'move_view.dart';
 import 'offline.dart';
 import 'resource.dart';
@@ -75,45 +76,22 @@ class SearchSession extends ChangeNotifier {
   Future<AlbumInfo>? result;
 
   /// What the folder offers to choose from, asked once — and again after it
-  /// failed, see [askOptions].
-  Future<SearchOptions>? options;
-
-  /// What [options] answered once it did, `null` before.
-  SearchOptions? arrivedOptions;
-
-  /// Why [options] failed, `null` while it did not: the next view of the
-  /// folder, and the retry of a chooser, ask again.
-  Object? optionsError;
+  /// failed, see [askOptions]; `null` before the first view of the folder.
+  Loadable<SearchOptions>? options;
 
   /// Asks the server what the folder at [path] offers to choose from, unless
-  /// that is on its way or arrived already; [again] asks anew whatever there
-  /// is (the retry of a chooser). What arrives is kept in [arrivedOptions],
-  /// a failure in [optionsError], for the choosers to say.
-  void askOptions(VAlbumClient client, List<String> path,
-      {bool again = false}) {
-    if (options != null && !again && optionsError == null) {
-      return;
+  /// that is on its way or arrived already. A failure is kept for the
+  /// choosers to say, and asked again by the next view of the folder and by
+  /// the retry of a chooser.
+  void askOptions(VAlbumClient client, List<String> path) {
+    var asked = options;
+    if (asked == null) {
+      asked = Loadable(() => client.searchOptions(path));
+      // What arrives names the chosen values in the criteria bar.
+      asked.addListener(notifyListeners);
+      options = asked;
     }
-    optionsError = null;
-    var asked = client.searchOptions(path);
-    asked.then(
-      (answer) {
-        if (identical(options, asked)) {
-          arrivedOptions = answer;
-          notifyListeners();
-        }
-      },
-      onError: (Object error) {
-        if (identical(options, asked)) {
-          optionsError = error;
-          notifyListeners();
-        }
-      },
-    );
-    options = asked;
-    if (again) {
-      notifyListeners();
-    }
+    asked.load().ignore();
   }
 
   /// The path of the saved search being edited, `null` for a search that is
@@ -389,7 +367,7 @@ class SearchViewState extends State<SearchView> {
               selecting
                   ? null
                   // The names of the values chosen, once the options arrived.
-                  : criteriaBar(session.arrivedOptions ?? SearchOptions()),
+                  : criteriaBar(session.options?.value ?? SearchOptions()),
             ),
           ),
         ],
@@ -975,7 +953,6 @@ class SearchViewState extends State<SearchView> {
       builder: (context) => _AwaitingOptions(
         title: title,
         session: session,
-        retry: _retryOptions,
         builder: (options) => _ExcludableChoiceDialog<String>(
           key: const Key("search-camera-dialog"),
           title: title,
@@ -1035,7 +1012,6 @@ class SearchViewState extends State<SearchView> {
         builder: (context) => _AwaitingOptions(
           title: title,
           session: session,
-          retry: _retryOptions,
           builder: (options) => _ChooseManyDialog<T>(
             title: title,
             choices: choices(options),
@@ -1044,9 +1020,6 @@ class SearchViewState extends State<SearchView> {
           ),
         ),
       );
-
-  /// Asks the options of the folder again, after they failed.
-  void _retryOptions() => session.askOptions(client, path, again: true);
 
   // --- The results. ---
 
@@ -1178,7 +1151,8 @@ class SearchViewState extends State<SearchView> {
 
   /// The title of the search, as "Save as view…" proposes it.
   Future<String> _searchTitle() async {
-    var options = await session.options?.catchError((_) => SearchOptions());
+    var options =
+        await session.options?.load().catchError((_) => SearchOptions());
     if (!mounted) {
       return "";
     }
@@ -1213,7 +1187,8 @@ class SearchViewState extends State<SearchView> {
     }
     var l10n = _l10n;
     var messenger = ScaffoldMessenger.of(context);
-    var options = await session.options?.catchError((_) => SearchOptions());
+    var options =
+        await session.options?.load().catchError((_) => SearchOptions());
     // A saved search lies in a folder and looks below it: from the search of
     // an album (issue #249) the picker opens at the folder the album lies in.
     var scope = await widget.albumState.navigator.delegate
@@ -1333,21 +1308,18 @@ class SearchViewState extends State<SearchView> {
 }
 
 /// A chooser of the search view while the options of the folder are on their
-/// way or failed: it waits with a progress indicator and turns into the
-/// chooser [builder] makes once they arrive — a click before they did is not
-/// lost — and says the reason of a failure, the server's own words where it
-/// spoke, with a retry that asks again.
+/// way or failed, see [LoadableBuilder]: it waits with a progress indicator
+/// and turns into the chooser [builder] makes once they arrive — a click
+/// before they did is not lost — and says the reason of a failure, the
+/// server's own words where it spoke, with a retry that asks again.
 ///
 /// Never the chooser of an empty list while there is nothing to tell yet:
 /// that said "nothing to choose from" of a library full of persons.
 class _AwaitingOptions extends StatelessWidget {
   final String title;
 
-  /// Whose [SearchSession.options] are awaited; a retry replaces them.
+  /// Whose [SearchSession.options] are awaited.
   final SearchSession session;
-
-  /// Asks the options again.
-  final VoidCallback retry;
 
   /// The chooser of the options that arrived.
   final Widget Function(SearchOptions options) builder;
@@ -1355,58 +1327,28 @@ class _AwaitingOptions extends StatelessWidget {
   const _AwaitingOptions({
     required this.title,
     required this.session,
-    required this.retry,
     required this.builder,
   });
 
   @override
-  Widget build(BuildContext context) => ListenableBuilder(
-        listenable: session,
-        builder: (context, _) {
-          var l10n = AppLocalizations.of(context)!;
-          var error = session.optionsError;
-          var arrived = session.arrivedOptions;
-          if (error == null && arrived != null) {
-            return builder(arrived);
-          }
-          var cancel = TextButton(
+  Widget build(BuildContext context) {
+    return LoadableBuilder<SearchOptions>(
+      // Asked by the view when it was shown, see [SearchSession.askOptions].
+      loadable: session.options!,
+      keyPrefix: "search-options",
+      builder: (context, options) => builder(options),
+      frame: (context, status) => AppAlertDialog(
+        title: Text(title),
+        content: status,
+        actions: [
+          TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: Text(l10n.cancel),
-          );
-          if (error != null) {
-            return AppAlertDialog(
-              key: const Key("search-options-failed"),
-              title: Text(title),
-              content: Text(l10n.loadingFailed(reasonOf(error))),
-              actions: [
-                cancel,
-                ElevatedButton(
-                  key: const Key("search-options-retry"),
-                  onPressed: retry,
-                  child: Text(l10n.retry),
-                ),
-              ],
-            );
-          }
-          return AppAlertDialog(
-            key: const Key("search-options-loading"),
-            title: Text(title),
-            content: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(strokeWidth: 3),
-                ),
-                const SizedBox(width: 16),
-                Flexible(child: Text(l10n.loading)),
-              ],
-            ),
-            actions: [cancel],
-          );
-        },
-      );
+            child: Text(AppLocalizations.of(context)!.cancel),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// The chooser of several values, see [SearchViewState._chooseMany].

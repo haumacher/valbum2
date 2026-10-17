@@ -20,6 +20,7 @@ import 'package:intl/intl.dart';
 import 'package:valbum_ui/album_date.dart';
 import 'package:valbum_ui/form_dialog.dart';
 import 'package:valbum_ui/image_properties.dart';
+import 'package:valbum_ui/loadable.dart';
 import 'package:valbum_ui/main.dart';
 import 'package:valbum_ui/manage_view.dart';
 import 'package:valbum_ui/resource.dart';
@@ -227,8 +228,8 @@ List<FormCase> formCases(List<http.Request> requests) => [
       ),
       FormCase(
         name: "PersonChooser",
-        dialog: (_) =>
-            PersonChooser(people: [berta, Person(id: "p2", name: "Carl")]),
+        dialog: (_) => PersonChooser(
+            people: Loadable.value([berta, Person(id: "p2", name: "Carl")])),
         fill: (tester) => typeInto(tester, find.byType(TextField), "ber"),
         primary: () => find.text("Berta"),
         expectAnswer: (answer) => expect((answer as Person).id, "p1"),

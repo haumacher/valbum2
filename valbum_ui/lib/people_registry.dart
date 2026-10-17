@@ -15,11 +15,18 @@
 /// A refusal is no error here. The server governs who is told about a face at
 /// all (`Faces.maySee`), and for a caller it refuses — a share link with 403,
 /// an anonymous visitor with 401 — this is bookkeeping and not content: the
-/// failure is remembered like an answer, so the register stays empty, no
-/// tooltip is shown, nothing is said and nothing is asked a second time.
+/// refusal is remembered as the answer, so no tooltip is shown, nothing is
+/// said and nothing is asked a second time by itself. A chooser opened over
+/// it says the refusal, and its Retry asks again.
+///
+/// Any other failure (the server down, a 500) is remembered as a failure,
+/// never as an empty register (issue #291): an empty register lets a chooser
+/// say "Nobody yet" and create a person the space already knows. The next
+/// [PeopleRegistry.load] asks again.
 library;
 
 import 'client.dart';
+import 'loadable.dart';
 import 'resource.dart';
 
 /// The people of a space, by the id a [FaceInfo.person] names them with.
@@ -37,18 +44,26 @@ class PeopleRegistry {
   static PeopleRegistry of(VAlbumClient client) =>
       _byClient[client] ??= PeopleRegistry._(client);
 
-  final VAlbumClient _client;
+  PeopleRegistry._(VAlbumClient client)
+      : persons = Loadable<List<Person>>(
+          () async => (await client.people()).people,
+          keepsFailure: isRefusal,
+        ) {
+    persons.addListener(_index);
+  }
 
-  PeopleRegistry._(this._client);
+  /// Whether [error] is the refusal of a caller who may not see persons,
+  /// see the library doc.
+  static bool isRefusal(Object error) =>
+      error is VAlbumException && (error.status == 401 || error.status == 403);
 
-  /// What was loaded, empty while nothing was and after a refusal.
+  /// The persons of the register, each of them once, as a chooser offers
+  /// them: waiting while they are on their way, failed where they failed.
+  final Loadable<List<Person>> persons;
+
+  /// What was loaded, by every id a face may name, empty while nothing was
+  /// and after a failure.
   Map<String, Person> _people = const {};
-
-  /// The one running or finished load, `null` while nobody asked.
-  Future<Map<String, Person>>? _loading;
-
-  /// Whether the register was asked for already, successfully or not.
-  bool get asked => _loading != null;
 
   /// The register as it stands, without asking for it.
   Map<String, Person> get people => _people;
@@ -58,12 +73,16 @@ class PeopleRegistry {
   /// An empty id is nobody: a face nobody decided about carries one.
   Person? operator [](String id) => id.isEmpty ? null : _people[id];
 
-  /// Loads the register once and answers it, see the library doc.
+  /// Loads the register and answers it, see the library doc.
   ///
   /// Replaced, never merged — the answer of the server is the register — and
-  /// asked exactly once per client: the memoised future is what a second
-  /// caller waits for, and a refusal is memoised with it.
-  Future<Map<String, Person>> load() => _loading ??= _fetch();
+  /// asked once per client: a second caller waits for the same answer, and a
+  /// refusal is the answer. Another failure fails this future, and the next
+  /// call asks again.
+  Future<Map<String, Person>> load() async {
+    await persons.load();
+    return _people;
+  }
 
   /// Writes a person the register does not know yet into it (issue #147).
   ///
@@ -72,38 +91,39 @@ class PeopleRegistry {
   /// once; asking the whole register again for one name it just handed out
   /// would be a second request for something this client already holds.
   void remember(Person person) {
-    if (_people.isEmpty) {
-      // Nothing was loaded (or a refusal was): a map of its own rather than
-      // the constant empty one, which cannot be written into.
-      _people = <String, Person>{};
-    }
-    _people[person.id] = person;
-    for (var alias in person.aliases) {
-      _people[alias.id] = person;
+    if (persons.hasValue) {
+      persons.replace([
+        for (var known in persons.value!)
+          if (known.id != person.id) known,
+        person,
+      ]);
+    } else {
+      // Nothing was loaded: the label is written all the same, and the
+      // register the server answers later has the person in it.
+      _people = {..._people};
+      _put(_people, person);
     }
   }
 
-  Future<Map<String, Person>> _fetch() async {
-    Map<String, Person> loaded;
-    try {
-      var answer = await _client.people();
-      loaded = <String, Person>{};
-      for (var person in answer.people) {
-        loaded[person.id] = person;
-        // A face read before a merge still names the id that was merged away,
-        // and the server answers the aliases so that a client can recognise
-        // it, see `Person.aliases`.
-        for (var alias in person.aliases) {
-          loaded[alias.id] = person;
-        }
-      }
-    } catch (_) {
-      // Refused (403 for a link, 401 for an anonymous caller) or unreachable:
-      // there are no names to show, and asking again would be a retry storm
-      // over something nobody asked for.
-      loaded = const {};
+  /// Rebuilds the index by id from what arrived.
+  void _index() {
+    if (!persons.hasValue) {
+      return;
     }
-    _people = loaded;
-    return loaded;
+    var index = <String, Person>{};
+    for (var person in persons.value!) {
+      _put(index, person);
+    }
+    _people = index;
+  }
+
+  static void _put(Map<String, Person> index, Person person) {
+    index[person.id] = person;
+    // A face read before a merge still names the id that was merged away,
+    // and the server answers the aliases so that a client can recognise it,
+    // see `Person.aliases`.
+    for (var alias in person.aliases) {
+      index[alias.id] = person;
+    }
   }
 }

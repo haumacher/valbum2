@@ -1028,9 +1028,17 @@ class ImageViewState extends State<ImageView>
   }
 
   /// The register, loaded once per client and held, see [PeopleRegistry].
+  ///
+  /// What stands where it failed: the failure is kept by the register, and
+  /// the chooser opened over it says it (issue #291).
   Future<Map<String, Person>> _loadPeople() async {
     var registry = PeopleRegistry.of(widget.client);
-    var loaded = await registry.load();
+    Map<String, Person> loaded;
+    try {
+      loaded = await registry.load();
+    } catch (_) {
+      return _people;
+    }
     if (mounted && !identical(loaded, _people)) {
       setState(() => _people = loaded);
     }
@@ -1176,16 +1184,17 @@ class ImageViewState extends State<ImageView>
   /// The very chooser of the face editor, so that naming a face is the same
   /// thing wherever it is done; a person created here is remembered in the
   /// register, so the label under the face can be written at once.
+  ///
+  /// Opened at once: where the register is still on its way, the chooser
+  /// waits for it, and where it failed, it says why (issue #291).
   Future<Person?> choosePerson() async {
     var l10n = AppLocalizations.of(context)!;
-    var people = await _loadPeople();
-    if (!mounted) {
-      return null;
-    }
+    // The labels under the faces are written once it arrives.
+    _loadPeople().ignore();
     var chosen = await showFormDialog<Person>(
       context: context,
       builder: (context) => PersonChooser(
-        people: _distinct(people),
+        people: PeopleRegistry.of(widget.client).persons,
         title: l10n.personsUnknownGroup,
         // Who already carries a face in this album stands at the top, see
         // issue #150 — the people of the shown album, not of this picture.
@@ -1224,20 +1233,6 @@ class ImageViewState extends State<ImageView>
         for (var face in image.faces)
           if (face.person.isNotEmpty) face.person,
     };
-  }
-
-  /// The people of the register, each of them once.
-  ///
-  /// The register is keyed by every id a face may name, the ids merged away
-  /// among them (see [PeopleRegistry]), so the same person stands in it
-  /// several times; a chooser that offered them twice would ask which of two
-  /// identical lines is meant.
-  static List<Person> _distinct(Map<String, Person> people) {
-    var byId = <String, Person>{};
-    for (var person in people.values) {
-      byId[person.id] = person;
-    }
-    return byId.values.toList();
   }
 
   /// Stores one decision about one face, at once (issue #147).
@@ -3255,11 +3250,16 @@ class _FaceRegionsState extends State<FaceRegions> {
     // picture really shows a confirmed face, see [ImageViewState.namedFaces].
     var registry = PeopleRegistry.of(widget.client);
     _people = registry.people;
-    registry.load().then((people) {
-      if (mounted && !identical(people, _people)) {
-        setState(() => _people = people);
-      }
-    });
+    registry.load().then(
+      (people) {
+        if (mounted && !identical(people, _people)) {
+          setState(() => _people = people);
+        }
+      },
+      // A register that cannot be read names nobody; the failure is kept by
+      // the register and said by a chooser opened over it.
+      onError: (Object _) {},
+    );
   }
 
   @override

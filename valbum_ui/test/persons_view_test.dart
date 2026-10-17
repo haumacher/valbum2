@@ -104,6 +104,7 @@ VAlbumClient editorClient(
   required String auth,
   required String album,
   String Function() people = annaRegister,
+  Future<http.Response> Function()? peopleAnswer,
   String Function()? users,
   Answer? post,
   String Function()? albumNow,
@@ -120,7 +121,8 @@ VAlbumClient editorClient(
           return json(auth);
         }
         if (query["type"] == "people") {
-          return json(people());
+          // A test of a slow or failing register answers it itself.
+          return peopleAnswer != null ? await peopleAnswer() : json(people());
         }
         // Who is in the space, which the member chooser of issue #128 asks
         // for; a test that says nothing about it is answered nobody.
@@ -534,7 +536,8 @@ void main() {
                     faceOf(1, cluster: "c1", y: 0.5),
                   ]),
                   ...defaultImages.sublist(1),
-                  imageOf("d.jpg", [faceOf(0, cluster: "c4", person: "p-anna")]),
+                  imageOf(
+                      "d.jpg", [faceOf(0, cluster: "c4", person: "p-anna")]),
                 ])
               : albumOf(images: images),
           post: (request) {
@@ -652,7 +655,8 @@ void main() {
         ),
       );
 
-      expect(find.text(testL10n.personsSuggestedHeading("Anna")), findsOneWidget);
+      expect(
+          find.text(testL10n.personsSuggestedHeading("Anna")), findsOneWidget);
 
       await withFakeImageHttp(() async {
         await tester.tap(find.byKey(const Key("persons-confirm-p-anna")));
@@ -830,8 +834,7 @@ void main() {
 
       // What the browser's back button and the system's do.
       await withFakeImageHttp(() async {
-        await tester
-            .binding
+        await tester.binding
             .handlePopRoute()
             .then((_) => tester.pumpAndSettle());
       });

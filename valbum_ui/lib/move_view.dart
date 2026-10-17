@@ -18,10 +18,13 @@ import 'filter_list.dart';
 import 'form_dialog.dart';
 import 'l10n/app_localizations.dart';
 import 'listing_view.dart';
+import 'loadable.dart';
 import 'offline.dart';
 import 'resource.dart';
 import 'rights.dart';
 import 'selectable.dart';
+
+export 'loadable.dart' show reasonOf;
 
 /// What a move acts on, as the button and the message name it.
 ///
@@ -510,10 +513,6 @@ void showRefusal(ScaffoldMessengerState messenger, Object error) =>
         duration: const Duration(seconds: 8),
       ),
     );
-
-/// The reason a failed request gives, the server's own words where it spoke.
-String reasonOf(Object error) =>
-    error is VAlbumException ? error.message : "$error";
 
 /// What is said when the album of issue #114 was created but the move into it
 /// was refused.

@@ -60,6 +60,7 @@ import 'drag_scroll.dart';
 import 'filter_list.dart';
 import 'form_dialog.dart';
 import 'l10n/app_localizations.dart';
+import 'loadable.dart';
 import 'not_ready.dart';
 import 'offline.dart';
 import 'oriented_thumbnail.dart';
@@ -343,6 +344,16 @@ class PersonsContentState extends State<PersonsContent>
   /// The people of the space by their id, loaded once per screen.
   final Map<String, Person> people = {};
 
+  /// The register as the choosers wait for it (issue #291): [people] is what
+  /// arrived, kept up to date with what this screen changes on the server.
+  ///
+  /// A failure is kept as one and asked again by the next chooser opened,
+  /// which says it with a Retry; the groups stand meanwhile, and a person is
+  /// named by their id until the register can be read.
+  late final Loadable<List<Person>> _register =
+      Loadable(() async => (await client.people()).people)
+        ..addListener(_registerChanged);
+
   /// The faces selected, by [AlbumFace.key].
   final Set<String> selection = {};
 
@@ -433,6 +444,8 @@ class PersonsContentState extends State<PersonsContent>
         .unregisterPersonsGuard(path, _leaveGuard);
     _dragScroller.dispose();
     _scroll.dispose();
+    // Not disposed: an answer on its way would still arrive at it.
+    _register.removeListener(_registerChanged);
     super.dispose();
   }
 
@@ -510,26 +523,30 @@ class PersonsContentState extends State<PersonsContent>
   }
 
   /// Loads the people of the space once, so the groups can be named.
-  Future<void> _loadPeople() async {
-    PersonList list;
-    try {
-      list = await client.people();
-    } catch (_) {
-      // A register that cannot be read is no reason to show nothing: the
-      // groups stand, and a person is named by their id until it can.
-      return;
-    }
-    if (!mounted) {
+  void _loadPeople() => _register.load().ignore();
+
+  /// Shows the register as it arrived.
+  void _registerChanged() {
+    var arrived = _register.value;
+    if (!mounted || arrived == null) {
       return;
     }
     setState(() {
       // Replaced and not merged: a link is answered from both ends and can be
       // taken away elsewhere, so what is shown is the register as it *is*.
       people.clear();
-      for (var person in list.people) {
+      for (var person in arrived) {
         people[person.id] = person;
       }
     });
+  }
+
+  /// Gives the choosers what this screen changed in [people], once the
+  /// register arrived; before, the register the server answers has it.
+  void _syncRegister() {
+    if (_register.hasValue) {
+      _register.replace(people.values.toList());
+    }
   }
 
   /// Whether the server is still looking for faces in this album.
@@ -1045,7 +1062,7 @@ class PersonsContentState extends State<PersonsContent>
     var chosen = await showFormDialog<Person>(
       context: context,
       builder: (context) => PersonChooser(
-        people: people.values.toList(),
+        people: _register,
         onCreate: createPerson,
         // Who already has a face here stands at the top, see issue #150.
         inAlbum: personsOfAlbum,
@@ -1061,6 +1078,7 @@ class PersonsContentState extends State<PersonsContent>
       }
       selection.clear();
     });
+    _syncRegister();
   }
 
   /// Confirms what the server only suggested, see issue #127.
@@ -1116,6 +1134,7 @@ class PersonsContentState extends State<PersonsContent>
       return;
     }
     setState(() => people[renamed.id] = renamed);
+    _syncRegister();
   }
 
   /// Merges the person of the given group into another one.
@@ -1128,10 +1147,8 @@ class PersonsContentState extends State<PersonsContent>
     var into = await showFormDialog<Person>(
       context: context,
       builder: (context) => PersonChooser(
-        people: [
-          for (var person in people.values)
-            if (person.id != group.person) person
-        ],
+        people: _register,
+        excluded: {group.person},
         title: _l10n.personsMergeTitle,
         notice: _l10n.personsMergeNotice,
         inAlbum: personsOfAlbum,
@@ -1156,6 +1173,7 @@ class PersonsContentState extends State<PersonsContent>
       _rename(placement, group.person, survivor.id);
       _rename(stored, group.person, survivor.id);
     });
+    _syncRegister();
   }
 
   // -------------------------------------------------------------------------
@@ -1211,7 +1229,12 @@ class PersonsContentState extends State<PersonsContent>
       return;
     }
     setState(() => people[linked.id] = linked);
-    await _loadPeople();
+    _syncRegister();
+    try {
+      await _register.retry();
+    } catch (_) {
+      // The link is shown; the rest of the register stands as it was.
+    }
   }
 
   /// The member the person of [id] is, empty where they are nobody.
@@ -2287,9 +2310,20 @@ List<Person> byDisplayName(List<Person> people) {
 /// search field, the "New person" entry and two or three names.
 const double _roomyChooserHeight = 240;
 
+/// Who somebody is: one of the people of the register, or a new person.
+///
+/// The register is a [Loadable] (issue #291): a chooser opened before it
+/// arrived waits for it in its list — what is typed into the search field
+/// meanwhile stays and filters it once it lands — and a failed register says
+/// why, with a Retry, instead of "Nobody yet". A new person is offered only
+/// over a register that arrived: one created over a register that is not
+/// known would be a second person of a name the space already has.
 class PersonChooser extends StatefulWidget {
-  /// The people offered.
-  final List<Person> people;
+  /// The people offered, asked again on opening where they failed.
+  final Loadable<List<Person>> people;
+
+  /// The ids of the people not offered among them: the one being merged.
+  final Set<String> excluded;
 
   /// What the dialog is called; the naming of a group when nothing is said.
   final String? title;
@@ -2313,6 +2347,7 @@ class PersonChooser extends StatefulWidget {
   const PersonChooser({
     super.key,
     required this.people,
+    this.excluded = const {},
     this.title,
     this.notice,
     this.onCreate,
@@ -2342,11 +2377,45 @@ class _PersonChooserState extends State<PersonChooser> {
   void _highlightMoved() => setState(() {});
 
   @override
+  void initState() {
+    super.initState();
+    widget.people.addListener(_registerChanged);
+    // A register that failed is asked again when a chooser is opened over it
+    // — after the build, which is no time to tell the others listening.
+    scheduleMicrotask(() {
+      if (mounted) {
+        widget.people.load().ignore();
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(PersonChooser oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.people, widget.people)) {
+      oldWidget.people.removeListener(_registerChanged);
+      widget.people.addListener(_registerChanged);
+    }
+  }
+
+  void _registerChanged() => setState(() {});
+
+  @override
   void dispose() {
+    widget.people.removeListener(_registerChanged);
     _highlight.dispose();
     _search.dispose();
     super.dispose();
   }
+
+  /// Whether the register arrived, and so whether a person may be created.
+  bool get _loaded => widget.people.hasValue;
+
+  /// The people offered, nobody while the register has not arrived.
+  List<Person> get _offered => [
+        for (var person in widget.people.value ?? const <Person>[])
+          if (!widget.excluded.contains(person.id)) person
+      ];
 
   /// What `Enter` does: pick the highlighted person, or create the typed one.
   ///
@@ -2361,6 +2430,8 @@ class _PersonChooserState extends State<PersonChooser> {
     }
     if (_highlight.shown.isEmpty &&
         widget.onCreate != null &&
+        // Not over a register on its way: the name may well be in it.
+        _loaded &&
         _search.text.trim().isNotEmpty) {
       _create();
     }
@@ -2371,7 +2442,7 @@ class _PersonChooserState extends State<PersonChooser> {
     var l10n = AppLocalizations.of(context)!;
     var needle = _search.text.trim().toLowerCase();
     var shown = [
-      for (var person in widget.people)
+      for (var person in _offered)
         if (needle.isEmpty ||
             person.name.toLowerCase().contains(needle) ||
             person.nickname.toLowerCase().contains(needle))
@@ -2467,13 +2538,22 @@ class _PersonChooserState extends State<PersonChooser> {
                 onSubmitted: (_) => _enter(),
               ),
               const SizedBox(height: 8),
-              if (_highlight.shown.isEmpty && widget.people.isEmpty)
-                Text(l10n.personsNobodyYet, key: const Key("persons-nobody")),
-              if (roomy) Flexible(child: list) else list,
+              if (!_loaded)
+                // Waiting for the register, or saying why it failed — never
+                // "Nobody yet" of a register nobody has seen.
+                LoadableStatus(
+                  loadable: widget.people,
+                  keyPrefix: "persons-register",
+                )
+              else ...[
+                if (_offered.isEmpty)
+                  Text(l10n.personsNobodyYet, key: const Key("persons-nobody")),
+                if (roomy) Flexible(child: list) else list,
+              ],
               if (widget.onCreate != null)
                 TextButton.icon(
                   key: const Key("persons-new-person"),
-                  onPressed: _create,
+                  onPressed: _loaded ? _create : null,
                   icon: const Icon(Icons.person_add),
                   label: Text(l10n.personsNewPersonEntry),
                 ),
@@ -2528,6 +2608,9 @@ class _PersonChooserState extends State<PersonChooser> {
       );
 
   Future<void> _create() async {
+    if (!_loaded) {
+      return;
+    }
     var l10n = AppLocalizations.of(context)!;
     var name = await showFormDialog<String>(
       context: context,
