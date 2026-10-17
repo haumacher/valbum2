@@ -7434,5 +7434,31 @@
       }
     },
     "x-translated": "99e3064"
+  },
+  "downloadAlbumAction": "Download album",
+  "@downloadAlbumAction": {
+    "description": "Entry of the menu of an album's tile in a folder listing: downloads the originals of every photo the album shows, as one archive (issue #295)",
+    "x-translated": "21f22533"
+  },
+  "downloadNotAllowed": "You may not download the photos of this album.",
+  "@downloadNotAllowed": {
+    "description": "Said in a red bar where the download of an album was asked from its tile but the album does not allow this user to download (issue #295)",
+    "x-translated": "581963c8"
+  },
+  "nothingToDownload": "Nothing to download.",
+  "@nothingToDownload": {
+    "description": "Said where the download of an album was asked from its tile but the album shows no photo (issue #295)",
+    "x-translated": "5e77d1f4"
+  },
+  "trashRestoreSelection": "{count, plural, =1{Restore 1 photo} other{Restore {count} photos}}",
+  "@trashRestoreSelection": {
+    "description": "Button of the selection bar of the trash page: gives the selected photos back to their album (issue #295)",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "3"
+      }
+    },
+    "x-translated": "32fe2481"
   }
 }

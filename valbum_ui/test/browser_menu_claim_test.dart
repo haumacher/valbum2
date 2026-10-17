@@ -61,10 +61,11 @@ void main() {
     return mouse;
   }
 
+  // A folder of folders: the tile of an album offers its properties to
+  // everybody (issue #295), so has a menu for a member who may only look.
   testWidgets('a folder tile without a menu keeps the browser\'s',
       (tester) async {
-    await openSpace(tester, PhotoSpace(role: "view", rights: const ["view"]),
-        ListingOrAlbumRoute.root);
+    await openSpace(tester, _FolderOfFolders(), ListingOrAlbumRoute.root);
     await mouseOnTrip(tester);
     await rightClickFolder(tester);
     expect(menuOpen(), isFalse, reason: "Nothing this member may do here.");
@@ -93,8 +94,8 @@ void main() {
         reason: "The tile under the pointer holds it.");
 
     await withFakeImageHttp(() async {
-      await mouse.down(
-          tester.getCenter(find.byKey(const ValueKey("tile-trip"))));
+      await mouse
+          .down(tester.getCenter(find.byKey(const ValueKey("tile-trip"))));
       await mouse.up();
     });
     await settle(tester);
@@ -152,4 +153,20 @@ void main() {
     await tester.pumpAndSettle();
     expect(browser.calls, ["disable", "enable"]);
   });
+}
+
+/// A member who may only look, at a root whose `trip` is a folder of
+/// folders.
+class _FolderOfFolders extends PhotoSpace {
+  _FolderOfFolders() : super(role: "view", rights: const ["view"]);
+
+  @override
+  http.Response answer(http.Request request) {
+    if (Uri.decodeFull(request.url.path) == "/valbum/data/" &&
+        request.url.queryParameters["type"] == "json") {
+      return json('["ListingInfo", {"path": "", "title": "Library", '
+          '"folders": [{"name": "trip", "title": "Trip", "kind": "FOLDER"}]}]');
+    }
+    return super.answer(request);
+  }
 }

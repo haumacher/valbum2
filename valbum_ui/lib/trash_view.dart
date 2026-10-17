@@ -5,7 +5,10 @@
 /// This page is where an editor finds those photographs again: only the
 /// trashed ones of this album, group members one by one, each with a
 /// **Restore** tool, and — for an administrator — **Purge…**, which deletes
-/// them from disk.
+/// them from disk. Several are restored at once in its select mode (issue
+/// #295): entered by "Select photos…" in the app bar or a long press on a
+/// tile, left by its `×` or `Escape`, its bar restoring what is selected; and
+/// the large picture a tap shows restores its photograph as well.
 ///
 /// ## A level of its own
 ///
@@ -24,6 +27,7 @@ library;
 import 'dart:math';
 
 import 'package:flutter/material.dart' hide Orientation;
+import 'package:flutter/services.dart';
 
 import 'action_guard.dart';
 import 'album_edit.dart' show PlaneTransform;
@@ -36,6 +40,7 @@ import 'l10n/app_localizations.dart';
 import 'offline.dart';
 import 'oriented_thumbnail.dart';
 import 'resource.dart';
+import 'select_mode.dart';
 import 'selectable.dart';
 import 'share_session.dart';
 import 'page_insets.dart';
@@ -87,6 +92,21 @@ class TrashContent extends StatefulWidget {
 class TrashContentState extends State<TrashContent> {
   /// Whether a purge is on its way to the server.
   bool _purging = false;
+
+  /// Whether the page is in its select mode (issue #295).
+  bool _selecting = false;
+
+  /// The names of the photographs selected in the select mode.
+  final Set<String> _selected = {};
+
+  /// Whether the page is in its select mode, offered to whoever may restore.
+  bool get selecting => _selecting && mayRestore;
+
+  /// The photographs selected, in the order the page shows them.
+  List<ImagePart> get selected => [
+        for (var image in trashed)
+          if (_selected.contains(image.name)) image,
+      ];
 
   AppLocalizations get _l10n => AppLocalizations.of(context)!;
 
@@ -148,6 +168,63 @@ class TrashContentState extends State<TrashContent> {
       () => image.rating = restoredRating,
       () => image.rating = before,
     );
+  }
+
+  /// Enters the select mode (issue #295), with [first] selected where a
+  /// long press on its tile opened it.
+  void enterSelectMode([ImagePart? first]) {
+    if (!mayRestore) {
+      return;
+    }
+    setState(() {
+      _selecting = true;
+      _selected.clear();
+      if (first != null) {
+        _selected.add(first.name);
+      }
+    });
+  }
+
+  /// Leaves the select mode; the selection goes with it.
+  void leaveSelectMode() => setState(() {
+        _selecting = false;
+        _selected.clear();
+      });
+
+  /// Adds [image] to the selection or takes it out.
+  void toggle(ImagePart image) => setState(() {
+        if (!_selected.remove(image.name)) {
+          _selected.add(image.name);
+        }
+      });
+
+  /// Gives every selected photograph its rating back — unrated — in one
+  /// write (issue #295), and leaves the select mode once it is written; a
+  /// refusal takes all of them back.
+  Future<void> restoreSelected() async {
+    var images = selected;
+    if (images.isEmpty) {
+      return;
+    }
+    var before = [for (var image in images) image.rating];
+    var restored = false;
+    await writeNow(
+      () {
+        for (var image in images) {
+          image.rating = restoredRating;
+        }
+        restored = true;
+      },
+      () {
+        for (var (index, image) in images.indexed) {
+          image.rating = before[index];
+        }
+        restored = false;
+      },
+    );
+    if (restored && mounted) {
+      leaveSelectMode();
+    }
   }
 
   /// Deletes the trashed photographs of this album from disk, after asking.
@@ -233,9 +310,26 @@ class TrashContentState extends State<TrashContent> {
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: Text(AppLocalizations.of(context)!.close),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Restored from here as from its tile (issue #295): the
+                  // picture is what one looks at to decide.
+                  if (mayRestore)
+                    TextButton.icon(
+                      key: const Key("trash-photo-restore"),
+                      icon: const Icon(Icons.restore_from_trash),
+                      label: Text(AppLocalizations.of(context)!.trashRestore),
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        restore(image);
+                      },
+                    ),
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: Text(AppLocalizations.of(context)!.close),
+                  ),
+                ],
               ),
             ],
           ),
@@ -273,36 +367,79 @@ class TrashContentState extends State<TrashContent> {
   @override
   Widget build(BuildContext context) {
     var shown = trashed;
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          key: const Key("trash-up"),
-          icon: const Icon(Icons.arrow_back),
-          tooltip: _l10n.up,
-          onPressed: widget.albumState.navigator.up,
-        ),
-        automaticallyImplyLeading: false,
-        title: Column(
-          children: [
-            Text(_l10n.trashPageTitle),
-            Text(
-              album.title,
-              key: const Key("trash-subtitle"),
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ],
-        ),
-        centerTitle: true,
-        actions: [
-          if (mayPurge && shown.isNotEmpty)
-            TextButton.icon(
-              key: const Key("trash-purge"),
-              onPressed: _purging ? null : purge,
-              icon: const Icon(Icons.delete_forever),
-              label: Text(_l10n.trashPurgeAction),
-            ),
-        ],
+    var chosen = selecting ? selected : const <ImagePart>[];
+    // `Escape` leaves the select mode, as in the album (issue #209).
+    return CallbackShortcuts(
+      bindings: {
+        if (selecting)
+          const SingleActivator(LogicalKeyboardKey.escape): leaveSelectMode,
+      },
+      child: Focus(
+        autofocus: true,
+        child: _page(context, shown, chosen),
       ),
+    );
+  }
+
+  Widget _page(
+      BuildContext context, List<ImagePart> shown, List<ImagePart> chosen) {
+    return Scaffold(
+      appBar: selecting
+          ? selectModeAppBar(
+              l10n: _l10n,
+              count: chosen.length,
+              onLeave: leaveSelectMode,
+              onDownload: null,
+              offerDownload: false,
+              extra: [
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: TextButton.icon(
+                    key: const Key("trash-restore-selection"),
+                    onPressed: chosen.isEmpty ? null : restoreSelected,
+                    icon: const Icon(Icons.restore_from_trash),
+                    label: Text(_l10n.trashRestoreSelection(chosen.length)),
+                  ),
+                ),
+              ],
+            )
+          : AppBar(
+              leading: IconButton(
+                key: const Key("trash-up"),
+                icon: const Icon(Icons.arrow_back),
+                tooltip: _l10n.up,
+                onPressed: widget.albumState.navigator.up,
+              ),
+              automaticallyImplyLeading: false,
+              title: Column(
+                children: [
+                  Text(_l10n.trashPageTitle),
+                  Text(
+                    album.title,
+                    key: const Key("trash-subtitle"),
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+              centerTitle: true,
+              actions: [
+                // Several restored at once (issue #295).
+                if (mayRestore && shown.isNotEmpty)
+                  IconButton(
+                    key: const Key("trash-select"),
+                    icon: const Icon(Icons.check_circle_outline),
+                    tooltip: _l10n.selectPhotos,
+                    onPressed: () => enterSelectMode(),
+                  ),
+                if (mayPurge && shown.isNotEmpty)
+                  TextButton.icon(
+                    key: const Key("trash-purge"),
+                    onPressed: _purging ? null : purge,
+                    icon: const Icon(Icons.delete_forever),
+                    label: Text(_l10n.trashPurgeAction),
+                  ),
+              ],
+            ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -353,43 +490,63 @@ class TrashContentState extends State<TrashContent> {
   /// A gesture surface of its own, see [SelectionExcluded].
   Widget _tile(ImagePart image) => SelectionExcluded.keyed(_trashTile(image));
 
-  Widget _trashTile(ImagePart image) => SizedBox(
+  Widget _trashTile(ImagePart image) {
+    var thumbnail = ColoredBox(
+      color: Colors.black12,
+      child: orientedImageThumbnail(
+        client,
+        "$albumUrl${image.name}",
+        image,
+        width: trashTileSize,
+        height: trashTileSize,
+      ),
+    );
+    if (selecting) {
+      // The select mode (issue #295): a tap, a long press and the mark all
+      // toggle — there is no viewer to open here, and no range to extend.
+      return SizedBox(
         key: ValueKey("trash-tile-${image.name}"),
         width: trashTileSize,
         height: trashTileSize,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            GestureDetector(
-              onTap: () => showPhoto(image),
-              child: ColoredBox(
-                color: Colors.black12,
-                child: orientedImageThumbnail(
-                  client,
-                  "$albumUrl${image.name}",
-                  image,
-                  width: trashTileSize,
-                  height: trashTileSize,
+        child: SelectableTile(
+          selected: _selected.contains(image.name),
+          onTap: () => toggle(image),
+          onToggle: () => toggle(image),
+          child: thumbnail,
+        ),
+      );
+    }
+    return SizedBox(
+      key: ValueKey("trash-tile-${image.name}"),
+      width: trashTileSize,
+      height: trashTileSize,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          GestureDetector(
+            onTap: () => showPhoto(image),
+            // The way into the select mode, as on an album's tile.
+            onLongPress: mayRestore ? () => enterSelectMode(image) : null,
+            child: thumbnail,
+          ),
+          if (mayRestore)
+            Positioned(
+              right: 4,
+              bottom: 4,
+              child: Material(
+                color: Colors.black54,
+                shape: const CircleBorder(),
+                child: IconButton(
+                  key: const Key("trash-restore"),
+                  icon: const Icon(Icons.restore_from_trash),
+                  color: Colors.white,
+                  tooltip: _l10n.trashRestore,
+                  onPressed: () => restore(image),
                 ),
               ),
             ),
-            if (mayRestore)
-              Positioned(
-                right: 4,
-                bottom: 4,
-                child: Material(
-                  color: Colors.black54,
-                  shape: const CircleBorder(),
-                  child: IconButton(
-                    key: const Key("trash-restore"),
-                    icon: const Icon(Icons.restore_from_trash),
-                    color: Colors.white,
-                    tooltip: _l10n.trashRestore,
-                    onPressed: () => restore(image),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      );
+        ],
+      ),
+    );
+  }
 }

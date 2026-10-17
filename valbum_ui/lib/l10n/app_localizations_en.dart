@@ -4483,4 +4483,25 @@ class AppLocalizationsEn extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get downloadAlbumAction => 'Download album';
+
+  @override
+  String get downloadNotAllowed =>
+      'You may not download the photos of this album.';
+
+  @override
+  String get nothingToDownload => 'Nothing to download.';
+
+  @override
+  String trashRestoreSelection(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Restore $count photos',
+      one: 'Restore 1 photo',
+    );
+    return '$_temp0';
+  }
 }

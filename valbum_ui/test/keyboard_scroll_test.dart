@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:valbum_ui/inbox_view.dart';
 import 'package:valbum_ui/keyboard_scroll.dart';
 import 'package:valbum_ui/main.dart';
+import 'package:valbum_ui/tile_keys.dart';
 
 import 'album_drag_scroll_test.dart' show albumJson, tile, useSurface;
 import 'inbox_view_test.dart' show inboxJson, inboxTree, pumpInbox;
@@ -30,8 +31,10 @@ Future<void> press(WidgetTester tester, LogicalKeyboardKey key) async {
 }
 
 /// PageDown by a viewport less the overlap, PageUp back, End to the end,
-/// Home to the top — the acceptance of issue #168 on any screen.
-Future<void> expectPaging(WidgetTester tester) async {
+/// Home to the top — the acceptance of issue #168 on any screen; and the
+/// arrows a line, except on a grid of tiles ([grid]), where they walk the
+/// tiles instead (issue #295).
+Future<void> expectPaging(WidgetTester tester, {bool grid = false}) async {
   var position = positionOf(tester);
   expect(position.pixels, 0);
   var page = position.viewportDimension - keyboardPageOverlap;
@@ -53,6 +56,14 @@ Future<void> expectPaging(WidgetTester tester) async {
   await press(tester, LogicalKeyboardKey.home);
   expect(position.pixels, 0);
 
+  if (grid) {
+    expect(find.byKey(HighlightedTile.ringKey), findsNothing);
+    await press(tester, LogicalKeyboardKey.arrowDown);
+    expect(find.byKey(HighlightedTile.ringKey), findsOneWidget,
+        reason: "the arrows walk the tiles of a grid");
+    expect(position.pixels, 0, reason: "the first tile is on the screen");
+    return;
+  }
   await press(tester, LogicalKeyboardKey.arrowDown);
   expect(position.pixels, moreOrLessEquals(keyboardLineScroll));
   await press(tester, LogicalKeyboardKey.arrowUp);
@@ -200,7 +211,7 @@ void main() {
       useSurface(tester, const Size(800, 600));
       await pumpBigAlbum(tester);
       expect(find.byType(Scrollbar), findsOneWidget);
-      await expectPaging(tester);
+      await expectPaging(tester, grid: true);
     });
 
     testWidgets("drives the one controller the edge scrolling drives",
@@ -249,7 +260,7 @@ void main() {
       useSurface(tester, const Size(800, 600));
       await pumpListing(tester, clientReturning(bigListing()));
       expect(find.byType(Scrollbar), findsOneWidget);
-      await expectPaging(tester);
+      await expectPaging(tester, grid: true);
     });
   });
 }

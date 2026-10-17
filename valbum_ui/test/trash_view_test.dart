@@ -7,6 +7,7 @@
 library;
 
 import 'package:flutter/material.dart' hide Orientation;
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -140,8 +141,10 @@ Finder restoreOf(String name) => find.descendant(
       matching: find.byKey(const Key("trash-restore")),
     );
 
-List<http.Request> writesIn(List<http.Request> requests) =>
-    [for (var request in requests) if (request.method != "GET") request];
+List<http.Request> writesIn(List<http.Request> requests) => [
+      for (var request in requests)
+        if (request.method != "GET") request
+    ];
 
 void main() {
   setUp(() {
@@ -186,8 +189,7 @@ void main() {
       });
     });
 
-    testWidgets('is not offered where nothing is in the trash',
-        (tester) async {
+    testWidgets('is not offered where nothing is in the trash', (tester) async {
       await withFakeImageHttp(() async {
         await pump(tester, server(requests: [], album: zooWithoutTrash));
         await openMenu(tester);
@@ -203,8 +205,8 @@ void main() {
           server(
             requests: [],
             role: "contribute",
-            album: () => zooWithTrash(
-                rights: const ["view", "download", "contribute"]),
+            album: () =>
+                zooWithTrash(rights: const ["view", "download", "contribute"]),
           ),
         );
         await openMenu(tester);
@@ -341,6 +343,129 @@ void main() {
     });
   });
 
+  group('Restore several (issue #295)', () {
+    Future<void> select(WidgetTester tester, String name) async {
+      await tester.tap(find.byKey(ValueKey("trash-tile-$name")));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('the select mode restores its selection in one write',
+        (tester) async {
+      var requests = <http.Request>[];
+      await withFakeImageHttp(() async {
+        await pump(tester, server(requests: requests),
+            route: const TrashRoute(["Zoo"]));
+
+        await tester.tap(find.byKey(const Key("trash-select")));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key("select-mode-bar")), findsOneWidget);
+        expect(find.byKey(const Key("trash-restore")), findsNothing,
+            reason: "the selection bar restores in the select mode");
+        await select(tester, "a.jpg");
+        await select(tester, "c.jpg");
+        expect(find.text(testL10n.trashRestoreSelection(2)), findsOneWidget);
+        await select(tester, "a.jpg");
+        expect(find.text(testL10n.trashRestoreSelection(1)), findsOneWidget);
+        await select(tester, "a.jpg");
+
+        await tester.tap(find.byKey(const Key("trash-restore-selection")));
+        await tester.pumpAndSettle();
+
+        var writes = writesIn(requests);
+        expect(writes, hasLength(1));
+        var sent = Resource.fromString(writes.single.body) as AlbumInfo;
+        expect((sent.parts[0] as ImagePart).rating, 0);
+        expect((sent.parts[1] as ImageGroup).images[1].rating, 0);
+        expect((sent.parts[2] as ImagePart).rating, -1,
+            reason: "a poor photograph is no trash");
+        expect(find.byKey(const Key("trash-empty")), findsOneWidget);
+        expect(find.byKey(const Key("select-mode-bar")), findsNothing);
+      });
+    });
+
+    testWidgets('a long press enters it with the tile, Escape leaves it',
+        (tester) async {
+      await withFakeImageHttp(() async {
+        await pump(tester, server(requests: []),
+            route: const TrashRoute(["Zoo"]));
+
+        await tester.longPress(find.byKey(const ValueKey("trash-tile-c.jpg")));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key("select-mode-bar")), findsOneWidget);
+        expect(find.text(testL10n.trashRestoreSelection(1)), findsOneWidget);
+
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key("select-mode-bar")), findsNothing);
+        expect(tileNames(tester), ["a.jpg", "c.jpg"]);
+      });
+    });
+
+    testWidgets('a refusal takes all of them back and keeps the selection',
+        (tester) async {
+      await withFakeImageHttp(() async {
+        await pump(
+          tester,
+          server(
+            requests: [],
+            put: () => json(
+                '["ErrorInfo", {"message": "You may not change this album."}]',
+                403),
+          ),
+          route: const TrashRoute(["Zoo"]),
+        );
+        await tester.tap(find.byKey(const Key("trash-select")));
+        await tester.pumpAndSettle();
+        await select(tester, "a.jpg");
+        await select(tester, "c.jpg");
+        await tester.tap(find.byKey(const Key("trash-restore-selection")));
+        await tester.pumpAndSettle();
+
+        expect(find.text("You may not change this album."), findsOneWidget);
+        expect(tileNames(tester), ["a.jpg", "c.jpg"]);
+        expect(find.text(testL10n.trashRestoreSelection(2)), findsOneWidget);
+      });
+    });
+
+    testWidgets('the large photo restores its photograph', (tester) async {
+      var requests = <http.Request>[];
+      await withFakeImageHttp(() async {
+        await pump(tester, server(requests: requests),
+            route: const TrashRoute(["Zoo"]));
+        await tester.tap(find.byKey(const ValueKey("trash-tile-c.jpg")));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key("trash-photo-restore")));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key("trash-photo")), findsNothing);
+        var sent =
+            Resource.fromString(writesIn(requests).single.body) as AlbumInfo;
+        expect((sent.parts[1] as ImageGroup).images[1].rating, 0);
+        expect((sent.parts[0] as ImagePart).rating, -2);
+        expect(tileNames(tester), ["a.jpg"]);
+      });
+    });
+
+    testWidgets('neither is offered to a caller without edit', (tester) async {
+      await withFakeImageHttp(() async {
+        await pump(
+          tester,
+          server(
+            requests: [],
+            role: "view",
+            album: () => zooWithTrash(rights: const ["view"]),
+          ),
+          route: const TrashRoute(["Zoo"]),
+        );
+        expect(find.byKey(const Key("trash-select")), findsNothing);
+        await tester.tap(find.byKey(const ValueKey("trash-tile-c.jpg")));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key("trash-photo-restore")), findsNothing);
+      });
+    });
+  });
+
   group('Purge', () {
     testWidgets('is offered to an administrator only', (tester) async {
       await withFakeImageHttp(() async {
@@ -388,8 +513,8 @@ void main() {
         expect(writes.single.method, "POST");
         expect(writes.single.url.path, endsWith("/Zoo/"));
         expect(writes.single.url.queryParameters["action"], "purge");
-        expect(find.text("2 photographs were deleted from disk."),
-            findsOneWidget);
+        expect(
+            find.text("2 photographs were deleted from disk."), findsOneWidget);
         expect(find.byKey(const Key("trash-empty")), findsOneWidget);
       });
     });

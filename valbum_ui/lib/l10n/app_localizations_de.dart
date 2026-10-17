@@ -4541,4 +4541,25 @@ class AppLocalizationsDe extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get downloadAlbumAction => 'Album herunterladen';
+
+  @override
+  String get downloadNotAllowed =>
+      'Sie dürfen die Fotos dieses Albums nicht herunterladen.';
+
+  @override
+  String get nothingToDownload => 'Es gibt nichts zum Herunterladen.';
+
+  @override
+  String trashRestoreSelection(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Fotos wiederherstellen',
+      one: '1 Foto wiederherstellen',
+    );
+    return '$_temp0';
+  }
 }

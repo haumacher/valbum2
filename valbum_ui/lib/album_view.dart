@@ -58,6 +58,7 @@ import 'settings.dart';
 import 'share_session.dart';
 import 'share_view.dart';
 import 'thumbnails.dart';
+import 'tile_keys.dart';
 import 'trash_view.dart' show hasTrashedImages, trashRating;
 import 'video_view.dart';
 
@@ -614,6 +615,7 @@ class AlbumContentState extends State<AlbumContent>
     // menu back: the edit session outlives this view, the claim must not
     // (issue #156).
     _browserMenu.release();
+    tileHighlight.dispose();
     super.dispose();
   }
 
@@ -1109,7 +1111,8 @@ class AlbumContentState extends State<AlbumContent>
 
     // An edit of a photograph of a collection was written to the album it
     // lies in (issue #221): that album is fetched anew when it is opened.
-    forgetSources(widget.albumState.navigator.delegate, widget.album);
+    forgetSources(widget.albumState.navigator.delegate, widget.album,
+        folder: widget.albumState.path);
 
     // Re-load the album, so that the transient part links are rebuilt. The
     // listing above shows the album by its index picture, which may have
@@ -1755,6 +1758,61 @@ class AlbumContentState extends State<AlbumContent>
     );
   }
 
+  // --- The keyboard, see issue #295 and `tile_keys.dart`. ---
+
+  /// What tells the tiles apart for the keyboard: the name of the photo a
+  /// tile shows, a group's representative's — the key its tile has always
+  /// had.
+  static Object tileIdOf(AbstractImage part) =>
+      layouter.ToImage.toImage(part).name;
+
+  /// The tile the keyboard stands on (issue #295), see [TileHighlight]: its
+  /// tiles handed over by [buildSlivers], its keys asked by [onKey].
+  final TileHighlight<AbstractImage> tileHighlight =
+      TileHighlight<AbstractImage>(idOf: tileIdOf);
+
+  /// What the keys do with the tile highlighted (issue #295), the policy of
+  /// a tap of the mode ([PhotoTileGestures]): in the view mode `Enter`
+  /// opens the viewer; in a mode with a selection — the edit and the select
+  /// mode — `Enter` and `Space` toggle the tile and `Ctrl+A` selects every
+  /// photo shown; the menu key opens the tile's menu wherever a secondary
+  /// click does. A "view as" preview is acted on by no key.
+  TileKeyActions<AbstractImage> get tileKeyActions {
+    if (previewing) {
+      return const TileKeyActions();
+    }
+    void menu(AbstractImage part, Offset position) =>
+        showTileMenu(PhotoTile(part, layouter.ToImage.toImage(part)), position);
+    if (editMode || selectMode) {
+      return TileKeyActions(
+        onEnter: toggleSelection,
+        onToggle: toggleSelection,
+        onMenu: offersTileMenu ? menu : null,
+        onSelectAll: selectAllShown,
+      );
+    }
+    return TileKeyActions(
+      onEnter: (part) {
+        var image = layouter.ToImage.toImage(part);
+        // A photograph that is gone opens no viewer (issue #221).
+        if (!image.missing) {
+          widget.pushPart(part, image.name);
+        }
+      },
+      onMenu: offersTileMenu ? menu : null,
+    );
+  }
+
+  /// Selects every photo the page shows, in the edit and the select mode
+  /// (`Ctrl+A`, issue #295): what the filters hide is not there to be acted
+  /// on.
+  void selectAllShown() => setState(() {
+        selection
+          ..clear()
+          ..addAll(_displayOrder.whereType<AbstractImage>());
+        lastClicked = null;
+      });
+
   // --- The select mode, see issue #209 and `select_mode.dart`. ---
 
   /// Whether the album is in the select mode.
@@ -1866,6 +1924,15 @@ class AlbumContentState extends State<AlbumContent>
   @override
   VAlbumRouterDelegate? get photoDelegate =>
       widget.albumState.navigator.delegate;
+
+  /// The album the photo of [tile] lies in, in the space this view stands
+  /// in (issues #294, #301).
+  @override
+  PhotoSource? sourceOfPhoto(PhotoTile tile) => photoSourceOf(
+        tile.image,
+        album: widget.album,
+        folder: widget.albumState.path,
+      );
 
   /// Whether the tiles have a menu: on everything but a "view as" preview,
   /// which is what somebody else sees, nothing to act on.
@@ -1980,9 +2047,13 @@ class AlbumContentState extends State<AlbumContent>
       image: image,
       album: widget.album,
     );
-    if (changed) {
-      // A photograph of a collection is cropped in its own album (#221).
-      forgetSourceOf(widget.albumState.navigator.delegate, image);
+    // A photograph of a collection is cropped in its own album (#221), in
+    // the space the view stands in (#301).
+    var source = sourceOfPhoto(tile);
+    if (changed &&
+        source != null &&
+        source.folder.join("/") != widget.albumState.path.join("/")) {
+      widget.albumState.navigator.delegate.forgetTree(source.folder);
     }
     if (changed && mounted) {
       // The tile has another aspect now: the album is laid out anew.
@@ -2424,7 +2495,10 @@ class AlbumContentState extends State<AlbumContent>
                   // Cancel stay here: they are the edit's own.
                   actions: [
                     if (!editing && !isNewsView) ...navigationActions(context),
-                    if (!editing && isNewsView) ...wayUp(),
+                    if (!editing && isNewsView) ...[
+                      ...wayUp(),
+                      ...newsMenu(context),
+                    ],
                     if (editMode)
                       IconButton(
                         onPressed: () => save(),
@@ -2776,6 +2850,49 @@ class AlbumContentState extends State<AlbumContent>
           // (issue #202).
           ...switchPersonEntries(context),
           aboutMenuItem(_l10n),
+        ]),
+      ];
+
+  /// The menu of the view of an entry of the bell (issue #295): of the
+  /// album's menu what applies to the photographs it shows — the download of
+  /// them all, the select mode, the rating filter and the reload. Nothing of
+  /// the album itself (its properties, its move, its trash): the album is a
+  /// tap on the way back away.
+  List<Widget> newsMenu(BuildContext context) => [
+        menu(context, [
+          if (downloadImages.isNotEmpty)
+            keyedMenuItem(
+              const Key("download-selection"),
+              Icons.download,
+              _l10n.downloadSelection(downloadImages.length),
+              (_) => downloadSelection(),
+            ),
+          if (maySelect)
+            keyedMenuItem(
+              const Key("select-mode"),
+              Icons.check_circle_outline,
+              _l10n.selectPhotos,
+              (_) => enterSelectMode(),
+            ),
+          menuLabel(
+            _l10n.minRatingLabel,
+            "≥ $minRating",
+            valueKey: const Key("minRating"),
+          ),
+          menuItem(
+            Icons.add_circle_outline,
+            _l10n.showMoreImages,
+            (_) => showMore(),
+            enabled: minRating > minMinRating,
+          ),
+          menuItem(
+            Icons.remove_circle_outline,
+            _l10n.showFewerImages,
+            (_) => showLess(),
+            enabled: minRating < maxMinRating,
+          ),
+          const PopupMenuDivider(),
+          menuItem(Icons.update, _l10n.reload, (_) => reloadShown()),
         ]),
       ];
 
@@ -3142,16 +3259,17 @@ class AlbumContentState extends State<AlbumContent>
               left: insets.left + floatingMargin,
               child: floating(wayUp()),
             ),
-          // The view of an entry of the bell has nothing to offer but the
-          // way back to its album (issue #268).
-          if (!editMode && !selectMode && !isNewsView)
+          // The view of an entry of the bell offers the way back to its
+          // album (issue #268) and what its menu does with the photographs
+          // shown (#295), no search and no bell of its own.
+          if (!editMode && !selectMode)
             Positioned(
               top: insets.top + floatingMargin,
               right: insets.right + floatingMargin,
               child: floating([
-                ...searchAction(),
-                if (!isSearchView) const NewsBellButton(),
-                ...albumMenu(context),
+                if (!isNewsView) ...searchAction(),
+                if (!isSearchView && !isNewsView) const NewsBellButton(),
+                ...(isNewsView ? newsMenu(context) : albumMenu(context)),
               ]),
             ),
         ],
@@ -3161,7 +3279,13 @@ class AlbumContentState extends State<AlbumContent>
 
   /// The `+` and `-` keys of the GWT client, widening and narrowing the rating
   /// filter — and `Escape`, which is Cancel in the edit mode (issue #99).
+  ///
+  /// The keys of the tiles come first (issue #295), see [tileKeyActions].
   KeyEventResult onKey(FocusNode node, KeyEvent event) {
+    var tiles = tileKeyEvent(tileHighlight, node, event, tileKeyActions);
+    if (tiles != KeyEventResult.ignored) {
+      return tiles;
+    }
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
     }
@@ -3224,6 +3348,11 @@ class AlbumContentState extends State<AlbumContent>
     var images = <AbstractImage>[];
     _displayOrder.clear();
     beginRowBlocks();
+    // Where every tile lies, for the keyboard (issue #295): the layout's
+    // pixels, the blocks stacked one below the other with room between them
+    // for the heading that separates them.
+    var spots = <TileSpot<AbstractImage>>[];
+    var blockTop = 0.0;
 
     if (!editMode) {
       result.add(
@@ -3336,6 +3465,17 @@ class AlbumContentState extends State<AlbumContent>
       double topGap(int index) => index > 0 ? tileSpacing : 0.0;
       double extentOf(int index) =>
           rowExtent(rows[index], pageWidth) + topGap(index);
+      var rowTop = blockTop;
+      for (var index = 0; index < rows.length; index++) {
+        rowTop += topGap(index);
+        rows[index].visit(
+          TileSpotVisitor(pageWidth, spots),
+          (Offset(0, rowTop), RowBox.page),
+        );
+        rowTop += rowExtent(rows[index], pageWidth);
+      }
+      // A heading is taller than any gap between two rows.
+      blockTop = rowTop + 1000;
       result.add(
         SliverVariedExtentList(
           // Where the way back from a viewer finds a row, see [ReturnReveal].
@@ -3364,6 +3504,7 @@ class AlbumContentState extends State<AlbumContent>
       }
     }
     flushImages();
+    tileHighlight.spots = spots;
 
     return result;
   }
@@ -3447,9 +3588,17 @@ class AlbumContentState extends State<AlbumContent>
   /// A tile's gestures are its own (a tap opens, a long press selects, a drag
   /// reorders), so its surface takes no part in the text selection of the
   /// page, see [SelectionExcluded].
+  ///
+  /// The keyboard walks the tiles (issue #295): each is drawn under the ring
+  /// of [tileHighlight] while it is the one highlighted.
   Widget imageTile(AbstractImage image, double width, double height) =>
-      SelectionExcluded.keyed(image.visitAbstractImage(
-          ImageWidgetBuilder(this, width, height), null));
+      HighlightedTile<AbstractImage>(
+        key: ValueKey(("tile-highlight", tileIdOf(image))),
+        highlight: tileHighlight,
+        entry: image,
+        child: SelectionExcluded.keyed(image.visitAbstractImage(
+            ImageWidgetBuilder(this, width, height), null)),
+      );
 
   /// Runs [body] with the images set to the orientation they are laid out
   /// with, see [_layoutOrientation].
@@ -3788,6 +3937,65 @@ class ContentWidgetBuilder implements layouter.ContentVisitor<Widget, RowBox> {
 
     return SizedBox(width: width, height: height);
   }
+}
+
+/// Finds where each tile of a row lies, the geometry [ContentWidgetBuilder]
+/// draws it with, for the keyboard's highlight (issue #295): [spots] is
+/// filled in reading order, the argument is the row's top left corner and
+/// its box.
+class TileSpotVisitor
+    implements layouter.ContentVisitor<double, (Offset, RowBox)> {
+  final double pageWidth;
+  final List<TileSpot<AbstractImage>> spots;
+
+  TileSpotVisitor(this.pageWidth, this.spots);
+
+  /// Each visit answers the width of the content visited.
+  @override
+  double visitImg(layouter.Img content, (Offset, RowBox) arg) {
+    var (origin, box) = arg;
+    var width = content.getUnitWidth() * box.scale;
+    spots.add(TileSpot(content.getImage(), origin & Size(width, box.height)));
+    return width;
+  }
+
+  @override
+  double visitRow(layouter.Row content, (Offset, RowBox) arg) {
+    var (origin, box) = arg;
+    var gaps = (content.size() - 1) * tileSpacing;
+    var scale = max(0.0, pageWidth - gaps) / content.getUnitWidth();
+    var contentBox = RowBox(scale, box.height > 0 ? box.height : scale);
+    var x = origin.dx;
+    for (var (index, child) in content.indexed) {
+      if (index > 0) {
+        x += tileSpacing;
+      }
+      x += child.visit(this, (Offset(x, origin.dy), contentBox));
+    }
+    return x - origin.dx;
+  }
+
+  @override
+  double visitDoubleRow(layouter.DoubleRow content, (Offset, RowBox) arg) {
+    var (origin, box) = arg;
+    var width = content.getUnitWidth() * box.scale;
+    var inner = max(0.0, box.height - tileSpacing);
+    var halves = TileSpotVisitor(width, spots);
+    var upper = inner * content.getH1();
+    content.getUpper().visit(halves, (origin, RowBox(0, upper)));
+    content.getLower().visit(
+      halves,
+      (
+        origin.translate(0, upper + tileSpacing),
+        RowBox(0, inner * content.getH2())
+      ),
+    );
+    return width;
+  }
+
+  @override
+  double visitPadding(layouter.Padding content, (Offset, RowBox) arg) =>
+      content.getUnitWidth() * arg.$2.scale;
 }
 
 /// The room between the caption tooltip of a tile and the tile's edges, see
@@ -5366,6 +5574,11 @@ class AlbumPropertiesDialog extends StatefulWidget {
   /// Where [effectiveDate] comes from, so the dialog can say it.
   final DateSource dateSource;
 
+  /// Whether the dialog only shows what the album is, for whoever may not
+  /// edit it (issue #295): its fields read-only, no picture to frame, and
+  /// "Close" its one button.
+  final bool readOnly;
+
   const AlbumPropertiesDialog(
     this.properties, {
     super.key,
@@ -5374,6 +5587,7 @@ class AlbumPropertiesDialog extends StatefulWidget {
     this.indexImage,
     this.effectiveDate = 0,
     this.dateSource = DateSource.none,
+    this.readOnly = false,
   });
 
   @override
@@ -5434,12 +5648,16 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
       title: Text(l10n.albumProperties),
       fields: [
         TextField(
+          key: const Key("album-title"),
           controller: titleController,
-          autofocus: true,
+          autofocus: !widget.readOnly,
+          readOnly: widget.readOnly,
           decoration: InputDecoration(label: Text(l10n.titleLabel)),
         ),
         TextField(
+          key: const Key("album-subtitle"),
           controller: subTitleController,
+          readOnly: widget.readOnly,
           decoration: InputDecoration(label: Text(l10n.subtitleLabel)),
         ),
         if (!isInbox) buildDateRow(context),
@@ -5451,7 +5669,9 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
             contentPadding: EdgeInsets.zero,
             title: Text(l10n.displayLocations),
             value: placesShown,
-            onChanged: (value) => setState(() => placesShown = value),
+            onChanged: widget.readOnly
+                ? null
+                : (value) => setState(() => placesShown = value),
           ),
       ],
       // Only the fields above scroll (issue #178). The crop editor stands
@@ -5462,19 +5682,29 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
       // fields have the room; the crop is kept in this state and the editor
       // is back as soon as there is room again (on a phone, a touch beside
       // the field closes the keyboard). A desktop always has the room.
-      fixed: [if (!isInbox) buildIndexPictureEditor(context)],
-      fixedNeedsHeight: cropEditorNeedsHeight,
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: Text(l10n.cancel),
-        ),
-        ElevatedButton.icon(
-          icon: const Icon(Icons.check),
-          label: Text(l10n.apply),
-          onPressed: applyPressed,
-        ),
+      fixed: [
+        if (!isInbox && !widget.readOnly) buildIndexPictureEditor(context),
       ],
+      fixedNeedsHeight: cropEditorNeedsHeight,
+      actions: widget.readOnly
+          ? [
+              TextButton(
+                key: const Key("album-properties-close"),
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text(l10n.close),
+              ),
+            ]
+          : [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text(l10n.cancel),
+              ),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.check),
+                label: Text(l10n.apply),
+                onPressed: applyPressed,
+              ),
+            ],
     );
   }
 
@@ -5498,21 +5728,23 @@ class AlbumPropertiesDialogState extends State<AlbumPropertiesDialog> {
                 key: const Key("album-date"),
               ),
             ),
-            IconButton(
-              visualDensity: VisualDensity.compact,
-              icon: const Icon(Icons.date_range),
-              tooltip: l10n.pickDate,
-              onPressed: pickDate,
-            ),
-            IconButton(
-              key: const Key("album-date-clear"),
-              visualDensity: VisualDensity.compact,
-              icon: const Icon(Icons.clear),
-              tooltip: l10n.clearDate,
-              // Back to "no explicit date": what the server derives then
-              // takes over again.
-              onPressed: date == 0 ? null : () => setState(() => date = 0),
-            ),
+            if (!widget.readOnly) ...[
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.date_range),
+                tooltip: l10n.pickDate,
+                onPressed: pickDate,
+              ),
+              IconButton(
+                key: const Key("album-date-clear"),
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.clear),
+                tooltip: l10n.clearDate,
+                // Back to "no explicit date": what the server derives then
+                // takes over again.
+                onPressed: date == 0 ? null : () => setState(() => date = 0),
+              ),
+            ],
           ],
         ),
         if (date == 0 && dateSourceText(l10n) != null)

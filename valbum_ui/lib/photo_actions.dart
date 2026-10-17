@@ -273,6 +273,11 @@ abstract mixin class PhotoActionHost {
   /// The router, for "Show in album".
   VAlbumRouterDelegate? get photoDelegate;
 
+  /// The album the photo of [tile] lies in, in the coordinates of the view
+  /// ([photoSourceOf]): where "Show in album" goes (issue #301); `null` where
+  /// the view does not know it.
+  PhotoSource? sourceOfPhoto(PhotoTile tile) => null;
+
   /// What an operation never called answers, see the class comment.
   Never _unsupported() => throw UnimplementedError();
 
@@ -496,8 +501,9 @@ class PhotoAction {
         (facts.showsOtherAlbums || facts.view == PhotoView.viewer),
     run: (host, tile) async {
       var delegate = host.photoDelegate;
-      if (delegate != null) {
-        showPhotoInAlbum(delegate, tile.image);
+      var source = host.sourceOfPhoto(tile);
+      if (delegate != null && source != null) {
+        showPhotoInAlbum(delegate, source);
       }
     },
   );
@@ -657,16 +663,13 @@ Future<void> showPhotoTileMenu({
   await chosen.run(host, tile);
 }
 
-/// Opens the album [image] lies in ([sourceFolderOf]) with it brought into
-/// view and marked, see [VAlbumRouterDelegate.markIn] (issue #289).
-void showPhotoInAlbum(VAlbumRouterDelegate delegate, ImagePart image) {
-  var folder = sourceFolderOf(image);
-  var ref = image.ref;
-  if (folder == null || ref == null) {
-    return;
-  }
-  delegate.markIn(folder, ref.path.split("/").last);
-  delegate.go(ListingOrAlbumRoute(folder));
+/// Opens the album [source] names — where a photo lies, [photoSourceOf] —
+/// with the photo brought into view and marked, see
+/// [VAlbumRouterDelegate.markIn] (issue #289); in the space the view stands
+/// in, its `~owner` prefix kept (issue #301).
+void showPhotoInAlbum(VAlbumRouterDelegate delegate, PhotoSource source) {
+  delegate.markIn(source.folder, source.name);
+  delegate.go(ListingOrAlbumRoute(source.folder));
 }
 
 /// The gestures of every photo tile (issue #290): what a tap means is the

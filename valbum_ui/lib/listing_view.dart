@@ -10,12 +10,15 @@ import 'package:flutter/material.dart';
 import 'about.dart';
 import 'action_guard.dart';
 import 'album_date.dart';
-import 'album_view.dart' show keyedMenuItem;
+import 'album_edit.dart' show downloadedImages, indexImageOf;
+import 'album_view.dart'
+    show AlbumProperties, AlbumPropertiesDialog, keyedMenuItem;
 import 'app.dart';
 import 'caller.dart';
 import 'camera_roll_view.dart';
 import 'client.dart';
 import 'crop.dart';
+import 'downloads.dart';
 import 'form_dialog.dart';
 import 'keyboard_scroll.dart';
 import 'l10n/app_localizations.dart';
@@ -34,6 +37,7 @@ import 'settings.dart';
 import 'share_session.dart';
 import 'share_view.dart';
 import 'thumbnails.dart';
+import 'tile_keys.dart';
 import 'upload_target_view.dart';
 
 /// The edge length (in CSS pixels) of the square folder preview the retired
@@ -377,55 +381,73 @@ class ListingView extends StatelessWidget {
             Expanded(child: emptyNotice(context, link != null, mayChange))
           else
             Expanded(
-              // A scrollbar and the paging keys, issue #168.
-              child: KeyboardScroll(
-                child: LayoutBuilder(
-                  builder: (BuildContext context, BoxConstraints constraints) {
-                    double imageBorder = 8;
-                    var preferredImageWidth = 200;
-                    // The tiles stay clear of a cutout or the navigation bar
-                    // at a side in landscape, the app bar having taken the
-                    // top inset already.
-                    var insets = MediaQuery.paddingOf(context);
-                    var maxWidth =
-                        constraints.maxWidth - insets.left - insets.right;
-                    double preferredImageSpace =
-                        preferredImageWidth + 2 * imageBorder;
-                    double imagesPerRowFrag = maxWidth / preferredImageSpace;
-                    // At least one column, however narrow the window.
-                    var imagesPerRow = math.max(1, imagesPerRowFrag.round());
-                    // A starred tile takes two columns of the first row
-                    // (issue #239), so a few tiles fill a row sooner.
-                    var cellsUsed = self.folders.fold<int>(
-                      0,
-                      (sum, folder) =>
-                          sum + (folder.starred && imagesPerRow >= 2 ? 2 : 1),
-                    );
-                    bool underflow = cellsUsed < imagesPerRow;
-                    double difference = underflow
-                        ? 0
-                        : maxWidth - imagesPerRow * preferredImageSpace;
-                    double imageSpace =
-                        preferredImageSpace + difference / imagesPerRow;
+              // The keyboard walks the tiles (issue #295): the arrows, Enter
+              // to open, the menu key for the tile's menu.
+              child: TileHighlightScope<FolderInfo>(
+                idOf: (folder) => folder.name,
+                builder: (context, highlight) => KeyboardScroll(
+                  // A scrollbar and the paging keys, issue #168.
+                  onKeyEvent: (node, event) => tileKeyEvent(
+                    highlight,
+                    node,
+                    event,
+                    TileKeyActions<FolderInfo>(
+                      onEnter: (folder) => albumState.showElement(folder.name),
+                      onMenu: (folder, position) =>
+                          showTileMenu(context, folder, position),
+                    ),
+                  ),
+                  child: LayoutBuilder(
+                    builder:
+                        (BuildContext context, BoxConstraints constraints) {
+                      double imageBorder = 8;
+                      var preferredImageWidth = 200;
+                      // The tiles stay clear of a cutout or the navigation
+                      // bar at a side in landscape, the app bar having taken
+                      // the top inset already.
+                      var insets = MediaQuery.paddingOf(context);
+                      var maxWidth =
+                          constraints.maxWidth - insets.left - insets.right;
+                      double preferredImageSpace =
+                          preferredImageWidth + 2 * imageBorder;
+                      double imagesPerRowFrag = maxWidth / preferredImageSpace;
+                      // At least one column, however narrow the window.
+                      var imagesPerRow = math.max(1, imagesPerRowFrag.round());
+                      // A starred tile takes two columns of the first row
+                      // (issue #239), so a few tiles fill a row sooner.
+                      var cellsUsed = self.folders.fold<int>(
+                        0,
+                        (sum, folder) =>
+                            sum + (folder.starred && imagesPerRow >= 2 ? 2 : 1),
+                      );
+                      bool underflow = cellsUsed < imagesPerRow;
+                      double difference = underflow
+                          ? 0
+                          : maxWidth - imagesPerRow * preferredImageSpace;
+                      double imageSpace =
+                          preferredImageSpace + difference / imagesPerRow;
 
-                    return SingleChildScrollView(
-                      scrollDirection: Axis.vertical,
-                      // The last row of tiles ends above the system navigation
-                      // bar instead of running under it, see issue #60.
-                      padding: EdgeInsets.only(
-                        left: insets.left,
-                        right: insets.right,
-                        bottom: insets.bottom,
-                      ),
-                      child: buildFolderList(
-                        context,
-                        self,
-                        imageSpace - 2 * imageBorder,
-                        imageBorder,
-                        imagesPerRow,
-                      ),
-                    );
-                  },
+                      return SingleChildScrollView(
+                        scrollDirection: Axis.vertical,
+                        // The last row of tiles ends above the system
+                        // navigation bar instead of running under it, see
+                        // issue #60.
+                        padding: EdgeInsets.only(
+                          left: insets.left,
+                          right: insets.right,
+                          bottom: insets.bottom,
+                        ),
+                        child: buildFolderList(
+                          context,
+                          self,
+                          imageSpace - 2 * imageBorder,
+                          imageBorder,
+                          imagesPerRow,
+                          highlight: highlight,
+                        ),
+                      );
+                    },
+                  ),
                 ),
               ),
             ),
@@ -477,8 +499,9 @@ class ListingView extends StatelessWidget {
     ListingInfo self,
     double imageWidth,
     double imageBorder,
-    int columns,
-  ) {
+    int columns, {
+    TileHighlight<FolderInfo>? highlight,
+  }) {
     // The oldest first in a dated folder, the newest first in an undated
     // one, the undated behind them by name -- the order the server sends a
     // listing in (issues #48, #270), applied here as well, so that an older
@@ -490,19 +513,43 @@ class ListingView extends StatelessWidget {
     );
     var cells =
         tileCells([for (var folder in folders) folder.starred], columns);
+    // Where each tile lies, in cells, for the keyboard (issue #295).
+    highlight?.spots = [
+      for (var n = 0; n < folders.length; n++)
+        TileSpot(
+          folders[n],
+          Rect.fromLTWH(
+            cells[n].column.toDouble(),
+            cells[n].row.toDouble(),
+            cells[n].width.toDouble(),
+            cells[n].height.toDouble(),
+          ),
+        ),
+    ];
+    Widget walked(FolderInfo folder, Widget tile) => highlight == null
+        ? tile
+        : HighlightedTile<FolderInfo>(
+            key: ValueKey(("tile-highlight", folder.name)),
+            highlight: highlight,
+            entry: folder,
+            child: tile,
+          );
     return TileGrid(
       key: const Key("listing-tiles"),
       cellWidth: imageWidth + 2 * imageBorder,
       cells: cells,
       children: [
         for (var n = 0; n < folders.length; n++)
-          buildTile(
-            context,
+          walked(
             folders[n],
-            cells[n],
-            // A large tile spans the gutter between its columns too.
-            cells[n].width * (imageWidth + 2 * imageBorder) - 2 * imageBorder,
-            imageBorder,
+            buildTile(
+              context,
+              folders[n],
+              cells[n],
+              // A large tile spans the gutter between its columns too.
+              cells[n].width * (imageWidth + 2 * imageBorder) - 2 * imageBorder,
+              imageBorder,
+            ),
           ),
       ],
     );
@@ -716,10 +763,27 @@ class ListingView extends StatelessWidget {
   }
 
   /// Whether the tile of [folder] has a menu for this caller, see
-  /// [showTileMenu]: the move of an editor, or a share link of the entry.
+  /// [showTileMenu]: the move of an editor, a share link of the entry, and
+  /// on an album's tile its properties for everybody (issue #295).
   bool offersTileMenu(BuildContext context, FolderInfo folder) =>
       rightsIn(context).mayEdit ||
-      mayShare(context, [...albumState.path, folder.name]);
+      mayShare(context, [...albumState.path, folder.name]) ||
+      isAlbumTile(folder);
+
+  /// Whether [folder] is an album of photographs — an album, a collection,
+  /// a saved search — whose tile offers what the album's own menu does with
+  /// it: its properties and its download (issue #295). A folder of folders
+  /// has its own properties in its own listing.
+  static bool isAlbumTile(FolderInfo folder) =>
+      folder.kind == FolderKind.album ||
+      folder.kind == FolderKind.collection ||
+      folder.kind == FolderKind.search;
+
+  /// Whether the tile of [folder] offers the download of the album: where
+  /// the album's menu would, to whoever may download here (issue #295) —
+  /// the album answers its own rights, which decide when it is loaded.
+  bool offersDownload(BuildContext context, FolderInfo folder) =>
+      isAlbumTile(folder) && rightsIn(context).mayDownload;
 
   /// The menu of one folder tile, at the point it was pressed.
   Future<void> showTileMenu(
@@ -734,6 +798,8 @@ class ListingView extends StatelessWidget {
     // the entry is a question about the entry itself, so the two are asked
     var mayMove = rightsIn(context).mayEdit;
     var mayShareChild = mayShare(context, childPath);
+    var albumTile = isAlbumTile(folder);
+    var mayDownload = offersDownload(context, folder);
     if (!context.mounted || !offersTileMenu(context, folder)) {
       // Nothing this caller may do here: no menu rather than an empty one.
       return;
@@ -802,6 +868,27 @@ class ListingView extends StatelessWidget {
               ),
             ),
           ),
+        // What the album's own menu does with the album, asked from its
+        // tile (issue #295): what it is — edited by whoever may edit it,
+        // shown to everybody else — and the copy of its photographs.
+        if (albumTile)
+          PopupMenuItem<String>(
+            key: const Key("tile-properties"),
+            value: "properties",
+            child: ListTile(
+              leading: const Icon(Icons.tune),
+              title: Text(l10n.albumProperties),
+            ),
+          ),
+        if (mayDownload)
+          PopupMenuItem<String>(
+            key: const Key("tile-download"),
+            value: "download",
+            child: ListTile(
+              leading: const Icon(Icons.download),
+              title: Text(l10n.downloadAlbumAction),
+            ),
+          ),
         // Deleting an entry is an edit of *this* folder, exactly as moving one
         // out of it is, and it is offered under the same condition (#109).
         if (mayMove)
@@ -832,6 +919,14 @@ class ListingView extends StatelessWidget {
     }
     if (chosen == "star") {
       await toggleChildStar(context, folder);
+      return;
+    }
+    if (chosen == "properties") {
+      await childProperties(context, folder);
+      return;
+    }
+    if (chosen == "download") {
+      await downloadChild(context, folder);
       return;
     }
     if (chosen == "delete") {
@@ -934,6 +1029,134 @@ class ListingView extends StatelessWidget {
         ),
       );
     }
+  }
+
+  /// The album of the tile of [folder], loaded for an action of its tile
+  /// (issue #295); `null`, said in a red bar, where it cannot be loaded, and
+  /// the listing asked anew where the entry is no album any more.
+  Future<AlbumInfo?> loadChildAlbum(
+      BuildContext context, FolderInfo folder) async {
+    var messenger = ScaffoldMessenger.of(context);
+    Resource? child;
+    try {
+      child = await client.loadResource([...albumState.path, folder.name]);
+    } catch (error) {
+      if (messenger.mounted) {
+        showRefusal(messenger, error);
+      }
+      return null;
+    }
+    if (child is! AlbumInfo) {
+      albumState.reload();
+      return null;
+    }
+    return child;
+  }
+
+  /// The properties of the album of [folder], from its tile (issue #295):
+  /// the album's own dialog, edited and written at once by whoever may edit
+  /// the album ([rightsOf] of the album itself), shown read-only to
+  /// everybody else.
+  Future<void> childProperties(BuildContext context, FolderInfo folder) async {
+    var album = await loadChildAlbum(context, folder);
+    if (album == null || !context.mounted) {
+      return;
+    }
+    var editable = rightsOf(context, album).mayEdit;
+    var properties = AlbumProperties(
+      title: album.title,
+      subTitle: album.subTitle,
+      date: album.date,
+      indexPicture: album.indexPicture,
+      kind: album.kind,
+      placeCaption: album.placeCaption,
+    );
+    var dialog = AlbumPropertiesDialog(
+      properties,
+      client: client,
+      baseUrl: "$baseUrl/${folder.name}",
+      indexImage: indexImageOf(album),
+      effectiveDate: album.effectiveDate,
+      dateSource: describeDateSource(album, folderName: folder.name),
+      readOnly: !editable,
+    );
+    if (!editable) {
+      await showAppDialog<void>(context: context, builder: (_) => dialog);
+      return;
+    }
+    var result = await showFormDialog<AlbumProperties>(
+      context: context,
+      builder: (_) => dialog,
+    );
+    if (result == null || !context.mounted) {
+      return;
+    }
+    album
+      ..title = result.title
+      ..subTitle = result.subTitle
+      ..date = result.date
+      ..indexPicture = result.indexPicture
+      ..placeCaption = result.placeCaption;
+    var messenger = ScaffoldMessenger.of(context);
+    var childPath = [...albumState.path, folder.name];
+    var done =
+        await writeAction(context, () => client.saveAlbum(childPath, album));
+    if (done == null) {
+      return;
+    }
+    // The tile shows the title and the picture just written, and the album
+    // may have moved to the folder name they compose (issue #130).
+    albumState.navigator.delegate.forgetTree(childPath);
+    albumState.reload();
+    var written = done.value;
+    if (written.message.isNotEmpty) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(written.message),
+          duration: const Duration(seconds: 6),
+        ),
+      );
+    }
+  }
+
+  /// Downloads the album of [folder] from its tile (issue #295): what the
+  /// album's menu downloads where nothing is selected — every photograph the
+  /// album shows at its rating filter, one archive named by its title. The
+  /// album's own rights decide, and a refusal speaks.
+  Future<void> downloadChild(BuildContext context, FolderInfo folder) async {
+    if (refuseWhileOffline(context)) {
+      return;
+    }
+    var album = await loadChildAlbum(context, folder);
+    if (album == null || !context.mounted) {
+      return;
+    }
+    var l10n = AppLocalizations.of(context)!;
+    var messenger = ScaffoldMessenger.of(context);
+    if (!rightsOf(context, album).mayDownload) {
+      messenger.showSnackBar(refusalBar(l10n.downloadNotAllowed,
+          message: l10n.downloadNotAllowed));
+      return;
+    }
+    var names = [
+      for (var image in downloadedImages(album, album.parts.toSet()))
+        if (!image.missing && image.rating >= album.minRating) image.name,
+    ];
+    if (names.isEmpty) {
+      messenger.showSnackBar(SnackBar(content: Text(l10n.nothingToDownload)));
+      return;
+    }
+    var childPath = [...albumState.path, folder.name];
+    await runDownload(
+      context,
+      (progress) => downloadOriginals(
+        client,
+        childPath,
+        names,
+        archiveName: archiveNameOf(album.title),
+        progress: progress,
+      ),
+    );
   }
 
   /// Stars the folder being shown, or takes its star away, see issue #239:

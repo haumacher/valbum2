@@ -6950,6 +6950,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count, plural, =0{No photo waiting for the content search} =1{1 photo waiting for the content search} other{{count} photos waiting for the content search}}'**
   String catchUpContent(int count);
+
+  /// Entry of the menu of an album's tile in a folder listing: downloads the originals of every photo the album shows, as one archive (issue #295)
+  ///
+  /// In en, this message translates to:
+  /// **'Download album'**
+  String get downloadAlbumAction;
+
+  /// Said in a red bar where the download of an album was asked from its tile but the album does not allow this user to download (issue #295)
+  ///
+  /// In en, this message translates to:
+  /// **'You may not download the photos of this album.'**
+  String get downloadNotAllowed;
+
+  /// Said where the download of an album was asked from its tile but the album shows no photo (issue #295)
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing to download.'**
+  String get nothingToDownload;
+
+  /// Button of the selection bar of the trash page: gives the selected photos back to their album (issue #295)
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Restore 1 photo} other{Restore {count} photos}}'**
+  String trashRestoreSelection(int count);
 }
 
 class _AppLocalizationsDelegate

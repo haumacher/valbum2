@@ -59,6 +59,9 @@ PhotoSpace editor() => PhotoSpace();
 PhotoSpace viewer() =>
     PhotoSpace(role: "view", rights: const ["view", "download"]);
 
+/// A member who may look and nothing else (issue #295).
+PhotoSpace looker() => PhotoSpace(role: "view", rights: const ["view"]);
+
 final List<Case> cases = [
   Case("album, view mode, editor", editor, const ListingOrAlbumRoute(["trip"]),
       "b.jpg"),
@@ -81,6 +84,14 @@ final List<Case> cases = [
   Case("collection", editor, const ListingOrAlbumRoute(["Best"]), "b.jpg"),
   Case("news", editor, const NewsRoute(["trip"], newsKey), "b.jpg"),
   Case("inbox", editor, const ListingOrAlbumRoute(["Inbox"]), "b.jpg"),
+  // Whoever may not download, in every view a member is shown (#295).
+  Case(
+      "album, view only", looker, const ListingOrAlbumRoute(["trip"]), "b.jpg"),
+  Case("collection, view only", looker, const ListingOrAlbumRoute(["Best"]),
+      "b.jpg"),
+  Case("saved search, view only", looker, const ListingOrAlbumRoute(["Saved"]),
+      "trip/b.jpg"),
+  Case("news, view only", looker, const NewsRoute(["trip"], newsKey), "b.jpg"),
 ];
 
 void main() {

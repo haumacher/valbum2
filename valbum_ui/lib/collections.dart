@@ -23,6 +23,7 @@ import 'client.dart';
 import 'dialog_style.dart';
 import 'l10n/app_localizations.dart';
 import 'offline.dart';
+import 'photo_actions.dart' show photoSourceOf;
 import 'resource.dart';
 import 'selectable.dart';
 
@@ -62,10 +63,15 @@ Iterable<ImagePart> _imagesOf(Iterable<AlbumPart> parts) sync* {
 }
 
 /// Forgets what the router holds for every album a photograph of the
-/// collection [album] lies in, after a write through the collection: the
-/// server wrote the change there (issue #221), and the album must show it when
-/// it is opened next.
-void forgetSources(VAlbumRouterDelegate? delegate, AlbumInfo album) {
+/// collection [album], shown at [folder], lies in, after a write through the
+/// collection: the server wrote the change there (issue #221), and the album
+/// must show it when it is opened next. The album is the one [photoSourceOf]
+/// names, in the space the collection stands in (issue #301).
+void forgetSources(
+  VAlbumRouterDelegate? delegate,
+  AlbumInfo album, {
+  required List<String> folder,
+}) {
   // A saved search writes to the albums its photographs lie in as well
   // (issue #227).
   if (delegate == null ||
@@ -74,20 +80,13 @@ void forgetSources(VAlbumRouterDelegate? delegate, AlbumInfo album) {
   }
   var seen = <String>{};
   for (var image in _imagesOf(album.parts)) {
-    var folder = sourceFolderOf(image);
-    if (folder != null && seen.add(folder.join("/"))) {
-      delegate.forgetTree(folder);
+    if (image.ref == null) {
+      continue;
     }
-  }
-}
-
-/// Forgets what the router holds for the album the photograph [image] of a
-/// collection lies in, after a write through the collection (issue #221);
-/// nothing for a photograph of an ordinary album.
-void forgetSourceOf(VAlbumRouterDelegate? delegate, ImagePart image) {
-  var folder = sourceFolderOf(image);
-  if (delegate != null && folder != null) {
-    delegate.forgetTree(folder);
+    var source = photoSourceOf(image, album: album, folder: folder);
+    if (source != null && seen.add(source.folder.join("/"))) {
+      delegate.forgetTree(source.folder);
+    }
   }
 }
 

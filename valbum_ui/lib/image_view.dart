@@ -851,10 +851,21 @@ class ImageViewState extends State<ImageView>
   /// marked (#289): the catalogue's action.
   void showInAlbum() {
     var delegate = widget.delegate;
-    if (delegate != null) {
-      showPhotoInAlbum(delegate, part);
+    var from = sourceOfPhoto(_shownTile);
+    if (delegate != null && from != null) {
+      showPhotoInAlbum(delegate, from);
     }
   }
+
+  /// The album the photograph shown lies in, in the space the viewer stands
+  /// in (issue #301), [photoSourceOf] — named by its reference alone where
+  /// the viewer holds no album.
+  @override
+  PhotoSource? sourceOfPhoto(PhotoTile tile) => photoSourceOf(
+        tile.image,
+        album: album,
+        folder: widget.folderPath ?? widget.editPath,
+      );
 
   /// Adds the picture shown to a collection, chosen or created in the picker.
   ///

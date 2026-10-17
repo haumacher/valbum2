@@ -34,6 +34,9 @@ import 'selectable.dart';
 /// (issue #209) where [offerDownload] says so, the collection (#243, #290)
 /// where [offerCollect] does.
 ///
+/// [extra] are the actions of a page that selects for something else: the
+/// trash restores its selection (issue #295).
+///
 /// [onDownload] is `null` while nothing is selected, which disables the
 /// button rather than taking it away, so that the bar does not jump; the same
 /// holds for [onCollect], offered where [offerCollect] says so (the search
@@ -46,6 +49,7 @@ PreferredSizeWidget selectModeAppBar({
   bool offerDownload = true,
   bool offerCollect = false,
   VoidCallback? onCollect,
+  List<Widget> extra = const [],
 }) =>
     AppBar(
       key: const Key("select-mode-bar"),
@@ -61,6 +65,9 @@ PreferredSizeWidget selectModeAppBar({
         key: const Key("select-mode-count"),
       ),
       actions: [
+        // What a page of its own does with the selection: the restore of
+        // the trash (issue #295).
+        ...extra,
         // The search view's collection of the selection (issue #243),
         // disabled like the download while nothing is selected.
         if (offerCollect)
