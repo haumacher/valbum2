@@ -523,6 +523,18 @@ public class ImageServlet extends HttpServlet {
 	/** The message a crop is refused with for a caller who may not edit the album. */
 	public static final String CROP_REFUSED = "Only an editor of this album may crop its photographs.";
 
+	/**
+	 * The message a change to a photograph made through a collection or a saved search is refused
+	 * with where the caller may not edit the album the photograph lies in, see issue #292.
+	 *
+	 * @param name
+	 *        The photograph as the collection or the saved search names it.
+	 */
+	public static String sourceEditRefused(String name) {
+		return "'" + name + "' is not changed: what is said about a photograph is written to the album it lies in, "
+			+ "and you may not edit that album.";
+	}
+
 	/** The <code>action</code> that stores the moment a video's poster shows, see issue #285. */
 	public static final String POSTER_ACTION = "poster";
 
@@ -6376,6 +6388,18 @@ public class ImageServlet extends HttpServlet {
 			rearranged |= keepPosters(resource, existing);
 		}
 
+		if (sourceEdits != null) {
+			// Written to the albums the photographs lie in, and asked there, before anything is
+			// written at all, see issue #292.
+			String refused = refusedSourceEdit(sourceEdits, caller);
+			if (refused != null) {
+				LOG.warning("Refusing to write '" + resourcePath.toFile() + "': the change of '" + refused
+					+ "' lands in an album the caller may not edit.");
+				errorInfo(context, HttpServletResponse.SC_FORBIDDEN, sourceEditRefused(refused));
+				return;
+			}
+		}
+
 		PathInfo target = resourcePath;
 		String message = "";
 		String wanted = renameTo(resourcePath, resource);
@@ -6465,6 +6489,9 @@ public class ImageServlet extends HttpServlet {
 		for (ImagePart image : PhotoSearch.images(answered)) {
 			shown.add(image.getName());
 		}
+		// A caller answered no labels writes none back: what they were not shown is not theirs to
+		// take away.
+		boolean labels = Faces.maySee(_auth, caller, Privacy.PRIVATE);
 		for (AlbumPart part : received.getParts()) {
 			List<ImagePart> images = part instanceof ImagePart ? Collections.singletonList((ImagePart) part)
 				: part instanceof ImageGroup ? ((ImageGroup) part).getImages() : Collections.<ImagePart> emptyList();
@@ -6474,7 +6501,7 @@ public class ImageServlet extends HttpServlet {
 				}
 				PathInfo source = photoNamed(path, existing, image.getName());
 				if (source != null) {
-					edits.add(new SourceEdit(source, image, true));
+					edits.add(new SourceEdit(source, image, labels));
 				}
 			}
 		}
@@ -6571,6 +6598,7 @@ public class ImageServlet extends HttpServlet {
 			}
 		}
 		Map<String, ImagePart> stored = PhotoCollections.byName(existing);
+		boolean labels = Faces.maySee(_auth, caller, Privacy.PRIVATE);
 
 		List<AlbumPart> parts = new ArrayList<>();
 		Set<String> kept = new HashSet<>();
@@ -6606,7 +6634,9 @@ public class ImageServlet extends HttpServlet {
 				// The hint follows the photograph, see PhotoRef.
 				ref = PhotoRef.create().setHash(ref.getHash()).setPath(answer.getRef().getPath());
 			}
-			parts.add(PhotoCollections.stored(reference.getName(), ref, image.getLabels()));
+			// A caller answered no labels writes none back, as a saved search asks it.
+			parts.add(PhotoCollections.stored(reference.getName(), ref,
+				labels ? image.getLabels() : reference.getLabels()));
 			if (!answer.isMissing()) {
 				PathInfo source = _collections.locate(ref);
 				if (source != null) {
@@ -6681,7 +6711,8 @@ public class ImageServlet extends HttpServlet {
 		}
 		for (Map.Entry<PathInfo, List<SourceEdit>> entry : byFolder.entrySet()) {
 			PathInfo folder = entry.getKey();
-			if (!_auth.mayEdit(caller, folder)) {
+			if (!sourceEditable(caller, folder)) {
+				// Changes nothing there, see #refusedSourceEdit(List, Caller).
 				continue;
 			}
 			// An album whose sidecar cannot be read is never written over, see issue #254.
@@ -6706,6 +6737,44 @@ public class ImageServlet extends HttpServlet {
 				LOG.info("Wrote the edits made through a collection or a saved search into '" + folder.toFile() + "'.");
 			}
 		}
+	}
+
+	/**
+	 * The name of the first photograph the given edits would change in an album the given caller
+	 * may not edit, see issue #292; <code>null</code> where there is none.
+	 *
+	 * <p>
+	 * An edit session writes back every photograph it was answered, changed or not, so the edits of
+	 * a photograph whose album the caller may not edit are refused only where they would change
+	 * something: the collection's or the saved search's own statements and its unchanged
+	 * photographs are written as before. Asked of copies; nothing is changed here.
+	 * </p>
+	 */
+	private String refusedSourceEdit(List<SourceEdit> edits, Caller caller) {
+		Map<PathInfo, Boolean> editable = new HashMap<>();
+		for (SourceEdit edit : edits) {
+			PathInfo folder = edit._image.parent();
+			if (editable.computeIfAbsent(folder, x -> Boolean.valueOf(sourceEditable(caller, x))).booleanValue()) {
+				continue;
+			}
+			Resource resource = lookupOrSkip(folder);
+			if (!(resource instanceof AlbumInfo) || PhotoCollections.isCollection(resource)) {
+				continue;
+			}
+			ImagePart image = Crops.findImage((AlbumInfo) resource, edit._image.getName());
+			if (image == null) {
+				continue;
+			}
+			ImagePart copy = FaceIndex.copyOf(image);
+			boolean changed = applyEdit(AlbumInfo.create(), copy, edit._received);
+			if (edit._labels) {
+				changed |= applyLabels(copy, edit._received);
+			}
+			if (changed) {
+				return edit._received.getName();
+			}
+		}
+		return null;
 	}
 
 	/** Takes over the labels of the given received part into the given stored one, see issue #227. */
@@ -8250,36 +8319,15 @@ public class ImageServlet extends HttpServlet {
 		Resource resource = _cache.lookup(folderPath);
 		PathInfo answerPath = folderPath;
 		String name = request.getName();
-		if (PhotoCollections.isCollection(resource)) {
-			// The crop is the photograph's own, written to the album it lies in, see issue #221.
-			ImagePart reference = PhotoCollections.referenceNamed((AlbumInfo) resource, name);
-			ImagePart shown = reference == null ? null
-				: Crops.findImage(resolveCollection((AlbumInfo) resource, folderPath, caller, Privacy.PRIVATE), name);
-			if (shown == null) {
-				errorInfo(context, HttpServletResponse.SC_NOT_FOUND, unknownImage(name));
+		if (PhotoCollections.isCollection(resource) || PhotoSearch.isSearch(resource)) {
+			// The crop is the photograph's own, written to the album it lies in, see issues #221 and #227.
+			PathInfo photo = sourcePhoto(context, caller, folderPath, resource, name);
+			if (photo == null) {
 				return;
 			}
-			PathInfo source = shown.isMissing() ? null : _collections.locate(reference.getRef());
-			if (source == null) {
-				errorInfo(context, HttpServletResponse.SC_NOT_FOUND, PhotoCollections.MISSING);
-				return;
-			}
-			folderPath = source.parent();
+			folderPath = photo.parent();
 			folder = folderPath.toFile();
-			name = source.getName();
-			resource = _cache.lookup(folderPath);
-		} else if (PhotoSearch.isSearch(resource)) {
-			// The crop is the photograph's own as well, written to its album, see issue #227.
-			ImagePart shown = Crops.findImage(searchAnswer((AlbumInfo) resource, folderPath, caller, Privacy.PRIVATE),
-				name);
-			PathInfo source = shown == null ? null : photoNamed(folderPath, resource, name);
-			if (source == null) {
-				errorInfo(context, HttpServletResponse.SC_NOT_FOUND, unknownImage(name));
-				return;
-			}
-			folderPath = source.parent();
-			folder = folderPath.toFile();
-			name = source.getName();
+			name = photo.getName();
 			resource = _cache.lookup(folderPath);
 		}
 		if (!(resource instanceof AlbumInfo)) {
@@ -8317,6 +8365,68 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	/**
+	 * The photograph a write addressed to the given collection or saved search by the given name is
+	 * written to, see issues #221, #227 and #292; <code>null</code> where the request was answered.
+	 *
+	 * <p>
+	 * It is the photograph the caller was shown under that name, which lies in an album of its own: what
+	 * is said about it is the photograph's own and is written to that album. The caller's right to
+	 * edit the collection or the saved search is no right to edit that album, so it is asked there,
+	 * see {@link #sourceEditable(Caller, PathInfo)}, and refused <code>403</code> with
+	 * {@link #sourceEditRefused(String)} where not held.
+	 * </p>
+	 */
+	private PathInfo sourcePhoto(Context context, Caller caller, PathInfo folderPath, Resource resource, String name)
+			throws IOException {
+		PathInfo source;
+		if (PhotoCollections.isCollection(resource)) {
+			ImagePart reference = PhotoCollections.referenceNamed((AlbumInfo) resource, name);
+			ImagePart shown = reference == null ? null
+				: Crops.findImage(resolveCollection((AlbumInfo) resource, folderPath, caller, Privacy.PRIVATE), name);
+			if (shown == null) {
+				errorInfo(context, HttpServletResponse.SC_NOT_FOUND, unknownImage(name));
+				return null;
+			}
+			source = shown.isMissing() ? null : _collections.locate(reference.getRef());
+			if (source == null) {
+				errorInfo(context, HttpServletResponse.SC_NOT_FOUND, PhotoCollections.MISSING);
+				return null;
+			}
+		} else {
+			ImagePart shown = Crops.findImage(searchAnswer((AlbumInfo) resource, folderPath, caller, Privacy.PRIVATE),
+				name);
+			source = shown == null ? null : photoNamed(folderPath, resource, name);
+			if (source == null) {
+				errorInfo(context, HttpServletResponse.SC_NOT_FOUND, unknownImage(name));
+				return null;
+			}
+		}
+		if (!sourceEditable(caller, source.parent())) {
+			LOG.warning("Refusing the change of '" + name + "' at '" + context.request().getPathInfo()
+				+ "': the album it lies in, '" + source.parent().toFile() + "', is not the caller's to edit.");
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, sourceEditRefused(name));
+			return null;
+		}
+		return source;
+	}
+
+	/**
+	 * Whether the given caller may write the sidecar of the given album, reached through a
+	 * collection or a saved search, see issue #292.
+	 *
+	 * <p>
+	 * The one rule of every such write: it is authorised against the album whose sidecar it writes,
+	 * never against the collection or the saved search it was sent to. The caller must reach the
+	 * album &mdash; a share link reaches its target and nothing outside it, see
+	 * {@link AuthService#reachable(Caller, Path, PathInfo)} &mdash; and hold
+	 * {@link Rights#EDIT} on it.
+	 * </p>
+	 */
+	private boolean sourceEditable(Caller caller, PathInfo album) {
+		return _auth.reachable(caller, _basePath, album) && _auth.mayEdit(caller, album);
+	}
+
+	/**
 	 * Stores the moment the poster of one video shows, <code>POST &lt;album&gt;/?action=poster</code>,
 	 * see issue #285.
 	 *
@@ -8335,8 +8445,8 @@ public class ImageServlet extends HttpServlet {
 	 * {@link #POSTER_END_SLACK} after the end the container says is taken: the player stopped on
 	 * the last frame of the rendition, and the poster is the last frame. The video itself is only
 	 * read for its length; only the sidecar is written. Through a collection or a saved search the
-	 * poster is the video's own, written to the album it lies in. The answer is the album as the
-	 * caller is answered it.
+	 * poster is the video's own, written to the album it lies in, and the edit right is asked there
+	 * too, see {@link #sourcePhoto}. The answer is the album as the caller is answered it.
 	 * </p>
 	 */
 	private void posterVideo(Context context) throws IOException {
@@ -8383,36 +8493,15 @@ public class ImageServlet extends HttpServlet {
 		Resource resource = _cache.lookup(folderPath);
 		PathInfo answerPath = folderPath;
 		String name = request.getName();
-		if (PhotoCollections.isCollection(resource)) {
-			// The poster is the video's own, written to the album it lies in, see issue #221.
-			ImagePart reference = PhotoCollections.referenceNamed((AlbumInfo) resource, name);
-			ImagePart shown = reference == null ? null
-				: Crops.findImage(resolveCollection((AlbumInfo) resource, folderPath, caller, Privacy.PRIVATE), name);
-			if (shown == null) {
-				errorInfo(context, HttpServletResponse.SC_NOT_FOUND, unknownImage(name));
+		if (PhotoCollections.isCollection(resource) || PhotoSearch.isSearch(resource)) {
+			// The poster is the video's own, written to the album it lies in, see issues #221 and #227.
+			PathInfo photo = sourcePhoto(context, caller, folderPath, resource, name);
+			if (photo == null) {
 				return;
 			}
-			PathInfo source = shown.isMissing() ? null : _collections.locate(reference.getRef());
-			if (source == null) {
-				errorInfo(context, HttpServletResponse.SC_NOT_FOUND, PhotoCollections.MISSING);
-				return;
-			}
-			folderPath = source.parent();
+			folderPath = photo.parent();
 			folder = folderPath.toFile();
-			name = source.getName();
-			resource = _cache.lookup(folderPath);
-		} else if (PhotoSearch.isSearch(resource)) {
-			// The poster is the video's own as well, written to its album, see issue #227.
-			ImagePart shown = Crops.findImage(searchAnswer((AlbumInfo) resource, folderPath, caller, Privacy.PRIVATE),
-				name);
-			PathInfo source = shown == null ? null : photoNamed(folderPath, resource, name);
-			if (source == null) {
-				errorInfo(context, HttpServletResponse.SC_NOT_FOUND, unknownImage(name));
-				return;
-			}
-			folderPath = source.parent();
-			folder = folderPath.toFile();
-			name = source.getName();
+			name = photo.getName();
 			resource = _cache.lookup(folderPath);
 		}
 		if (!(resource instanceof AlbumInfo)) {
