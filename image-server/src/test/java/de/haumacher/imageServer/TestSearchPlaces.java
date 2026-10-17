@@ -116,6 +116,47 @@ public class TestSearchPlaces extends TestCase {
 		assertEquals(Arrays.asList("France", "Germany"), countries);
 	}
 
+	/**
+	 * The places offered are read off the index alone: exactly the tags of the photographs as their
+	 * album answers them, each once, in the language asked for.
+	 */
+	public void testTheOptionsAreThePlacesOfThePhotographsInTheirLanguage() throws Exception {
+		for (String language : Arrays.asList("en", "de", "fr")) {
+			Map<String, String> headers = Map.of("Accept-Language", language);
+			FakeResponse response = new FakeResponse();
+			servlet().doGet(request("/", null, new byte[0], headers, Map.of("type", ImageServlet.SEARCH_OPTIONS_TYPE)),
+				response.response());
+			assertEquals(response.body(), HttpServletResponse.SC_OK, response.status());
+			List<String> offered = new ArrayList<>();
+			for (PlaceTag tag : SearchOptions.readSearchOptions(json(response.body())).getPlaces()) {
+				offered.add(describe(tag));
+			}
+
+			FakeResponse album = new FakeResponse();
+			servlet().doGet(request("/Trip/", null, new byte[0], headers, Map.of("type", "json")), album.response());
+			Map<Integer, PlaceTag> present = new java.util.TreeMap<>();
+			for (AlbumPart part : ((AlbumInfo) Resource.readResource(json(album.body()))).getParts()) {
+				ImagePart image = (ImagePart) part;
+				if (image.getPlaces() != null) {
+					image.getPlaces().getTags().forEach(tag -> present.putIfAbsent(Integer.valueOf(tag.getGeonameId()), tag));
+				}
+			}
+			List<PlaceTag> expected = new ArrayList<>(present.values());
+			expected.sort(java.util.Comparator.comparing((PlaceTag tag) -> tag.getKind().ordinal())
+				.thenComparing(tag -> tag.getName().toLowerCase(java.util.Locale.ROOT))
+				.thenComparingInt(PlaceTag::getGeonameId));
+			List<String> shown = new ArrayList<>();
+			expected.forEach(tag -> shown.add(describe(tag)));
+			assertFalse(shown.isEmpty());
+			assertEquals(language, shown, offered);
+		}
+	}
+
+	private static String describe(PlaceTag tag) {
+		return tag.getGeonameId() + " " + tag.getName() + " " + tag.getKind() + " " + tag.getFeatureCode() + " "
+			+ tag.getCountry();
+	}
+
 	public void testASearchAnswersThePlaceLineAndThePhotographEverything() throws Exception {
 		ImagePart found = (ImagePart) answer(KARLSRUHE).getParts().get(0);
 		assertEquals("Trip/schloss.jpg", found.getName());

@@ -159,6 +159,20 @@ public class TestSearchSpeed extends TestCase {
 
 		// And through the servlet, which answers every match as its album does.
 		_servlet = new ImageServlet(_base.toFile(), new AuthService(AuthMode.OFF, _base));
+		// The options of the search view at the root, asked first on the cache left cold by the
+		// restart (issue: the persons chooser at the top level), then again.
+		long loadsBefore = _servlet.cache().loadCount();
+		begin = System.nanoTime();
+		String coldOptions = options();
+		long optionsCold = (System.nanoTime() - begin) / 1_000_000;
+		long optionsLoads = _servlet.cache().loadCount() - loadsBefore;
+		begin = System.nanoTime();
+		String warmOptions = options();
+		long optionsWarm = (System.nanoTime() - begin) / 1_000_000;
+		assertEquals("The cold answer is the warm one.", warmOptions, coldOptions);
+		// The persons of the generated library are in no register: the cameras say it was read.
+		assertEquals(3, de.haumacher.imageServer.shared.model.SearchOptions
+			.readSearchOptions(new JsonReader(new ReaderAdapter(new StringReader(coldOptions)))).getCameras().size());
 		long[] servletTimes = new long[queries.size()];
 		for (int q = 0; q < queries.size(); q++) {
 			long first = time(queries.get(q));
@@ -176,6 +190,8 @@ public class TestSearchSpeed extends TestCase {
 			report.append("\n  ").append(names.get(q)).append(": ").append(counts[q]).append(" matches, index ")
 				.append(indexTimes[q] / 1000.0).append(" ms, servlet ").append(servletTimes[q]).append(" ms");
 		}
+		report.append("\n  options at the root: cold ").append(optionsCold).append(" ms (").append(optionsLoads)
+			.append(" folders read), warm ").append(optionsWarm).append(" ms");
 		System.out.println(report);
 		assertEquals(ALBUMS * PHOTOS, counts[1]);
 		assertTrue(counts[0] > 0);
@@ -194,6 +210,15 @@ public class TestSearchSpeed extends TestCase {
 			Thread.sleep(50);
 		}
 		return runtime.totalMemory() - runtime.freeMemory();
+	}
+
+	/** The options of the search view at the root, as they are written out. */
+	private String options() throws Exception {
+		FakeResponse response = new FakeResponse();
+		_servlet.doGet(request("/", null, new byte[0], Map.of(), Map.of("type", ImageServlet.SEARCH_OPTIONS_TYPE)),
+			response.response());
+		assertEquals(response.body(), HttpServletResponse.SC_OK, response.status());
+		return response.body();
 	}
 
 	private long time(SearchQuery query) throws Exception {

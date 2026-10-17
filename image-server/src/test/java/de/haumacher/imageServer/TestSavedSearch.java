@@ -716,6 +716,130 @@ public class TestSavedSearch extends ShareTestCase {
 		assertEquals(Arrays.asList("Holiday"), labels);
 	}
 
+	/**
+	 * The options are exactly the persons, cameras, labels and places of the photographs a search
+	 * of everything answers each caller, read off their albums: for the owner, an editor and a
+	 * viewer below the private clearance, a member shown nothing restricted, and a contributor
+	 * shown only their own photographs of the inbox; below the root, a folder, an album and the
+	 * inbox; with the trash, which nobody is offered.
+	 */
+	public void testTheOptionsAreTheAlbumsOfEveryCaller() throws Exception {
+		PeopleStore people = new PeopleStore(_base);
+		String zora = people.create("Zora", "alice").getId();
+		String hans = people.create("Hans", "alice").getId();
+		String greta = people.create("Greta", "alice").getId();
+		SharingFixture.album(_base, "Secret/2020 Hidden", "Hidden",
+			part("private.jpg", day(2020, 1, 1), ",\"privacy\":2,\"camera\":\"Spy Cam\",\"labels\":[{\"name\":\"Secret\"}]", zora) + ","
+				+ part("members.jpg", day(2020, 1, 2), ",\"privacy\":1,\"camera\":\"Club Cam\",\"labels\":[{\"name\":\"Members\"}]",
+					_anne) + ","
+				+ part("trash.jpg", day(2020, 1, 3), ",\"rating\":-2,\"camera\":\"Trash Cam\"", zora),
+			"private.jpg", "members.jpg", "trash.jpg");
+		SharingFixture.album(_base, "Inbox", "Inbox",
+			part("bobs.jpg", day(2025, 1, 1), ",\"camera\":\"Bob Cam\"", hans) + ","
+				+ part("carols.jpg", day(2025, 1, 2), ",\"camera\":\"Carol Cam\"", greta),
+			"bobs.jpg", "carols.jpg");
+		contributed("Inbox", "bobs.jpg", "user:bob", "carols.jpg", "user:carol");
+		restartServer();
+
+		assertEquals(Arrays.asList("Anne", "Greta", "Hans", "Philipp", "Zora"), personNames("/", SharingFixture.ALICE));
+		assertEquals("Bob is shown his own of the inbox alone.", Arrays.asList("Anne", "Hans", "Philipp", "Zora"),
+			personNames("/", SharingFixture.BOB));
+		assertEquals("Dave is shown nothing of the inbox and nothing private.", Arrays.asList("Anne", "Philipp"),
+			personNames("/", SharingFixture.DAVE));
+		assertFalse("Nobody is offered the trash.", body(get("/", ImageServlet.SEARCH_OPTIONS_TYPE,
+			SharingFixture.ALICE)).contains("Trash Cam"));
+		assertFalse("Eve sees nothing restricted.", body(get("/", ImageServlet.SEARCH_OPTIONS_TYPE,
+			SharingFixture.EVE)).contains("Club Cam"));
+
+		for (String scope : Arrays.asList("/", "/Secret/", "/Secret/2020 Hidden/", "/Inbox/", "/Trips/")) {
+			for (String token : Arrays.asList(SharingFixture.ALICE, SharingFixture.BOB, SharingFixture.CAROL,
+				SharingFixture.DAVE, SharingFixture.EVE)) {
+				FakeResponse answer = get(scope, ImageServlet.SEARCH_OPTIONS_TYPE, token);
+				FakeResponse found = search(scope, and(), token);
+				assertEquals(scope + " for " + token + ": " + answer.body(), found.status(), answer.status());
+				if (answer.status() == HttpServletResponse.SC_OK) {
+					assertEquals(scope + " for " + token, write(albumOptions(scope, album(found))),
+						write(SearchOptions.readSearchOptions(reader(body(answer)))));
+				}
+			}
+		}
+	}
+
+	private List<String> personNames(String scope, String token) throws Exception {
+		List<String> result = new ArrayList<>();
+		for (Person person : SearchOptions.readSearchOptions(reader(body(get(scope, ImageServlet.SEARCH_OPTIONS_TYPE,
+			token)))).getPersons()) {
+			result.add(person.getName());
+		}
+		return result;
+	}
+
+	/**
+	 * The options of the given answer of a search of everything below the given scope, read off the
+	 * albums of its photographs as the cache holds them: what the options were before they were
+	 * read off the index alone.
+	 */
+	private SearchOptions albumOptions(String scope, AlbumInfo found) throws Exception {
+		PeopleStore people = new PeopleStore(_base);
+		String below = scope.replaceAll("^/+|/+$", "");
+		java.util.TreeMap<String, Person> persons = new java.util.TreeMap<>();
+		java.util.TreeSet<String> cameras = new java.util.TreeSet<>();
+		java.util.TreeSet<String> labels = new java.util.TreeSet<>();
+		Map<Integer, PlaceTag> places = new java.util.TreeMap<>();
+		for (AlbumPart part : found.getParts()) {
+			String name = ((ImagePart) part).getName();
+			String path = below.isEmpty() ? name : below + "/" + name;
+			int slash = path.lastIndexOf('/');
+			Resource album = servlet().cache().lookup(new PathInfo(_base, Path.of(path.substring(0, slash))));
+			ImagePart image = null;
+			for (ImagePart each : PhotoSearch.images((AlbumInfo) album)) {
+				if (each.getName().equals(path.substring(slash + 1))) {
+					image = each;
+				}
+			}
+			assertNotNull(path, image);
+			for (de.haumacher.imageServer.shared.model.FaceTag tag : image.getTags()) {
+				if (tag.getState() == de.haumacher.imageServer.shared.model.FaceState.CONFIRMED
+					&& !tag.getPerson().isEmpty()) {
+					PeopleStore.Entry person = people.resolve(de.haumacher.imageServer.faces.FaceTags.person(tag.getPerson(), people));
+					if (person != null) {
+						persons.putIfAbsent(person.getName().toLowerCase(java.util.Locale.ROOT) + "\u0000" + person.getId(),
+							Person.create().setId(person.getId()).setName(person.getName()));
+					}
+				}
+			}
+			if (image.getCamera() != null && !image.getCamera().isEmpty()) {
+				cameras.add(image.getCamera());
+			}
+			image.getLabels().forEach(label -> labels.add(label.getName()));
+			if (image.getPlaces() != null) {
+				image.getPlaces().getTags().forEach(tag -> places.putIfAbsent(Integer.valueOf(tag.getGeonameId()), tag));
+			}
+		}
+		SearchOptions result = SearchOptions.create().setPersons(new ArrayList<>(persons.values()));
+		cameras.forEach(camera -> result.addCamera(de.haumacher.imageServer.shared.model.CameraName.create().setName(camera)));
+		result.setLabels(PhotoSearch.labelsOf(labels));
+		List<PlaceTag> sorted = new ArrayList<>(places.values());
+		sorted.sort(java.util.Comparator.comparing((PlaceTag tag) -> tag.getKind().ordinal())
+			.thenComparing(tag -> tag.getName().toLowerCase(java.util.Locale.ROOT)).thenComparingInt(PlaceTag::getGeonameId));
+		return result.setPlaces(sorted);
+	}
+
+	/** A hash sidecar attributing the named files of the given folder, given as pairs of name and subject. */
+	private void contributed(String folder, String... nameAndSubject) throws Exception {
+		StringBuilder json = new StringBuilder("{\"version\":1,\"files\":{");
+		for (int n = 0; n < nameAndSubject.length; n += 2) {
+			File file = _base.resolve(folder).resolve(nameAndSubject[n]).toFile();
+			json.append(n == 0 ? "" : ",").append("\"").append(nameAndSubject[n]).append("\":{\"size\":")
+				.append(file.length()).append(",\"modified\":").append(file.lastModified()).append(",\"sha256\":\"")
+				.append(de.haumacher.imageServer.upload.HashCache.sha256(file)).append("\",\"contributor\":\"")
+				.append(nameAndSubject[n + 1]).append("\",\"contributorLabel\":\"")
+				.append(nameAndSubject[n + 1].replace("user:", "")).append("\"}");
+		}
+		Files.write(_base.resolve(folder).resolve(".hashes.json"),
+			json.append("}}").toString().getBytes(StandardCharsets.UTF_8));
+	}
+
 	// --- The stored format. ---
 
 	public void testThePinnedFixtureIsReadAndEvaluated() throws Exception {
@@ -1078,6 +1202,8 @@ public class TestSavedSearch extends ShareTestCase {
 		try (JsonWriter json = new JsonWriter(new WriterAdapter(new OutputStreamWriter(buffer, StandardCharsets.UTF_8)))) {
 			if (object instanceof Resource) {
 				((Resource) object).writeTo(json);
+			} else if (object instanceof SearchOptions) {
+				((SearchOptions) object).writeTo(json);
 			} else {
 				((SearchQuery) object).writeTo(json);
 			}

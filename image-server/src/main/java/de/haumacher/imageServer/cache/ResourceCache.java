@@ -350,7 +350,7 @@ public class ResourceCache {
 	}
 
 	/** How many folders were read from disk so far, for the tests. */
-	long loadCount() {
+	public long loadCount() {
 		return _loader.loadCount();
 	}
 

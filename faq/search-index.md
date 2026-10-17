@@ -33,3 +33,9 @@ no sidecar is read and no stamp compared on the request. The album of every matc
 - **Rows by id are joined, not listed.** `id IN (?, …)` re-checks the whole list for every row it
   finds (seconds for 100 000 ids); `SearchIndex` joins `TABLE(x BIGINT = ?)` with the ids as an
   array, or walks the id range where the ids are dense (#276).
+- **The options of the search view never go through the albums.** `?type=search-options` at the
+  root once asked every album of the library for its photos (the album filter of `searchMatches`):
+  2 000 albums read into a cold cache, seconds, and the app's choosers stood empty meanwhile. They
+  are read off the index (`ImageServlet#optionRows`, `SearchIndex#facets`, the table `places`);
+  a folder changed behind the index is read into it first (`SearchIndex#refresh`), and only an
+  inbox shown to a contributor as their own photos reads its album (the contributor is no column).

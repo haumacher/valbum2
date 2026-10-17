@@ -88,7 +88,9 @@ import org.apache.lucene.util.Bits;
  * <p>
  * Per photograph a row in the H2 database of the {@link SpaceIndex}: its album, its name, its
  * date, rating, privacy, camera and kind, and in tables of their own the persons of its confirmed
- * faces, its labels and the GeoNames ids of its places, each with an index on its value. Its words
+ * faces, its labels and the GeoNames ids of its places, each with an index on its value, and per
+ * place the tag it was read with, so that the options of the search view need no album
+ * ({@link #facets(Collection)}). Its words
  * &mdash; the title and subtitle of its album, its description, its labels and the names of its
  * places &mdash; are a document of the Lucene index beside it, keyed by the row's id, analysed for
  * German and English ({@link TextAnalysis}). One store per criterion: the text criterion asks
@@ -208,7 +210,7 @@ public final class SearchIndex implements FolderPipeline.Step {
 		}
 	}
 
-	/** The persons, labels and cameras of some photographs, see {@link #facets(Collection)}. */
+	/** The persons, labels, cameras and places of some photographs, see {@link #facets(Collection)}. */
 	public static final class Facets {
 
 		/** The person ids of their confirmed faces, as stored (merges not resolved). */
@@ -219,6 +221,12 @@ public final class SearchIndex implements FolderPipeline.Step {
 
 		/** Their cameras, sorted; none empty. */
 		public final Set<String> _cameras = new TreeSet<>();
+
+		/**
+		 * Their places by GeoNames id, each tag as a photograph was last read with it (in the
+		 * gazetteer's own names, not localized), see the table <code>places</code>.
+		 */
+		public final Map<Integer, PlaceTag> _places = new java.util.TreeMap<>();
 	}
 
 	/** What the search asks of one photograph, as read from its album. */
@@ -240,6 +248,9 @@ public final class SearchIndex implements FolderPipeline.Step {
 		final Set<String> _labels;
 
 		final Set<Integer> _places;
+
+		/** The tags of {@link #_places}, as the photograph names them, see the table <code>places</code>. */
+		final List<PlaceTag> _placeTags;
 
 		final String _text;
 
@@ -265,6 +276,8 @@ public final class SearchIndex implements FolderPipeline.Step {
 				_labels.add(label.getName());
 			}
 			_places = new LinkedHashSet<>();
+			_placeTags = new ArrayList<>();
+			StringBuilder places = new StringBuilder();
 			StringBuilder text = new StringBuilder(albumText);
 			text.append('\n').append(image.getComment() == null ? "" : image.getComment());
 			for (String label : _labels) {
@@ -272,7 +285,12 @@ public final class SearchIndex implements FolderPipeline.Step {
 			}
 			if (image.getPlaces() != null) {
 				for (PlaceTag tag : image.getPlaces().getTags()) {
-					_places.add(Integer.valueOf(tag.getGeonameId()));
+					if (_places.add(Integer.valueOf(tag.getGeonameId()))) {
+						_placeTags.add(tag);
+						places.append(tag.getGeonameId()).append('\u0001').append(tag.getName()).append('\u0001')
+							.append(tag.getKind()).append('\u0001').append(tag.getFeatureCode()).append('\u0001')
+							.append(tag.getCountry()).append('\u0002');
+					}
 					if (tag.getName() != null && !tag.getName().isEmpty()) {
 						text.append('\n').append(tag.getName());
 					}
@@ -280,7 +298,7 @@ public final class SearchIndex implements FolderPipeline.Step {
 			}
 			_text = text.toString();
 			_rowHash = hash(_name + '\u0000' + _date + '\u0000' + _rating + '\u0000' + _privacy + '\u0000' + _camera
-				+ '\u0000' + _video + '\u0000' + _persons + '\u0000' + _labels + '\u0000' + _places);
+				+ '\u0000' + _video + '\u0000' + _persons + '\u0000' + _labels + '\u0000' + places);
 			_textHash = hash(_text);
 		}
 	}
@@ -754,7 +772,9 @@ public final class SearchIndex implements FolderPipeline.Step {
 					"MERGE INTO photo_hashes (photo, row_hash, text_hash) KEY (photo) VALUES (?, ?, ?)");
 				PreparedStatement persons = connection.prepareStatement("INSERT INTO photo_persons (photo, person) VALUES (?, ?)");
 				PreparedStatement labels = connection.prepareStatement("INSERT INTO photo_labels (photo, label) VALUES (?, ?)");
-				PreparedStatement places = connection.prepareStatement("INSERT INTO photo_places (photo, place) VALUES (?, ?)")) {
+				PreparedStatement places = connection.prepareStatement("INSERT INTO photo_places (photo, place) VALUES (?, ?)");
+				PreparedStatement placeTags = connection.prepareStatement(
+					"MERGE INTO places (id, name, kind, feature, country) KEY (id) VALUES (?, ?, ?, ?, ?)")) {
 			Set<String> present = new HashSet<>();
 			boolean details = false;
 			for (Row row : content._rows) {
@@ -804,12 +824,22 @@ public final class SearchIndex implements FolderPipeline.Step {
 					places.setInt(2, place.intValue());
 					places.addBatch();
 				}
+				for (PlaceTag tag : row._placeTags) {
+					// The tag as it was read last: the same id is the same place, whoever names it.
+					placeTags.setInt(1, tag.getGeonameId());
+					placeTags.setString(2, nonNull(tag.getName()));
+					placeTags.setString(3, tag.getKind().name());
+					placeTags.setString(4, nonNull(tag.getFeatureCode()));
+					placeTags.setString(5, nonNull(tag.getCountry()));
+					placeTags.addBatch();
+				}
 				details = true;
 			}
 			if (details) {
 				persons.executeBatch();
 				labels.executeBatch();
 				places.executeBatch();
+				placeTags.executeBatch();
 			}
 			for (Map.Entry<String, long[]> entry : existing.entrySet()) {
 				if (!present.contains(entry.getKey())) {
@@ -851,6 +881,10 @@ public final class SearchIndex implements FolderPipeline.Step {
 				writer.updateDocument(new Term(KEY, Long.toString(id)), document);
 			}
 		};
+	}
+
+	private static String nonNull(String value) {
+		return value == null ? "" : value;
 	}
 
 	private static void setStamps(PreparedStatement statement, int first, Stamps stamps, Content content)
@@ -1145,46 +1179,91 @@ public final class SearchIndex implements FolderPipeline.Step {
 		};
 	}
 
-	/** The persons, labels and cameras of the photographs of the given rows, see {@link Match#getId()}. */
+	/**
+	 * The persons, labels, cameras and places of the photographs of the given rows, see
+	 * {@link Match#getId()}: read off the index alone, no album asked.
+	 */
 	public Facets facets(Collection<Long> ids) {
 		Facets result = new Facets();
 		if (ids.isEmpty()) {
 			return result;
 		}
 		return _store.read(connection -> {
-			collect(connection, "SELECT DISTINCT person FROM photo_persons WHERE photo IN ", ids, result._persons);
-			collect(connection, "SELECT DISTINCT label FROM photo_labels WHERE photo IN ", ids, result._labels);
-			collect(connection, "SELECT DISTINCT camera FROM photos WHERE camera <> '' AND id IN ", ids, result._cameras);
+			Long[] all = ids.toArray(new Long[ids.size()]);
+			collect(connection, "SELECT DISTINCT f.person FROM TABLE(x BIGINT = ?) t JOIN photo_persons f ON f.photo = t.x",
+				all, rows -> result._persons.add(rows.getString(1)));
+			collect(connection, "SELECT DISTINCT f.label FROM TABLE(x BIGINT = ?) t JOIN photo_labels f ON f.photo = t.x",
+				all, rows -> result._labels.add(rows.getString(1)));
+			collect(connection, "SELECT DISTINCT p.camera FROM TABLE(x BIGINT = ?) t JOIN photos p ON p.id = t.x "
+				+ "WHERE p.camera <> ''", all, rows -> result._cameras.add(rows.getString(1)));
+			collect(connection, "SELECT DISTINCT l.id, l.name, l.kind, l.feature, l.country FROM TABLE(x BIGINT = ?) t "
+				+ "JOIN photo_places f ON f.photo = t.x JOIN places l ON l.id = f.place", all, rows -> {
+					Integer id = Integer.valueOf(rows.getInt(1));
+					if (!result._places.containsKey(id)) {
+						result._places.put(id, PlaceTag.create().setGeonameId(id.intValue()).setName(rows.getString(2))
+							.setKind(de.haumacher.imageServer.shared.model.PlaceKind.valueOf(rows.getString(3)))
+							.setFeatureCode(rows.getString(4)).setCountry(rows.getString(5)));
+					}
+				});
 			return result;
 		}, result);
 	}
 
-	/** Runs the given selection ending in <code>IN</code> for the given ids, a chunk at a time. */
-	private static void collect(Connection connection, String sql, Collection<Long> ids, Set<String> into)
-			throws SQLException {
-		StringBuilder statement = new StringBuilder(sql).append("(?");
-		for (int n = 1; n < FACETS_CHUNK; n++) {
-			statement.append(", ?");
-		}
-		statement.append(")");
-		try (PreparedStatement select = connection.prepareStatement(statement.toString())) {
-			java.util.Iterator<Long> each = ids.iterator();
-			while (each.hasNext()) {
-				long last = 0;
-				for (int n = 0; n < FACETS_CHUNK; n++) {
-					// The last chunk filled up with its last id.
-					if (each.hasNext()) {
-						last = each.next().longValue();
-					}
-					select.setLong(n + 1, last);
-				}
+	/** What is taken of a row of a facet, see {@link SearchIndex#collect}. */
+	private interface Collector {
+		void accept(ResultSet rows) throws SQLException;
+	}
+
+	/**
+	 * Runs the given selection, which joins its one array parameter as the table of ids (see the
+	 * class comment of {@link SpaceIndex}: an <code>IN</code> list re-checks itself for every row),
+	 * for the given ids, a chunk at a time.
+	 */
+	private static void collect(Connection connection, String sql, Long[] ids, Collector into) throws SQLException {
+		try (PreparedStatement select = connection.prepareStatement(sql)) {
+			for (int first = 0; first < ids.length; first += CHUNK) {
+				select.setObject(1, first == 0 && ids.length <= CHUNK ? ids
+					: java.util.Arrays.copyOfRange(ids, first, Math.min(ids.length, first + CHUNK)));
 				try (ResultSet rows = select.executeQuery()) {
 					while (rows.next()) {
-						into.add(rows.getString(1));
+						into.accept(rows);
 					}
 				}
 			}
 		}
+	}
+
+	/**
+	 * Reads again those of the given folders below the given one that changed since the index read
+	 * them (their stamps, or a gazetteer that moved on while a photograph waited for its places),
+	 * and forgets those that are gone: the background's work, done now for the folders an answer
+	 * is about to be read off the index alone, so that it is what their albums hold, see
+	 * <code>ImageServlet#serveSearchOptions</code>. Only a changed folder is read; the others cost
+	 * three stamps each.
+	 *
+	 * @return Whether any folder was read again or forgotten, so that what was found before is to
+	 *         be asked again.
+	 */
+	public boolean refresh(PathInfo scope, Collection<PathInfo> folders) {
+		String prefix = relative(scope.toFile());
+		if (prefix == null || folders.isEmpty()) {
+			return false;
+		}
+		Map<String, Known> known = _store.read(connection -> knownTree(connection, prefix), null);
+		boolean changed = false;
+		for (PathInfo folder : folders) {
+			String path = relative(folder.toFile());
+			if (path == null) {
+				continue;
+			}
+			File dir = folder.toFile();
+			Known read = known == null ? null : known.get(path);
+			if (!dir.isDirectory() || _stale.contains(path) || read == null || !current(read, new Stamps(dir))) {
+				update(path, false);
+				changed = true;
+			}
+		}
+		return changed;
 	}
 
 	/** One query asked of the index, see the class comment. */
@@ -1538,8 +1617,6 @@ public final class SearchIndex implements FolderPipeline.Step {
 	 */
 	private static final int CHUNK = 32768;
 
-	/** How many ids {@link #facets(Collection)} asks with one statement. */
-	private static final int FACETS_CHUNK = 512;
 
 	/** The rows of the documents the given query finds. */
 	private static BitSet collect(IndexSearcher searcher, Query query) throws IOException {

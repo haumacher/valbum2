@@ -219,6 +219,48 @@ public class TestSavedSearchIndexed extends TestSavedSearch {
 		assertFalse(Files.exists(_base.resolve(GARDEN)));
 	}
 
+	/**
+	 * The options of the whole library on a cold cache, as after a start (the index on disk, no
+	 * album read yet), are complete &mdash; the very answer the warm cache gives &mdash; and read no
+	 * album: the persons chooser at the top level stood empty while they were read.
+	 */
+	public void testTheRootOptionsOnAColdCacheReadNoAlbum() throws Exception {
+		index();
+		String warm = body(get("/", ImageServlet.SEARCH_OPTIONS_TYPE, SharingFixture.ALICE));
+		de.haumacher.imageServer.cache.ResourceCache cache = servlet().cache();
+		PathInfo root = new PathInfo(_base);
+		cache.invalidateTree(root);
+		// The listing of the root, which every answer at the root looks at, is no album.
+		cache.lookup(root);
+		long loads = cache.loadCount();
+		String cold = body(get("/", ImageServlet.SEARCH_OPTIONS_TYPE, SharingFixture.ALICE));
+		assertEquals("No album read.", loads, cache.loadCount());
+		assertEquals(warm, cold);
+		List<String> persons = new ArrayList<>();
+		for (de.haumacher.imageServer.shared.model.Person person : de.haumacher.imageServer.shared.model.SearchOptions
+			.readSearchOptions(reader(cold)).getPersons()) {
+			persons.add(person.getName());
+		}
+		assertEquals(Arrays.asList("Anne", "Philipp"), persons);
+	}
+
+	/**
+	 * A sidecar changed behind the server's back is what the options answer, as its album would:
+	 * the folder is read into the index first.
+	 */
+	public void testTheOptionsReadAChangedFolderFirst() throws Exception {
+		index();
+		assertTrue(body(get("/", ImageServlet.SEARCH_OPTIONS_TYPE, SharingFixture.DAVE)).contains("Canon EOS 5D"));
+		Path sidecar = _base.resolve(LAKE).resolve("index.json");
+		String contents = new String(Files.readAllBytes(sidecar), java.nio.charset.StandardCharsets.UTF_8);
+		// The only photograph of that camera turns private, by hand.
+		Files.write(sidecar, contents.replace("\"camera\":\"Canon EOS 5D\",", "\"camera\":\"Canon EOS 5D\",\"privacy\":2,")
+			.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+		sidecar.toFile().setLastModified(sidecar.toFile().lastModified() + 5000);
+		assertFalse(body(get("/", ImageServlet.SEARCH_OPTIONS_TYPE, SharingFixture.DAVE)).contains("Canon EOS 5D"));
+		assertTrue(body(get("/", ImageServlet.SEARCH_OPTIONS_TYPE, SharingFixture.ALICE)).contains("Canon EOS 5D"));
+	}
+
 	private static List<String> fileNames(List<String> names) {
 		List<String> result = new ArrayList<>();
 		for (String name : names) {

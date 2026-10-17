@@ -74,8 +74,47 @@ class SearchSession extends ChangeNotifier {
   /// The search for [criteria], `null` while nothing is chosen.
   Future<AlbumInfo>? result;
 
-  /// What the folder offers to choose from, asked once.
+  /// What the folder offers to choose from, asked once — and again after it
+  /// failed, see [askOptions].
   Future<SearchOptions>? options;
+
+  /// What [options] answered once it did, `null` before.
+  SearchOptions? arrivedOptions;
+
+  /// Why [options] failed, `null` while it did not: the next view of the
+  /// folder, and the retry of a chooser, ask again.
+  Object? optionsError;
+
+  /// Asks the server what the folder at [path] offers to choose from, unless
+  /// that is on its way or arrived already; [again] asks anew whatever there
+  /// is (the retry of a chooser). What arrives is kept in [arrivedOptions],
+  /// a failure in [optionsError], for the choosers to say.
+  void askOptions(VAlbumClient client, List<String> path,
+      {bool again = false}) {
+    if (options != null && !again && optionsError == null) {
+      return;
+    }
+    optionsError = null;
+    var asked = client.searchOptions(path);
+    asked.then(
+      (answer) {
+        if (identical(options, asked)) {
+          arrivedOptions = answer;
+          notifyListeners();
+        }
+      },
+      onError: (Object error) {
+        if (identical(options, asked)) {
+          optionsError = error;
+          notifyListeners();
+        }
+      },
+    );
+    options = asked;
+    if (again) {
+      notifyListeners();
+    }
+  }
 
   /// The path of the saved search being edited, `null` for a search that is
   /// not saved.
@@ -244,9 +283,8 @@ class SearchViewState extends State<SearchView> {
     super.initState();
     _listened = session;
     _listened.addListener(_changed);
-    // The options are offered where they arrive; without them the choosers
-    // offer nothing, and the search itself still says why.
-    _listened.options ??= client.searchOptions(path)..ignore();
+    // The choosers wait for the options, and say why where they failed.
+    _listened.askOptions(client, path);
     _text.text = _listened.criteria.text;
     _adopted = _listened.adoptions;
     if (_listened.result == null && !_listened.criteria.isEmpty) {
@@ -350,11 +388,8 @@ class SearchViewState extends State<SearchView> {
             child: results(
               selecting
                   ? null
-                  : FutureBuilder<SearchOptions>(
-                      future: session.options,
-                      builder: (context, snapshot) =>
-                          criteriaBar(snapshot.data ?? SearchOptions()),
-                    ),
+                  // The names of the values chosen, once the options arrived.
+                  : criteriaBar(session.arrivedOptions ?? SearchOptions()),
             ),
           ),
         ],
@@ -423,7 +458,7 @@ class SearchViewState extends State<SearchView> {
             key: const Key("search-add-persons"),
             avatar: const Icon(Icons.person_add_alt, size: 18),
             label: Text(l10n.searchPersons),
-            onPressed: () => choosePersons(options),
+            onPressed: choosePersons,
           ),
           _dateChip(
             key: "search-from",
@@ -462,7 +497,7 @@ class SearchViewState extends State<SearchView> {
             key: const Key("search-add-places"),
             avatar: const Icon(Icons.add_location_alt_outlined, size: 18),
             label: Text(l10n.searchPlaces),
-            onPressed: () => choosePlaces(options),
+            onPressed: choosePlaces,
           ),
           for (var (label, excluded) in _rows(
             criteria.labels,
@@ -487,7 +522,7 @@ class SearchViewState extends State<SearchView> {
             key: const Key("search-add-labels"),
             avatar: const Icon(Icons.new_label_outlined, size: 18),
             label: Text(l10n.searchLabels),
-            onPressed: () => chooseLabels(options),
+            onPressed: chooseLabels,
           ),
           criteria.minRating == null
               ? ActionChip(
@@ -512,14 +547,14 @@ class SearchViewState extends State<SearchView> {
                   key: const Key("search-camera"),
                   avatar: const Icon(Icons.photo_camera_outlined, size: 18),
                   label: Text(l10n.searchCamera),
-                  onPressed: () => chooseCamera(options),
+                  onPressed: chooseCamera,
                 )
               : _kindChip(
                   key: "search-camera",
                   kind: SearchKind.camera,
                   icon: Icons.photo_camera,
                   name: criteria.camera!,
-                  onPressed: () => chooseCamera(options),
+                  onPressed: chooseCamera,
                   onDeleted: () =>
                       _choose(criteria.copyWith(clearCamera: true)),
                 ),
@@ -831,10 +866,10 @@ class SearchViewState extends State<SearchView> {
         2: l10n.ratingVeryGood,
       };
 
-  Future<void> choosePersons(SearchOptions options) async {
+  Future<void> choosePersons() async {
     var chosen = await _chooseMany<String>(
       title: _l10n.searchPersons,
-      choices: {for (var p in options.persons) p.id: p.name},
+      choices: (options) => {for (var p in options.persons) p.id: p.name},
       chosen: session.criteria.persons,
       excluded: session.criteria.excludedPersons,
     );
@@ -848,10 +883,10 @@ class SearchViewState extends State<SearchView> {
     }
   }
 
-  Future<void> choosePlaces(SearchOptions options) async {
+  Future<void> choosePlaces() async {
     var chosen = await _chooseMany<int>(
       title: _l10n.searchPlaces,
-      choices: {
+      choices: (options) => {
         for (var p in options.places)
           p.geonameId: p.country.isEmpty ? p.name : "${p.name} (${p.country})",
       },
@@ -868,10 +903,10 @@ class SearchViewState extends State<SearchView> {
     }
   }
 
-  Future<void> chooseLabels(SearchOptions options) async {
+  Future<void> chooseLabels() async {
     var chosen = await _chooseMany<String>(
       title: _l10n.searchLabels,
-      choices: {for (var l in options.labels) l.name: l.name},
+      choices: (options) => {for (var l in options.labels) l.name: l.name},
       chosen: session.criteria.labels,
       excluded: session.criteria.excludedLabels,
     );
@@ -933,18 +968,24 @@ class SearchViewState extends State<SearchView> {
 
   static const int _noRating = -99;
 
-  Future<void> chooseCamera(SearchOptions options) async {
+  Future<void> chooseCamera() async {
+    var title = _l10n.searchCamera;
     var picked = await showAppDialog<(String, bool)>(
       context: context,
-      builder: (context) => _ExcludableChoiceDialog<String>(
-        key: const Key("search-camera-dialog"),
-        title: _l10n.searchCamera,
-        excluded: session.criteria.excludes(SearchKind.camera),
-        none: ("", _l10n.searchAnyCamera),
-        choices: [
-          for (var camera in options.cameras)
-            ("search-camera-${camera.name}", camera.name, camera.name),
-        ],
+      builder: (context) => _AwaitingOptions(
+        title: title,
+        session: session,
+        retry: _retryOptions,
+        builder: (options) => _ExcludableChoiceDialog<String>(
+          key: const Key("search-camera-dialog"),
+          title: title,
+          excluded: session.criteria.excludes(SearchKind.camera),
+          none: ("", _l10n.searchAnyCamera),
+          choices: [
+            for (var camera in options.cameras)
+              ("search-camera-${camera.name}", camera.name, camera.name),
+          ],
+        ),
       ),
     );
     if (picked == null) {
@@ -979,21 +1020,33 @@ class SearchViewState extends State<SearchView> {
   /// Asks which of [choices] (by their value, shown by their name) are
   /// chosen and which of them excluded (issue #242), starting from [chosen]
   /// and [excluded]; `null` where the dialog was left.
+  ///
+  /// The choices are those of the options of the folder: the dialog waits
+  /// for them where they are on their way, and says why where they failed,
+  /// see [_AwaitingOptions].
   Future<({List<T> included, List<T> excluded})?> _chooseMany<T>({
     required String title,
-    required Map<T, String> choices,
+    required Map<T, String> Function(SearchOptions options) choices,
     required List<T> chosen,
     required List<T> excluded,
   }) =>
       showAppDialog<({List<T> included, List<T> excluded})>(
         context: context,
-        builder: (context) => _ChooseManyDialog<T>(
+        builder: (context) => _AwaitingOptions(
           title: title,
-          choices: choices,
-          chosen: chosen,
-          excluded: excluded,
+          session: session,
+          retry: _retryOptions,
+          builder: (options) => _ChooseManyDialog<T>(
+            title: title,
+            choices: choices(options),
+            chosen: chosen,
+            excluded: excluded,
+          ),
         ),
       );
+
+  /// Asks the options of the folder again, after they failed.
+  void _retryOptions() => session.askOptions(client, path, again: true);
 
   // --- The results. ---
 
@@ -1279,6 +1332,83 @@ class SearchViewState extends State<SearchView> {
   }
 }
 
+/// A chooser of the search view while the options of the folder are on their
+/// way or failed: it waits with a progress indicator and turns into the
+/// chooser [builder] makes once they arrive — a click before they did is not
+/// lost — and says the reason of a failure, the server's own words where it
+/// spoke, with a retry that asks again.
+///
+/// Never the chooser of an empty list while there is nothing to tell yet:
+/// that said "nothing to choose from" of a library full of persons.
+class _AwaitingOptions extends StatelessWidget {
+  final String title;
+
+  /// Whose [SearchSession.options] are awaited; a retry replaces them.
+  final SearchSession session;
+
+  /// Asks the options again.
+  final VoidCallback retry;
+
+  /// The chooser of the options that arrived.
+  final Widget Function(SearchOptions options) builder;
+
+  const _AwaitingOptions({
+    required this.title,
+    required this.session,
+    required this.retry,
+    required this.builder,
+  });
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+        listenable: session,
+        builder: (context, _) {
+          var l10n = AppLocalizations.of(context)!;
+          var error = session.optionsError;
+          var arrived = session.arrivedOptions;
+          if (error == null && arrived != null) {
+            return builder(arrived);
+          }
+          var cancel = TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(l10n.cancel),
+          );
+          if (error != null) {
+            return AppAlertDialog(
+              key: const Key("search-options-failed"),
+              title: Text(title),
+              content: Text(l10n.loadingFailed(reasonOf(error))),
+              actions: [
+                cancel,
+                ElevatedButton(
+                  key: const Key("search-options-retry"),
+                  onPressed: retry,
+                  child: Text(l10n.retry),
+                ),
+              ],
+            );
+          }
+          return AppAlertDialog(
+            key: const Key("search-options-loading"),
+            title: Text(title),
+            content: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 3),
+                ),
+                const SizedBox(width: 16),
+                Flexible(child: Text(l10n.loading)),
+              ],
+            ),
+            actions: [cancel],
+          );
+        },
+      );
+}
+
 /// The chooser of several values, see [SearchViewState._chooseMany].
 class _ChooseManyDialog<T> extends StatefulWidget {
   final String title;
@@ -1384,7 +1514,10 @@ class _ChooseManyDialogState<T> extends State<_ChooseManyDialog<T>> {
       content: SizedBox(
         width: 360,
         child: widget.choices.isEmpty
-            ? Text(l10n.searchNothingToChoose)
+            ? Text(
+                l10n.searchNothingToChoose,
+                key: const Key("search-nothing-to-choose"),
+              )
             : !_filtered
                 ? list
                 : Column(
@@ -1470,6 +1603,13 @@ class _ExcludableChoiceDialogState<T>
           onPressed: () => Navigator.of(context).pop((noValue, false)),
           child: Text(noName),
         ),
+        // A chooser with nothing to offer says so (no camera recorded here).
+        if (widget.choices.isEmpty)
+          Padding(
+            key: const Key("search-nothing-to-choose"),
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
+            child: Text(l10n.searchNothingToChoose),
+          ),
         for (var (key, value, name) in widget.choices)
           AppDialogOption(
             key: Key(key),

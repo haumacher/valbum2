@@ -89,7 +89,7 @@ public final class SpaceIndex implements AutoCloseable {
 	 * The schema this build writes. A database stamped with anything else is deleted and built
 	 * again from the sidecars; bump it with every change of the tables below.
 	 */
-	public static final int SCHEMA = 3;
+	public static final int SCHEMA = 4;
 
 	/** The key of the generation in the meta table, see {@link TextIndex}. */
 	public static final String GENERATION_KEY = "generation";
@@ -806,7 +806,10 @@ public final class SpaceIndex implements AutoCloseable {
 	 * whether it is a video); <code>photo_hashes</code>, a hash of all of it and of its text, which
 	 * tells whether it changed; <code>photo_persons</code>, <code>photo_labels</code> and <code>photo_places</code>,
 	 * the person ids of its confirmed faces, its labels and the GeoNames ids of its places, each
-	 * found by its value. Its text is in Lucene, a document per photograph keyed by the row's id.</li>
+	 * found by its value; <code>places</code>, per GeoNames id the tag a photograph was last read
+	 * with (its name, kind, feature code and country), so that the options of the search view are
+	 * answered without an album (schema 4). Its text is in Lucene, a document per photograph keyed
+	 * by the row's id.</li>
 	 * <li>The bell of issue #268, see <code>Arrivals</code>: <code>arrivals</code>, per folder of
 	 * <code>folders</code> the files that arrived for the others at a known moment &mdash; who made
 	 * them arrive (an upload, or a move out of the inbox), what to show for them, when, and whether
@@ -849,6 +852,8 @@ public final class SpaceIndex implements AutoCloseable {
 			statement.execute("CREATE TABLE photo_places (photo BIGINT NOT NULL REFERENCES photos(id) ON DELETE CASCADE, "
 				+ "place INT NOT NULL, PRIMARY KEY (photo, place))");
 			statement.execute("CREATE INDEX photo_places_by_place ON photo_places(place)");
+			statement.execute("CREATE TABLE places (id INT PRIMARY KEY, name VARCHAR NOT NULL, kind VARCHAR NOT NULL, "
+				+ "feature VARCHAR NOT NULL, country VARCHAR NOT NULL)");
 
 			statement.execute("CREATE TABLE arrivals (folder BIGINT NOT NULL REFERENCES folders(id) ON DELETE CASCADE, "
 				+ "name VARCHAR NOT NULL, actor VARCHAR NOT NULL, label VARCHAR NOT NULL, arrived BIGINT NOT NULL, "

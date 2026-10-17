@@ -9290,6 +9290,13 @@ public class ImageServlet extends HttpServlet {
 	 * that would only find what they may not see. At a saved search, the folder it looks below.
 	 * Members only, see {@link #maySearch(Caller)}.
 	 * </p>
+	 *
+	 * <p>
+	 * Answered from the {@link SearchIndex} alone, see {@link #optionRows(PathInfo, Caller)}: the
+	 * options of the whole library must not read every album of it into the cache, which made the
+	 * first answer at the top level after a start take as long as reading the library, and the
+	 * choosers of the search view stood empty until then.
+	 * </p>
 	 */
 	private void serveSearchOptions(Context context, Caller caller, PathInfo folder) throws IOException {
 		if (!maySearch(caller)) {
@@ -9305,20 +9312,10 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 		PathInfo scope = PhotoSearch.isSearch(_cache.lookup(folder)) ? searchScope(folder) : folder;
-		Map<String, PhotoSearch.Match> stored = new LinkedHashMap<>();
-		// Only their rows and their places are read: no faces derived.
-		List<ImagePart> shown = searchMatches(scope, null, caller, Privacy.PRIVATE, stored, true);
 
-		// The persons, cameras and labels of exactly the photographs the caller is shown, read off
-		// their rows in the index, see issue #264.
-		List<Long> ids = new ArrayList<>(shown.size());
-		for (ImagePart image : shown) {
-			PhotoSearch.Match match = stored.get(image.getName());
-			if (match != null) {
-				ids.add(Long.valueOf(match.getId()));
-			}
-		}
-		SearchIndex.Facets facets = _searchIndex.facets(ids);
+		// The persons, cameras, labels and places of exactly the photographs the caller is shown,
+		// read off their rows in the index, see issue #264.
+		SearchIndex.Facets facets = _searchIndex.facets(optionRows(scope, caller));
 		SearchOptions options = SearchOptions.create();
 		java.util.TreeMap<String, de.haumacher.imageServer.shared.model.Person> persons = new java.util.TreeMap<>();
 		for (String stamped : facets._persons) {
@@ -9335,25 +9332,110 @@ public class ImageServlet extends HttpServlet {
 		}
 		options.setLabels(PhotoSearch.labelsOf(facets._labels));
 
-		// The place names in the caller's language, as the photographs are answered them.
-		AlbumInfo named = AlbumInfo.create().setParts(new ArrayList<>(shown));
-		Resource localized = localized(named, context);
-		Map<Integer, de.haumacher.imageServer.shared.model.PlaceTag> places = new LinkedHashMap<>();
-		if (localized instanceof AlbumInfo) {
-			for (AlbumPart part : ((AlbumInfo) localized).getParts()) {
-				if (part instanceof ImagePart && ((ImagePart) part).getPlaces() != null) {
-					for (de.haumacher.imageServer.shared.model.PlaceTag tag : ((ImagePart) part).getPlaces().getTags()) {
-						places.putIfAbsent(Integer.valueOf(tag.getGeonameId()), tag);
-					}
-				}
-			}
-		}
-		List<de.haumacher.imageServer.shared.model.PlaceTag> sorted = new ArrayList<>(places.values());
+		// The place names in the caller's language, as the photographs are answered them: the tags
+		// of one photograph holding them all, localized as a photograph is.
+		ImagePart holder = ImagePart.create().setPlaces(de.haumacher.imageServer.shared.model.PlaceInfo.create()
+			.setTags(new ArrayList<>(facets._places.values())));
+		Resource localized = localized(holder, context);
+		List<de.haumacher.imageServer.shared.model.PlaceTag> sorted = new ArrayList<>(
+			localized instanceof ImagePart && ((ImagePart) localized).getPlaces() != null
+				? ((ImagePart) localized).getPlaces().getTags() : holder.getPlaces().getTags());
 		sorted.sort(java.util.Comparator
 			.comparing((de.haumacher.imageServer.shared.model.PlaceTag tag) -> tag.getKind().ordinal())
-			.thenComparing(tag -> tag.getName().toLowerCase(Locale.ROOT)));
+			.thenComparing(tag -> tag.getName().toLowerCase(Locale.ROOT))
+			.thenComparingInt(de.haumacher.imageServer.shared.model.PlaceTag::getGeonameId));
 		options.setPlaces(sorted);
 		serveJsonObject(context.response(), options);
+	}
+
+	/**
+	 * The rows of the {@link SearchIndex} of every photograph below the given folder that the given
+	 * caller is shown in its album, without reading the albums where the index can tell, see
+	 * {@link #serveSearchOptions(Context, Caller, PathInfo)}.
+	 *
+	 * <p>
+	 * The same photographs {@link #searchMatches(PathInfo, SearchQuery, Caller, int, Map, boolean)}
+	 * answers without a query, decided as follows:
+	 * </p>
+	 * <ul>
+	 * <li>The privacy, the rating floor (the trash) and a link's label are the index's own
+	 * {@link SearchIndex.Visibility}, which is never wider than what the album's
+	 * {@link PrivacyFilter} shows: the clearance and the label are the caller's wherever they look,
+	 * and the index never finds the trash.</li>
+	 * <li>A folder whose sidecar or analysis record changed since the index read it is read into the
+	 * index first ({@link SearchIndex#refresh(PathInfo, java.util.Collection)}), as the cache reads
+	 * such an album again; a folder that is gone is forgotten.</li>
+	 * <li>A folder the caller may not look into is left out, as its album would be.</li>
+	 * <li>The inbox (issue #226) is left out for whoever is shown nothing of it, and taken whole by
+	 * whoever is shown all of it. Only a caller shown their own contributions alone reads its album:
+	 * who contributed a photograph is no field of the index. This is the one album read.</li>
+	 * </ul>
+	 */
+	private List<Long> optionRows(PathInfo scope, Caller caller) {
+		int viewAs = Privacy.PRIVATE;
+		SearchIndex.Visibility visibility = new SearchIndex.Visibility(Math.min(_auth.clearance(caller, scope), viewAs),
+			caller.isShareLink() ? caller.getShare().getMinRating() : Ratings.MIN, _auth.photoLabel(caller));
+		_searchRuns.incrementAndGet();
+		List<PhotoSearch.Match> found = PhotoSearch.find(scope, null, _searchIndex, _people, visibility);
+		if (_searchIndex.refresh(scope, foldersOf(found).keySet())) {
+			found = PhotoSearch.find(scope, null, _searchIndex, _people, visibility);
+		}
+		List<Long> result = new ArrayList<>(found.size());
+		for (Map.Entry<PathInfo, List<PhotoSearch.Match>> entry : foldersOf(found).entrySet()) {
+			PathInfo folder = entry.getKey();
+			if (!folder.toFile().isDirectory() || !_auth.mayView(caller, folder)) {
+				continue;
+			}
+			List<PhotoSearch.Match> matches = entry.getValue();
+			if (Inboxes.isInbox(folder.toFile())) {
+				Inboxes.Visibility shown = Inboxes.visibility(_auth, caller, folder, viewAs);
+				if (shown == Inboxes.Visibility.NONE) {
+					continue;
+				}
+				if (shown != Inboxes.Visibility.FULL) {
+					matches = shownIn(folder, matches, caller, viewAs);
+				}
+			}
+			for (PhotoSearch.Match match : matches) {
+				result.add(Long.valueOf(match.getId()));
+			}
+		}
+		return result;
+	}
+
+	/** The given matches by their folder, in the order they were found. */
+	private static Map<PathInfo, List<PhotoSearch.Match>> foldersOf(List<PhotoSearch.Match> found) {
+		Map<PathInfo, List<PhotoSearch.Match>> result = new LinkedHashMap<>();
+		for (PhotoSearch.Match match : found) {
+			result.computeIfAbsent(match.getFolder(), x -> new ArrayList<>()).add(match);
+		}
+		return result;
+	}
+
+	/**
+	 * Those of the given matches in the given folder that its album shows the given caller, see
+	 * {@link #sourceAlbum(PathInfo, Caller, int, Set, boolean)}.
+	 */
+	private List<PhotoSearch.Match> shownIn(PathInfo folder, List<PhotoSearch.Match> matches, Caller caller,
+			int viewAs) {
+		Set<String> names = new HashSet<>();
+		for (PhotoSearch.Match match : matches) {
+			names.add(match.getName());
+		}
+		AlbumInfo album = sourceAlbum(folder, caller, viewAs, names, false);
+		Set<String> shown = new HashSet<>();
+		if (album != null) {
+			for (ImagePart image : PhotoSearch.images(album)) {
+				shown.add(image.getName());
+			}
+		}
+		List<PhotoSearch.Match> result = new ArrayList<>();
+		for (PhotoSearch.Match match : matches) {
+			if (shown.contains(match.getName())) {
+				result.add(match);
+			}
+		}
+		return result;
 	}
 
 	// --- The search field of the folder picker, issue #261. ---
