@@ -439,6 +439,27 @@ public class TestCollections extends ShareTestCase {
 		assertNotNull(image(album(get(BEST, "json", SharingFixture.ALICE)), "public.jpg").getCrop());
 	}
 
+	public void testAPosterThroughTheCollectionIsTheVideosOwn() throws Exception {
+		Files.createDirectories(_base.resolve(SharingFixture.ZOO));
+		test.de.haumacher.valbum.GenerateTestAlbum.recordColourClip(
+			_base.resolve(SharingFixture.ZOO).resolve("clip.mp4").toFile(), java.awt.Color.RED, java.awt.Color.GREEN);
+		createCollection("Best of");
+		collect(ZOO, "/Best of", SharingFixture.ALICE, "clip.mp4");
+		ImagePart request = ImagePart.create().setName("clip.mp4")
+			.setPoster(de.haumacher.imageServer.shared.model.VideoPoster.create().setMillis(1200));
+		Map<String, String> parameters = new HashMap<>();
+		parameters.put("action", ImageServlet.POSTER_ACTION);
+
+		FakeResponse response = post(BEST, write(request), SharingFixture.CAROL, parameters);
+
+		assertEquals(response.body(), HttpServletResponse.SC_OK, response.status());
+		assertEquals(AlbumKind.COLLECTION, album(response).getKind());
+		assertEquals(1200, image(album(get(ZOO, "json", SharingFixture.ALICE)), "clip.mp4").getPoster().getMillis());
+		assertEquals(1200, image(album(get(BEST, "json", SharingFixture.ALICE)), "clip.mp4").getPoster().getMillis());
+		assertNull("The collection stores nothing but the reference.",
+			((ImagePart) stored("Best of").getParts().get(0)).getPoster());
+	}
+
 	public void testAnAlbumNeverBecomesACollection() throws Exception {
 		AlbumInfo album = album(get(PUBLIC, "json", SharingFixture.ALICE));
 		album.setKind(AlbumKind.COLLECTION);

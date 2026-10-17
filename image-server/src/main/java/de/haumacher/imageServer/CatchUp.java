@@ -269,6 +269,13 @@ public final class CatchUp {
 						report(folder, file, make(file, PreviewCache.croppedPreviewFile(file, region),
 							() -> PreviewCache.createPreview(file, region)));
 					}
+					// The poster a video's author chose, see issue #285: the moment is the author's
+					// choice in the sidecar, like the crop.
+					long poster = Posters.millis(part);
+					if (poster > 0 && PreviewCache.isVideoName(file.getName())) {
+						report(folder, file, make(file, PreviewCache.posterFile(file, poster),
+							() -> PreviewCache.createPoster(file, poster)));
+					}
 					if (PreviewCache.needsDisplay(file)) {
 						report(folder, file, make(file, PreviewCache.displayFile(file),
 							() -> PreviewCache.createDisplay(file)));
@@ -384,6 +391,11 @@ public final class CatchUp {
 					if (failure == null && region != null) {
 						failure = make(image, PreviewCache.croppedPreviewFile(image, region),
 							() -> PreviewCache.createPreview(image, region));
+					}
+					long poster = video ? Posters.millis(picture) : 0;
+					if (failure == null && poster > 0) {
+						failure = make(image, PreviewCache.posterFile(image, poster),
+							() -> PreviewCache.createPoster(image, poster));
 					}
 					if (failure == null && info.isStarred() && !video) {
 						// A starred tile is 2x2 and asks for the large preview on a dense screen,

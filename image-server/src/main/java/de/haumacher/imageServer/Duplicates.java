@@ -151,6 +151,8 @@ public class Duplicates {
 		if (image.getCrop() != null) {
 			result.setCrop(image.getCrop());
 		}
+		// A video's tile is its chosen poster, see issue #285.
+		result.setPoster(image.getPoster());
 		return result;
 	}
 

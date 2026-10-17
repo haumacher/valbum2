@@ -1095,5 +1095,8 @@
   "shutOutDone": "Vom Link ausgesperrt: {name}",
   "letInDone": "Darf den Link wieder öffnen: {name}",
   "sharesOfAlbum": "Alle Freigaben…",
-  "contactSharesEntry": "Freigaben…"
+  "contactSharesEntry": "Freigaben…",
+  "posterUse": "Als Vorschaubild verwenden",
+  "posterReset": "Vorschaubild zurücksetzen",
+  "posterNotPlaying": "Das Video zeigt noch kein Bild. Starten Sie es und halten Sie es in dem Moment an, den das Vorschaubild zeigen soll."
 }

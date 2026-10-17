@@ -148,7 +148,8 @@ public final class FolderCover {
 			.setTx(picture.getTx())
 			.setTy(picture.getTy())
 			.setOrientation(picture.getOrientation())
-			.setCrop(picture.getCrop());
+			.setCrop(picture.getCrop())
+			.setPoster(picture.getPoster());
 	}
 
 	/**

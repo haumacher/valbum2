@@ -1095,6 +1095,8 @@ public class ResourceCache {
 				|| de.haumacher.imageServer.Crops.isWhole(image.getCrop()) || image.getKind() != de.haumacher.imageServer.shared.model.ImageKind.IMAGE)) {
 				image.setCrop(null);
 			}
+			// Nor a poster that is no moment of a video (issue #285).
+			de.haumacher.imageServer.Posters.sanitize(image);
 		}
 
 		private static Resource loadListing(PathInfo pathInfo, ListingInfo listing) {

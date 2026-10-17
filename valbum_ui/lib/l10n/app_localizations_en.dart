@@ -4289,4 +4289,14 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get contactSharesEntry => 'Shares…';
+
+  @override
+  String get posterUse => 'Use as thumbnail';
+
+  @override
+  String get posterReset => 'Reset thumbnail';
+
+  @override
+  String get posterNotPlaying =>
+      'The video shows no picture yet. Start it and pause it at the moment the thumbnail should show.';
 }

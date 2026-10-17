@@ -172,15 +172,19 @@ public class SharePreview implements ResourceServlet.PageDecorator, ResourceServ
 		try {
 			// A cropped photograph is shown cut on its card as in its tile, see issue #212.
 			double[] region = region(target, shown, image);
+			// A video is shown by the poster its album chose, see issue #285.
+			long poster = Posters.stored(image);
 			ImageServlet data = _data.apply(space.getSegment());
 			if (data != null && data.cache().hasBackground()) {
 				// As the background made it, or not there yet: a request never makes a preview, see
 				// issue #256.
-				preview = PreviewCache.previewTarget(image, region, false);
+				preview = PreviewCache.previewTarget(image, region, false, poster);
 				if (!PreviewCache.present(preview)) {
 					refuse(response, HttpServletResponse.SC_ACCEPTED, ImageServlet.PREVIEW_PENDING);
 					return true;
 				}
+			} else if (poster > 0) {
+				preview = PreviewCache.createPoster(image, poster);
 			} else {
 				preview = PreviewCache.createPreview(image, region);
 			}

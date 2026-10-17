@@ -3237,6 +3237,37 @@ class VAlbumClient {
     }
   }
 
+  /// Stores the moment [millis] the poster of the video [name] of the album
+  /// at [path] shows, at once (issue #285): `?action=poster` with the part
+  /// carrying the name and the moment, `0` taking it away (the first frame
+  /// again).
+  ///
+  /// An action and not the album's `PUT` for the reason [cropImage] gives;
+  /// the `PUT` keeps the stored poster whatever it carries. The answer is the
+  /// album as this caller is answered it, `null` where it cannot be read; a
+  /// refusal arrives as the thrown [VAlbumException] carrying the server's own
+  /// sentence.
+  Future<AlbumInfo?> posterVideo(
+    List<String> path,
+    String name,
+    int millis,
+  ) async {
+    var url = "${folderUrl(path)}?action=poster";
+    var response = await _postBody(
+      url,
+      _jsonOf(ImagePart(
+        name: name,
+        poster: millis > 0 ? VideoPoster(millis: millis) : null,
+      ).writeTo),
+    );
+    try {
+      var resource = Resource.read(JsonReader.fromString(response));
+      return resource is AlbumInfo ? resource : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Moves or resizes the boxes of answered faces of the album at [path]
   /// (issue #157).
   ///

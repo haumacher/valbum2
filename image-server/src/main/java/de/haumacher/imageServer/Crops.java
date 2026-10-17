@@ -226,8 +226,9 @@ public final class Crops {
 	}
 
 	/**
-	 * The given cover with the region of its photograph's crop, see {@link ThumbnailInfo#getCrop()}:
-	 * a copy where the photograph is cropped, the cover itself where it is not.
+	 * The given cover with the region of its photograph's crop, see {@link ThumbnailInfo#getCrop()},
+	 * and the moment of its video's poster, see {@link ThumbnailInfo#getPoster()}: a copy where the
+	 * photograph is cropped or the video has a chosen poster, the cover itself where neither.
 	 *
 	 * @param album
 	 *        The sidecar of the album the photograph lies in.
@@ -244,13 +245,17 @@ public final class Crops {
 		String name = image.substring(image.lastIndexOf('/') + 1);
 		ImagePart part = findImage(album, name);
 		double[] region = part == null ? null : renditionRegion(part);
-		if (region == null) {
+		// The moment of a video's poster rides along the same way, see issue #285.
+		long poster = Posters.millis(part);
+		if (region == null && Posters.millis(cover) == poster) {
 			if (cover.getCrop() == null) {
 				return cover;
 			}
 			return copy(cover).setCrop(null);
 		}
-		return copy(cover).setCrop(Crop.create().setX(region[0]).setY(region[1]).setW(region[2]).setH(region[3]));
+		ThumbnailInfo result = copy(cover).setPoster(Posters.of(poster));
+		return result.setCrop(region == null ? null
+			: Crop.create().setX(region[0]).setY(region[1]).setW(region[2]).setH(region[3]));
 	}
 
 	/** A copy of the given cover. */
@@ -261,7 +266,8 @@ public final class Crops {
 			.setTx(cover.getTx())
 			.setTy(cover.getTy())
 			.setOrientation(cover.getOrientation())
-			.setCrop(cover.getCrop());
+			.setCrop(cover.getCrop())
+			.setPoster(cover.getPoster());
 	}
 
 	/** The part of the given name in the given album, a group member included. */

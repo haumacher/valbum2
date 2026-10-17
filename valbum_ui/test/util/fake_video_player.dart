@@ -38,6 +38,14 @@ class FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   /// How often the video surface took a tap, see [surfaceTakesPointer].
   int surfaceTaps = 0;
 
+  /// How long the video of a created player is (one second unless a test
+  /// says otherwise).
+  Duration videoDuration = const Duration(seconds: 1);
+
+  /// Where every player stands when it is asked (issue #285): the moment a
+  /// paused player shows.
+  Duration position = Duration.zero;
+
   /// The ids of the players disposed, in order.
   final List<int> disposedIds = <int>[];
 
@@ -68,7 +76,7 @@ class FakeVideoPlayerPlatform extends VideoPlayerPlatform {
         VideoEvent(
           eventType: VideoEventType.initialized,
           size: const Size(100, 100),
-          duration: const Duration(seconds: 1),
+          duration: videoDuration,
         ),
       );
     }
@@ -117,7 +125,7 @@ class FakeVideoPlayerPlatform extends VideoPlayerPlatform {
       calls.add("seekTo");
 
   @override
-  Future<Duration> getPosition(int playerId) async => Duration.zero;
+  Future<Duration> getPosition(int playerId) async => position;
 
   @override
   Widget buildViewWithOptions(VideoViewOptions options) {

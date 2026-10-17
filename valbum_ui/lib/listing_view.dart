@@ -666,9 +666,10 @@ class ListingView extends StatelessWidget {
     return indexPictureTile(
       client,
       // A cropped photograph is asked for cut, by the region the server
-      // derived for this cover (issue #212).
-      withRegion("$baseUrl/${folder.name}/${indexPicture.image}",
-          coverRegion(indexPicture)),
+      // derived for this cover (issue #212), a video at the moment of its
+      // chosen poster (issue #285).
+      coverImageUrl(
+          "$baseUrl/${folder.name}/${indexPicture.image}", indexPicture),
       indexPicture,
       width,
       large: large,

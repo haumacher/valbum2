@@ -115,14 +115,42 @@ String cropToken(Rect region) => [
 /// own address with the region of its crop, `?crop=x,y,w,h` — so that two
 /// crops are two cache keys, offline as well as in Flutter's image cache —
 /// and the plain address for a picture shown whole.
+///
+/// A video carries the moment of its chosen poster the same way (issue #285),
+/// `?poster=<millis>`: another moment is another address, so neither
+/// Flutter's image cache nor the offline copy can show the poster chosen
+/// before.
 String croppedImageUrl(String imageUrl, ImagePart image) {
   var region = renditionRegion(image);
-  return withRegion(imageUrl, region);
+  return withPoster(withRegion(imageUrl, region), posterMillisOf(image));
 }
 
 /// [imageUrl] carrying [region], see [croppedImageUrl].
 String withRegion(String imageUrl, Rect? region) =>
     region == null ? imageUrl : "$imageUrl?crop=${cropToken(region)}";
+
+/// The moment the poster of the video [image] shows, in milliseconds from
+/// its start; `0` for the first frame, the poster every video had before
+/// issue #285 (and for every photograph).
+int posterMillisOf(ImagePart image) {
+  var millis = image.poster?.millis ?? 0;
+  return millis > 0 ? millis : 0;
+}
+
+/// [imageUrl] carrying the moment [millis] of a video's poster, see
+/// [croppedImageUrl]; the plain address for the first frame.
+String withPoster(String imageUrl, int millis) => millis <= 0
+    ? imageUrl
+    : "$imageUrl${imageUrl.contains("?") ? "&" : "?"}poster=$millis";
+
+/// The address a listing tile's cover asks for its thumbnail by: the region
+/// of a cropped photograph and the moment of a video's poster, both of which
+/// the server derives for the cover ([ThumbnailInfo.crop],
+/// [ThumbnailInfo.poster]).
+String coverImageUrl(String imageUrl, ThumbnailInfo info) => withPoster(
+  withRegion(imageUrl, coverRegion(info)),
+  info.poster?.millis ?? 0,
+);
 
 /// The region a listing tile's cover asks for (`ThumbnailInfo.crop`, which
 /// the server derives in the frame of the rendition).

@@ -4345,4 +4345,14 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get contactSharesEntry => 'Freigaben…';
+
+  @override
+  String get posterUse => 'Als Vorschaubild verwenden';
+
+  @override
+  String get posterReset => 'Vorschaubild zurücksetzen';
+
+  @override
+  String get posterNotPlaying =>
+      'Das Video zeigt noch kein Bild. Starten Sie es und halten Sie es in dem Moment an, den das Vorschaubild zeigen soll.';
 }

@@ -117,6 +117,43 @@ public class GenerateTestAlbum extends TestCase {
 	 *        The recording time as FFmpeg spells it, e.g. <code>2005-08-24T12:00:00Z</code>;
 	 *        <code>null</code> to write none.
 	 */
+	/**
+	 * Records a tiny H.264 mp4 of one solid colour per second, five frames a second, with a single
+	 * key frame at its start (issue #285): a frame of second <code>n</code> is the <code>n</code>-th
+	 * colour, and a seek that lands on a key frame instead of decoding to the moment shows the first
+	 * colour.
+	 */
+	public static void recordColourClip(File target, Color... perSecond) throws Exception {
+		int width = 160;
+		int height = 120;
+		int rate = 5;
+
+		try (FFmpegFrameRecorder recorder = new FFmpegFrameRecorder(target, width, height, 0)) {
+			recorder.setFormat("mp4");
+			recorder.setVideoCodec(avcodec.AV_CODEC_ID_H264);
+			recorder.setPixelFormat(org.bytedeco.ffmpeg.global.avutil.AV_PIX_FMT_YUV420P);
+			recorder.setFrameRate(rate);
+			recorder.setGopSize(1000);
+			recorder.setVideoQuality(20);
+			recorder.start();
+
+			try (Java2DFrameConverter converter = new Java2DFrameConverter()) {
+				for (Color colour : perSecond) {
+					for (int n = 0; n < rate; n++) {
+						BufferedImage frame = new BufferedImage(width, height, BufferedImage.TYPE_3BYTE_BGR);
+						Graphics2D graphics = (Graphics2D) frame.getGraphics();
+						graphics.setColor(colour);
+						graphics.fillRect(0, 0, width, height);
+						graphics.dispose();
+						recorder.record(converter.convert(frame));
+					}
+				}
+			}
+
+			recorder.stop();
+		}
+	}
+
 	public static void recordTinyVideo(File target, String creationTime) throws Exception {
 		int width = 160;
 		int height = 120;
