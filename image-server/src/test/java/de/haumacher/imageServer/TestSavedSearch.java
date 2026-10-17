@@ -17,6 +17,7 @@ import de.haumacher.imageServer.shared.model.FolderKind;
 import de.haumacher.imageServer.shared.model.Heading;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.LabelName;
+import de.haumacher.imageServer.shared.model.ListingInfo;
 import de.haumacher.imageServer.shared.model.MoveResult;
 import de.haumacher.imageServer.shared.model.Person;
 import de.haumacher.imageServer.shared.model.PlaceInfo;
@@ -250,13 +251,14 @@ public class TestSavedSearch extends ShareTestCase {
 
 	// --- Saved searches. ---
 
-	public void testTheStoredFormIsTheQueryAndNothingElse() throws Exception {
+	public void testTheStoredFormIsTheQueryAndThePicture() throws Exception {
 		createSearch("/Trips/AP", and(person(_anne), person(_philipp)));
 		AlbumInfo stored = stored("Trips/AP");
 		assertEquals(AlbumKind.SEARCH, stored.getKind());
 		assertEquals(PhotoSearch.VERSION, stored.getQuery().getVersion());
 		assertEquals(Collections.emptyList(), stored.getParts());
-		assertNull(stored.getIndexPicture());
+		assertEquals("The first match its creator is shown, see issue #287.", "2021 Lake/old.jpg",
+			stored.getIndexPicture().getImage());
 		assertEquals("No grouping was asked for.", Collections.emptyList(), stored.getQuery().getGroupBy());
 		for (File file : _base.resolve("Trips/AP").toFile().listFiles()) {
 			assertTrue("Nothing but the sidecar: " + file.getName(), file.getName().startsWith("index.json"));
@@ -400,7 +402,7 @@ public class TestSavedSearch extends ShareTestCase {
 		AlbumInfo stored = stored("Trips/AP");
 		assertEquals(Arrays.asList(SearchGroup.YEAR, SearchGroup.COUNTRY), stored.getQuery().getGroupBy());
 		assertEquals(Collections.emptyList(), stored.getParts());
-		assertNull(stored.getIndexPicture());
+		assertEquals("2021 Lake/old.jpg", stored.getIndexPicture().getImage());
 
 		AlbumInfo answer = album(get("/Trips/AP/", "json", SharingFixture.ALICE));
 		assertEquals("Answered to the app, which derives the headings.",
@@ -440,10 +442,188 @@ public class TestSavedSearch extends ShareTestCase {
 		createSearch("/Trips/AP", and(person(_anne), person(_philipp)));
 		FolderInfo forAlice = entry(listing(get("/Trips/", "json", SharingFixture.ALICE)), "AP");
 		assertEquals(FolderKind.SEARCH, forAlice.getKind());
-		assertEquals("The newest match.", "2021 Lake/private_ap.jpg", forAlice.getIndexPicture().getImage());
+		assertEquals("The picture stored at its creation.", "2021 Lake/old.jpg", forAlice.getIndexPicture().getImage());
 		FolderInfo forCarol = entry(listing(get("/Trips/", "json", SharingFixture.CAROL)), "AP");
-		assertEquals("The newest match the caller may see.", "2021 Lake/anne_philipp.jpg",
-			forCarol.getIndexPicture().getImage());
+		assertEquals("2021 Lake/old.jpg", forCarol.getIndexPicture().getImage());
+		assertEquals("The tile's picture is the one opening shows.", "2021 Lake/old.jpg",
+			album(get("/Trips/AP/", "json", SharingFixture.ALICE)).getIndexPicture().getImage());
+	}
+
+	// --- The picture of a saved search, see issue #287. ---
+
+	/** A listing showing saved searches runs none of them, whoever asks. */
+	public void testAListingNeverRunsASavedSearch() throws Exception {
+		createSearch("/Trips/AP", and(person(_anne), person(_philipp)));
+		createSearch("/Trips/Anne", and(person(_anne)));
+		String link = issue("alice", "Trips", "Grandma", "", Privacy.MEMBERS, 1, Rights.VIEW);
+		long before = servlet().searchRuns();
+
+		ListingInfo forAlice = listing(get("/Trips/", "json", SharingFixture.ALICE));
+		ListingInfo forCarol = listing(get("/Trips/", "json", SharingFixture.CAROL));
+		ListingInfo forDave = listing(get("/Trips/", "json", SharingFixture.DAVE));
+		ListingInfo forLink = listing(get("/", "json", link));
+		ListingInfo preview = listing(get("/Trips/", "json", SharingFixture.ALICE, "public"));
+
+		assertEquals("No listing ran a query.", before, servlet().searchRuns());
+		assertEquals("2021 Lake/old.jpg", entry(forAlice, "AP").getIndexPicture().getImage());
+		assertEquals("2021 Lake/old.jpg", entry(forAlice, "Anne").getIndexPicture().getImage());
+		assertEquals("2021 Lake/old.jpg", entry(forCarol, "AP").getIndexPicture().getImage());
+		assertEquals("2021 Lake/old.jpg", entry(forDave, "Anne").getIndexPicture().getImage());
+		assertNull("The rating floor of the link hides the stored picture: the search icon, no other.",
+			entry(forLink, "AP").getIndexPicture());
+		assertNotNull(entry(preview, "AP"));
+
+		album(get("/Trips/AP/", "json", SharingFixture.ALICE));
+		assertTrue("Opening runs it.", servlet().searchRuns() > before);
+	}
+
+	/**
+	 * Probe: a listing one level up — whose folder-of-folders tiles find their cover further down,
+	 * where saved searches lie — runs none either; nor does a search at the root's own tile.
+	 */
+	public void testAListingAboveTheSearchesRunsNone() throws Exception {
+		createSearch("/AP", and(person(_anne), person(_philipp)));
+		createSearch("/Trips/AP", and(person(_anne), person(_philipp)));
+		createSearch("/Family/AP", and(person(_anne), person(_philipp)));
+		long before = servlet().searchRuns();
+		for (String caller : new String[] { SharingFixture.ALICE, SharingFixture.CAROL, SharingFixture.DAVE }) {
+			ListingInfo root = listing(get("/", "json", caller));
+			assertEquals(FolderKind.SEARCH, entry(root, "AP").getKind());
+		}
+		assertEquals("No listing above the searches ran a query.", before, servlet().searchRuns());
+	}
+
+	/** A search that finds nothing at its creation stores no picture, and its tile shows the icon. */
+	public void testASearchFindingNothingStoresNoPicture() throws Exception {
+		createSearch("/Trips/Nobody", and(SearchCamera.create().setCamera("No such camera")));
+		assertNull(stored("Trips/Nobody").getIndexPicture());
+		assertNull(entry(listing(get("/Trips/", "json", SharingFixture.ALICE)), "Nobody").getIndexPicture());
+	}
+
+	/**
+	 * The album picture action works on a saved search: the picture chosen is stored, and the
+	 * listing shows it to whoever may see it and the search icon to everybody else.
+	 */
+	public void testChoosingAnotherPicture() throws Exception {
+		createSearch("/Trips/AP", and(person(_anne), person(_philipp)));
+		AlbumInfo answer = album(get("/Trips/AP/", "json", SharingFixture.ALICE));
+		answer.setIndexPicture(PrivacyFilter.thumbnail(image(answer, "2021 Lake/private_ap.jpg")));
+		assertEquals(HttpServletResponse.SC_OK, put("/Trips/AP/", write(answer), SharingFixture.ALICE).status());
+		assertEquals("2021 Lake/private_ap.jpg", stored("Trips/AP").getIndexPicture().getImage());
+
+		long before = servlet().searchRuns();
+		assertEquals("2021 Lake/private_ap.jpg",
+			entry(listing(get("/Trips/", "json", SharingFixture.ALICE)), "AP").getIndexPicture().getImage());
+		assertNull("A member without the clearance is shown the search icon, never another photograph.",
+			entry(listing(get("/Trips/", "json", SharingFixture.CAROL)), "AP").getIndexPicture());
+		assertNull("Nor does the author's preview of the public view show it.",
+			entry(listing(get("/Trips/", "json", SharingFixture.ALICE, "public")), "AP").getIndexPicture());
+		assertEquals(before, servlet().searchRuns());
+
+		// An editor who may not see the picture is answered another one on opening; written back,
+		// it is no choice of theirs.
+		AlbumInfo forCarol = album(get("/Trips/AP/", "json", SharingFixture.CAROL));
+		assertEquals("2021 Lake/old.jpg", forCarol.getIndexPicture().getImage());
+		assertEquals(HttpServletResponse.SC_OK, put("/Trips/AP/", write(forCarol), SharingFixture.CAROL).status());
+		assertEquals("2021 Lake/private_ap.jpg", stored("Trips/AP").getIndexPicture().getImage());
+		// A deliberate choice of theirs is taken.
+		forCarol.setIndexPicture(PrivacyFilter.thumbnail(image(forCarol, "2021 Lake/anne_philipp.jpg")));
+		assertEquals(HttpServletResponse.SC_OK, put("/Trips/AP/", write(forCarol), SharingFixture.CAROL).status());
+		assertEquals("2021 Lake/anne_philipp.jpg", stored("Trips/AP").getIndexPicture().getImage());
+		assertEquals("2021 Lake/anne_philipp.jpg",
+			entry(listing(get("/Trips/", "json", SharingFixture.CAROL)), "AP").getIndexPicture().getImage());
+	}
+
+	/** A viewer may not choose the picture, and is told why. */
+	public void testAViewerMayNotChooseThePicture() throws Exception {
+		createSearch("/Trips/AP", and(person(_anne), person(_philipp)));
+		AlbumInfo answer = album(get("/Trips/AP/", "json", SharingFixture.DAVE));
+		answer.setIndexPicture(PrivacyFilter.thumbnail(image(answer, "2021 Lake/anne_philipp.jpg")));
+		FakeResponse refused = put("/Trips/AP/", write(answer), SharingFixture.DAVE);
+		assertEquals(HttpServletResponse.SC_FORBIDDEN, refused.status());
+		assertFalse("The refusal says why.", errorMessage(refused).isEmpty());
+		assertEquals("2021 Lake/old.jpg", stored("Trips/AP").getIndexPicture().getImage());
+	}
+
+	/** A new query takes a picture among what it finds now, see issue #287. */
+	public void testANewQueryKeepsOrReplacesThePicture() throws Exception {
+		createSearch("/Trips/AP", and(person(_anne), person(_philipp)));
+		AlbumInfo answer = album(get("/Trips/AP/", "json", SharingFixture.ALICE));
+		answer.setQuery(and(person(_anne)));
+		assertEquals(HttpServletResponse.SC_OK, put("/Trips/AP/", write(answer), SharingFixture.ALICE).status());
+		assertEquals("Still found: kept.", "2021 Lake/old.jpg", stored("Trips/AP").getIndexPicture().getImage());
+
+		answer.setQuery(and(SearchCamera.create().setCamera("Pixel 7")));
+		assertEquals(HttpServletResponse.SC_OK, put("/Trips/AP/", write(answer), SharingFixture.ALICE).status());
+		assertEquals("No longer found: the first new match.", "2021 Lake/anne.jpg",
+			stored("Trips/AP").getIndexPicture().getImage());
+	}
+
+	/**
+	 * A saved search stored before its picture was (the pinned fixture): its tile shows the icon
+	 * without running it, a viewer's opening writes nothing, an editor's opening stores the first
+	 * match, and the next listing shows it.
+	 */
+	public void testAnOldSearchIsGivenItsPictureOnOpening() throws Exception {
+		Files.createDirectories(_base.resolve("Trips/Fixture"));
+		String fixture = new String(Files.readAllBytes(FIXTURE.toPath()), StandardCharsets.UTF_8)
+			.replace("\"anne\"", "\"" + _anne + "\"").replace("\"philipp\"", "\"" + _philipp + "\"");
+		Files.write(_base.resolve("Trips/Fixture/index.json"), fixture.getBytes(StandardCharsets.UTF_8));
+		assertNull("The fixture predates the picture.", stored("Trips/Fixture").getIndexPicture());
+
+		long before = servlet().searchRuns();
+		assertNull(entry(listing(get("/Trips/", "json", SharingFixture.ALICE)), "Fixture").getIndexPicture());
+		assertEquals(before, servlet().searchRuns());
+
+		byte[] old = Files.readAllBytes(_base.resolve("Trips/Fixture/index.json"));
+		assertFalse(album(get("/Trips/Fixture/", "json", SharingFixture.DAVE)).getParts().isEmpty());
+		assertTrue("A viewer's opening writes nothing.",
+			Arrays.equals(old, Files.readAllBytes(_base.resolve("Trips/Fixture/index.json"))));
+
+		album(get("/Trips/Fixture/", "json", SharingFixture.ALICE));
+		AlbumInfo stored = stored("Trips/Fixture");
+		assertEquals("2021 Lake/anne_philipp.jpg", stored.getIndexPicture().getImage());
+		assertEquals("Everything else stays.", "Anne and Philipp", stored.getTitle());
+		assertTrue(stored.isStarred());
+		assertNull(PhotoSearch.refusal(stored.getQuery()));
+
+		before = servlet().searchRuns();
+		assertEquals("2021 Lake/anne_philipp.jpg",
+			entry(listing(get("/Trips/", "json", SharingFixture.ALICE)), "Fixture").getIndexPicture().getImage());
+		assertEquals(before, servlet().searchRuns());
+	}
+
+	/**
+	 * A stored picture whose photograph left the search shows the icon, and an editor's next
+	 * opening stores the first match in its place.
+	 */
+	public void testAPictureLeadingNowhereIsReplacedOnOpening() throws Exception {
+		createSearch("/Trips/AP", and(person(_anne), person(_philipp)));
+		FakeResponse moved = move("/" + LAKE + "/", GARDEN, SharingFixture.ALICE, "old.jpg");
+		assertEquals(moved.body(), HttpServletResponse.SC_OK, moved.status());
+
+		long before = servlet().searchRuns();
+		assertNull("Never an error, never another photograph.",
+			entry(listing(get("/Trips/", "json", SharingFixture.ALICE)), "AP").getIndexPicture());
+		assertEquals(before, servlet().searchRuns());
+
+		album(get("/Trips/AP/", "json", SharingFixture.ALICE));
+		assertEquals("2021 Lake/anne_philipp.jpg", stored("Trips/AP").getIndexPicture().getImage());
+		assertEquals("2021 Lake/anne_philipp.jpg",
+			entry(listing(get("/Trips/", "json", SharingFixture.ALICE)), "AP").getIndexPicture().getImage());
+	}
+
+	/** The picture of a saved search reads, writes and reads again unchanged. */
+	public void testReadWriteReadKeepsThePicture() throws Exception {
+		String source = "[\"AlbumInfo\",{\"kind\":\"SEARCH\",\"title\":\"Anne\",\"indexPicture\":{\"image\":"
+			+ "\"2021 Lake/old.jpg\",\"scale\":1.5,\"tx\":2.0,\"ty\":3.0,\"orientation\":\"IDENTITY\"},"
+			+ "\"query\":{\"version\":1,\"root\":[\"SearchAnd\",{\"criteria\":[[\"SearchPerson\",{\"person\":\"anne\"}]]}]}}]";
+		AlbumInfo read = (AlbumInfo) Resource.readResource(reader(source));
+		assertEquals("2021 Lake/old.jpg", read.getIndexPicture().getImage());
+		String written = write(read);
+		AlbumInfo again = (AlbumInfo) Resource.readResource(reader(written));
+		assertEquals(written, write(again));
+		assertEquals(1.5, again.getIndexPicture().getScale(), 0.0);
 	}
 
 	public void testWhatASavedSearchRefuses() throws Exception {

@@ -279,7 +279,7 @@ in a separate service, and abuse and law (the DSA, GDPR) come first. Open questi
     - a device's own upload target, ending after a week by default (#240);
     - starred albums with 2×2 tiles (#239);
     - "Group by…" for headings by day, town or region, also on a selection (#238);
-    - saved searches: a search over a folder by persons, dates, places, labels, rating, kind, text and camera, saved as a live album kind that stores only its query (#227, the author's reversal of "never stored").
+    - saved searches: a search over a folder by persons, dates, places, labels, rating, kind, text and camera, saved as a live album kind that stores only its query (#227, the author's reversal of "never stored") and the picture its tile shows, so that a listing never runs it (#287).
   - **Also:** face suggestions refresh on Save, an opaque label chip, and CI pinned to Maven 3.9.16 through `./mvnw` after GitHub's runners moved to Maven 4 (faq/maven-4.md).
   - **Follow-ups:** #241–#245.
 - **2026-10-04** — 2.10.1 released (tag `valbum-2.10.1` on b887597), fixes and polish reported

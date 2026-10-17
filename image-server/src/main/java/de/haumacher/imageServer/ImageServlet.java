@@ -807,6 +807,12 @@ public class ImageServlet extends HttpServlet {
 	/** What the search of issue #227 asks of every photograph of the space, see {@link SearchIndex}. */
 	private final SearchIndex _searchIndex;
 
+	/**
+	 * How often a query was run over the space, see {@link #searchRuns()}: what proves that a
+	 * listing never runs a saved search, see issue #287.
+	 */
+	private final java.util.concurrent.atomic.AtomicLong _searchRuns = new java.util.concurrent.atomic.AtomicLong();
+
 	/** Who the photographs of this space are of, see issue #125. */
 	private final PeopleStore _people;
 
@@ -1846,7 +1852,8 @@ public class ImageServlet extends HttpServlet {
 			collection.setIndexPicture(null);
 			contents = sidecarOf(collection);
 		} else if (PhotoSearch.isSearch(resource)) {
-			// A saved search stores its query and nothing else of the photographs, see issue #227.
+			// A saved search stores its query and nothing else of the photographs, see issue #227
+			// -- but the picture its tile shows, chosen below where it is filed, see issue #287.
 			AlbumInfo search = (AlbumInfo) resource;
 			String refusal = PhotoSearch.refusal(search.getQuery());
 			if (refusal != null) {
@@ -1885,6 +1892,21 @@ public class ImageServlet extends HttpServlet {
 			}
 			createdPath = folderPath.child(name);
 			message = PlacementRule.filedIn(relative(parent, placement));
+		}
+
+		if (PhotoSearch.isSearch(resource)) {
+			// The first match its creator is shown, in the order the search answers: what its tile
+			// shows from now on, without a listing ever running it, see issue #287. Asked where the
+			// search is really filed, for that is the folder it looks below; a search that finds
+			// nothing stores none, and an editor's opening stores one once it finds something.
+			AlbumInfo search = (AlbumInfo) resource;
+			// Slim: no faces derived for a picture.
+			List<ImagePart> first = searchMatches(searchScope(createdPath), search.getQuery(),
+				_auth.caller(context.request()), Privacy.PRIVATE, null, true);
+			if (!first.isEmpty()) {
+				search.setIndexPicture(PrivacyFilter.thumbnail(first.get(0)));
+				contents = sidecarOf(search);
+			}
 		}
 
 		File folder = createdPath.toFile();
@@ -6431,7 +6453,9 @@ public class ImageServlet extends HttpServlet {
 	 * description, rating, privacy, time and labels &mdash; is collected into the given list for
 	 * {@link #writeSources(List, Caller)}, for every photograph this caller was answered. A picture
 	 * is kept where it names a match this caller was answered, and the stored one is kept where it
-	 * names one this caller was not shown.
+	 * names one this caller was not shown and they write back nothing or the substitute they were
+	 * answered for it. A changed query keeps the picture while it still finds it and takes the
+	 * first of its new matches otherwise, see issue #287.
 	 * </p>
 	 */
 	private AlbumInfo searchWrite(PathInfo path, AlbumInfo existing, AlbumInfo received, Caller caller,
@@ -6458,17 +6482,43 @@ public class ImageServlet extends HttpServlet {
 		ThumbnailInfo cover = received.getIndexPicture();
 		ThumbnailInfo storedCover = existing.getIndexPicture();
 		if (cover != null && !shown.contains(cover.getImage())) {
+			// A picture is a match this caller was answered.
 			cover = null;
 		}
-		if (cover == null && storedCover != null && !shown.contains(storedCover.getImage())) {
-			// The caller was answered a substitute for a picture they may not see.
+		boolean storedHidden = storedCover != null && !shown.contains(storedCover.getImage());
+		ThumbnailInfo substitute = answered.getIndexPicture();
+		if (storedHidden
+			&& (cover == null || (substitute != null && cover.getImage().equals(substitute.getImage())))) {
+			// The caller was answered a substitute for a picture they may not see: written back, it
+			// is no choice of theirs, see issue #260.
 			cover = storedCover;
 		}
 
-		SearchQuery query = received.getQuery() == null ? existing.getQuery() : received.getQuery();
+		SearchQuery query =
+			PhotoSearch.normalized(received.getQuery() == null ? existing.getQuery() : received.getQuery());
+		if (!sameQuery(query, existing.getQuery())) {
+			// What it looks for changed: the picture is one of what it finds now, the one chosen
+			// where it still is, the first of the new matches this caller is shown otherwise -- the
+			// picture a search is created with, see issue #287. Slim: no faces derived for it.
+			PathInfo scope = searchScope(path);
+			List<ImagePart> found = searchMatches(scope, query, caller, Privacy.PRIVATE, null, true);
+			boolean kept = false;
+			if (cover != null) {
+				for (ImagePart image : found) {
+					kept |= image.getName().equals(cover.getImage());
+				}
+				// One this caller is not shown is kept while the new query still finds it.
+				kept |= cover == storedCover && storedHidden
+					&& PhotoSearch.matching(scope, cover.getImage(), query, this::lookupOrSkip, _people, _searchIndex) != null;
+			}
+			if (!kept) {
+				cover = found.isEmpty() ? null : PrivacyFilter.thumbnail(found.get(0));
+			}
+		}
+
 		AlbumInfo result = AlbumInfo.create()
 			.setKind(de.haumacher.imageServer.shared.model.AlbumKind.SEARCH)
-			.setQuery(PhotoSearch.normalized(query))
+			.setQuery(query)
 			.setTitle(received.getTitle())
 			.setSubTitle(received.getSubTitle())
 			.setStarred(received.isStarred())
@@ -6478,6 +6528,24 @@ public class ImageServlet extends HttpServlet {
 			result.setIndexPicture(Crops.copy(cover));
 		}
 		return result;
+	}
+
+	/** Whether the given queries are written alike, see {@link PhotoSearch#normalized(SearchQuery)}. */
+	private static boolean sameQuery(SearchQuery a, SearchQuery b) {
+		if (a == null || b == null) {
+			return a == b;
+		}
+		return queryJson(a).equals(queryJson(b));
+	}
+
+	private static String queryJson(SearchQuery query) {
+		java.io.StringWriter buffer = new java.io.StringWriter();
+		try (JsonWriter json = new JsonWriter(new WriterAdapter(buffer))) {
+			query.writeTo(json);
+		} catch (IOException ex) {
+			throw new java.io.UncheckedIOException(ex);
+		}
+		return buffer.toString();
 	}
 
 	/**
@@ -8977,6 +9045,7 @@ public class ImageServlet extends HttpServlet {
 	private List<ImagePart> searchMatches(PathInfo scope, SearchQuery query,
 			java.util.function.BiFunction<PathInfo, Set<String>, AlbumInfo> sources, boolean member,
 			SearchIndex.Visibility visibility, Map<String, PhotoSearch.Match> stored, boolean slim) {
+		_searchRuns.incrementAndGet();
 		List<PhotoSearch.Match> found = PhotoSearch.find(scope, query, _searchIndex, _people, visibility);
 		// Each album is asked once, for its matches alone: what its filters and its faces cost is
 		// paid for what is answered, not for the whole album.
@@ -9033,8 +9102,9 @@ public class ImageServlet extends HttpServlet {
 	 * that matches the query, see {@link #searchMatches}.
 	 *
 	 * <p>
-	 * Its picture is the one its author chose while this caller is shown that photograph, the
-	 * newest match otherwise. The cached album is never changed, and nothing is written.
+	 * Its picture is the one stored with it while this caller is shown that photograph, its first
+	 * match otherwise, see {@link #searchCover(ThumbnailInfo, List)}. The cached album is never
+	 * changed, and nothing is written.
 	 * </p>
 	 */
 	AlbumInfo searchAnswer(AlbumInfo search, PathInfo path, Caller caller, int viewAs) {
@@ -9057,24 +9127,90 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	/**
-	 * The picture of a saved search among the given matches: the chosen one where it is among
-	 * them, the newest otherwise, <code>null</code> for no match.
+	 * The picture of a saved search among the given matches: the stored one where it is among
+	 * them, framed as it was stored, the first match otherwise, <code>null</code> for no match.
+	 *
+	 * <p>
+	 * The first match is the one the search shows first, in its answer's order
+	 * ({@link PhotoSearch#ORDER}): what a saved search stores when it is created and what an
+	 * editor's opening stores where it has none yet, see {@link #rememberSearchCover} and issue
+	 * #287.
+	 * </p>
 	 */
 	private static ThumbnailInfo searchCover(ThumbnailInfo chosen, List<ImagePart> parts) {
 		if (chosen != null) {
 			for (ImagePart part : parts) {
 				if (part.getName().equals(chosen.getImage())) {
-					return PrivacyFilter.thumbnail(part);
+					return Crops.copy(chosen);
 				}
 			}
 		}
-		ImagePart newest = null;
-		for (ImagePart part : parts) {
-			if (newest == null || part.getDate() >= newest.getDate()) {
-				newest = part;
-			}
+		return parts.isEmpty() ? null : PrivacyFilter.thumbnail(parts.get(0));
+	}
+
+	/** How often a query was run over this space since the servlet started, for the tests of issue #287. */
+	long searchRuns() {
+		return _searchRuns.get();
+	}
+
+	/**
+	 * Stores the picture of the given saved search where it has none or the stored one leads
+	 * nowhere, on its opening by an editor, see issue #287.
+	 *
+	 * <p>
+	 * A listing never runs a saved search: its tile shows the picture stored in the search's
+	 * sidecar, see {@link #searchTile}. A search stores its first match when it is created, and
+	 * an editor chooses another with the album picture action. A sidecar written before the
+	 * search stored its picture (or one created while it found nothing) has none, and a stored
+	 * one may lead nowhere any more &mdash; its photograph deleted, moved, or no longer found by
+	 * the query, for whoever asks. Opening runs the query anyway; an editor's opening then stores
+	 * the first match they are shown, so that the next listing shows it, and takes a picture that
+	 * leads nowhere away where nothing is found any more.
+	 * </p>
+	 *
+	 * <p>
+	 * Only an editor's opening writes, neither a share link nor the author's preview of the
+	 * public view (<code>viewAs</code>): the picture is the author's statement, and what a viewer
+	 * is shown is narrower. A stored picture that this caller only does not see is never
+	 * replaced: whether it leads anywhere is asked of the photograph itself
+	 * ({@link #photoNamed}), not of what this caller is shown. Nothing is written where nothing
+	 * changes, and a write that fails is logged and never fails the answer.
+	 * </p>
+	 *
+	 * @param search
+	 *        The saved search as the cache holds it; never changed.
+	 * @param found
+	 *        What opening answers this caller, before the filters of a link.
+	 */
+	private void rememberSearchCover(AlbumInfo search, PathInfo path, Caller caller, int viewAs, AlbumInfo found) {
+		if (caller.isShareLink() || viewAs < Privacy.PRIVATE || !_auth.mayEdit(caller, path)) {
+			return;
 		}
-		return newest == null ? null : PrivacyFilter.thumbnail(newest);
+		ThumbnailInfo stored = search.getIndexPicture();
+		if (stored != null && photoNamed(path, search, stored.getImage()) != null) {
+			// Chosen, and it still leads to a photograph the search finds.
+			return;
+		}
+		List<ImagePart> images = PhotoSearch.images(found);
+		ThumbnailInfo cover = images.isEmpty() ? null : PrivacyFilter.thumbnail(images.get(0));
+		if (cover == null && stored == null) {
+			return;
+		}
+		File folder = path.toFile();
+		try {
+			FolderResource sidecar = ResourceCache.readSidecar(folder);
+			if (!PhotoSearch.isSearch(sidecar)) {
+				return;
+			}
+			((AlbumInfo) sidecar).setIndexPicture(cover);
+			storeSidecar(folder, sidecarOf(sidecar));
+		} catch (IOException | RuntimeException ex) {
+			LOG.log(Level.WARNING, "Cannot store the picture of the saved search '" + folder + "'.", ex);
+			return;
+		}
+		_cache.invalidate(path);
+		LOG.info((cover == null ? "Removed the picture leading nowhere" : "Stored '" + cover.getImage() + "' as the picture")
+			+ " of the saved search '" + folder.getAbsolutePath() + "'.");
 	}
 
 	/**
@@ -9442,6 +9578,8 @@ public class ImageServlet extends HttpServlet {
 			// Every match as the caller would be answered it in its own album, then a link's own
 			// filters on top -- its label asked of the photograph's own labels, see issue #227.
 			AlbumInfo found = searchAnswer((AlbumInfo) resource, pathInfo, caller, viewAs);
+			// The picture its tile shows from now on, where it has none yet, see issue #287.
+			rememberSearchCover((AlbumInfo) resource, pathInfo, caller, viewAs, found);
 			Resource answer = _privacy.filter(found, pathInfo, clearance, minRating, label);
 			return withLabels(answer, caller, viewAs);
 		}
@@ -9684,22 +9822,25 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	/**
-	 * The tile of a saved search in a listing, see issue #227: the picture its author chose where
-	 * this caller is shown that photograph, the newest match they are shown otherwise, and no
-	 * picture for a search that finds nothing for them &mdash; asked exactly as opening the saved
-	 * search would ask, a link's limits included.
+	 * The tile of a saved search in a listing, see issues #227 and #287: the picture stored in its
+	 * sidecar where this caller is shown that photograph, the search icon (no picture) otherwise.
+	 *
+	 * <p>
+	 * A listing never runs a saved search. The picture is stored when the search is created (its
+	 * first match), when an editor chooses another, and on an editor's opening where it has none
+	 * yet, see {@link #rememberSearchCover}. Whether this caller is shown it is asked of that one
+	 * photograph exactly as opening the search would ask it: it is found by the query (one
+	 * photograph looked up in the index, see {@link #photoNamed}), it lies in no inbox, and the
+	 * caller is shown it in its own album and through the search, a link's limits included. A
+	 * caller who is not is shown no other photograph instead: the search is shown by the picture
+	 * stored for it and by no other, the rule of issue #110 &mdash; finding a substitute would
+	 * mean running the search.
+	 * </p>
 	 */
 	private FolderInfo searchTile(FolderInfo folder, PathInfo childPath, Caller caller, int viewAs, String label) {
 		Resource stored = childPath.toFile().isDirectory() ? lookupOrSkip(childPath) : null;
-		ThumbnailInfo cover = null;
-		if (PhotoSearch.isSearch(stored) && PhotoSearch.refusal(((AlbumInfo) stored).getQuery()) == null) {
-			int clearance = Math.min(_auth.clearance(caller, childPath), viewAs);
-			Resource answer = _privacy.filter(searchAnswer((AlbumInfo) stored, childPath, caller, viewAs), childPath,
-				clearance, _auth.minRating(caller, childPath, viewAs), label);
-			if (answer instanceof AlbumInfo) {
-				cover = ((AlbumInfo) answer).getIndexPicture();
-			}
-		}
+		ThumbnailInfo cover =
+			PhotoSearch.isSearch(stored) ? storedSearchCover((AlbumInfo) stored, childPath, caller, viewAs, label) : null;
 		FolderInfo result = FolderInfo.create()
 			.setName(folder.getName())
 			.setKind(folder.getKind())
@@ -9712,6 +9853,42 @@ public class ImageServlet extends HttpServlet {
 		if (cover != null) {
 			result.setIndexPicture(cover);
 		}
+		return result;
+	}
+
+	/**
+	 * The picture stored for the given saved search as the given caller is shown it on its tile,
+	 * <code>null</code> where it has none or the caller is not shown that photograph, see
+	 * {@link #searchTile}. Never runs the query.
+	 */
+	private ThumbnailInfo storedSearchCover(AlbumInfo search, PathInfo path, Caller caller, int viewAs,
+			String label) {
+		ThumbnailInfo chosen = search.getIndexPicture();
+		if (chosen == null || chosen.getImage().isEmpty()) {
+			return null;
+		}
+		// Null for a query this build cannot run, too.
+		PathInfo image = photoNamed(path, search, chosen.getImage());
+		if (image == null || Inboxes.isInbox(image.parent().toFile())) {
+			// Deleted, moved, no longer found -- or a photograph of an inbox, never a tile's picture.
+			return null;
+		}
+		AlbumInfo source = sourceAlbum(image.parent(), caller, viewAs, Collections.singleton(image.getName()), false);
+		ImagePart shown = source == null ? null : Crops.findImage(source, image.getName());
+		if (shown == null) {
+			return null;
+		}
+		// The filters of the search itself on top, a link's label asked of the photograph's own.
+		int clearance = Math.min(_auth.clearance(caller, path), viewAs);
+		if (!PrivacyFilter.visible(shown, clearance, _auth.minRating(caller, path, viewAs), label)) {
+			return null;
+		}
+		ThumbnailInfo result = Crops.copy(chosen);
+		// The photograph as it is shown now: its crop (issue #212) and a video's poster (#285).
+		double[] region = Crops.renditionRegion(shown);
+		result.setCrop(region == null ? null
+			: Crop.create().setX(region[0]).setY(region[1]).setW(region[2]).setH(region[3]));
+		result.setPoster(Posters.of(Posters.millis(shown)));
 		return result;
 	}
 

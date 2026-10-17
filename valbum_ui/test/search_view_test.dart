@@ -1,8 +1,9 @@
 /// The search view and saved searches of issue #227: criteria built from what
 /// the folder offers, the results shown by the album grid, the sentence of an
 /// empty result, "Save as view…" creating the album and opening it, "Edit
-/// search" for the editors of a saved search, "Create collection from
-/// these…", and the German strings.
+/// search" for the editors of a saved search, its album picture chosen by an
+/// editor (issue #287), "Create collection from these…", and the German
+/// strings.
 library;
 
 import 'dart:convert';
@@ -82,6 +83,7 @@ class Space {
       case "/valbum/data/Best/":
         return json(fixture("collection-best.json"));
       case "/valbum/data/Anne/":
+      case "/valbum/data/Anne & Co/":
         return json(saved);
       case "/valbum/data/2020 Trip/":
         return json(fixture("album-target.json"));
@@ -288,6 +290,66 @@ void main() {
     expect(album.parts, isEmpty);
     expect((album.query!.root as SearchAnd).criteria, hasLength(2));
     expect(delegate.route, const ListingOrAlbumRoute(["Anne"]));
+  });
+
+  testWidgets(
+      'the album picture is chosen in a saved search as in an album, and '
+      'saved with it (issue #287)', (tester) async {
+    var space = Space();
+    await pumpRoute(tester, space, const ListingOrAlbumRoute(["Anne & Co"]));
+    var tile = find.byKey(const ValueKey("2020 Trip/x.jpg"));
+
+    // The edit mode, by a long press on the tile, which selects it.
+    await withFakeImageHttp(() => tester.longPress(tile));
+    await settle(tester);
+    var action = find.descendant(
+        of: tile, matching: find.byTooltip(l10n.useAsAlbumPicture));
+    expect(action, findsOneWidget,
+        reason: "Offered on a saved search's tile to whoever may edit it.");
+    await tester.tap(action);
+    await settle(tester);
+    await tester.tap(find.byIcon(Icons.save));
+    await settle(tester);
+
+    var put = space.puts.single;
+    expect(put.url.path, "/valbum/data/Anne%20&%20Co/",
+        reason: "The path is percent-encoded.");
+    var album = Resource.fromString(put.body) as AlbumInfo;
+    expect(album.kind, AlbumKind.search);
+    expect(album.indexPicture?.image, "2020 Trip/x.jpg");
+    expect(album.indexPicture?.scale, closeTo(4 / 3, 1e-9));
+  });
+
+  testWidgets('a saved search offers no album picture to a viewer',
+      (tester) async {
+    var space = Space();
+    var client = VAlbumClient(
+      dataUrl: dataUrl,
+      httpClient: MockClient((request) async {
+        space.requests.add(request);
+        if (isThumbnailRequest(request)) {
+          return http.Response.bytes(transparentPixelPng, 200,
+              headers: {"content-type": "image/png"});
+        }
+        if (pathOf(request) == "/valbum/data/Anne/") {
+          return json(saved.replaceFirst('"title":"Anne",',
+              '"title":"Anne","rights":[{"name":"view"}],'));
+        }
+        return space.answer(request);
+      }),
+    );
+    await withFakeImageHttp(() async {
+      await tester.pumpWidget(VAlbumApp(
+          client: client, initialRoute: const ListingOrAlbumRoute(["Anne"])));
+      await tester.pumpAndSettle();
+    });
+    var tile = find.byKey(const ValueKey("2020 Trip/x.jpg"));
+    expect(tile, findsOneWidget);
+    await withFakeImageHttp(() => tester.longPress(tile));
+    await settle(tester);
+
+    expect(find.byTooltip(l10n.useAsAlbumPicture), findsNothing);
+    expect(find.byIcon(Icons.save), findsNothing, reason: "No edit mode.");
   });
 
   testWidgets('"Create collection from these…" collects what was found',

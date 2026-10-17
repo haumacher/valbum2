@@ -4,6 +4,7 @@
 package de.haumacher.imageServer;
 
 import de.haumacher.imageServer.TestImageServletPut.FakeResponse;
+import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.FolderInfo;
 import jakarta.servlet.http.HttpServletResponse;
 import java.lang.reflect.Method;
@@ -125,17 +126,23 @@ public class TestUnreadableSidecarViews extends TestSavedSearch {
 		assertNeverWritten(sidecar);
 	}
 
-	/** The tile of a saved search in a listing: its newest match in a readable album. */
+	/**
+	 * The tile of a saved search in a listing whose stored picture lies in an unreadable album: the
+	 * search icon, never an error (its privacy cannot be read), see issue #287.
+	 */
 	public void testTheTileOfASavedSearchSkipsTheUnreadableAlbum() throws Exception {
 		createSearch("/AP", and(person(_anne), person(_philipp)));
-		assertEquals("The garden's is the newest before.", "Family/2024 Garden/both.jpg",
+		AlbumInfo answer = album(get("/AP/", "json", SharingFixture.ALICE));
+		answer.setIndexPicture(PrivacyFilter.thumbnail(image(answer, "Family/2024 Garden/both.jpg")));
+		assertEquals(HttpServletResponse.SC_OK, put("/AP/", write(answer), SharingFixture.ALICE).status());
+		assertEquals("The garden's before.", "Family/2024 Garden/both.jpg",
 			entry(listing(get("/", "json", SharingFixture.ALICE)), "AP").getIndexPicture().getImage());
 		Path sidecar = breakGarden();
 
 		FakeResponse root = get("/", "json", SharingFixture.ALICE);
 		assertEquals(root.body(), HttpServletResponse.SC_OK, root.status());
 		FolderInfo tile = entry(listing(root), "AP");
-		assertEquals("Trips/2021 Lake/private_ap.jpg", tile.getIndexPicture().getImage());
+		assertNull(tile.getIndexPicture());
 		assertNeverWritten(sidecar);
 	}
 
