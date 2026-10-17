@@ -193,7 +193,8 @@ public class FaceIndex {
 
 	private final Path _root;
 
-	private final boolean _enabled;
+	/** What the space says, see {@link #setEnabled(boolean)}. */
+	private volatile boolean _enabled;
 
 	/** The albums whose indexing is queued or running, by absolute path. */
 	private final ConcurrentHashMap<String, Boolean> _queued = new ConcurrentHashMap<>();
@@ -292,6 +293,20 @@ public class FaceIndex {
 	}
 
 	/**
+	 * Follows the administrator's switch of the space's faces, see issue #297.
+	 *
+	 * <p>
+	 * Off, nothing is looked at, queued or offered from now on, and nothing stored is touched: the
+	 * faces found and the names given stay where they are, and are there again when the switch is
+	 * turned back on. The background steps are the business of the caller, see
+	 * {@link de.haumacher.imageServer.CatchUp#switchFaces}.
+	 * </p>
+	 */
+	public void setEnabled(boolean enabled) {
+		_enabled = enabled;
+	}
+
+	/**
 	 * Why this space asked for faces and gets none, <code>null</code> when there is no such reason.
 	 */
 	public String unavailability() {
@@ -320,6 +335,13 @@ public class FaceIndex {
 	 * where {@link #queue(File)} is the fallback for an album opened before the step reached it.
 	 */
 	public de.haumacher.imageServer.pipeline.FolderPipeline.Step step() {
+		return _step;
+	}
+
+	/** See {@link #step()}: one instance, so that it can be taken out of the pipeline again. */
+	private final de.haumacher.imageServer.pipeline.FolderPipeline.Step _step = newStep();
+
+	private de.haumacher.imageServer.pipeline.FolderPipeline.Step newStep() {
 		return new de.haumacher.imageServer.pipeline.FolderPipeline.Step() {
 			@Override
 			public String name() {
@@ -329,7 +351,9 @@ public class FaceIndex {
 			@Override
 			public de.haumacher.imageServer.pipeline.FolderPipeline.Outcome run(File folder) {
 				if (!isEnabled()) {
-					return de.haumacher.imageServer.pipeline.FolderPipeline.Outcome.DONE;
+					// Switched off while the step was installed (issue #297): not done, so that the
+					// folder is looked at when the switch is turned on again.
+					return de.haumacher.imageServer.pipeline.FolderPipeline.Outcome.WAITING;
 				}
 				switch (indexFolder(folder, true)) {
 					case UNWRITABLE:
@@ -1871,6 +1895,13 @@ public class FaceIndex {
 	 * </p>
 	 */
 	public de.haumacher.imageServer.pipeline.FolderPipeline.Step cropStep() {
+		return _cropStep;
+	}
+
+	/** See {@link #cropStep()}: one instance, so that it can be taken out of the pipeline again. */
+	private final de.haumacher.imageServer.pipeline.FolderPipeline.Step _cropStep = newCropStep();
+
+	private de.haumacher.imageServer.pipeline.FolderPipeline.Step newCropStep() {
 		return new de.haumacher.imageServer.pipeline.FolderPipeline.Step() {
 			@Override
 			public String name() {
@@ -1885,7 +1916,7 @@ public class FaceIndex {
 			@Override
 			public de.haumacher.imageServer.pipeline.FolderPipeline.Outcome run(File folder) {
 				if (!isEnabled()) {
-					return de.haumacher.imageServer.pipeline.FolderPipeline.Outcome.DONE;
+					return de.haumacher.imageServer.pipeline.FolderPipeline.Outcome.WAITING;
 				}
 				try {
 					return cutAll(folder);

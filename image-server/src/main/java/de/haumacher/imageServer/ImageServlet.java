@@ -169,6 +169,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
@@ -758,25 +759,43 @@ public class ImageServlet extends HttpServlet {
 	 * The map template of the space this servlet serves, see issue #112.
 	 *
 	 * <p>
-	 * A property of the space, read from its <code>space.json</code> once at start-up and answered
-	 * by <code>?type=auth</code>, so that the app has it with the one request it makes anyway.
-	 * Never empty: {@link SpaceStore#DEFAULT_MAP_URL} where the file names none.
+	 * A property of the space, read from its <code>space.json</code> at start-up and whenever its
+	 * administrator saves the settings (issue #297), and answered by <code>?type=auth</code>, so
+	 * that the app has it with the one request it makes anyway. Never empty:
+	 * {@link SpaceStore#DEFAULT_MAP_URL} where the file names none.
 	 * </p>
 	 */
-	private final String _mapUrl;
+	private volatile String _mapUrl;
 
 	/**
 	 * The path of the space's inbox relative to its root, see issue #226: what its
 	 * <code>space.json</code> names, else {@link SpaceStore#DEFAULT_INBOX}.
 	 */
-	private final String _inbox;
+	private volatile String _inbox;
 
 	/**
 	 * The name of the space this servlet serves as the code mail of issue #199 says it: its
 	 * <code>space.json</code> name, the folder name in a multi-space server, empty where neither
 	 * says one (the mail then names the program).
 	 */
-	private final String _spaceName;
+	private volatile String _spaceName;
+
+	/**
+	 * What the space says about itself, see {@link SpaceStore}: as it was read at start-up, and as
+	 * its administrator saved it since, see {@link #reconfigure(SpaceStore.Config)}.
+	 */
+	private volatile SpaceStore.Config _config;
+
+	/** Who else hears of a saved configuration, see {@link #onReconfigured(Consumer)}. */
+	private volatile Consumer<SpaceStore.Config> _onReconfigured = config -> {
+		// Nobody.
+	};
+
+	/** What a photograph's faces are taken over from at analysis, see issue #129. */
+	private final FaceImport _faceImport;
+
+	/** The settings of the space made in the app, see issue #297. */
+	private final SpaceConfiguration _settings;
 
 	/**
 	 * The proof of an e-mail address by a mailed code, see issue #199: one instance for the whole
@@ -999,6 +1018,7 @@ public class ImageServlet extends HttpServlet {
 	public ImageServlet(File basePath, AuthService auth, String space, SpaceStore.Config config)
 			throws IOException {
 		_space = space == null ? "" : space;
+		_config = config == null ? new SpaceStore.Config(_space, SpaceStore.ANONYMOUS_NONE) : config;
 		_mapUrl = config == null ? SpaceStore.DEFAULT_MAP_URL : config.getMapUrl();
 		_spaceName = config == null ? "" : config.getName();
 		_basePath = basePath.toPath();
@@ -1010,8 +1030,8 @@ public class ImageServlet extends HttpServlet {
 		// The register has to exist before the cache does: a photograph that is analysed for the
 		// first time may name people, see FaceImport and issue #129. The zone is the space's: a
 		// photograph that does not say its own is dated in it, see issue #183.
-		_cache = new ResourceCache(new FaceImport(_people, facesEnabled)::read,
-			config == null ? null : config.getZone());
+		_faceImport = new FaceImport(_people, facesEnabled);
+		_cache = new ResourceCache(_faceImport::read, config == null ? null : config.getZone());
 		_privacy = new PrivacyFilter(_cache);
 		_auth = auth;
 		_spaceIndex = SpaceIndex.open(_basePath);
@@ -1030,11 +1050,78 @@ public class ImageServlet extends HttpServlet {
 			return places == null ? -1 : places.epoch();
 		}, _cache::hasBackground);
 		_index.pipeline().addStep(_searchIndex);
+		_settings = new SpaceConfiguration(this, _auth, _basePath, _space);
 		String noFaces = _faces.unavailability();
 		if (noFaces != null) {
 			LOG.warning("The space '" + (_space.isEmpty() ? basePath.getName() : _space)
 				+ "' asked for face detection, which this machine cannot do: " + noFaces);
 		}
+	}
+
+	/** What the space says about itself now, see {@link #reconfigure(SpaceStore.Config)}. */
+	SpaceStore.Config config() {
+		return _config;
+	}
+
+	/**
+	 * Lets the given listener hear of every configuration the administrator saves from now on, see
+	 * {@link #reconfigure(SpaceStore.Config)}: the {@link de.haumacher.imageServer.auth.Spaces.Space}
+	 * this servlet serves, so that whoever asks it reads the same.
+	 */
+	public void onReconfigured(Consumer<SpaceStore.Config> listener) {
+		_onReconfigured = listener;
+	}
+
+	/**
+	 * Takes the given configuration of the space into effect, at once and without a restart, see
+	 * issue #297: what its administrator just saved.
+	 *
+	 * <p>
+	 * The name and the map are answered from the next request on; the anonymous access decides the
+	 * next request (where the space decides it at all, see {@link AuthService#anonymousFixed()});
+	 * the zone dates what is read from now on; the inbox moves (it holds nothing, see
+	 * {@link SpaceConfiguration#inboxFixed()}). Faces switched on join the background work, which
+	 * then looks at every album of the space; switched off, nothing is looked at or offered any
+	 * more, and nothing found or named before is touched.
+	 * </p>
+	 */
+	void reconfigure(SpaceStore.Config config) {
+		SpaceStore.Config before = _config;
+		_config = config;
+		_mapUrl = config.getMapUrl();
+		_spaceName = config.getName();
+		_cache.setZone(SpaceStore.zoneOf(config.getTimeZone()));
+		if (!config.getInbox().equals(_inbox)) {
+			PathInfo old = inboxPath();
+			_inbox = config.getInbox();
+			Inboxes.move(_basePath, _inbox);
+			PathInfo moved = inboxPath();
+			// What the two folders are, and the listings that show them or not, is the place's word.
+			for (PathInfo path : new PathInfo[] { old, moved }) {
+				_cache.invalidate(path);
+				if (!path.isRoot()) {
+					_cache.invalidate(path.parent());
+				}
+			}
+		}
+		_faceImport.setEnabled(config.isFacesEnabled());
+		if (before.isFacesEnabled() != config.isFacesEnabled()) {
+			synchronized (this) {
+				CatchUp.switchFaces(_index.pipeline(), _basePath, _faces, config.isFacesEnabled(), _catchUpInstalled);
+			}
+			String noFaces = _faces.unavailability();
+			if (noFaces != null) {
+				LOG.warning("The space '" + (_space.isEmpty() ? _basePath.getFileName() : _space)
+					+ "' asked for face detection, which this machine cannot do: " + noFaces);
+			}
+		}
+		_auth.setAnonymousAllowed(config.isAnonymousAllowed());
+		_onReconfigured.accept(config);
+	}
+
+	/** The folder of the inbox of this space, whether it exists or not, see issue #226. */
+	File inboxFolder() {
+		return inboxPath().toFile();
 	}
 
 	/**
@@ -1340,6 +1427,10 @@ public class ImageServlet extends HttpServlet {
 		}
 		if ("devices".equals(type)) {
 			serveDevices(context, caller);
+			return;
+		}
+		if (SpaceConfiguration.TYPE.equals(type)) {
+			_settings.serve(context, caller);
 			return;
 		}
 		if ("people".equals(type)) {
@@ -5982,6 +6073,10 @@ public class ImageServlet extends HttpServlet {
 		}
 		if ("set-permission".equals(action)) {
 			setPermission(context);
+			return;
+		}
+		if (SpaceConfiguration.TYPE.equals(action)) {
+			_settings.save(context, postCaller);
 			return;
 		}
 		if ("remove-user".equals(action)) {

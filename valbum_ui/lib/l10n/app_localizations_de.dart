@@ -4373,4 +4373,78 @@ class AppLocalizationsDe extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get spaceSettingsHeading => 'Bereichseinstellungen';
+
+  @override
+  String get spaceSettingsLead =>
+      'Der Name dieses Bereichs, ob Besucher seine öffentlichen Fotos sehen, Gesichter, die Karte und die Zeitzone.';
+
+  @override
+  String get spaceSettingsOpen => 'Bereichseinstellungen…';
+
+  @override
+  String get spaceSettingsTitle => 'Bereichseinstellungen';
+
+  @override
+  String get spaceSettingsAsking => 'Abfrage beim Server…';
+
+  @override
+  String spaceSettingsUnavailable(String reason) {
+    return 'Die Einstellungen können nicht gelesen werden: $reason';
+  }
+
+  @override
+  String get spaceSettingsName => 'Name';
+
+  @override
+  String get spaceSettingsNameHelp =>
+      'So wird dieser Bereich bezeichnet, beispielsweise in Anmelde-E-Mails und Authentifizierungs-Apps.';
+
+  @override
+  String get spaceSettingsAnonymous => 'Besucher sehen die öffentlichen Fotos';
+
+  @override
+  String get spaceSettingsAnonymousHelp =>
+      'Ein: Jeder, der die Adresse dieses Bereichs öffnet, sieht die als „Öffentlich“ gekennzeichneten Fotos, ohne sich anzumelden, und kann nichts ändern. Aus: Niemand sieht etwas, ohne sich anzumelden.';
+
+  @override
+  String get spaceSettingsFaces => 'Gesichter finden';
+
+  @override
+  String get spaceSettingsFacesHelp =>
+      'Der Server sucht in jedem Foto nach Gesichtern, damit Sie die abgebildeten Personen benennen können. Nach dem Einschalten arbeitet er im Hintergrund alle Fotos durch, und die Gesichter belegen etwas Speicherplatz. Beim Ausschalten bleibt erhalten, was gefunden wurde.';
+
+  @override
+  String get spaceSettingsMap => 'Kartenadresse';
+
+  @override
+  String spaceSettingsMapHelp(String defaultMap, String lon, String lat) {
+    return 'Die Webadresse, unter der die Position eines Fotos geöffnet wird, wobei $lat und $lon anstelle der Position stehen. Leer: $defaultMap';
+  }
+
+  @override
+  String get spaceSettingsTimeZone => 'Zeitzone';
+
+  @override
+  String spaceSettingsTimeZoneHelp(String zone) {
+    return 'Wo Fotos aufgenommen wurden, die keine Zeitzone angeben, z. B. Europe/Berlin. Leer: die Zeitzone des Servers, $zone. Bereits eingelesene Fotos behalten ihr Datum.';
+  }
+
+  @override
+  String get spaceSettingsInbox => 'Ordner des Posteingangs';
+
+  @override
+  String get spaceSettingsInboxHelp =>
+      'Neue Fotos von Handys und Uploads werden hier gespeichert, bis sie in Alben sortiert werden. Der Ordner kann umbenannt werden, solange er leer ist.';
+
+  @override
+  String get spaceSettingsSaved =>
+      'Gespeichert. Die Einstellungen werden sofort übernommen.';
+
+  @override
+  String spaceSettingsRefused(String reason) {
+    return 'Nicht gespeichert: $reason';
+  }
 }

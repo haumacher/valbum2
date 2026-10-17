@@ -98,8 +98,11 @@ public class SpaceServlet extends HttpServlet {
 		_spaces = spaces;
 		_app = app;
 		for (Spaces.Space space : spaces.getSpaces()) {
-			_data.put(space.getSegment(), new ImageServlet(space.getRoot().toFile(), space.getAuth(),
-				space.getSegment(), space.getConfig()));
+			ImageServlet data = new ImageServlet(space.getRoot().toFile(), space.getAuth(), space.getSegment(),
+				space.getConfig());
+			// What the administrator saves in the app is what the space says from then on (#297).
+			data.onReconfigured(space::reconfigure);
+			_data.put(space.getSegment(), data);
 		}
 	}
 

@@ -130,6 +130,7 @@ const List<String> convertedFiles = [
   "lib/shared_overview.dart",
   "lib/sign_in_form.dart",
   "lib/sign_in_options.dart",
+  "lib/space_settings_view.dart",
   "lib/thumbnails.dart",
   "lib/trash_view.dart",
   "lib/upload_progress.dart",

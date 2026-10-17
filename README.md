@@ -320,10 +320,13 @@ one space into another.
   [`valbum-admin create-space`](#administration), reached at `<context>/<space>/`. In that mode the
   albums directly in the library folder are not served; move them into a space first with
   `valbum-admin move-into-space`.
-- A space's settings live in `<space>/.valbum/space.json`: `name`, `anonymous` (`public` lets
-  visitors see the public photos, `none` shows them nothing), `faces` (`on`/`off`) and `mapUrl` (the
-  map a photo's position opens, `{lat}`/`{lon}` in it).
-- `timeZone` in `space.json` (e.g. `Europe/Berlin`) is where a photo that states no time zone and no GPS time was taken; without it the server's zone.
+- **Space settings** (administrator): *Settings → Space settings…* — the name, whether visitors see
+  the public photos, faces, the map a photo's position opens, the time zone of photos that state
+  none, and the inbox folder (renamable while it is empty). A change applies at once.
+- For operators: the settings are stored in `<space>/.valbum/space.json` (`name`,
+  `anonymous` `public`/`none`, `faces` `on`/`off`, `mapUrl` with `{lat}`/`{lon}`, `timeZone`,
+  `inbox`); edited by hand, they apply at the next start. On a server of one library, and with
+  `--auth all` or `--auth off`, the server decides who sees anything without signing in.
 - **Users** belong to one space. Everybody but its first administrator **joins by invitation**:
   *Invite…* in *Users*, choose what they may do, send the link. Whoever opens it picks their name
   and signs in. Until then the seat shows as pending and can be withdrawn.
@@ -378,8 +381,10 @@ and whether it may add photos. The link is shown once — treat it like a passwo
 
 ### Faces
 
-Off unless the space's `space.json` says `"faces": "on"` (`valbum-admin create-space … --faces on`
-for a new space). Processing your family's faces is your decision, not a default.
+Off until an administrator switches *Find faces* on in *Space settings* (or `valbum-admin
+create-space … --faces on` for a new space). Processing your family's faces is your decision, not a
+default. Switched on, the server works through all photos in the background; switched off, nothing
+found is deleted.
 
 - The server looks at each photo once, in the background, and groups the faces per album.
 - *Persons in this album* in the album menu names the groups; *Edit persons* in the viewer names a

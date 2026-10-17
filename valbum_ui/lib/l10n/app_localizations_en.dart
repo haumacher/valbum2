@@ -4317,4 +4317,77 @@ class AppLocalizationsEn extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get spaceSettingsHeading => 'Space settings';
+
+  @override
+  String get spaceSettingsLead =>
+      'The name of this space, whether visitors see its public photos, faces, the map and the time zone.';
+
+  @override
+  String get spaceSettingsOpen => 'Space settings…';
+
+  @override
+  String get spaceSettingsTitle => 'Space settings';
+
+  @override
+  String get spaceSettingsAsking => 'Asking the server…';
+
+  @override
+  String spaceSettingsUnavailable(String reason) {
+    return 'The settings cannot be read: $reason';
+  }
+
+  @override
+  String get spaceSettingsName => 'Name';
+
+  @override
+  String get spaceSettingsNameHelp =>
+      'How this space is called, for example in sign-in e-mails and authenticator apps.';
+
+  @override
+  String get spaceSettingsAnonymous => 'Visitors see the public photos';
+
+  @override
+  String get spaceSettingsAnonymousHelp =>
+      'On: anybody who opens the address of this space sees the photos marked Public, without signing in, and changes nothing. Off: nobody sees anything without signing in.';
+
+  @override
+  String get spaceSettingsFaces => 'Find faces';
+
+  @override
+  String get spaceSettingsFacesHelp =>
+      'The server looks for faces in every photo, so that you can name the people in them. After switching on, it works through all photos in the background, and the faces take some disk space. Switching off keeps what was found.';
+
+  @override
+  String get spaceSettingsMap => 'Map address';
+
+  @override
+  String spaceSettingsMapHelp(String defaultMap, String lon, String lat) {
+    return 'The web address a photo\'s position opens, with $lat and $lon where the position goes. Empty: $defaultMap';
+  }
+
+  @override
+  String get spaceSettingsTimeZone => 'Time zone';
+
+  @override
+  String spaceSettingsTimeZoneHelp(String zone) {
+    return 'Where photos were taken that state no time zone, for example Europe/Berlin. Empty: the server\'s time zone, $zone. Photos already read keep their dates.';
+  }
+
+  @override
+  String get spaceSettingsInbox => 'Inbox folder';
+
+  @override
+  String get spaceSettingsInboxHelp =>
+      'New photos from phones and uploads wait here until they are sorted into albums. It can be renamed while it is empty.';
+
+  @override
+  String get spaceSettingsSaved => 'Saved. The settings apply at once.';
+
+  @override
+  String spaceSettingsRefused(String reason) {
+    return 'Not saved: $reason';
+  }
 }

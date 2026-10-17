@@ -81,7 +81,7 @@ public class FaceImport {
 
 	private final PeopleStore _people;
 
-	private final boolean _enabled;
+	private volatile boolean _enabled;
 
 	/**
 	 * Creates a {@link FaceImport}.
@@ -102,6 +102,14 @@ public class FaceImport {
 	/** Whether anything is imported at all, see {@link #FaceImport(PeopleStore, boolean)}. */
 	public boolean isEnabled() {
 		return _enabled;
+	}
+
+	/**
+	 * Switches the import on or off for the photographs analysed from now on, see issue #297: the
+	 * administrator switched the faces of the space.
+	 */
+	public void setEnabled(boolean enabled) {
+		_enabled = enabled && _people != null;
 	}
 
 	/**

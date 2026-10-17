@@ -58,7 +58,7 @@ public class Spaces {
 
 		private final Path _root;
 
-		private SpaceStore.Config _config;
+		private volatile SpaceStore.Config _config;
 
 		private final AuthService _auth;
 
@@ -94,6 +94,14 @@ public class Spaces {
 		 */
 		public void settleInbox(String inbox) {
 			_config = _config.withInbox(inbox);
+		}
+
+		/**
+		 * Takes over what the administrator of this space saved in the app, see issue #297: the
+		 * configuration everything asking this space from now on reads.
+		 */
+		public void reconfigure(SpaceStore.Config config) {
+			_config = config;
 		}
 
 		/** The users, devices and permissions of this space, and nobody else's. */
@@ -226,8 +234,13 @@ public class Spaces {
 				// The space says whether it is open to anonymous callers; the server-wide mode only
 				// ever closes further (and --auth off stays off, which is what development wants).
 				AuthMode spaceMode = authModeOf(authMode, config);
-				spaces.put(segment, new Space(segment, root, config,
-					new AuthService(spaceMode, root, inviteMode)));
+				AuthService auth = new AuthService(spaceMode, root, inviteMode);
+				if (authMode == AuthMode.WRITES) {
+					// The one case in which space.json decides, and goes on deciding when the
+					// administrator changes it, see issue #297.
+					auth.letSpaceDecideAnonymous();
+				}
+				spaces.put(segment, new Space(segment, root, config, auth));
 			}
 			String aliased;
 			try {

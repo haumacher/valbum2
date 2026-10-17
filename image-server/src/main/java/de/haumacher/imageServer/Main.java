@@ -647,6 +647,8 @@ public class Main {
 		if (spaces.getMode() == SpaceMode.SINGLE) {
 			ImageServlet data = new ImageServlet(basePath, spaces.single().getAuth(), "",
 				spaces.single().getConfig());
+			// What the administrator saves in the app is what the space says from then on (#297).
+			data.onReconfigured(spaces.single()::reconfigure);
 			// Before anything is read, see issue #245.
 			data.setCacheMemory(environment.cacheBudget());
 			data.setIndexMemory(environment.indexBudget());

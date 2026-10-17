@@ -1142,7 +1142,18 @@ public class AuthService {
 		}
 	}
 
-	private final AuthMode _mode;
+	/**
+	 * What requires a paired device; switched between {@link AuthMode#WRITES} and
+	 * {@link AuthMode#ALL} by {@link #setAnonymousAllowed(boolean)} where the space decides, see
+	 * issue #297, and fixed otherwise.
+	 */
+	private volatile AuthMode _mode;
+
+	/**
+	 * Why the space's anonymous access decides nothing here, <code>null</code> where it does, see
+	 * {@link #anonymousFixed()}.
+	 */
+	private volatile String _anonymousFixed;
 
 	private final Path _basePath;
 
@@ -1186,6 +1197,7 @@ public class AuthService {
 	 */
 	public AuthService(AuthMode mode, Path basePath, InviteMode inviteMode) {
 		_mode = mode;
+		_anonymousFixed = fixedBy(mode);
 		_basePath = basePath;
 		_inviteMode = inviteMode;
 		_users = mode == AuthMode.OFF ? null : new UserStore(basePath);
@@ -1373,6 +1385,62 @@ public class AuthService {
 	/** What requires a paired device. */
 	public AuthMode getMode() {
 		return _mode;
+	}
+
+	/** Why a server started in the given mode decides itself who sees a space without signing in. */
+	private static String fixedBy(AuthMode mode) {
+		switch (mode) {
+			case OFF:
+				return ANONYMOUS_FIXED_OFF;
+			case ALL:
+				return ANONYMOUS_FIXED_ALL;
+			case WRITES:
+			default:
+				return ANONYMOUS_FIXED_SINGLE;
+		}
+	}
+
+	/** Why the anonymous access of a space decides nothing on a server started with --auth off. */
+	public static final String ANONYMOUS_FIXED_OFF = "This server is started without sign-in (--auth off): "
+		+ "everybody sees everything, whatever a space says.";
+
+	/** Why the anonymous access of a space decides nothing on a server started with --auth all. */
+	public static final String ANONYMOUS_FIXED_ALL = "This server is started with --auth all: nobody sees "
+		+ "anything without signing in, whatever a space says.";
+
+	/** Why the anonymous access of a space decides nothing on a server of one library. */
+	public static final String ANONYMOUS_FIXED_SINGLE = "This server serves one library: whether visitors see "
+		+ "its public photos is decided when the server starts (--auth writes or --auth all).";
+
+	/**
+	 * Lets the space this service belongs to decide whether an anonymous caller sees its public
+	 * photos, see {@link #setAnonymousAllowed(boolean)} and issue #297: what
+	 * {@link Spaces#detect} says of a space of a multi-space server started with
+	 * {@link AuthMode#WRITES}, the one case in which <code>space.json</code> decides.
+	 */
+	void letSpaceDecideAnonymous() {
+		_anonymousFixed = null;
+	}
+
+	/**
+	 * Why the anonymous access of this space decides nothing, <code>null</code> where it does: the
+	 * server decided at its start, see {@link Spaces#authModeOf}.
+	 */
+	public String anonymousFixed() {
+		return _anonymousFixed;
+	}
+
+	/**
+	 * Opens this space to anonymous callers, or closes it, from the next request on, see issue
+	 * #297: {@link AuthMode#WRITES} or {@link AuthMode#ALL}, exactly what a start with the same
+	 * <code>space.json</code> would have made of it. Nothing happens where the server decides,
+	 * see {@link #anonymousFixed()}.
+	 */
+	public void setAnonymousAllowed(boolean allowed) {
+		if (_anonymousFixed != null) {
+			return;
+		}
+		_mode = allowed ? AuthMode.WRITES : AuthMode.ALL;
 	}
 
 	/** The users of this server, <code>null</code> while {@link AuthMode#OFF}. */

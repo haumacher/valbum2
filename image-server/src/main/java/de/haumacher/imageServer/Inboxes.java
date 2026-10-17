@@ -139,6 +139,29 @@ public final class Inboxes {
 		registration._count++;
 	}
 
+	/**
+	 * Moves the inbox of the given space to the given folder, see issue #297: the administrator
+	 * named another inbox while the old one held nothing. Every servlet of the space that
+	 * registered keeps its registration; a space nobody registered is registered once.
+	 */
+	public static synchronized void move(Path spaceRoot, String inbox) {
+		Path root = normal(spaceRoot);
+		Path folder = normal(root.resolve(inbox.replace('/', File.separatorChar)));
+		Registration registration = BY_ROOT.get(root);
+		if (registration == null) {
+			register(spaceRoot, inbox);
+			return;
+		}
+		if (registration._inbox.equals(folder)) {
+			return;
+		}
+		Registration moved = new Registration(folder);
+		moved._count = registration._count;
+		ROOT_BY_INBOX.remove(registration._inbox);
+		BY_ROOT.put(root, moved);
+		ROOT_BY_INBOX.put(folder, root);
+	}
+
 	/** Forgets what {@link #register(Path, String)} said, once every servlet of the space is gone. */
 	public static synchronized void unregister(Path spaceRoot) {
 		Path root = normal(spaceRoot);

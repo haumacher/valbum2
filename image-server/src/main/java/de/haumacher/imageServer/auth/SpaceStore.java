@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.Reader;
+import java.io.StringWriter;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -18,6 +19,9 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.DateTimeException;
 import java.time.ZoneId;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.logging.Logger;
 
 /**
@@ -28,7 +32,15 @@ import java.util.logging.Logger;
  * file is written by whoever administers the machine — by hand, or with the command
  * <code>--create-space</code> of issue #175, see {@link #create(Path, String, String, String)} — and
  * never by a request, so that no request can bring a space into existence. The one thing a starting
- * server writes into it is the inbox it settled on, once, see {@link #storeInbox(Path, String)}.
+ * server writes into it is the inbox it settled on, once, see {@link #storeInbox(Path, String)};
+ * the one request that writes it is the administrator's save of the settings of a space that is
+ * there already, see {@link #storeSettings(Path, String, String, String, String, String, String,
+ * String)} and issue #297.
+ * </p>
+ *
+ * <p>
+ * Every rewrite keeps the keys this build does not know as they are written, so that a file a
+ * later build extended survives a save of this one.
  * </p>
  *
  * <p>
@@ -357,6 +369,13 @@ public class SpaceStore {
 		String timeZone = "";
 
 		String inbox = "";
+
+		/**
+		 * The keys this build does not know, with their values as JSON, in the order they are
+		 * written: kept on every rewrite, so that a file a later build wrote (a <code>content</code>
+		 * switch, say) survives a save of this one, see issue #297.
+		 */
+		final Map<String, String> unknown = new LinkedHashMap<>();
 	}
 
 	/**
@@ -391,8 +410,12 @@ public class SpaceStore {
 					case INBOX__PROP:
 						result.inbox = in.nextString();
 						break;
-					default:
+					case VERSION__PROP:
+						// Written anew with every write.
 						in.skipValue();
+						break;
+					default:
+						result.unknown.put(key, rawValue(in));
 						break;
 				}
 			}
@@ -401,6 +424,58 @@ public class SpaceStore {
 			throw new IOException("Cannot read '" + file + "': " + ex.getMessage(), ex);
 		}
 		return result;
+	}
+
+	/** The next value of the given reader as JSON text, exactly as far as JSON can tell. */
+	private static String rawValue(JsonReader in) throws IOException {
+		StringWriter buffer = new StringWriter();
+		try (JsonWriter out = new JsonWriter(new WriterAdapter(buffer))) {
+			// A single scalar is no JSON document, but it is a JSON value.
+			out.setLenient(true);
+			copyValue(in, out);
+		}
+		return buffer.toString();
+	}
+
+	/** Copies the next value of the given reader to the given writer. */
+	private static void copyValue(JsonReader in, JsonWriter out) throws IOException {
+		switch (in.peek()) {
+			case BEGIN_OBJECT:
+				in.beginObject();
+				out.beginObject();
+				while (in.hasNext()) {
+					out.name(in.nextName());
+					copyValue(in, out);
+				}
+				in.endObject();
+				out.endObject();
+				break;
+			case BEGIN_ARRAY:
+				in.beginArray();
+				out.beginArray();
+				while (in.hasNext()) {
+					copyValue(in, out);
+				}
+				in.endArray();
+				out.endArray();
+				break;
+			case STRING:
+				out.value(in.nextString());
+				break;
+			case NUMBER:
+				// The literal as written: no number is rounded on its way through.
+				out.jsonValue(in.nextString());
+				break;
+			case BOOLEAN:
+				out.value(in.nextBoolean());
+				break;
+			case NULL:
+				in.nextNull();
+				out.nullValue();
+				break;
+			default:
+				throw new IOException("Unexpected " + in.peek() + " at " + in.getPath() + ".");
+		}
 	}
 
 	/**
@@ -468,7 +543,7 @@ public class SpaceStore {
 	public static void store(Path spaceRoot, Config config) throws IOException {
 		write(spaceRoot, config.getName(), config.getAnonymous(), config.getMapUrl(), config.getFaces(),
 			config.getTimeZone().isEmpty() ? null : config.getTimeZone(),
-			config.hasStoredInbox() ? config.getInbox() : null, true);
+			config.hasStoredInbox() ? config.getInbox() : null, Collections.emptyMap(), true);
 	}
 
 	/**
@@ -524,7 +599,56 @@ public class SpaceStore {
 		}
 		String trimmed = name == null ? "" : name.trim();
 		write(spaceRoot, trimmed.isEmpty() ? null : trimmed, anonymous, null, faces, zone.isEmpty() ? null : zone,
-			null, false);
+			null, Collections.emptyMap(), false);
+	}
+
+	/**
+	 * Writes what the administrator of the space at the given folder set in the app, see issue
+	 * #297, keeping every key the file says that is not set here exactly as it is written, the
+	 * ones this build does not know included.
+	 *
+	 * <p>
+	 * Each value is written as {@link #load(Path, String)} reads it back, and left out where the
+	 * file did not say it and the value is what its absence means anyway: a name that is the
+	 * folder's own, the {@link #DEFAULT_MAP_URL default map}, the server's zone, the
+	 * {@link #DEFAULT_INBOX default inbox}. So a space that never named its map keeps following
+	 * the default, and one that follows its folder's name keeps following it.
+	 * </p>
+	 *
+	 * <p>
+	 * The values are not checked here: that is the business of the caller, who answers a refusal
+	 * with its reason, see {@link de.haumacher.imageServer.SpaceConfiguration}.
+	 * </p>
+	 *
+	 * @param folderName
+	 *        The name the space is addressed by, which a name equal to it need not repeat.
+	 * @param faces
+	 *        {@link #FACES_ON} or {@link #FACES_OFF}.
+	 * @param mapUrl
+	 *        The map template; empty for the default.
+	 * @param timeZone
+	 *        The zone id; empty for the server's.
+	 * @throws IOException
+	 *         If the file is there but cannot be read; it is not touched then.
+	 */
+	public static void storeSettings(Path spaceRoot, String folderName, String name, String anonymous, String faces,
+			String mapUrl, String timeZone, String inbox) throws IOException {
+		Path file = file(spaceRoot);
+		Stored stored = Files.isRegularFile(file) ? readStored(file) : new Stored();
+		String newName = trim(name);
+		stored.name = stored.name.trim().isEmpty() && newName.equals(folderName) ? "" : newName;
+		stored.anonymous = ANONYMOUS_PUBLIC.equals(anonymous) ? ANONYMOUS_PUBLIC : ANONYMOUS_NONE;
+		stored.faces = FACES_ON.equals(faces) ? FACES_ON : FACES_OFF;
+		String newMap = trim(mapUrl);
+		stored.mapUrl = stored.mapUrl.trim().isEmpty() && newMap.equals(DEFAULT_MAP_URL) ? "" : newMap;
+		stored.timeZone = trim(timeZone);
+		String newInbox = trim(inbox);
+		stored.inbox = stored.inbox.trim().isEmpty() && newInbox.equals(DEFAULT_INBOX) ? "" : newInbox;
+		write(spaceRoot, stored, true);
+	}
+
+	private static String trim(String value) {
+		return value == null ? "" : value.trim();
 	}
 
 	/**
@@ -560,7 +684,7 @@ public class SpaceStore {
 			stored.mapUrl.trim().isEmpty() ? null : stored.mapUrl.trim(),
 			FACES_ON.equals(stored.faces.trim()) ? FACES_ON : FACES_OFF,
 			stored.timeZone.trim().isEmpty() ? null : stored.timeZone.trim(),
-			stored.inbox.trim().isEmpty() ? null : stored.inbox.trim(), replace);
+			stored.inbox.trim().isEmpty() ? null : stored.inbox.trim(), stored.unknown, replace);
 	}
 
 	/**
@@ -574,11 +698,14 @@ public class SpaceStore {
 	 *        <code>null</code> to leave the time zone out.
 	 * @param inbox
 	 *        <code>null</code> to leave the inbox out, see issue #226.
+	 * @param unknown
+	 *        The keys this build does not know, with their values as JSON, written behind the
+	 *        ones it knows, see issue #297.
 	 * @param replace
 	 *        Whether an existing file is replaced; otherwise it is left as it is and the call fails.
 	 */
 	private static void write(Path spaceRoot, String name, String anonymous, String mapUrl, String faces,
-			String timeZone, String inbox, boolean replace) throws IOException {
+			String timeZone, String inbox, Map<String, String> unknown, boolean replace) throws IOException {
 		Path file = file(spaceRoot);
 		Files.createDirectories(file.getParent());
 		Path tmp = file.resolveSibling(FILE_NAME + ".tmp");
@@ -607,6 +734,10 @@ public class SpaceStore {
 				if (inbox != null) {
 					out.name(INBOX__PROP);
 					out.value(inbox);
+				}
+				for (Map.Entry<String, String> entry : unknown.entrySet()) {
+					out.name(entry.getKey());
+					out.jsonValue(entry.getValue());
 				}
 				out.endObject();
 			}

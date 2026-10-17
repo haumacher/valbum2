@@ -7176,5 +7176,137 @@
       }
     },
     "x-translated": "5224914f"
+  },
+  "spaceSettingsHeading": "Space settings",
+  "@spaceSettingsHeading": {
+    "description": "Heading of the administrator's section of the server settings leading to the settings of the space (issue #297)",
+    "x-translated": "7fbc0960"
+  },
+  "spaceSettingsLead": "The name of this space, whether visitors see its public photos, faces, the map and the time zone.",
+  "@spaceSettingsLead": {
+    "description": "Lead sentence of the space settings section (issue #297)",
+    "x-translated": "8831653a"
+  },
+  "spaceSettingsOpen": "Space settings…",
+  "@spaceSettingsOpen": {
+    "description": "Button of the server settings opening the space settings page (issue #297)",
+    "x-translated": "ad3ccfb"
+  },
+  "spaceSettingsTitle": "Space settings",
+  "@spaceSettingsTitle": {
+    "description": "Title of the page with the settings of the space (issue #297)",
+    "x-translated": "7fbc0960"
+  },
+  "spaceSettingsAsking": "Asking the server…",
+  "@spaceSettingsAsking": {
+    "description": "Line of the space settings page while the server is asked (issue #297)",
+    "x-translated": "72d5478f"
+  },
+  "spaceSettingsUnavailable": "The settings cannot be read: {reason}",
+  "@spaceSettingsUnavailable": {
+    "description": "Line of the space settings page when the server could not be asked or refused; the reason is the server's or the transport's own sentence (issue #297)",
+    "placeholders": {
+      "reason": {
+        "type": "String",
+        "example": "The settings of this space are made by its administrator."
+      }
+    },
+    "x-translated": "afc58289"
+  },
+  "spaceSettingsName": "Name",
+  "@spaceSettingsName": {
+    "description": "Label of the field with the name of the space (issue #297)",
+    "x-translated": "fe11d138"
+  },
+  "spaceSettingsNameHelp": "How this space is called, for example in sign-in e-mails and authenticator apps.",
+  "@spaceSettingsNameHelp": {
+    "description": "Help below the name field of the space settings (issue #297)",
+    "x-translated": "c7ca16f6"
+  },
+  "spaceSettingsAnonymous": "Visitors see the public photos",
+  "@spaceSettingsAnonymous": {
+    "description": "Title of the switch letting people who are not signed in see the photos marked Public (issue #297)",
+    "x-translated": "7bf50b2e"
+  },
+  "spaceSettingsAnonymousHelp": "On: anybody who opens the address of this space sees the photos marked Public, without signing in, and changes nothing. Off: nobody sees anything without signing in.",
+  "@spaceSettingsAnonymousHelp": {
+    "description": "Explanation below the switch for visitors (issue #297)",
+    "x-translated": "94ded0fc"
+  },
+  "spaceSettingsFaces": "Find faces",
+  "@spaceSettingsFaces": {
+    "description": "Title of the switch letting the server look for faces in the photos (issue #297)",
+    "x-translated": "33252fb1"
+  },
+  "spaceSettingsFacesHelp": "The server looks for faces in every photo, so that you can name the people in them. After switching on, it works through all photos in the background, and the faces take some disk space. Switching off keeps what was found.",
+  "@spaceSettingsFacesHelp": {
+    "description": "Explanation below the face switch: what it does and what it costs (issue #297)",
+    "x-translated": "41f945d1"
+  },
+  "spaceSettingsMap": "Map address",
+  "@spaceSettingsMap": {
+    "description": "Label of the field with the map template of the space (issue #297)",
+    "x-translated": "d1899b36"
+  },
+  "spaceSettingsMapHelp": "The web address a photo's position opens, with {lat} and {lon} where the position goes. Empty: {defaultMap}",
+  "@spaceSettingsMapHelp": {
+    "description": "Help below the map field; lat and lon are the literal markers '{lat}' and '{lon}', defaultMap the default address (issue #297)",
+    "placeholders": {
+      "defaultMap": {
+        "type": "String",
+        "example": "https://www.google.com/maps?q={lat},{lon}"
+      },
+      "lon": {
+        "type": "String",
+        "example": "{lon}"
+      },
+      "lat": {
+        "type": "String",
+        "example": "{lat}"
+      }
+    },
+    "x-translated": "19ea29e2"
+  },
+  "spaceSettingsTimeZone": "Time zone",
+  "@spaceSettingsTimeZone": {
+    "description": "Label of the field with the time zone of photos that state none (issue #297)",
+    "x-translated": "f4253c97"
+  },
+  "spaceSettingsTimeZoneHelp": "Where photos were taken that state no time zone, for example Europe/Berlin. Empty: the server's time zone, {zone}. Photos already read keep their dates.",
+  "@spaceSettingsTimeZoneHelp": {
+    "description": "Help below the time zone field; zone is the server's own time zone (issue #297)",
+    "placeholders": {
+      "zone": {
+        "type": "String",
+        "example": "Europe/Berlin"
+      }
+    },
+    "x-translated": "200f3461"
+  },
+  "spaceSettingsInbox": "Inbox folder",
+  "@spaceSettingsInbox": {
+    "description": "Label of the field with the folder of the space's inbox (issue #297)",
+    "x-translated": "6f1d77df"
+  },
+  "spaceSettingsInboxHelp": "New photos from phones and uploads wait here until they are sorted into albums. It can be renamed while it is empty.",
+  "@spaceSettingsInboxHelp": {
+    "description": "Help below the inbox field (issue #297)",
+    "x-translated": "247bdaf6"
+  },
+  "spaceSettingsSaved": "Saved. The settings apply at once.",
+  "@spaceSettingsSaved": {
+    "description": "Message after the space settings were saved (issue #297)",
+    "x-translated": "7d194b91"
+  },
+  "spaceSettingsRefused": "Not saved: {reason}",
+  "@spaceSettingsRefused": {
+    "description": "Line below the save button when the server refused the settings; the reason is the server's own sentence (issue #297)",
+    "placeholders": {
+      "reason": {
+        "type": "String",
+        "example": "'Mars/Olympus' is no time zone."
+      }
+    },
+    "x-translated": "3a199a1c"
   }
 }
