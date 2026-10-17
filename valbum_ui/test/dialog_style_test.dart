@@ -96,14 +96,11 @@ void main() {
     // Flutter's own constructors, which would take Flutter's spacing.
     var raw = RegExp(
         r"\b(AlertDialog|SimpleDialog|SimpleDialogOption|Dialog)(\.\w+)?\(");
-    // Being changed elsewhere at the moment; to be converted as the others.
-    const pending = {"move_view.dart", "upload_target_view.dart"};
     var offenders = [
       for (var file in Directory("lib").listSync(recursive: true))
         if (file is File &&
             file.path.endsWith(".dart") &&
             !file.path.endsWith("dialog_style.dart") &&
-            !pending.contains(file.uri.pathSegments.last) &&
             file
                 .readAsLinesSync()
                 .where((line) => !line.trimLeft().startsWith("//"))

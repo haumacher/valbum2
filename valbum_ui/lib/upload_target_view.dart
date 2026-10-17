@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 
 import 'caller.dart';
 import 'client.dart';
+import 'dialog_style.dart';
 import 'form_dialog.dart';
 import 'l10n/app_localizations.dart';
 import 'listing_view.dart' show splitPath;
@@ -400,7 +401,7 @@ class _UploadTargetDialogState extends State<UploadTargetDialog> {
   Widget build(BuildContext context) {
     var l10n = AppLocalizations.of(context)!;
     var until = _until;
-    return AlertDialog(
+    return AppAlertDialog(
       key: uploadTargetDialogKey,
       title: Text(l10n.uploadTargetDialogTitle(widget.album)),
       content: Column(

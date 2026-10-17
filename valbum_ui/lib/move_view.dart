@@ -13,6 +13,7 @@ import 'album_date.dart';
 import 'app.dart';
 import 'caller.dart';
 import 'client.dart';
+import 'dialog_style.dart';
 import 'filter_list.dart';
 import 'form_dialog.dart';
 import 'l10n/app_localizations.dart';
@@ -382,7 +383,7 @@ Future<bool> deleteWithConfirmation({
   var messenger = ScaffoldMessenger.of(context);
   var confirmed = await showAppDialog<bool>(
     context: context,
-    builder: (context) => AlertDialog(
+    builder: (context) => AppAlertDialog(
       key: const Key("delete-dialog"),
       title: Text(l10n.deleteQuestion(what)),
       content: Text(l10n.deleteExplanation),
@@ -470,7 +471,7 @@ Future<void> reportOutcomes({
   }
   await showAppDialog<void>(
     context: context,
-    builder: (context) => AlertDialog(
+    builder: (context) => AppAlertDialog(
       key: const Key("move-outcome"),
       title: Text(title),
       content: SingleChildScrollView(
@@ -1230,7 +1231,7 @@ class FolderPickerState extends State<FolderPicker> {
     return PickKeys<Object>(
       highlight: _highlight,
       onEnter: _pick,
-      child: AlertDialog(
+      child: AppAlertDialog(
         key: const Key("folder-picker"),
         // What is created stands beside the title, at every level it may be
         // created on: in the list it was scrolled away as soon as the picker
