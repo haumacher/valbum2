@@ -10,8 +10,10 @@ import de.haumacher.imageServer.auth.Privacy;
 import de.haumacher.imageServer.auth.Ratings;
 import de.haumacher.imageServer.cache.AnalysisRecord;
 import de.haumacher.imageServer.cache.ResourceCache;
+import de.haumacher.imageServer.shared.model.ErrorInfo;
 import de.haumacher.imageServer.shared.model.FolderInfo;
 import de.haumacher.imageServer.shared.model.FolderKind;
+import de.haumacher.imageServer.shared.model.ImageCount;
 import de.haumacher.imageServer.shared.model.ListingInfo;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.msgbuf.json.JsonReader;
@@ -113,6 +115,47 @@ public class TestFolderImageCount extends TestCase {
 		assertEquals(0, entry(null, "Years").getImageCount());
 	}
 
+	public void testAGuestsListingLoadsNoAlbumForItsCount() throws Exception {
+		PathInfo mixed = new PathInfo(_base, Path.of("Mixed"));
+		_servlet.cache().invalidate(mixed);
+		assertEquals(3, entry(null, "Mixed").getImageCount());
+		assertFalse("Narrowed from the sidecar and the record, never by loading the album.",
+			_servlet.cache().holds(mixed));
+
+		// Where the cache holds the album anyway, it answers the same.
+		get(_owner, "/Mixed/");
+		assertTrue(_servlet.cache().holds(mixed));
+		assertEquals(3, entry(null, "Mixed").getImageCount());
+	}
+
+	public void testTheFolderAnswersItsCountOnDemand() throws Exception {
+		assertEquals(4, imageCount(_owner, "/Mixed/"));
+		assertEquals("A guest never learns of the private photograph.", 3, imageCount(null, "/Mixed/"));
+		assertEquals(3, imageCount(null, "/Partial/"));
+		assertEquals("A folder of folders shows no photograph of its own.", 0, imageCount(_owner, "/Years/"));
+		for (String token : new String[] { _owner, null }) {
+			for (String name : new String[] { "Mixed", "Partial", "Plain", "Rated" }) {
+				assertEquals(name, shown(token, name + "/"), imageCount(token, "/" + name + "/"));
+			}
+		}
+	}
+
+	public void testACallerWhoMayNotOpenTheFolderIsToldNoNumber() throws Exception {
+		ImageServlet closed = new ImageServlet(_base.toFile(), new AuthService(AuthMode.ALL, _base));
+		try {
+			FakeResponse count = request(closed, null, "/Mixed/", ImageServlet.IMAGE_COUNT_TYPE);
+			FakeResponse open = request(closed, null, "/Mixed/", "json");
+			assertTrue(open.body(), open.status() >= 400);
+			assertEquals("Refused as opening it is.", open.status(), count.status());
+			Resource refusal = Resource.readResource(new JsonReader(new ReaderAdapter(new StringReader(count.body()))));
+			assertTrue(count.body(), refusal instanceof ErrorInfo);
+			assertFalse("With a reason.", ((ErrorInfo) refusal).getMessage().isEmpty());
+			assertEquals(open.body(), count.body());
+		} finally {
+			closed.destroy();
+		}
+	}
+
 	public void testARatingFloorCountsWhatItShows() throws Exception {
 		PrivacyFilter filter = new PrivacyFilter(_servlet.cache());
 		PathInfo rated = new PathInfo(_base, Path.of("Rated"));
@@ -171,6 +214,26 @@ public class TestFolderImageCount extends TestCase {
 			}
 		}
 		return result;
+	}
+
+	private int imageCount(String token, String path) throws Exception {
+		FakeResponse response = request(_servlet, token, path, ImageServlet.IMAGE_COUNT_TYPE);
+		assertEquals(response.body(), HttpServletResponse.SC_OK, response.status());
+		return ImageCount.readImageCount(new JsonReader(new ReaderAdapter(new StringReader(response.body()))))
+			.getCount();
+	}
+
+	private static FakeResponse request(ImageServlet servlet, String token, String path, String type)
+			throws Exception {
+		Map<String, String> headers = new HashMap<>();
+		if (token != null) {
+			headers.put("Authorization", "Bearer " + token);
+		}
+		Map<String, String> parameters = new HashMap<>();
+		parameters.put("type", type);
+		FakeResponse response = new FakeResponse();
+		servlet.doGet(TestImageServletPut.request(path, null, new byte[0], headers, parameters), response.response());
+		return response;
 	}
 
 	private Resource get(String token, String path) throws Exception {

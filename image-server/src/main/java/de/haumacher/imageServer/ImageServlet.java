@@ -77,6 +77,7 @@ import de.haumacher.imageServer.shared.model.FaceTag;
 import de.haumacher.imageServer.shared.model.FolderInfo;
 import de.haumacher.imageServer.shared.model.FolderResource;
 import de.haumacher.imageServer.shared.model.Heading;
+import de.haumacher.imageServer.shared.model.ImageCount;
 import de.haumacher.imageServer.shared.model.ImageGroup;
 import de.haumacher.imageServer.shared.model.ImageKind;
 import de.haumacher.imageServer.shared.model.ImagePart;
@@ -373,6 +374,12 @@ public class ImageServlet extends HttpServlet {
 
 	/** The type of the number of unread entries of the bell alone, what the app polls, see issue #268. */
 	public static final String NEWS_COUNT_TYPE = "news-count";
+
+	/**
+	 * The type of the number of photographs a folder shows its caller, see {@link ImageCount} and
+	 * issue #286: what a listing tile does not carry, asked when the app is about to show it.
+	 */
+	public static final String IMAGE_COUNT_TYPE = "image-count";
 
 	/** The action marking entries of the bell as read, see issue #268 and {@link NewsRead}. */
 	public static final String NEWS_READ_ACTION = "news-read";
@@ -1438,9 +1445,10 @@ public class ImageServlet extends HttpServlet {
 				errorInfo(context, HttpServletResponse.SC_UNAUTHORIZED, AuthService.MEDIA_REFUSED);
 				return;
 			}
-			if (type != null && !"json".equals(type)) {
-				// A folder is answered as JSON and nothing else; any other type is a request this
-				// server does not understand, not a folder that is missing, see issue #176.
+			if (type != null && !"json".equals(type) && !IMAGE_COUNT_TYPE.equals(type)) {
+				// A folder is answered as JSON and nothing else (and counted, see
+				// IMAGE_COUNT_TYPE); any other type is a request this server does not understand,
+				// not a folder that is missing, see issue #176.
 				LOG.warning("Rejecting the unknown type '" + type + "' at '" + pathInfo + "'.");
 				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, unknownType(type));
 				return;
@@ -1462,6 +1470,10 @@ public class ImageServlet extends HttpServlet {
 			}
 				// "View as" only ever lowers: it is safe for anybody to send, see Privacy#viewAs(String).
 			int clearance = Math.min(_auth.clearance(caller, resourcePath), viewAs);
+			if (IMAGE_COUNT_TYPE.equals(type)) {
+				serveImageCount(context, resourcePath, clearance, viewAs, caller);
+				return;
+			}
 			serveFolder(context, resourcePath, clearance, viewAs, caller);
 		} else if (ResourceCache.isImage(file)) {
 			// An image of an inbox is answered by the rule the inbox is answered by: one the
@@ -7044,6 +7056,55 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	/**
+	 * Answers <code>&lt;folder&gt;/?type=image-count</code>, see {@link ImageCount} and issue #286:
+	 * how many photographs the caller is shown on opening the folder, asked by the app when it is
+	 * about to show the count of a tile whose listing did not carry one.
+	 *
+	 * <p>
+	 * Reached exactly as {@link #serveFolder(Context, PathInfo, int, int, Caller)} is, after the
+	 * same checks, and refused where opening would be: an inbox the caller may not see is not
+	 * there, a saved search that cannot be run is refused with its reason. The count is taken of
+	 * the very answer opening the folder would build, without what a count does not need: the
+	 * faces, the labels a client offers, the places.
+	 * </p>
+	 */
+	private void serveImageCount(Context context, PathInfo pathInfo, int clearance, int viewAs, Caller caller)
+			throws IOException {
+		Resource resource = _cache.lookup(pathInfo);
+		Resource shown = Inboxes.filter(resource, Inboxes.visibility(_auth, caller, pathInfo, viewAs),
+			caller.subject());
+		if (shown == null) {
+			LOG.warning("Hiding the inbox at '" + context.request().getPathInfo() + "'.");
+			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, Inboxes.NOT_FOUND);
+			return;
+		}
+		int minRating = _auth.minRating(caller, pathInfo, viewAs);
+		String label = _auth.photoLabel(caller);
+		Resource answer;
+		if (PhotoCollections.isCollection(shown)) {
+			// The references resolved as opening the collection resolves them (see
+			// #folderAnswer), without the faces, then the collection's own filters on top.
+			AlbumInfo resolved = _collections.resolve((AlbumInfo) shown,
+				source -> sourceAlbum(source, caller, viewAs, null, false), false, false);
+			answer = _privacy.filter(resolved, pathInfo, clearance, minRating, label);
+		} else if (PhotoSearch.isSearch(shown)) {
+			String refusal = PhotoSearch.refusal(((AlbumInfo) shown).getQuery());
+			if (refusal != null) {
+				LOG.warning("Refusing the saved search '" + context.request().getPathInfo() + "': " + refusal);
+				errorInfo(context, HttpServletResponse.SC_NOT_IMPLEMENTED, refusal);
+				return;
+			}
+			answer = _privacy.filter(searchAnswer((AlbumInfo) shown, pathInfo, caller, viewAs), pathInfo, clearance,
+				minRating, label);
+		} else {
+			answer = _privacy.filter(shown, pathInfo, clearance, minRating, label);
+		}
+		// A folder of folders shows no photograph of its own.
+		int count = answer instanceof AlbumInfo ? ResourceCache.imageCount((AlbumInfo) answer) : 0;
+		serveJsonObject(context.response(), ImageCount.create().setCount(count));
+	}
+
+	/**
 	 * The given folder answer carrying the caller's rights on it, see {@link FolderResource#getRights()}.
 	 *
 	 * <p>
@@ -9576,15 +9637,17 @@ public class ImageServlet extends HttpServlet {
 		if (folder.getKind() == de.haumacher.imageServer.shared.model.FolderKind.SEARCH) {
 			return searchTile(folder, childPath, caller, viewAs, label);
 		}
-		if (folder.getKind() == de.haumacher.imageServer.shared.model.FolderKind.COLLECTION) {
-			folder = collectionCount(folder, childPath, caller, viewAs, label);
-		}
 		ThumbnailInfo cover = folder.getIndexPicture();
 		if (cover == null || cover.getImage().isEmpty() || !childPath.toFile().isDirectory()) {
 			return folder;
 		}
 		PathInfo albumPath = FolderCover.albumOf(childPath, cover.getImage());
-		Resource album = albumPath.toFile().isDirectory() ? lookupOrSkip(albumPath) : null;
+		if (!PhotoCollections.isCollection(albumPath.toFile())) {
+			// Whether the picture lies in a collection is the sidecar's to say: the album of every
+			// tile of a listing is never loaded to learn that it is none, see issue #286.
+			return folder;
+		}
+		Resource album = lookupOrSkip(albumPath);
 		if (!PhotoCollections.isCollection(album)) {
 			return folder;
 		}
@@ -9618,29 +9681,6 @@ public class ImageServlet extends HttpServlet {
 			result.setIndexPicture(copy);
 		}
 		return result;
-	}
-
-	/**
-	 * The given collection tile with the number of photographs the caller is shown in it, see
-	 * issue #286: its references resolved and filtered exactly as opening the collection would
-	 * answer them (see {@link #folderAnswer(Resource, PathInfo, Caller, int, int)}), a gone
-	 * photograph left out. The faces are not derived: a count does not need them.
-	 */
-	private FolderInfo collectionCount(FolderInfo folder, PathInfo childPath, Caller caller, int viewAs,
-			String label) {
-		Resource stored = childPath.toFile().isDirectory() ? lookupOrSkip(childPath) : null;
-		int count = 0;
-		if (PhotoCollections.isCollection(stored)) {
-			AlbumInfo resolved = _collections.resolve((AlbumInfo) stored,
-				source -> sourceAlbum(source, caller, viewAs, null, false), false, false);
-			int clearance = Math.min(_auth.clearance(caller, childPath), viewAs);
-			Resource answer =
-				_privacy.filter(resolved, childPath, clearance, _auth.minRating(caller, childPath, viewAs), label);
-			if (answer instanceof AlbumInfo) {
-				count = ResourceCache.imageCount((AlbumInfo) answer);
-			}
-		}
-		return count == folder.getImageCount() ? folder : PrivacyFilter.withImageCount(folder, count);
 	}
 
 	/**

@@ -3077,6 +3077,25 @@ class VAlbumClient {
     return CatchUpStatus.read(JsonReader.fromString(response.body));
   }
 
+  /// How many photographs the caller is shown on opening the folder at
+  /// [path], `GET <folder>/?type=image-count` (issue #286): the count a
+  /// listing tile does not carry -- a collection's, whose references the
+  /// server resolves for it only when asked.
+  ///
+  /// A folder the caller may not open is refused as opening it would be.
+  Future<int> imageCount(List<String> path) async {
+    var url = "${folderUrl(path)}?type=image-count";
+    var response = await _http.get(Uri.parse(url), headers: authHeaders);
+    if (response.statusCode >= 300) {
+      throw failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingAsking("'$url'"),
+      );
+    }
+    return ImageCount.read(JsonReader.fromString(response.body)).count;
+  }
+
   /// What arrived from others, the bell of issue #268: the entries, the
   /// unread first; with [countOnly] just how many are unread — the one small
   /// request the app polls.

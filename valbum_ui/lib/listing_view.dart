@@ -1,6 +1,7 @@
 /// The folder listing view and the dialogs creating albums and folders.
 library;
 
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:date_field/date_field.dart';
@@ -180,9 +181,16 @@ class ListingView extends StatelessWidget {
   /// The listing, whose tiles answered "not made yet" — the large preview of
   /// a tile just starred, the cut preview of a cover just chosen (issue #260)
   /// — are asked again by themselves, see [NotReadyReAsk] and issue #258.
+  ///
+  /// The counts its tiles asked for on hover live as long as this view shows
+  /// this folder, see [TileCountScope] and issue #286.
   @override
-  Widget build(BuildContext context) =>
-      NotReadyReAsk(child: _buildListing(context));
+  Widget build(BuildContext context) => NotReadyReAsk(
+        child: TileCountScope(
+          key: ValueKey<String>(albumState.path.join("/")),
+          child: _buildListing(context),
+        ),
+      );
 
   Widget _buildListing(BuildContext context) {
     var l10n = AppLocalizations.of(context)!;
@@ -547,6 +555,11 @@ class ListingView extends StatelessWidget {
                 child: TileCountHover(
                   folder: folder,
                   large: large,
+                  // What the listing did not count is asked of the folder.
+                  ask: asksImageCount(folder)
+                      ? () =>
+                          client.imageCount([...albumState.path, folder.name])
+                      : null,
                   child: folder.starred
                       ? Stack(
                           children: [
@@ -1577,24 +1590,112 @@ class InboxButton extends StatelessWidget {
       );
 }
 
-/// Whether the tile of [folder] tells, on hover, how many photographs it
-/// holds, see issue #286.
+/// How long a mouse pointer rests on a listing tile before the tile tells how
+/// many photographs it holds, see [TileCountHover] and issue #286: a pointer
+/// passing over the grid on its way elsewhere shows nothing and asks nothing.
+const Duration tileCountDwell = Duration(milliseconds: 500);
+
+/// Whether the listing itself told how many photographs [folder] holds, so
+/// that its tile shows that number on hover without asking, see issue #286.
 ///
-/// Only an entry that holds photographs of its own has a count to tell -- an
-/// album, an inbox, a collection -- and only where the listing answered one:
-/// a folder of folders is never walked for it, a saved search finds a number
-/// that changes with the caller, and a count of `0` is what the server says
-/// for an entry it did not count (see [FolderInfo.imageCount]).
+/// An album and an inbox are counted by the listing -- an album as the caller
+/// is shown it; a count of `0` is an album that shows the caller nothing, and
+/// its tile says nothing. A folder of folders is never walked for a count, and
+/// a saved search would have to be run.
 bool showsImageCount(FolderInfo folder) =>
     folder.imageCount > 0 &&
     switch (folder.kind) {
-      FolderKind.album || FolderKind.inbox || FolderKind.collection => true,
+      FolderKind.album || FolderKind.inbox => true,
       _ => false,
     };
 
-/// The picture of a listing tile that, while a mouse pointer rests on it,
-/// shows in a small bubble at its bottom right how many photographs the
-/// entry holds, see issue #286.
+/// Whether the tile of [folder] asks the server for its count when the
+/// pointer has rested on it, see [VAlbumClient.imageCount] and issue #286.
+///
+/// A collection's count is its references resolved for the caller, which a
+/// listing never does: it is asked of the collection itself, and only for
+/// the tile somebody is looking at.
+bool asksImageCount(FolderInfo folder) => folder.kind == FolderKind.collection;
+
+/// The counts the tiles of one listing view asked the server for, see
+/// [TileCountHover] and issue #286: each tile is asked about at most once for
+/// as long as the view shows its folder, whatever the answer was.
+class TileCounts {
+  final Map<String, Future<int?>> _asked = {};
+  final Map<String, int?> _answered = {};
+
+  /// Whether the entry [name] was asked about and answered; [answer] tells
+  /// what.
+  bool answered(String name) => _answered.containsKey(name);
+
+  /// What the entry [name] was answered: its count, `null` where asking it
+  /// failed or was refused.
+  int? answer(String name) => _answered[name];
+
+  /// The count of the entry [name], asked by [request] the first time only;
+  /// `null` where that request failed.
+  ///
+  /// A failure is kept like an answer and never asked again: the count is a
+  /// nicety, like the teaser of a tile, and a tile that cannot say it simply
+  /// says nothing -- silently, and not again on every hover.
+  Future<int?> ask(String name, Future<int> Function() request) =>
+      _asked.putIfAbsent(name, () async {
+        int? count;
+        try {
+          count = await request();
+        } catch (_) {
+          // Silent by design, see above.
+          count = null;
+        }
+        _answered[name] = count;
+        return count;
+      });
+}
+
+/// Keeps the [TileCounts] of the listing view below it for as long as it
+/// stands in the tree, see issue #286; keyed by the folder, so that another
+/// folder starts afresh.
+class TileCountScope extends StatefulWidget {
+  final Widget child;
+
+  const TileCountScope({super.key, required this.child});
+
+  /// The counts of the listing view [context] lies in, `null` outside one.
+  static TileCounts? of(BuildContext context) =>
+      context.getInheritedWidgetOfExactType<_TileCountsProvider>()?.counts;
+
+  @override
+  State<TileCountScope> createState() => _TileCountScopeState();
+}
+
+class _TileCountScopeState extends State<TileCountScope> {
+  final TileCounts _counts = TileCounts();
+
+  @override
+  Widget build(BuildContext context) =>
+      _TileCountsProvider(counts: _counts, child: widget.child);
+}
+
+class _TileCountsProvider extends InheritedWidget {
+  final TileCounts counts;
+
+  const _TileCountsProvider({required this.counts, required super.child});
+
+  @override
+  bool updateShouldNotify(_TileCountsProvider oldWidget) =>
+      counts != oldWidget.counts;
+}
+
+/// The picture of a listing tile that, once a mouse pointer has rested on it
+/// for [tileCountDwell], shows in a small bubble at its bottom right how many
+/// photographs the entry holds, see issue #286.
+///
+/// The number is the listing's own where it carries one
+/// ([showsImageCount]); otherwise it is asked by [ask] when the pointer has
+/// rested there, once for the life of the listing view ([TileCounts]). A
+/// pointer that leaves before the dwell asks nothing; one that leaves while
+/// the answer is on its way is shown nothing now, and the answer waits for
+/// the next visit. A refused or failed answer shows no bubble.
 ///
 /// The bottom right corner is free: the star of a starred tile (issue #239)
 /// sits at the top right. A touch screen has no hover and never shows the
@@ -1606,6 +1707,10 @@ class TileCountHover extends StatefulWidget {
   /// Whether the tile is the 2×2 tile of a starred entry.
   final bool large;
 
+  /// Asks the server how many photographs the entry shows the caller, where
+  /// the listing did not say ([asksImageCount]); `null` where it did.
+  final Future<int> Function()? ask;
+
   /// The picture of the tile.
   final Widget child;
 
@@ -1613,6 +1718,7 @@ class TileCountHover extends StatefulWidget {
     super.key,
     required this.folder,
     required this.large,
+    this.ask,
     required this.child,
   });
 
@@ -1621,34 +1727,88 @@ class TileCountHover extends StatefulWidget {
 }
 
 class _TileCountHoverState extends State<TileCountHover> {
+  /// The counts of a tile outside a listing view, asked by it alone.
+  TileCounts? _own;
+
+  Timer? _dwell;
+
+  /// Counts the pointer's visits, so that an answer arriving after the
+  /// pointer left (and perhaps came back) is not shown for an old visit.
+  int _visit = 0;
+
   bool _hovered = false;
 
-  void _setHovered(bool hovered) {
-    if (_hovered != hovered) setState(() => _hovered = hovered);
+  /// The number the bubble shows, `null` while it shows none.
+  int? _shown;
+
+  bool get _counts => showsImageCount(widget.folder) || widget.ask != null;
+
+  void _enter() {
+    _hovered = true;
+    var visit = ++_visit;
+    _dwell?.cancel();
+    _dwell = Timer(tileCountDwell, () => _dwelt(visit));
+  }
+
+  void _exit() {
+    _hovered = false;
+    _visit++;
+    _dwell?.cancel();
+    _dwell = null;
+    if (_shown != null) setState(() => _shown = null);
+  }
+
+  void _dwelt(int visit) {
+    if (!mounted || !_hovered || visit != _visit) return;
+    var ask = widget.ask;
+    if (ask == null) {
+      _show(widget.folder.imageCount);
+      return;
+    }
+    var counts = TileCountScope.of(context) ?? (_own ??= TileCounts());
+    var name = widget.folder.name;
+    if (counts.answered(name)) {
+      _show(counts.answer(name));
+      return;
+    }
+    counts.ask(name, ask).then((count) {
+      if (mounted && _hovered && visit == _visit) _show(count);
+    });
+  }
+
+  void _show(int? count) {
+    if (count == null || count <= 0) return;
+    setState(() => _shown = count);
+  }
+
+  @override
+  void dispose() {
+    _dwell?.cancel();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!showsImageCount(widget.folder)) return widget.child;
+    if (!_counts) return widget.child;
+    var shown = _shown;
     return MouseRegion(
-      onEnter: (_) => _setHovered(true),
-      onExit: (_) => _setHovered(false),
+      onEnter: (_) => _enter(),
+      onExit: (_) => _exit(),
       child: Stack(
         children: [
           widget.child,
-          if (_hovered)
+          if (shown != null)
             Positioned(
               bottom: 6,
               right: 6,
-              child: _bubble(context),
+              child: _bubble(context, shown),
             ),
         ],
       ),
     );
   }
 
-  Widget _bubble(BuildContext context) {
-    var count = widget.folder.imageCount;
+  Widget _bubble(BuildContext context, int count) {
     var large = widget.large;
     var label = AppLocalizations.of(context)!.imageCount(count);
     // The look of the star's badge: a translucent dark ground that keeps the

@@ -2930,8 +2930,8 @@ class FolderInfo extends _JsonObject {
 	///  </p>
 	FolderKind kind;
 
-	///  How many photographs an album, the inbox or a collection holds, as the caller is shown them;
-	///  <code>0</code> for a folder of folders and a saved search, see issue #137 and issue #286.
+	///  How many photographs an album or the inbox holds, as the caller is shown them; <code>0</code>
+	///  for a collection, a saved search and a folder of folders, see issue #137 and issue #286.
 	/// 
 	///  <p>
 	///  What opening the folder would show, counted without opening a single image file (the rule
@@ -2944,9 +2944,17 @@ class FolderInfo extends _JsonObject {
 	///  <p>
 	///  An album's count is what the caller may see of it: narrowed to the photographs shown at the
 	///  caller's clearance, rating floor and label, so that a guest never learns how many private
-	///  photographs an album holds. A collection's count is its references resolved for the caller,
-	///  a gone photograph left out. A folder of folders would have to be walked for one, which a
-	///  listing never does; a saved search finds a different number for everybody who asks.
+	///  photographs an album holds. The narrowing reads the album's sidecar and record, never the
+	///  album as the cache holds it: a listing loads no album for a number.
+	///  </p>
+	/// 
+	///  <p>
+	///  <b>A collection is not counted in a listing</b>: its count is its references resolved for the
+	///  caller, and resolving them asks every album they point into &mdash; too much for a number on
+	///  every tile of every listing. Nor is a saved search, which would have to be run, nor a folder
+	///  of folders, which would have to be walked. Where a client wants such a number it asks the
+	///  folder itself, <code>?type=image-count</code> (see {@link ImageCount}), when it is about to
+	///  show it.
 	///  </p>
 	/// 
 	///  <p>
@@ -3115,6 +3123,67 @@ class FolderInfo extends _JsonObject {
 
 		json.addKey("starred");
 		json.addBool(starred);
+	}
+
+}
+
+///  What <code>&lt;folder&gt;/?type=image-count</code> answers, see issue #286: how many photographs
+///  the caller is shown on opening the folder.
+/// 
+///  <p>
+///  The number {@link FolderInfo#imageCount} gives where a listing can afford it, asked of one
+///  folder on demand where it cannot &mdash; a collection, whose references are resolved for the
+///  caller exactly as opening it resolves them, a gone photograph left out. An album answers what
+///  the caller is shown of it, an inbox what the caller is shown of it (a contributor their own
+///  contributions), a saved search its matches for the caller, a folder of folders <code>0</code>:
+///  opening it shows no photograph of its own.
+///  </p>
+/// 
+///  <p>
+///  Asked as opening the folder is asked: a caller who may not open the folder is refused, with the
+///  same reason, and never told a number.
+///  </p>
+class ImageCount extends _JsonObject {
+	///  How many photographs opening the folder shows the caller.
+	int count;
+
+	/// Creates a ImageCount.
+	ImageCount({
+			this.count = 0, 
+	});
+
+	/// Parses a ImageCount from a string source.
+	static ImageCount? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a ImageCount instance from the given reader.
+	static ImageCount read(JsonReader json) {
+		ImageCount result = ImageCount();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "ImageCount";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "count": {
+				count = json.expectInt();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("count");
+		json.addNumber(count);
 	}
 
 }

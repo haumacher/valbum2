@@ -590,15 +590,21 @@ public class PrivacyFilter {
 	 * An album answers what the request is shown of it, counted in the album exactly as opening it
 	 * would show it: a guest must not learn how many private photographs an album holds. A file
 	 * the sidecar does not mention is counted as the album shows it &mdash; public and unrated
-	 * where nobody restricted it, see {@link #shown(AlbumInfo, String, int, int, String)}. The
-	 * album is the cached one, so a listing opens no image for it.
+	 * where nobody restricted it, see {@link #shown(AlbumInfo, String, int, int, String)}.
+	 * </p>
+	 *
+	 * <p>
+	 * The album is the one the cache holds where it holds it; otherwise it is read from its sidecar
+	 * and record (see {@link ResourceCache#tileAlbum(File)}), the very files its tile was built
+	 * from, and not cached: a listing never loads the albums it shows into the cache for a number
+	 * &mdash; places, contributors and all, crowding out the albums somebody is looking at. No image
+	 * is opened either way.
 	 * </p>
 	 *
 	 * <p>
 	 * The inbox keeps its count, whoever looks: it is the pile of work waiting there, see issue
-	 * #135 and issue #137. A collection's references are resolved where a listing is answered (see
-	 * <code>ImageServlet#collectionCover</code>), so here, where nothing is resolved, a request
-	 * that sees less than everything is told no number at all.
+	 * #135 and issue #137. A collection, a saved search and a folder of folders carry no count in a
+	 * listing at all; the client asks the folder itself, <code>?type=image-count</code>.
 	 * </p>
 	 */
 	private int visibleCount(FolderInfo folder, PathInfo childPath, int clearance, int minRating, String label) {
@@ -615,7 +621,7 @@ public class PrivacyFilter {
 		}
 		Resource album;
 		try {
-			album = _cache.lookup(childPath);
+			album = _cache.holds(childPath) ? _cache.lookup(childPath) : ResourceCache.tileAlbum(childPath.toFile());
 		} catch (RuntimeException ex) {
 			// A photograph whose privacy cannot be read is shown to nobody, see issue #254.
 			return 0;

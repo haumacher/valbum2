@@ -190,8 +190,8 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	}
 
 	/**
-	 * How many photographs an album, the inbox or a collection holds, as the caller is shown them;
-	 * <code>0</code> for a folder of folders and a saved search, see issue #137 and issue #286.
+	 * How many photographs an album or the inbox holds, as the caller is shown them; <code>0</code>
+	 * for a collection, a saved search and a folder of folders, see issue #137 and issue #286.
 	 *
 	 * <p>
 	 * What opening the folder would show, counted without opening a single image file (the rule
@@ -204,9 +204,17 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	 * <p>
 	 * An album's count is what the caller may see of it: narrowed to the photographs shown at the
 	 * caller's clearance, rating floor and label, so that a guest never learns how many private
-	 * photographs an album holds. A collection's count is its references resolved for the caller,
-	 * a gone photograph left out. A folder of folders would have to be walked for one, which a
-	 * listing never does; a saved search finds a different number for everybody who asks.
+	 * photographs an album holds. The narrowing reads the album's sidecar and record, never the
+	 * album as the cache holds it: a listing loads no album for a number.
+	 * </p>
+	 *
+	 * <p>
+	 * <b>A collection is not counted in a listing</b>: its count is its references resolved for the
+	 * caller, and resolving them asks every album they point into &mdash; too much for a number on
+	 * every tile of every listing. Nor is a saved search, which would have to be run, nor a folder
+	 * of folders, which would have to be walked. Where a client wants such a number it asks the
+	 * folder itself, <code>?type=image-count</code> (see {@link ImageCount}), when it is about to
+	 * show it.
 	 * </p>
 	 *
 	 * <p>

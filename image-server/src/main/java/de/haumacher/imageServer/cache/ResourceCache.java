@@ -182,6 +182,25 @@ public class ResourceCache {
 	}
 
 	/**
+	 * The album of the given folder as its listing tile counts it, see
+	 * {@link FolderInfo#getImageCount()} and issue #286: its sidecar completed by the background's
+	 * record of the folder, exactly as the cache reads the album, but neither cached nor completed
+	 * by what a tile does not need (places, contributors); <code>null</code> for a folder of
+	 * folders, a collection and a saved search, which a tile does not count.
+	 *
+	 * <p>
+	 * What a listing narrows an album's count with for a caller who may not see everything, so that
+	 * a listing never loads the albums it shows into the cache for a number. No image is opened.
+	 * </p>
+	 *
+	 * @throws UnreadableSidecar
+	 *         Where the folder's <code>index.json</code> cannot be read, see issue #254.
+	 */
+	public static AlbumInfo tileAlbum(File folder) throws UnreadableSidecar {
+		return Loader.tileAlbum(folder);
+	}
+
+	/**
 	 * The <code>index.json</code> of the given folder, <code>null</code> if it has none; the strict
 	 * form of {@link #sidecar(File)}, see issue #254.
 	 *
@@ -1170,6 +1189,27 @@ public class ResourceCache {
 			return folderInfo;
 		}
 
+		/** See {@link ResourceCache#tileAlbum(File)}. */
+		static AlbumInfo tileAlbum(File folder) {
+			FolderResource sidecar = readDirIndex(folder);
+			AnalysisRecord record = AnalysisRecord.read(folder);
+			AlbumInfo album;
+			if (sidecar instanceof AlbumInfo) {
+				album = (AlbumInfo) sidecar;
+				if (album.getKind() == AlbumKind.COLLECTION || album.getKind() == AlbumKind.SEARCH) {
+					return null;
+				}
+			} else if (sidecar == null && record != null && !record.isEmpty()) {
+				// As #describeFolder(File) describes a folder without a sidecar.
+				album = AlbumInfo.create().setKind(Inboxes.kindOf(folder));
+			} else {
+				// A folder of folders, or one not recorded yet that has no sidecar: its tile says
+				// no number.
+				return null;
+			}
+			return loadAlbum(album, folder, record);
+		}
+
 		private static FolderInfo describeFolder(File folder) {
 			String folderName = folder.getName();
 
@@ -1205,19 +1245,16 @@ public class ResourceCache {
 						// ThumbnailInfo#getCrop() and issue #212.
 						folderInfo.setIndexPicture(de.haumacher.imageServer.Crops.withRegion(albumInfo, chosen));
 					}
-					if (albumInfo.getKind() == AlbumKind.COLLECTION) {
-						// A collection holds no files, and its sidecar lists every reference it
-						// holds, see issue #221: their number, answered to each caller as the
-						// references they are shown, see ImageServlet#collectionCover.
-						folderInfo.setImageCount(imageCount(albumInfo));
-					} else if (albumInfo.getKind() != AlbumKind.SEARCH) {
+					if (albumInfo.getKind() != AlbumKind.COLLECTION && albumInfo.getKind() != AlbumKind.SEARCH) {
 						// An album and the inbox: the sidecar is the truth for the files it lists,
 						// but it need not list every file of the folder -- a file nobody edited is
 						// in the record alone. Completed from the record exactly as the album
 						// itself is, so that the tile counts what opening the album shows: no
 						// image is opened, see issue #286. The inbox's count is the pile of work
 						// left (issue #137), the album's what it holds; PrivacyFilter#filterEntry
-						// narrows the latter to what the caller may see.
+						// narrows the latter to what the caller may see. A collection is not
+						// counted here: its count is its references resolved for the caller,
+						// which a listing never does -- the client asks ?type=image-count.
 						AnalysisRecord record = AnalysisRecord.read(folder);
 						AlbumInfo complete = loadAlbum(albumInfo, folder, record);
 						folderInfo.setImageCount(imageCount(complete));

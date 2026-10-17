@@ -8,6 +8,7 @@ import de.haumacher.imageServer.auth.Privacy;
 import de.haumacher.imageServer.auth.Ratings;
 import de.haumacher.imageServer.auth.Rights;
 import de.haumacher.imageServer.auth.ShareStore;
+import de.haumacher.imageServer.cache.ResourceCache;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.AlbumKind;
 import de.haumacher.imageServer.shared.model.AlbumPart;
@@ -347,16 +348,54 @@ public class TestCollections extends ShareTestCase {
 		assertNull("A picture the caller may not see is no picture of the tile.", forEve.getIndexPicture());
 	}
 
-	public void testTheListingCountsWhatTheCallerIsShownOfACollection() throws Exception {
+	public void testAListingNeverResolvesACollectionForACount() throws Exception {
+		Files.createDirectories(_base.resolve("Shelf"));
+		assertEquals(HttpServletResponse.SC_OK,
+			put("/Shelf/Best of", "[\"AlbumInfo\",{\"kind\":\"COLLECTION\",\"title\":\"Best of\"}]",
+				SharingFixture.ALICE).status());
+		collect(ZOO, "/Shelf/Best of", SharingFixture.ALICE, "public.jpg", "members.jpg", "private.jpg");
+		PathInfo zoo = new PathInfo(_base, Path.of(SharingFixture.ZOO));
+		ResourceCache cache = servlet().cache();
+
+		// The only album the references point into is not held: resolving them would load it.
+		for (String token : new String[] { SharingFixture.ALICE, SharingFixture.CAROL, SharingFixture.EVE }) {
+			cache.invalidate(zoo);
+			FolderInfo tile = entry(listing(get("/Shelf/", "json", token)), "Best of");
+			assertEquals(FolderKind.COLLECTION, tile.getKind());
+			assertNull("No picture, so that nothing but a count could ask the zoo.", tile.getIndexPicture());
+			assertEquals("A listing carries no count for a collection, see issue #286.", 0, tile.getImageCount());
+			assertFalse("The listing resolved the collection's references for " + token, cache.holds(zoo));
+		}
+
+		// The control: asking the collection itself resolves them.
+		cache.invalidate(zoo);
+		assertEquals(3, imageCount("/Shelf/Best of/", SharingFixture.ALICE, null));
+		assertTrue(cache.holds(zoo));
+	}
+
+	public void testTheCountOfACollectionIsWhatTheCallerIsShownOfIt() throws Exception {
 		createCollection("Best of");
 		collect(ZOO, "/Best of", SharingFixture.ALICE, "public.jpg", "members.jpg", "private.jpg");
 
 		// The very photographs opening the collection shows each of them, see issue #286.
-		assertEquals(3, entry(listing(get("/", "json", SharingFixture.ALICE)), "Best of").getImageCount());
-		assertEquals(2, entry(listing(get("/", "json", SharingFixture.CAROL)), "Best of").getImageCount());
-		assertEquals(1, entry(listing(get("/", "json", SharingFixture.EVE)), "Best of").getImageCount());
-		assertEquals("The author previewing as the public.", 1,
-			entry(listing(get("/", "json", SharingFixture.ALICE, "public")), "Best of").getImageCount());
+		assertEquals(3, imageCount(BEST, SharingFixture.ALICE, null));
+		assertEquals(2, imageCount(BEST, SharingFixture.CAROL, null));
+		assertEquals(1, imageCount(BEST, SharingFixture.EVE, null));
+		assertEquals("The author previewing as the public.", 1, imageCount(BEST, SharingFixture.ALICE, "public"));
+		for (String token : new String[] { SharingFixture.ALICE, SharingFixture.CAROL, SharingFixture.EVE }) {
+			assertEquals(outline(album(get(BEST, "json", token))).size(), imageCount(BEST, token, null));
+		}
+	}
+
+	public void testTheCountIsRefusedWhereTheFolderIsNot() throws Exception {
+		createCollection("Best of");
+		collect(ZOO, "/Best of", SharingFixture.ALICE, "public.jpg", "members.jpg");
+		String token = zooToken(Rights.VIEW);
+
+		FakeResponse outside = get("/../Best of/", ImageServlet.IMAGE_COUNT_TYPE, token);
+		assertEquals(HttpServletResponse.SC_NOT_FOUND, outside.status());
+		assertEquals("Refused as opening it is, never with a number.",
+			errorMessage(get("/../Best of/", "json", token)), errorMessage(outside));
 	}
 
 	// --- Edits through the collection. ---
@@ -648,6 +687,13 @@ public class TestCollections extends ShareTestCase {
 			body.append(n == 0 ? "" : ",").append("{\"name\":\"").append(names[n]).append("\"}");
 		}
 		return body.append("]}").toString();
+	}
+
+	/** What <code>?type=image-count</code> answers the given caller for the given folder. */
+	private int imageCount(String pathInfo, String token, String viewAs) throws Exception {
+		FakeResponse response = get(pathInfo, ImageServlet.IMAGE_COUNT_TYPE, token, viewAs);
+		assertEquals(response.body(), HttpServletResponse.SC_OK, response.status());
+		return de.haumacher.imageServer.shared.model.ImageCount.readImageCount(reader(response.body())).getCount();
 	}
 
 	private String refPath(String token, String name) throws Exception {
