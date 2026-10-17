@@ -1144,7 +1144,8 @@ class FolderPickerState extends State<FolderPicker> {
             // With room, the list scrolls by itself below the field. Where a
             // phone's keyboard leaves the dialog too little for that, the
             // whole content scrolls and the list is laid out in full, as in
-            // the person chooser (issue #178).
+            // the person chooser (issue #178) — without building the field
+            // anew, see [CrampedScroll].
             var roomy = constraints.maxHeight >= _roomyPickerHeight;
             var list = searching
                 ? _results(context, scrolls: roomy)
@@ -1181,7 +1182,11 @@ class FolderPickerState extends State<FolderPicker> {
                 if (roomy) Expanded(child: list) else list,
               ],
             );
-            return roomy ? column : SingleChildScrollView(child: column);
+            return CrampedScroll(
+              roomy: roomy,
+              maxHeight: constraints.maxHeight,
+              child: column,
+            );
           }),
         ),
         actions: [

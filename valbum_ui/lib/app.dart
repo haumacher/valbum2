@@ -1800,7 +1800,7 @@ class VAlbumAppState extends State<VAlbumApp> {
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         localeListResolutionCallback: resolveAppLocale,
-        theme: ThemeData(primarySwatch: Colors.blue),
+        theme: appTheme(),
         builder: _withInvitationNotice,
         routerDelegate: _preRouter ??= SilentRouterDelegate(_startupScreen),
       );
@@ -1813,7 +1813,7 @@ class VAlbumAppState extends State<VAlbumApp> {
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         localeListResolutionCallback: resolveAppLocale,
-        theme: ThemeData(primarySwatch: Colors.blue),
+        theme: appTheme(),
         routerDelegate: _preRouter ??= SilentRouterDelegate(
           (context) => SharedOverviewPage(
             overview: overview,
@@ -1992,7 +1992,7 @@ class VAlbumAppState extends State<VAlbumApp> {
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           localeListResolutionCallback: resolveAppLocale,
-          theme: ThemeData(primarySwatch: Colors.blue),
+          theme: appTheme(),
           builder: _withSessionNotices,
           routerDelegate: router,
           routeInformationParser: const VAlbumRouteInformationParser(),
@@ -3841,5 +3841,18 @@ PopupMenuItem<Action> menuItem(
           // Wraps instead of overflowing the menu at a long text.
           Flexible(child: Text(text)),
         ],
+      ),
+    );
+
+/// The look of every screen of the app, one for its three `MaterialApp`s.
+///
+/// A dialog keeps 12 pixels from the screen's edges, not Flutter's 40: on a
+/// phone those 40 on each side left a dialog 280 of 360 pixels wide, a narrow
+/// column of wrapped lines inside a wide frame. On a wider screen the dialog
+/// is as wide as its content asks, and the margin is never seen.
+ThemeData appTheme() => ThemeData(
+      primarySwatch: Colors.blue,
+      dialogTheme: const DialogThemeData(
+        insetPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 24),
       ),
     );

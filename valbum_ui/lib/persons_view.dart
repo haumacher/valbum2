@@ -2478,7 +2478,11 @@ class _PersonChooserState extends State<PersonChooser> {
                 ),
             ],
           );
-          return roomy ? column : SingleChildScrollView(child: column);
+          return CrampedScroll(
+            roomy: roomy,
+            maxHeight: constraints.maxHeight,
+            child: column,
+          );
         }),
       ),
       actions: [

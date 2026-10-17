@@ -19,6 +19,8 @@
 ///    entry the filter removed would pick something nobody can see.
 ///  * [PickKeys] — the arrows and `Enter` while the typing goes on, the idiom
 ///    of Flutter's own autocomplete: a single-line field answers neither.
+///  * [CrampedScroll] — the dialog content around field and list, which
+///    scrolls as a whole where a phone's keyboard leaves too little room.
 library;
 
 import 'package:flutter/foundation.dart';
@@ -265,6 +267,44 @@ class FilterField extends StatelessWidget {
           ),
           onChanged: _changed,
           onSubmitted: onSubmitted,
+        ),
+      );
+}
+
+/// The content of a chooser around its [FilterField]: with room, the list
+/// scrolls by itself below the field; where a phone's keyboard leaves too
+/// little for that, the whole [child] scrolls and the list is laid out in
+/// full (issue #178).
+///
+/// Both ways are the same widgets, only differently constrained: had the
+/// cramped way wrapped the content in a scroll view of its own, the keyboard
+/// coming up would rebuild the field below it, the field would lose the
+/// cursor, the keyboard would go down, the room come back — and the keyboard
+/// would flicker up and down without a letter reaching the field.
+class CrampedScroll extends StatelessWidget {
+  /// Whether the list scrolls by itself, see [roomy].
+  final bool roomy;
+
+  /// The height of the room [child] has, from the dialog's `LayoutBuilder`.
+  final double maxHeight;
+
+  final Widget child;
+
+  const CrampedScroll({
+    super.key,
+    required this.roomy,
+    required this.maxHeight,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) => SingleChildScrollView(
+        physics: roomy ? const NeverScrollableScrollPhysics() : null,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: roomy ? maxHeight : double.infinity,
+          ),
+          child: child,
         ),
       );
 }
