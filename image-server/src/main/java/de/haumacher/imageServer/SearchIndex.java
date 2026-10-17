@@ -1106,7 +1106,7 @@ public final class SearchIndex implements FolderPipeline.Step {
 	 */
 	public List<Scored> nearest(PathInfo scope, float[] vector, float imageWeight, float textWeight, int k,
 			Visibility visibility) {
-		return nearest(scope, vector, imageWeight, textWeight, k, visibility, path -> true, -1);
+		return nearest(scope, vector, imageWeight, textWeight, k, visibility, path -> true, null, null, -1);
 	}
 
 	/**
@@ -1121,7 +1121,75 @@ public final class SearchIndex implements FolderPipeline.Step {
 	 */
 	public List<Scored> nearest(PathInfo scope, float[] vector, float imageWeight, float textWeight, int k,
 			Visibility visibility, java.util.function.Predicate<String> folders) {
-		return nearest(scope, vector, imageWeight, textWeight, k, visibility, folders, -1);
+		return nearest(scope, vector, imageWeight, textWeight, k, visibility, folders, null, null, -1);
+	}
+
+	/**
+	 * {@link #nearest(PathInfo, float[], float, float, int, Visibility, java.util.function.Predicate)}
+	 * among the photographs that match the given query alone: the conventional criteria of a content
+	 * search (issue #257) narrow what is ranked <em>inside</em> the vector query, exactly as the
+	 * visibility does, so that <code>k</code> matches are found as long as <code>k</code> match.
+	 *
+	 * @param filter
+	 *        The criteria every photograph found must match, evaluated as {@link #find} evaluates
+	 *        them; must hold no content criterion; <code>null</code> for none.
+	 */
+	public List<Scored> nearest(PathInfo scope, float[] vector, float imageWeight, float textWeight, int k,
+			Visibility visibility, java.util.function.Predicate<String> folders, SearchQuery filter, PeopleStore people) {
+		return nearest(scope, vector, imageWeight, textWeight, k, visibility, folders, filter, people, -1);
+	}
+
+	/**
+	 * The score of the photograph of the given name in the given folder to the given vector, as
+	 * {@link #nearest} scores it: <code>imageWeight · cos(q, v_img) + textWeight · cos(q, v_txt)</code>;
+	 * <code>null</code> where the photograph has no vectors (yet), or none of that many dimensions.
+	 */
+	public Float score(PathInfo folder, String name, float[] vector, float imageWeight, float textWeight) {
+		String path = relative(folder.toFile());
+		de.haumacher.imageServer.index.VectorIndex vectors = _store.vectors();
+		if (path == null || vectors == null || vector == null) {
+			return null;
+		}
+		writeThrough();
+		Map<String, Long> ids = photoIds(_store, path);
+		Long id = ids == null ? null : ids.get(name);
+		if (id == null) {
+			return null;
+		}
+		try {
+			float[] image = vectors.vector(id.longValue(), de.haumacher.imageServer.index.VectorIndex.IMAGE);
+			float[] text = vectors.vector(id.longValue(), de.haumacher.imageServer.index.VectorIndex.TEXT);
+			if (image == null || text == null || image.length != vector.length || text.length != vector.length) {
+				return null;
+			}
+			return Float.valueOf(imageWeight * cosine(vector, image) + textWeight * cosine(vector, text));
+		} catch (IOException ex) {
+			LOG.warning("Cannot read the vector index of '" + _root + "': " + ex.getMessage());
+			return null;
+		}
+	}
+
+	/** The cosine of the given vectors of equal length, <code>0</code> where one of them is zero. */
+	private static float cosine(float[] a, float[] b) {
+		double dot = 0;
+		double na = 0;
+		double nb = 0;
+		for (int n = 0; n < a.length; n++) {
+			dot += a[n] * b[n];
+			na += a[n] * a[n];
+			nb += b[n] * b[n];
+		}
+		return na == 0 || nb == 0 ? 0 : (float) (dot / Math.sqrt(na * nb));
+	}
+
+	/**
+	 * The stamp of the vectors the index holds, see
+	 * {@link de.haumacher.imageServer.index.VectorIndex#stamp()}: empty before any, <code>null</code>
+	 * where the space has no vector index.
+	 */
+	public String vectorStamp() {
+		de.haumacher.imageServer.index.VectorIndex vectors = _store.vectors();
+		return vectors == null ? null : vectors.stamp();
 	}
 
 	/**
@@ -1153,11 +1221,12 @@ public final class SearchIndex implements FolderPipeline.Step {
 		if (vector == null) {
 			return new ArrayList<>();
 		}
-		return nearest(scope, vector, 1, 0, k, visibility, album -> true, id.longValue());
+		return nearest(scope, vector, 1, 0, k, visibility, album -> true, null, null, id.longValue());
 	}
 
 	private List<Scored> nearest(PathInfo scope, float[] vector, float imageWeight, float textWeight, int k,
-			Visibility visibility, java.util.function.Predicate<String> folders, long without) {
+			Visibility visibility, java.util.function.Predicate<String> folders, SearchQuery filter, PeopleStore people,
+			long without) {
 		String prefix = relative(scope.toFile());
 		de.haumacher.imageServer.index.VectorIndex vectors = _store.vectors();
 		if (prefix == null || vectors == null || k <= 0) {
@@ -1169,8 +1238,16 @@ public final class SearchIndex implements FolderPipeline.Step {
 		}
 		long version = _store.version();
 		List<Scored> result = _store.read(connection -> {
-			Evaluation evaluation = new Evaluation(connection, null, -1, version);
-			BitSet allowed = withoutFolders(connection, scope(evaluation, prefix, visibility), prefix, folders);
+			Evaluation evaluation = new Evaluation(connection, people, -1, version);
+			BitSet scoped = scope(evaluation, prefix, visibility);
+			BitSet allowed = withoutFolders(connection, scoped, prefix, folders);
+			SearchCriterion root = filter == null ? null : filter.getRoot();
+			if (root != null && !(root instanceof SearchAnd && ((SearchAnd) root).getCriteria().isEmpty())) {
+				// The criteria narrow inside the vector query, as the visibility does.
+				BitSet matching = evaluation.eval(root, scoped);
+				allowed = (BitSet) allowed.clone();
+				allowed.and(matching);
+			}
 			if (without >= 0 && without <= Integer.MAX_VALUE && allowed.get((int) without)) {
 				allowed = (BitSet) allowed.clone();
 				allowed.clear((int) without);

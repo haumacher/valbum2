@@ -6350,6 +6350,26 @@
     "description": "Hint of the text field of the search view",
     "x-translated": "e96c9da5"
   },
+  "searchByContent": "AI search",
+  "@searchByContent": {
+    "description": "Switch next to the text field of the search view (issue #257): the text describes what the photos show, and the photos are found by similarity, the most similar first. German: \"KI-Suche\"",
+    "x-translated": "d3bd99b4"
+  },
+  "searchByContentTooltip": "Find photos by what they show, the most similar first",
+  "@searchByContentTooltip": {
+    "description": "Tooltip of the \"AI search\" switch of the search view (issue #257)",
+    "x-translated": "fbdb86a4"
+  },
+  "searchContentHint": "Describe what the photos show",
+  "@searchContentHint": {
+    "description": "Hint of the text field of the search view while the AI search is on (issue #257)",
+    "x-translated": "c94bbee2"
+  },
+  "searchShowMore": "Show more",
+  "@searchShowMore": {
+    "description": "Button next to the count of the search view while the AI search is on (issue #257): asks for the next most similar photos",
+    "x-translated": "aed6d102"
+  },
   "searchMediaAll": "Photos and videos",
   "@searchMediaAll": {
     "description": "Choice of the search view: find photos and videos alike",

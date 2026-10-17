@@ -24,6 +24,14 @@
 /// What the photographs found are grouped by ([SearchCriteria.groupBy], issue
 /// #244) travels in the query as well, but is no criterion: it changes the
 /// headings the result is shown with, never what is found.
+///
+/// The AI search of issue #257 ([SearchCriteria.byContent]) takes the text as
+/// a description of what the photographs show, a [SearchContent] in place of
+/// the [SearchText]: the server ranks by it, the nearest first, and every
+/// other row narrows what is ranked. A content criterion ranks, so it is
+/// never excluded and never one of "any of these": in AI mode the rows
+/// combine with AND and the text is not negated, while what was chosen for
+/// the conventional search is kept for switching back.
 library;
 
 import 'package:jsontool/jsontool.dart';
@@ -119,6 +127,14 @@ class SearchCriteria {
   /// rather than all of them (issue #242).
   final bool anyOf;
 
+  /// Whether the text describes what the photographs show — the AI search of
+  /// issue #257, a [SearchContent] ranking the result by similarity — rather
+  /// than words of their descriptions and album titles ([SearchText]).
+  ///
+  /// In this mode [anyOf] and an exclusion of the text are kept but not
+  /// stated, see the library comment.
+  final bool byContent;
+
   const SearchCriteria({
     this.persons = const [],
     this.excludedPersons = const [],
@@ -135,6 +151,7 @@ class SearchCriteria {
     this.groupBy = const [],
     this.excluded = const {},
     this.anyOf = false,
+    this.byContent = false,
   });
 
   /// No criterion at all: the search view asks for one before it searches.
@@ -154,14 +171,22 @@ class SearchCriteria {
 
   /// Whether the row of [kind] is chosen at all.
   bool has(SearchKind kind) => switch (kind) {
-    SearchKind.date => from != null || to != null,
-    SearchKind.rating => minRating != null,
-    SearchKind.text => text.trim().isNotEmpty,
-    SearchKind.camera => camera != null,
-  };
+        SearchKind.date => from != null || to != null,
+        SearchKind.rating => minRating != null,
+        SearchKind.text => text.trim().isNotEmpty,
+        SearchKind.camera => camera != null,
+      };
 
-  /// Whether the row of [kind] is chosen and excluded.
-  bool excludes(SearchKind kind) => excluded.contains(kind) && has(kind);
+  /// Whether the row of [kind] is chosen and excluded; the text of an AI
+  /// search never is, see [byContent].
+  bool excludes(SearchKind kind) =>
+      excluded.contains(kind) &&
+      has(kind) &&
+      !(byContent && kind == SearchKind.text);
+
+  /// Whether these criteria rank by what the photographs show: the AI search
+  /// with a text, see [byContent].
+  bool get ranks => byContent && text.trim().isNotEmpty;
 
   /// These criteria with the given changes; a `null` argument keeps a value,
   /// the `clear…` flags take one away. An exclusion of a kind no longer
@@ -186,6 +211,7 @@ class SearchCriteria {
     List<SearchGroup>? groupBy,
     Set<SearchKind>? excluded,
     bool? anyOf,
+    bool? byContent,
   }) {
     var changed = SearchCriteria(
       persons: persons ?? this.persons,
@@ -203,6 +229,7 @@ class SearchCriteria {
       groupBy: groupBy ?? this.groupBy,
       excluded: excluded ?? this.excluded,
       anyOf: anyOf ?? this.anyOf,
+      byContent: byContent ?? this.byContent,
     );
     var kept = {
       for (var kind in changed.excluded)
@@ -214,40 +241,43 @@ class SearchCriteria {
   }
 
   SearchCriteria _withExcluded(Set<SearchKind> value) => SearchCriteria(
-    persons: persons,
-    excludedPersons: excludedPersons,
-    from: from,
-    to: to,
-    places: places,
-    excludedPlaces: excludedPlaces,
-    labels: labels,
-    excludedLabels: excludedLabels,
-    minRating: minRating,
-    media: media,
-    text: text,
-    camera: camera,
-    groupBy: groupBy,
-    excluded: value,
-    anyOf: anyOf,
-  );
+        persons: persons,
+        excludedPersons: excludedPersons,
+        from: from,
+        to: to,
+        places: places,
+        excludedPlaces: excludedPlaces,
+        labels: labels,
+        excludedLabels: excludedLabels,
+        minRating: minRating,
+        media: media,
+        text: text,
+        camera: camera,
+        groupBy: groupBy,
+        excluded: value,
+        anyOf: anyOf,
+        byContent: byContent,
+      );
 
   /// These criteria with the row of [kind] excluded or not.
   SearchCriteria toggled(SearchKind kind) => copyWith(
-    excluded: excluded.contains(kind)
-        ? ({...excluded}..remove(kind))
-        : {...excluded, kind},
-  );
+        excluded: excluded.contains(kind)
+            ? ({...excluded}..remove(kind))
+            : {...excluded, kind},
+      );
 
   /// Whether these criteria find what [other] finds: they differ in the
   /// grouping at most, which is re-derived from a result already in.
-  bool findsAs(SearchCriteria other) => copyWith(groupBy: other.groupBy) == other;
+  bool findsAs(SearchCriteria other) =>
+      copyWith(groupBy: other.groupBy) == other;
 
   /// The stored form, see the library comment: one AND (or, for [anyOf], one
   /// OR) over the rows, the places and the labels chosen each an OR of the
-  /// ones chosen, an excluded row a NOT of itself.
+  /// ones chosen, an excluded row a NOT of itself. In AI mode ([byContent])
+  /// the text is a [SearchContent], and the rows are one AND.
   SearchQuery toQuery() {
     SearchCriterion row(SearchKind kind, SearchCriterion criterion) =>
-        excluded.contains(kind) ? SearchNot(criterion: criterion) : criterion;
+        excludes(kind) ? SearchNot(criterion: criterion) : criterion;
     var criteria = <SearchCriterion>[
       for (var person in persons) SearchPerson(person: person),
       for (var person in excludedPersons)
@@ -260,8 +290,8 @@ class SearchCriteria {
             to: to == null
                 ? 0
                 : _startOf(to!)
-                      .add(const Duration(days: 1))
-                      .millisecondsSinceEpoch,
+                    .add(const Duration(days: 1))
+                    .millisecondsSinceEpoch,
           ),
         ),
       if (places.isNotEmpty)
@@ -281,12 +311,14 @@ class SearchCriteria {
       if (media != SearchMediaKind.all)
         SearchMedia(video: media == SearchMediaKind.videos),
       if (text.trim().isNotEmpty)
-        row(SearchKind.text, SearchText(text: text.trim())),
+        byContent
+            ? SearchContent(text: text.trim())
+            : row(SearchKind.text, SearchText(text: text.trim())),
       if (camera != null) row(SearchKind.camera, SearchCamera(camera: camera!)),
     ];
     return SearchQuery(
       version: searchQueryVersion,
-      root: anyOf
+      root: anyOf && !byContent
           ? SearchOr(criteria: criteria)
           : SearchAnd(criteria: criteria),
       groupBy: [...groupBy],
@@ -311,6 +343,10 @@ class SearchCriteria {
       case SearchOr(criteria: var criteria):
         rows = criteria;
         anyOf = true;
+      case SearchContent content:
+        // The content search alone, as the server takes it too.
+        rows = [content];
+        anyOf = false;
       default:
         return null;
     }
@@ -326,6 +362,7 @@ class SearchCriteria {
     int? minRating;
     var media = SearchMediaKind.all;
     var text = "";
+    var byContent = false;
     String? camera;
     var excluded = <SearchKind>{};
 
@@ -366,6 +403,13 @@ class SearchCriteria {
 
     for (var criterion in rows) {
       switch (criterion) {
+        case SearchContent(text: var value):
+          // Ranks: once, and never one of "any of these".
+          if (anyOf || text.isNotEmpty || value.trim().isEmpty) {
+            return null;
+          }
+          text = value;
+          byContent = true;
         case SearchPerson(person: var person):
           persons.add(person);
         case SearchPlace(geonameId: var id):
@@ -442,6 +486,7 @@ class SearchCriteria {
       groupBy: [...query.groupBy],
       excluded: excluded,
       anyOf: anyOf,
+      byContent: byContent,
     );
   }
 
@@ -473,14 +518,16 @@ class SearchCriteria {
     String not = "not",
     String or = "or",
   }) {
+    var any = anyOf && !byContent;
     var either = " $or ";
     String no(String part) => "$not $part";
+    bool out(SearchKind? kind) => kind != null && excludes(kind);
     String person(String id) => personNames[id] ?? id;
     String place(int id) => placeNames[id] ?? "$id";
     // What is looked for first, what is excluded after it.
     var rows = <(SearchKind?, String)>[
       if (persons.isNotEmpty)
-        (null, persons.map(person).join(anyOf ? either : " & ")),
+        (null, persons.map(person).join(any ? either : " & ")),
       if (from != null || to != null) (SearchKind.date, _span(from, to)),
       if (places.isNotEmpty) (null, places.map(place).join(either)),
       if (labels.isNotEmpty) (null, labels.join(either)),
@@ -489,22 +536,21 @@ class SearchCriteria {
     ];
     var parts = <String>[
       for (var (kind, part) in rows)
-        if (!excluded.contains(kind)) part,
+        if (!out(kind)) part,
       for (var id in excludedPersons) no(person(id)),
       for (var (kind, part) in rows)
-        if (excluded.contains(kind)) no(part),
+        if (out(kind)) no(part),
       for (var id in excludedPlaces) no(place(id)),
       for (var label in excludedLabels) no(label),
     ];
-    var result = parts.join(anyOf ? either : ", ");
+    var result = parts.join(any ? either : ", ");
     return result.isEmpty ? fallback : result;
   }
 
   static String _span(DateTime? from, DateTime? to) {
     String day(DateTime value) =>
         "${value.year}-${_two(value.month)}-${_two(value.day)}";
-    bool wholeYears =
-        (from == null || (from.month == 1 && from.day == 1)) &&
+    bool wholeYears = (from == null || (from.month == 1 && from.day == 1)) &&
         (to == null || (to.month == 12 && to.day == 31));
     if (wholeYears) {
       var start = from?.year.toString() ?? "";
@@ -542,26 +588,28 @@ class SearchCriteria {
       _listEquals(groupBy, other.groupBy) &&
       excluded.length == other.excluded.length &&
       excluded.containsAll(other.excluded) &&
-      anyOf == other.anyOf;
+      anyOf == other.anyOf &&
+      byContent == other.byContent;
 
   @override
   int get hashCode => Object.hash(
-    Object.hashAll(persons),
-    Object.hashAll(excludedPersons),
-    from,
-    to,
-    Object.hashAll(places),
-    Object.hashAll(excludedPlaces),
-    Object.hashAll(labels),
-    Object.hashAll(excludedLabels),
-    minRating,
-    media,
-    text,
-    camera,
-    Object.hashAll(groupBy),
-    Object.hashAllUnordered(excluded),
-    anyOf,
-  );
+        Object.hashAll(persons),
+        Object.hashAll(excludedPersons),
+        from,
+        to,
+        Object.hashAll(places),
+        Object.hashAll(excludedPlaces),
+        Object.hashAll(labels),
+        Object.hashAll(excludedLabels),
+        minRating,
+        media,
+        text,
+        camera,
+        Object.hashAll(groupBy),
+        Object.hashAllUnordered(excluded),
+        anyOf,
+        byContent,
+      );
 
   static bool _listEquals<T>(List<T> a, List<T> b) {
     if (a.length != b.length) {

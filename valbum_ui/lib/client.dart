@@ -1960,8 +1960,18 @@ class VAlbumClient {
   /// a saved search the server searches where the saved search looks. Members
   /// only: a share link and an anonymous caller are refused with the server's
   /// own sentence, as is a query this server cannot read.
-  Future<AlbumInfo> search(List<String> path, SearchQuery query) async {
-    var url = "${folderUrl(path)}?action=search";
+  ///
+  /// A query with a [SearchContent] (the AI search of issue #257) is answered
+  /// by similarity, the nearest first, [count] photos at most (the server's
+  /// page where `null`); one the server cannot answer now — content search
+  /// switched off, the embedder down — is refused with its reason.
+  Future<AlbumInfo> search(
+    List<String> path,
+    SearchQuery query, {
+    int? count,
+  }) async {
+    var url =
+        "${folderUrl(path)}?action=search${count == null ? "" : "&count=$count"}";
     var body = StringBuffer();
     query.writeContent(jsonStringWriter(body));
     var response = await _http.post(
@@ -2210,8 +2220,7 @@ class VAlbumClient {
     IndexProgress? indexed;
     if (!checked) {
       try {
-        var check =
-            await checkUploads(path, [for (var f in hashed) f.sha256!]);
+        var check = await checkUploads(path, [for (var f in hashed) f.sha256!]);
         known.addAll([for (var present in check.present) present.hash]);
         indexed = check.indexed;
         // A bare name is a photo of the album that was asked; a path is a

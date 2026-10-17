@@ -128,12 +128,26 @@ List<AlbumPart> groupSearchParts(
 /// [images] in the order the server answers a search in (`PhotoSearch.ORDER`):
 /// by date, the photos without one last, then by name — the path below the
 /// folder searched. A group counts as its representative.
+///
+/// The answer of a content search (issue #257) carries the score of every
+/// photo ([ImagePart.score]) and is ordered by it, the nearest first: never
+/// by date.
 List<AlbumPart> resultOrder(List<AlbumPart> images) {
   int dateOf(AlbumPart part) =>
       part is AbstractImage ? ToImage.toImage(part).date : 0;
   String nameOf(AlbumPart part) =>
       part is AbstractImage ? ToImage.toImage(part).name : "";
+  double scoreOf(AlbumPart part) =>
+      part is AbstractImage ? ToImage.toImage(part).score : 0;
   var indexed = images.indexed.toList();
+  if (images.any((part) => scoreOf(part) != 0)) {
+    indexed.sort((a, b) {
+      var byScore = scoreOf(b.$2).compareTo(scoreOf(a.$2));
+      // Stable where the scores are equal.
+      return byScore != 0 ? byScore : a.$1.compareTo(b.$1);
+    });
+    return [for (var (_, part) in indexed) part];
+  }
   indexed.sort((a, b) {
     var da = dateOf(a.$2);
     var db = dateOf(b.$2);
@@ -350,10 +364,40 @@ class _Text implements Comparable<Object> {
   }
 
   static const Map<String, String> _plain = {
-    "à": "a", "á": "a", "â": "a", "ã": "a", "ä": "a", "å": "a", "æ": "ae",
-    "ç": "c", "č": "c", "ć": "c", "è": "e", "é": "e", "ê": "e", "ë": "e",
-    "ì": "i", "í": "i", "î": "i", "ï": "i", "ñ": "n", "ò": "o", "ó": "o",
-    "ô": "o", "õ": "o", "ö": "o", "ø": "o", "œ": "oe", "ß": "ss", "š": "s",
-    "ù": "u", "ú": "u", "û": "u", "ü": "u", "ý": "y", "ÿ": "y", "ž": "z",
+    "à": "a",
+    "á": "a",
+    "â": "a",
+    "ã": "a",
+    "ä": "a",
+    "å": "a",
+    "æ": "ae",
+    "ç": "c",
+    "č": "c",
+    "ć": "c",
+    "è": "e",
+    "é": "e",
+    "ê": "e",
+    "ë": "e",
+    "ì": "i",
+    "í": "i",
+    "î": "i",
+    "ï": "i",
+    "ñ": "n",
+    "ò": "o",
+    "ó": "o",
+    "ô": "o",
+    "õ": "o",
+    "ö": "o",
+    "ø": "o",
+    "œ": "oe",
+    "ß": "ss",
+    "š": "s",
+    "ù": "u",
+    "ú": "u",
+    "û": "u",
+    "ü": "u",
+    "ý": "y",
+    "ÿ": "y",
+    "ž": "z",
   };
 }

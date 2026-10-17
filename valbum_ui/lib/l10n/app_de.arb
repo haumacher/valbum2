@@ -1145,5 +1145,9 @@
   "downloadAlbumAction": "Album herunterladen",
   "downloadNotAllowed": "Sie dürfen die Fotos dieses Albums nicht herunterladen.",
   "nothingToDownload": "Es gibt nichts zum Herunterladen.",
-  "trashRestoreSelection": "{count, plural, =1{1 Foto wiederherstellen} other{{count} Fotos wiederherstellen}}"
+  "trashRestoreSelection": "{count, plural, =1{1 Foto wiederherstellen} other{{count} Fotos wiederherstellen}}",
+  "searchByContent": "KI-Suche",
+  "searchByContentTooltip": "Fotos nach ihrem Inhalt finden, die ähnlichsten zuerst",
+  "searchContentHint": "Beschreiben Sie, was auf den Fotos zu sehen ist",
+  "searchShowMore": "Mehr anzeigen"
 }

@@ -93,6 +93,9 @@ public class ImagePart extends AbstractImage {
 	/** @see #getFileSize() */
 	private static final String FILE_SIZE__PROP = "fileSize";
 
+	/** @see #getScore() */
+	private static final String SCORE__PROP = "score";
+
 	private de.haumacher.imageServer.shared.model.ImageKind _kind = de.haumacher.imageServer.shared.model.ImageKind.IMAGE;
 
 	private String _name = "";
@@ -146,6 +149,8 @@ public class ImagePart extends AbstractImage {
 	private String _broken = "";
 
 	private long _fileSize = 0L;
+
+	private double _score = 0.0d;
 
 	/**
 	 * Creates a {@link ImagePart} instance.
@@ -1057,6 +1062,31 @@ public class ImagePart extends AbstractImage {
 		_fileSize = value;
 	}
 
+	/**
+	 * How near this photograph is to the text of a {@link SearchContent} criterion, answered by a
+	 * search holding one (issue #257): the weighted cosine of the query's vector to the photograph's
+	 * picture and text, above the cut of the content search, so always above <code>0</code>. The
+	 * answer is ordered by it, the nearest first; the app keeps that order, also when it groups the
+	 * answer again. <code>0</code> in every other answer. Derived on every answer and <b>never
+	 * stored</b>.
+	 */
+	public final double getScore() {
+		return _score;
+	}
+
+	/**
+	 * @see #getScore()
+	 */
+	public de.haumacher.imageServer.shared.model.ImagePart setScore(double value) {
+		internalSetScore(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getScore()} without chain call utility. */
+	protected final void internalSetScore(double value) {
+		_score = value;
+	}
+
 	@Override
 	public de.haumacher.imageServer.shared.model.ImagePart setPrevious(de.haumacher.imageServer.shared.model.AbstractImage value) {
 		internalSetPrevious(value);
@@ -1176,6 +1206,8 @@ public class ImagePart extends AbstractImage {
 		out.value(getBroken());
 		out.name(FILE_SIZE__PROP);
 		out.value(getFileSize());
+		out.name(SCORE__PROP);
+		out.value(getScore());
 	}
 
 	@Override
@@ -1228,6 +1260,7 @@ public class ImagePart extends AbstractImage {
 			case PARTIAL__PROP: setPartial(in.nextBoolean()); break;
 			case BROKEN__PROP: setBroken(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case FILE_SIZE__PROP: setFileSize(in.nextLong()); break;
+			case SCORE__PROP: setScore(in.nextDouble()); break;
 			default: super.readField(in, field);
 		}
 	}

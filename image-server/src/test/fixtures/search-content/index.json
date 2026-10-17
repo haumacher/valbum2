@@ -1,0 +1,1 @@
+["AlbumInfo",{"kind":"SEARCH","title":"Sunsets","query":{"version":1,"root":["SearchAnd",{"criteria":[["SearchContent",{"text":"sunset over the sea"}],["SearchDate",{"from":1600000000050,"to":1600000000060}],["SearchNot",{"criterion":["SearchMedia",{"video":true}]}]]}]},"indexPicture":{"image":"A/a050.jpg"}}]

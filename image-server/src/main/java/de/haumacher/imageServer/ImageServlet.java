@@ -31,6 +31,7 @@ import de.haumacher.imageServer.cache.BrokenParts;
 import de.haumacher.imageServer.cache.ResourceCache;
 import de.haumacher.imageServer.coded.CodedPictures;
 import de.haumacher.imageServer.content.ContentIndex;
+import de.haumacher.imageServer.content.ContentSearch;
 import de.haumacher.imageServer.content.ContentVectors;
 import de.haumacher.imageServer.content.Embedder;
 import de.haumacher.imageServer.faces.FaceCache;
@@ -1334,6 +1335,8 @@ public class ImageServlet extends HttpServlet {
 			serveGet(request, response);
 		} catch (ResourceCache.UnreadableSidecar ex) {
 			refuseUnreadable(request, response, ex);
+		} catch (ContentSearch.Refused ex) {
+			refuseContent(request, response, ex);
 		}
 	}
 
@@ -1343,6 +1346,8 @@ public class ImageServlet extends HttpServlet {
 			servePut(request, response);
 		} catch (ResourceCache.UnreadableSidecar ex) {
 			refuseUnreadable(request, response, ex);
+		} catch (ContentSearch.Refused ex) {
+			refuseContent(request, response, ex);
 		} finally {
 			// What this request wrote is in the search before it returns, see SearchIndex.
 			_searchIndex.writeThrough();
@@ -1355,10 +1360,27 @@ public class ImageServlet extends HttpServlet {
 			servePost(request, response);
 		} catch (ResourceCache.UnreadableSidecar ex) {
 			refuseUnreadable(request, response, ex);
+		} catch (ContentSearch.Refused ex) {
+			refuseContent(request, response, ex);
 		} finally {
 			// What this request wrote is in the search before it returns, see SearchIndex.
 			_searchIndex.writeThrough();
 		}
+	}
+
+	/**
+	 * Answers a request that ran a content search that cannot be answered, see issue #257: the
+	 * embedder is down, the space has content search switched off, the photos are described for
+	 * another model. The reason in a sentence, never an answer that silently leaves the ranking out.
+	 */
+	private static void refuseContent(HttpServletRequest request, HttpServletResponse response,
+			ContentSearch.Refused ex) throws IOException {
+		LOG.warning("Refusing '" + request.getMethod() + " " + request.getPathInfo() + "': " + ex.getMessage());
+		if (response.isCommitted()) {
+			throw ex;
+		}
+		response.reset();
+		errorInfo(new Context(request, response), ex.getStatus(), ex.getMessage());
 	}
 
 	/**
@@ -2056,8 +2078,16 @@ public class ImageServlet extends HttpServlet {
 			// nothing stores none, and an editor's opening stores one once it finds something.
 			AlbumInfo search = (AlbumInfo) resource;
 			// Slim: no faces derived for a picture.
-			List<ImagePart> first = searchMatches(searchScope(createdPath), search.getQuery(),
-				_auth.caller(context.request()), Privacy.PRIVATE, null, true);
+			List<ImagePart> first;
+			try {
+				first = searchMatches(searchScope(createdPath), search.getQuery(), _auth.caller(context.request()),
+					Privacy.PRIVATE, null, true);
+			} catch (ContentSearch.Refused ex) {
+				// Created all the same, without a picture: an editor's opening stores one once the
+				// content search answers.
+				LOG.info("No picture for the new saved search '" + createdPath + "': " + ex.getMessage());
+				first = Collections.emptyList();
+			}
 			if (!first.isEmpty()) {
 				search.setIndexPicture(PrivacyFilter.thumbnail(first.get(0)));
 				contents = sidecarOf(search);
@@ -6675,7 +6705,17 @@ public class ImageServlet extends HttpServlet {
 	 */
 	private AlbumInfo searchWrite(PathInfo path, AlbumInfo existing, AlbumInfo received, Caller caller,
 			List<SourceEdit> edits) {
-		AlbumInfo answered = searchAnswer(existing, path, caller, Privacy.PRIVATE);
+		AlbumInfo answered;
+		boolean refused = false;
+		try {
+			answered = searchAnswer(existing, path, caller, Privacy.PRIVATE);
+		} catch (ContentSearch.Refused ex) {
+			// A content search that cannot be answered now: its own statements are written all
+			// the same, no photograph is (none was shown), and its picture stays as it is.
+			LOG.info("Writing the saved search '" + path + "' without its photos: " + ex.getMessage());
+			answered = AlbumInfo.create().setKind(de.haumacher.imageServer.shared.model.AlbumKind.SEARCH);
+			refused = true;
+		}
 		Set<String> shown = new HashSet<>();
 		for (ImagePart image : PhotoSearch.images(answered)) {
 			shown.add(image.getName());
@@ -6705,7 +6745,9 @@ public class ImageServlet extends HttpServlet {
 		}
 		boolean storedHidden = storedCover != null && !shown.contains(storedCover.getImage());
 		ThumbnailInfo substitute = answered.getIndexPicture();
-		if (storedHidden
+		if (refused) {
+			cover = storedCover;
+		} else if (storedHidden
 			&& (cover == null || (substitute != null && cover.getImage().equals(substitute.getImage())))) {
 			// The caller was answered a substitute for a picture they may not see: written back, it
 			// is no choice of theirs, see issue #260.
@@ -6719,18 +6761,23 @@ public class ImageServlet extends HttpServlet {
 			// where it still is, the first of the new matches this caller is shown otherwise -- the
 			// picture a search is created with, see issue #287. Slim: no faces derived for it.
 			PathInfo scope = searchScope(path);
-			List<ImagePart> found = searchMatches(scope, query, caller, Privacy.PRIVATE, null, true);
-			boolean kept = false;
-			if (cover != null) {
-				for (ImagePart image : found) {
-					kept |= image.getName().equals(cover.getImage());
+			try {
+				List<ImagePart> found = searchMatches(scope, query, caller, Privacy.PRIVATE, null, true);
+				boolean kept = false;
+				if (cover != null) {
+					for (ImagePart image : found) {
+						kept |= image.getName().equals(cover.getImage());
+					}
+					// One this caller is not shown is kept while the new query still finds it.
+					kept |= cover == storedCover && storedHidden && matching(scope, cover.getImage(), query) != null;
 				}
-				// One this caller is not shown is kept while the new query still finds it.
-				kept |= cover == storedCover && storedHidden
-					&& PhotoSearch.matching(scope, cover.getImage(), query, this::lookupOrSkip, _people, _searchIndex) != null;
-			}
-			if (!kept) {
-				cover = found.isEmpty() ? null : PrivacyFilter.thumbnail(found.get(0));
+				if (!kept) {
+					cover = found.isEmpty() ? null : PrivacyFilter.thumbnail(found.get(0));
+				}
+			} catch (ContentSearch.Refused ex) {
+				// The new content search cannot be run now: the picture stays until an editor's
+				// opening finds what it shows, see #rememberSearchCover.
+				LOG.info("Keeping the picture of the saved search '" + path + "': " + ex.getMessage());
 			}
 		}
 
@@ -9299,6 +9346,41 @@ public class ImageServlet extends HttpServlet {
 	 */
 	private List<ImagePart> searchMatches(PathInfo scope, SearchQuery query, Caller caller, int viewAs,
 			Map<String, PhotoSearch.Match> stored, boolean slim) {
+		return searchMatches(scope, query, caller, viewAs, stored, slim, ContentSearch.MAX);
+	}
+
+	/**
+	 * {@link #searchMatches(PathInfo, SearchQuery, Caller, int, Map, boolean)}, a content search
+	 * (issue #257) answering the given number of photographs at most.
+	 *
+	 * <p>
+	 * A query with a {@link de.haumacher.imageServer.shared.model.SearchContent} criterion is
+	 * answered by similarity, the nearest first, each answer carrying its
+	 * {@link ImagePart#getScore() score}: the text is embedded ({@link #contentVector(String)}), the
+	 * other criteria of the query narrow inside the vector query (as the visibility does), and what
+	 * scores below {@link ContentSearch#THRESHOLD} is cut. Every other query is answered by date.
+	 * </p>
+	 *
+	 * @throws ContentSearch.Refused
+	 *         Where the content search cannot be answered now, saying why.
+	 */
+	private List<ImagePart> searchMatches(PathInfo scope, SearchQuery query, Caller caller, int viewAs,
+			Map<String, PhotoSearch.Match> stored, boolean slim, int contentLimit) {
+		PhotoSearch.ContentQuery content = PhotoSearch.content(query);
+		if (content != null) {
+			float[] vector = contentVector(content.text());
+			_searchRuns.incrementAndGet();
+			List<ImagePart> result = new ArrayList<>();
+			for (ScoredPart scored : nearestAnswers(scope, vector, ContentSearch.IMAGE_WEIGHT,
+				ContentSearch.TEXT_WEIGHT, contentLimit, caller, viewAs, content.filter())) {
+				if (scored.score() < ContentSearch.THRESHOLD) {
+					// Nearest first: what follows is farther still.
+					break;
+				}
+				result.add(scored.part().setScore(scored.score()));
+			}
+			return result;
+		}
 		// What the photograph's own fields hide from this caller is not looked for at all, see
 		// SearchIndex.Visibility; the album decides the rest, as below.
 		SearchIndex.Visibility visibility = new SearchIndex.Visibility(Math.min(_auth.clearance(caller, scope), viewAs),
@@ -9364,6 +9446,19 @@ public class ImageServlet extends HttpServlet {
 	 */
 	List<ScoredPart> nearestAnswers(PathInfo scope, float[] vector, float imageWeight, float textWeight, int k,
 			Caller caller, int viewAs) {
+		return nearestAnswers(scope, vector, imageWeight, textWeight, k, caller, viewAs, null);
+	}
+
+	/**
+	 * {@link #nearestAnswers(PathInfo, float[], float, float, int, Caller, int)} among the
+	 * photographs that match the given query alone, see
+	 * {@link SearchIndex#nearest(PathInfo, float[], float, float, int, SearchIndex.Visibility, java.util.function.Predicate, SearchQuery, PeopleStore)}.
+	 *
+	 * @param filter
+	 *        The conventional criteria of a content search, <code>null</code> for none.
+	 */
+	List<ScoredPart> nearestAnswers(PathInfo scope, float[] vector, float imageWeight, float textWeight, int k,
+			Caller caller, int viewAs, SearchQuery filter) {
 		List<ScoredPart> result = new ArrayList<>();
 		if (k <= 0 || !_auth.mayView(caller, scope)) {
 			// Not one album of it would be answered.
@@ -9384,7 +9479,7 @@ public class ImageServlet extends HttpServlet {
 		int limit = Math.max(k * NEAREST_MORE, NEAREST_LEAST);
 		for (int asked = k;; asked = Math.min(limit, asked * 4)) {
 			List<SearchIndex.Scored> scored =
-				_searchIndex.nearest(scope, vector, imageWeight, textWeight, asked, visibility, folders);
+				_searchIndex.nearest(scope, vector, imageWeight, textWeight, asked, visibility, folders, filter, _people);
 			List<PhotoSearch.Match> found = new ArrayList<>(scored.size());
 			for (SearchIndex.Scored each : scored) {
 				found.add(each.match());
@@ -9406,6 +9501,66 @@ public class ImageServlet extends HttpServlet {
 				return result;
 			}
 		}
+	}
+
+	/**
+	 * The vector of the given text of a content search (issue #257), see
+	 * {@link ContentSearch#vector(de.haumacher.imageServer.content.Embedder, String)}.
+	 *
+	 * @throws ContentSearch.Refused
+	 *         Where the space has content search switched off, the server has no embedder or it cannot
+	 *         answer, no photograph is described yet, or the photographs are described by another
+	 *         model than the embedder's now.
+	 */
+	private float[] contentVector(String text) {
+		if (!_content.isEnabled()) {
+			throw new ContentSearch.Refused(HttpServletResponse.SC_CONFLICT, ContentSearch.SWITCHED_OFF);
+		}
+		de.haumacher.imageServer.content.Embedder embedder = _content.getEmbedder();
+		if (embedder == null) {
+			throw ContentSearch.unavailable(ContentIndex.NO_EMBEDDER);
+		}
+		float[] vector = ContentSearch.vector(embedder, text);
+		String held = _searchIndex.vectorStamp();
+		if (held == null || held.isEmpty()) {
+			throw ContentSearch.unavailable(ContentSearch.NOT_DESCRIBED);
+		}
+		String stamp = embedder.stamp();
+		if (stamp == null || !held.startsWith(stamp + "\n")) {
+			// Vectors of two models are never compared.
+			throw ContentSearch.unavailable(ContentSearch.OTHER_MODEL);
+		}
+		return vector;
+	}
+
+	/**
+	 * The folder the photograph at the given path below the given folder lies in where it matches
+	 * the given query, see {@link PhotoSearch#matching}; <code>null</code> where it does not.
+	 *
+	 * <p>
+	 * A photograph matches a content search (issue #257) where it matches its other criteria and
+	 * its score is at least {@link ContentSearch#THRESHOLD}, whether or not it is among those the
+	 * search answers, which are cut at a number.
+	 * </p>
+	 *
+	 * @throws ContentSearch.Refused
+	 *         Where the content search cannot be answered now, see {@link #contentVector(String)}.
+	 */
+	private PathInfo matching(PathInfo scope, String relative, SearchQuery query) {
+		PhotoSearch.ContentQuery content = PhotoSearch.content(query);
+		if (content == null) {
+			return PhotoSearch.matching(scope, relative, query, this::lookupOrSkip, _people, _searchIndex);
+		}
+		float[] vector = contentVector(content.text());
+		PathInfo folder =
+			PhotoSearch.matching(scope, relative, content.filter(), this::lookupOrSkip, _people, _searchIndex);
+		if (folder == null) {
+			return null;
+		}
+		List<String> segments = PhotoSearch.segments(relative);
+		Float score = _searchIndex.score(folder, segments.get(segments.size() - 1), vector,
+			ContentSearch.IMAGE_WEIGHT, ContentSearch.TEXT_WEIGHT);
+		return score != null && score.floatValue() >= ContentSearch.THRESHOLD ? folder : null;
 	}
 
 	/**
@@ -9512,7 +9667,7 @@ public class ImageServlet extends HttpServlet {
 	 *
 	 * <p>
 	 * The first match is the one the search shows first, in its answer's order
-	 * ({@link PhotoSearch#ORDER}): what a saved search stores when it is created and what an
+	 * ({@link PhotoSearch#ORDER}, the most similar for a content search, issue #257): what a saved search stores when it is created and what an
 	 * editor's opening stores where it has none yet, see {@link #rememberSearchCover} and issue
 	 * #287.
 	 * </p>
@@ -9605,6 +9760,12 @@ public class ImageServlet extends HttpServlet {
 	 * rights to look (and to download, where the caller may): nothing is edited through a search
 	 * that is not saved. Members only, see {@link #maySearch(Caller)}.
 	 * </p>
+	 *
+	 * <p>
+	 * A query with a content criterion (issue #257) is answered by similarity, the nearest first,
+	 * <code>&amp;count=</code> photographs at most ({@link #contentCount(Context)}); one that cannot
+	 * be answered now is refused with the reason, see {@link #contentVector(String)}.
+	 * </p>
 	 */
 	private void search(Context context) throws IOException {
 		Caller caller = _auth.caller(context.request());
@@ -9643,8 +9804,9 @@ public class ImageServlet extends HttpServlet {
 			scope = searchScope(scope);
 		}
 		int viewAs = Privacy.PRIVATE;
-		// Written out partial: no faces derived, see ImagePart#isPartial().
-		List<ImagePart> parts = searchMatches(scope, query, caller, viewAs, null, true);
+		// Written out partial: no faces derived, see ImagePart#isPartial(). A content search answers
+		// a page, the nearest first; "more" asks again for more of them.
+		List<ImagePart> parts = searchMatches(scope, query, caller, viewAs, null, true, contentCount(context));
 		AlbumInfo answer = AlbumInfo.create()
 			.setKind(de.haumacher.imageServer.shared.model.AlbumKind.SEARCH)
 			.setQuery(PhotoSearch.normalized(query))
@@ -9660,6 +9822,28 @@ public class ImageServlet extends HttpServlet {
 		// ImagePart#isPartial().
 		serveJson(context.response(), PhotoSearch.partial(localized(withRights(shown, rights), context)));
 	}
+
+	/**
+	 * How many photographs a content search of the search view is answered at most, see issue #257:
+	 * <code>&amp;count=</code> of the request, {@link ContentSearch#PAGE} where it says none (or
+	 * nonsense), never more than {@link ContentSearch#MAX}. A page is "more" of the one before: the
+	 * nearest are found again, and the app shows "more" while a page came back full.
+	 */
+	static int contentCount(Context context) {
+		String value = context.getParameter(SEARCH_COUNT_PARAM);
+		if (value == null || value.isBlank()) {
+			return ContentSearch.PAGE;
+		}
+		try {
+			int count = Integer.parseInt(value.trim());
+			return count <= 0 ? ContentSearch.PAGE : Math.min(count, ContentSearch.MAX);
+		} catch (NumberFormatException ex) {
+			return ContentSearch.PAGE;
+		}
+	}
+
+	/** The parameter of {@link #SEARCH_ACTION} saying how many photographs a content search answers. */
+	public static final String SEARCH_COUNT_PARAM = "count";
 
 	/**
 	 * Answers <code>&lt;folder&gt;/?type=search-options</code>: what the search view offers to
@@ -9725,6 +9909,8 @@ public class ImageServlet extends HttpServlet {
 			.thenComparing(tag -> tag.getName().toLowerCase(Locale.ROOT))
 			.thenComparingInt(de.haumacher.imageServer.shared.model.PlaceTag::getGeonameId));
 		options.setPlaces(sorted);
+		// Whether the view offers to search by what the photos show, see issue #257.
+		options.setContent(_content.isEnabled());
 		serveJsonObject(context.response(), options);
 	}
 
@@ -9939,8 +10125,7 @@ public class ImageServlet extends HttpServlet {
 		String relative = path.toFile().toPath().toAbsolutePath().normalize().toString();
 		String base = search.toFile().toPath().toAbsolutePath().normalize().toString();
 		relative = relative.substring(base.length() + 1).replace(File.separatorChar, '/');
-		PathInfo folder = PhotoSearch.matching(searchScope(search), relative, query, this::lookupOrSkip, _people,
-			_searchIndex);
+		PathInfo folder = matching(searchScope(search), relative, query);
 		if (folder == null) {
 			LOG.warning("No photograph of the saved search at '" + context.request().getPathInfo() + "'.");
 			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, PhotoSearch.NO_MATCH);
@@ -9988,8 +10173,7 @@ public class ImageServlet extends HttpServlet {
 			if (PhotoSearch.refusal(query) != null) {
 				return null;
 			}
-			PathInfo source = PhotoSearch.matching(searchScope(folder), name, query, this::lookupOrSkip, _people,
-				_searchIndex);
+			PathInfo source = matching(searchScope(folder), name, query);
 			return source == null ? null : source.child(segments.get(segments.size() - 1));
 		}
 		PathInfo result = folder;

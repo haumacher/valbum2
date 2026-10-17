@@ -1586,6 +1586,14 @@ class ImagePart extends AbstractImage {
 	///  viewer says it. Derived and never stored.
 	int fileSize;
 
+	///  How near this photograph is to the text of a {@link SearchContent} criterion, answered by a
+	///  search holding one (issue #257): the weighted cosine of the query's vector to the photograph's
+	///  picture and text, above the cut of the content search, so always above <code>0</code>. The
+	///  answer is ordered by it, the nearest first; the app keeps that order, also when it groups the
+	///  answer again. <code>0</code> in every other answer. Derived on every answer and <b>never
+	///  stored</b>.
+	double score;
+
 	/// Creates a ImagePart.
 	ImagePart({
 			super.previous, 
@@ -1620,6 +1628,7 @@ class ImagePart extends AbstractImage {
 			this.partial = false, 
 			this.broken = "", 
 			this.fileSize = 0, 
+			this.score = 0.0, 
 	});
 
 	/// Parses a ImagePart from a string source.
@@ -1771,6 +1780,10 @@ class ImagePart extends AbstractImage {
 				fileSize = json.expectInt();
 				break;
 			}
+			case "score": {
+				score = json.expectDouble();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -1883,6 +1896,9 @@ class ImagePart extends AbstractImage {
 
 		json.addKey("fileSize");
 		json.addNumber(fileSize);
+
+		json.addKey("score");
+		json.addNumber(score);
 	}
 
 	@override
@@ -12572,6 +12588,7 @@ abstract class SearchCriterionVisitor<R, A> {
 	R visitSearchRating(SearchRating self, A arg);
 	R visitSearchMedia(SearchMedia self, A arg);
 	R visitSearchText(SearchText self, A arg);
+	R visitSearchContent(SearchContent self, A arg);
 	R visitSearchCamera(SearchCamera self, A arg);
 	R visitSearchFolder(SearchFolder self, A arg);
 }
@@ -12611,6 +12628,7 @@ abstract class SearchCriterion extends _JsonObject {
 			case "SearchRating": result = SearchRating(); break;
 			case "SearchMedia": result = SearchMedia(); break;
 			case "SearchText": result = SearchText(); break;
+			case "SearchContent": result = SearchContent(); break;
 			case "SearchCamera": result = SearchCamera(); break;
 			case "SearchFolder": result = SearchFolder(); break;
 			default: result = null;
@@ -13174,6 +13192,64 @@ class SearchText extends SearchCriterion {
 
 }
 
+///  The photograph shows what the given text describes, see issue #257: the content search.
+/// 
+///  <p>
+///  Unlike every other criterion it <em>ranks</em>: the text is turned into a vector by the
+///  embedder of the server, and the photographs are answered by how near their vectors are to it,
+///  the nearest first ({@link ImagePart#score}), those too far from it cut. It stands alone as the
+///  {@link SearchQuery#root}, or once among the members of the root's {@link SearchAnd}, whose other
+///  members narrow what is ranked; inside a {@link SearchOr} or a {@link SearchNot} it is refused.
+///  A saved search stores the text, never a vector: a new model only embeds the text again.
+///  </p>
+class SearchContent extends SearchCriterion {
+	///  What the photographs show, in any language; blanks around it are ignored, and it is never empty.
+	String text;
+
+	/// Creates a SearchContent.
+	SearchContent({
+			this.text = "", 
+	});
+
+	/// Parses a SearchContent from a string source.
+	static SearchContent? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a SearchContent instance from the given reader.
+	static SearchContent read(JsonReader json) {
+		SearchContent result = SearchContent();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "SearchContent";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "text": {
+				text = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("text");
+		json.addString(text);
+	}
+
+	@override
+	R visitSearchCriterion<R, A>(SearchCriterionVisitor<R, A> v, A arg) => v.visitSearchContent(this, arg);
+
+}
+
 ///  The photograph was taken with the given camera, compared exactly, see {@link ImagePart#camera}.
 class SearchCamera extends SearchCriterion {
 	///  The camera label; the empty label matches nothing.
@@ -13296,12 +13372,18 @@ class SearchOptions extends _JsonObject {
 	///  The cameras the photographs were taken with, each once, sorted.
 	List<CameraName> cameras;
 
+	///  Whether the space has its content search switched on (issue #257), so that the search view
+	///  offers to look for what the photographs show ({@link SearchContent}). Whether the embedder
+	///  can answer right now is not said here: a search it cannot answer is refused with the reason.
+	bool content;
+
 	/// Creates a SearchOptions.
 	SearchOptions({
 			this.persons = const [], 
 			this.places = const [], 
 			this.labels = const [], 
 			this.cameras = const [], 
+			this.content = false, 
 	});
 
 	/// Parses a SearchOptions from a string source.
@@ -13374,6 +13456,10 @@ class SearchOptions extends _JsonObject {
 				}
 				break;
 			}
+			case "content": {
+				content = json.expectBool();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -13409,6 +13495,9 @@ class SearchOptions extends _JsonObject {
 			_element.writeContent(json);
 		}
 		json.endArray();
+
+		json.addKey("content");
+		json.addBool(content);
 	}
 
 }

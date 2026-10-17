@@ -45,6 +45,15 @@
 /// chip, or a secondary click, turns it into "Not: …", and the choosers say
 /// so with a switch of their own; "All of these" at the start of the criteria
 /// turns into "Any of these", which finds what matches one of them.
+///
+/// Where the space has content search on ([SearchOptions.content], issue
+/// #257), "AI search" next to the search field takes its text as a
+/// description of what the photos show: the server ranks by it, the most
+/// similar first, a page at a time ("Show more"), and the other chips narrow
+/// what is ranked. The result is shown in the server's order, ungrouped
+/// unless the user groups it; switching back restores the conventional
+/// search with the criteria and the grouping it had. A refusal (content
+/// search off, the embedder down) is said in the server's words.
 library;
 
 import 'package:flutter/material.dart';
@@ -78,6 +87,15 @@ class SearchSession extends ChangeNotifier {
   /// What the user chose; a new search starts grouped by album (issue #289),
   /// see [freshSearchCriteria].
   SearchCriteria criteria = freshSearchCriteria;
+
+  /// How many photos an AI search asks for (issue #257): a page, and one
+  /// more page with every "Show more"; a new search starts with one page.
+  int contentCount = contentSearchPage;
+
+  /// The grouping of the conventional search while the AI search, which
+  /// starts ungrouped, is on: what switching back restores, see
+  /// [byContent].
+  List<SearchGroup>? conventionalGroupBy;
 
   /// The search for [criteria], `null` while nothing is chosen.
   Future<AlbumInfo>? result;
@@ -150,6 +168,7 @@ class SearchSession extends ChangeNotifier {
     }
     unreadable = null;
     criteria = read;
+    contentCount = contentSearchPage;
     adoptions++;
     run(client, scope);
   }
@@ -165,7 +184,13 @@ class SearchSession extends ChangeNotifier {
       result = null;
     } else {
       var query = criteria.toQuery();
-      var search = client.search(scope, query).then((album) {
+      var search = client
+          .search(
+        scope,
+        query,
+        count: criteria.ranks ? contentCount : null,
+      )
+          .then((album) {
         // Grouped by what was asked for, whatever the server echoed.
         album.query = query;
         AlbumInitializer().init(album);
@@ -188,8 +213,40 @@ class SearchSession extends ChangeNotifier {
     if (found) {
       regroup();
     } else {
+      contentCount = contentSearchPage;
       run(client, scope);
     }
+  }
+
+  /// Switches the AI search of issue #257 on or off, with [text] the text
+  /// of the field: on, the search starts ungrouped — in the order of
+  /// similarity — and the grouping there was is kept for switching back;
+  /// off, that grouping is restored, unless the user grouped the AI search
+  /// in the meantime.
+  void byContent(
+    bool on,
+    String text,
+    VAlbumClient client,
+    List<String> scope,
+  ) {
+    var value = criteria.copyWith(text: text, byContent: on);
+    if (on && !criteria.byContent) {
+      conventionalGroupBy = [...criteria.groupBy];
+      value = value.copyWith(groupBy: const []);
+    } else if (!on && criteria.byContent) {
+      var restored = conventionalGroupBy;
+      if (restored != null && criteria.groupBy.isEmpty) {
+        value = value.copyWith(groupBy: restored);
+      }
+      conventionalGroupBy = null;
+    }
+    choose(value, client, scope);
+  }
+
+  /// Asks the AI search for one more page of photos, see [contentCount].
+  void more(VAlbumClient client, List<String> scope) {
+    contentCount += contentSearchPage;
+    run(client, scope);
   }
 
   /// Groups the result there is by the grouping of [criteria] (issue #244):
@@ -216,6 +273,8 @@ class SearchSession extends ChangeNotifier {
     editedAlbum = album;
     unreadable = null;
     criteria = stored;
+    contentCount = contentSearchPage;
+    conventionalGroupBy = null;
     result = null;
   }
 
@@ -225,9 +284,16 @@ class SearchSession extends ChangeNotifier {
     editedAlbum = null;
     unreadable = null;
     criteria = freshSearchCriteria;
+    contentCount = contentSearchPage;
+    conventionalGroupBy = null;
     result = null;
   }
 }
+
+/// How many photos an AI search asks for at a time (issue #257), see
+/// [SearchSession.contentCount]: the server answers the most similar, never
+/// more than it allows.
+const int contentSearchPage = 100;
 
 /// What a new search starts with (issue #289): nothing chosen, the photos
 /// found grouped by the album they lie in — the question a search is asked
@@ -410,6 +476,7 @@ class SearchViewState extends State<SearchView> {
     var personNames = {for (var p in options.persons) p.id: p.name};
     var placeNames = {for (var p in options.places) p.geonameId: p.name};
     var ratingNames = _ratingNames(l10n);
+    var anyOf = criteria.anyOf && !criteria.ranks;
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
       child: Wrap(
@@ -422,11 +489,14 @@ class SearchViewState extends State<SearchView> {
           ActionChip(
             key: const Key("search-any-of"),
             avatar: Icon(
-              criteria.anyOf ? Icons.join_full : Icons.join_inner,
+              anyOf ? Icons.join_full : Icons.join_inner,
               size: 18,
             ),
-            label: Text(criteria.anyOf ? l10n.searchAnyOf : l10n.searchAllOf),
-            onPressed: () => _choose(criteria.copyWith(anyOf: !criteria.anyOf)),
+            label: Text(anyOf ? l10n.searchAnyOf : l10n.searchAllOf),
+            // What is ranked is narrowed by all of the others (issue #257).
+            onPressed: criteria.ranks
+                ? null
+                : () => _choose(criteria.copyWith(anyOf: !criteria.anyOf)),
           ),
           for (var (person, excluded) in _rows(
             criteria.persons,
@@ -622,21 +692,40 @@ class SearchViewState extends State<SearchView> {
                     color: Colors.redAccent,
                   ),
                   tooltip: l10n.searchExclude,
-                  onPressed: criteria.has(SearchKind.text)
-                      ? () => _choose(
-                            session.criteria
-                                .copyWith(text: _text.text)
-                                .toggled(SearchKind.text),
-                          )
-                      : null,
+                  // A description of what the photos show ranks, and is
+                  // never excluded (issue #257).
+                  onPressed:
+                      criteria.has(SearchKind.text) && !criteria.byContent
+                          ? () => _choose(
+                                session.criteria
+                                    .copyWith(text: _text.text)
+                                    .toggled(SearchKind.text),
+                              )
+                          : null,
                 ),
-                hintText: l10n.searchText,
+                hintText: criteria.byContent
+                    ? l10n.searchContentHint
+                    : l10n.searchText,
                 hintStyle: const TextStyle(color: Colors.white54),
               ),
               onSubmitted: (value) =>
                   _choose(session.criteria.copyWith(text: value)),
             ),
           ),
+          // The AI search, where the space has it on (issue #257) — or
+          // where the criteria are one already, so that it can be left.
+          if (options.content || criteria.byContent)
+            FilterChip(
+              key: const Key("search-by-content"),
+              avatar: const Icon(Icons.auto_awesome, size: 18),
+              label: Text(l10n.searchByContent),
+              tooltip: l10n.searchByContentTooltip,
+              selected: criteria.byContent,
+              onSelected: (on) {
+                session.byContent(on, _text.text, client, path);
+                widget.albumState.navigator.delegate.searchChanged(context);
+              },
+            ),
           _count(),
         ],
       ),
@@ -718,10 +807,26 @@ class SearchViewState extends State<SearchView> {
           if (count == 0) {
             return const SizedBox.shrink();
           }
-          return Text(
+          var counted = Text(
             _l10n.searchCount(count),
             key: const Key("search-count"),
             style: const TextStyle(color: Colors.white70),
+          );
+          // An AI search answers the most similar a page at a time: a page
+          // that came back full may have more (issue #257).
+          if (!session.criteria.ranks || count < session.contentCount) {
+            return counted;
+          }
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              counted,
+              TextButton(
+                key: const Key("search-more"),
+                onPressed: () => session.more(client, path),
+                child: Text(_l10n.searchShowMore),
+              ),
+            ],
           );
         },
       );

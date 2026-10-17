@@ -32,6 +32,9 @@ public class SearchOptions extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getCameras() */
 	private static final String CAMERAS__PROP = "cameras";
 
+	/** @see #isContent() */
+	private static final String CONTENT__PROP = "content";
+
 	private final java.util.List<de.haumacher.imageServer.shared.model.Person> _persons = new java.util.ArrayList<>();
 
 	private final java.util.List<de.haumacher.imageServer.shared.model.PlaceTag> _places = new java.util.ArrayList<>();
@@ -39,6 +42,8 @@ public class SearchOptions extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private final java.util.List<de.haumacher.imageServer.shared.model.LabelName> _labels = new java.util.ArrayList<>();
 
 	private final java.util.List<de.haumacher.imageServer.shared.model.CameraName> _cameras = new java.util.ArrayList<>();
+
+	private boolean _content = false;
 
 	/**
 	 * Creates a {@link SearchOptions} instance.
@@ -217,6 +222,28 @@ public class SearchOptions extends de.haumacher.msgbuf.data.AbstractDataObject {
 		_cameras.remove(value);
 	}
 
+	/**
+	 * Whether the space has its content search switched on (issue #257), so that the search view
+	 * offers to look for what the photographs show ({@link SearchContent}). Whether the embedder
+	 * can answer right now is not said here: a search it cannot answer is refused with the reason.
+	 */
+	public final boolean isContent() {
+		return _content;
+	}
+
+	/**
+	 * @see #isContent()
+	 */
+	public de.haumacher.imageServer.shared.model.SearchOptions setContent(boolean value) {
+		internalSetContent(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #isContent()} without chain call utility. */
+	protected final void internalSetContent(boolean value) {
+		_content = value;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.SearchOptions readSearchOptions(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.SearchOptions result = new de.haumacher.imageServer.shared.model.SearchOptions();
@@ -256,6 +283,8 @@ public class SearchOptions extends de.haumacher.msgbuf.data.AbstractDataObject {
 			x.writeTo(out);
 		}
 		out.endArray();
+		out.name(CONTENT__PROP);
+		out.value(isContent());
 	}
 
 	@Override
@@ -293,6 +322,7 @@ public class SearchOptions extends de.haumacher.msgbuf.data.AbstractDataObject {
 				in.endArray();
 			}
 			break;
+			case CONTENT__PROP: setContent(in.nextBoolean()); break;
 			default: super.readField(in, field);
 		}
 	}

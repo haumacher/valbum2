@@ -5985,6 +5985,30 @@ abstract class AppLocalizations {
   /// **'Text in descriptions and album titles'**
   String get searchText;
 
+  /// Switch next to the text field of the search view (issue #257): the text describes what the photos show, and the photos are found by similarity, the most similar first. German: "KI-Suche"
+  ///
+  /// In en, this message translates to:
+  /// **'AI search'**
+  String get searchByContent;
+
+  /// Tooltip of the "AI search" switch of the search view (issue #257)
+  ///
+  /// In en, this message translates to:
+  /// **'Find photos by what they show, the most similar first'**
+  String get searchByContentTooltip;
+
+  /// Hint of the text field of the search view while the AI search is on (issue #257)
+  ///
+  /// In en, this message translates to:
+  /// **'Describe what the photos show'**
+  String get searchContentHint;
+
+  /// Button next to the count of the search view while the AI search is on (issue #257): asks for the next most similar photos
+  ///
+  /// In en, this message translates to:
+  /// **'Show more'**
+  String get searchShowMore;
+
   /// Choice of the search view: find photos and videos alike
   ///
   /// In en, this message translates to:

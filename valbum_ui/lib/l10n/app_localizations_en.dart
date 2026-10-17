@@ -3822,6 +3822,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get searchText => 'Text in descriptions and album titles';
 
   @override
+  String get searchByContent => 'AI search';
+
+  @override
+  String get searchByContentTooltip =>
+      'Find photos by what they show, the most similar first';
+
+  @override
+  String get searchContentHint => 'Describe what the photos show';
+
+  @override
+  String get searchShowMore => 'Show more';
+
+  @override
   String get searchMediaAll => 'Photos and videos';
 
   @override

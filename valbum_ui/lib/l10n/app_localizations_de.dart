@@ -3875,6 +3875,20 @@ class AppLocalizationsDe extends AppLocalizations {
   String get searchText => 'Text in Beschreibungen und Albumtiteln';
 
   @override
+  String get searchByContent => 'KI-Suche';
+
+  @override
+  String get searchByContentTooltip =>
+      'Fotos nach ihrem Inhalt finden, die ähnlichsten zuerst';
+
+  @override
+  String get searchContentHint =>
+      'Beschreiben Sie, was auf den Fotos zu sehen ist';
+
+  @override
+  String get searchShowMore => 'Mehr anzeigen';
+
+  @override
   String get searchMediaAll => 'Fotos und Videos';
 
   @override

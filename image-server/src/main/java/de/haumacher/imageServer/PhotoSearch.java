@@ -19,6 +19,7 @@ import de.haumacher.imageServer.shared.model.PlaceTag;
 import de.haumacher.imageServer.shared.model.Resource;
 import de.haumacher.imageServer.shared.model.SearchAnd;
 import de.haumacher.imageServer.shared.model.SearchCamera;
+import de.haumacher.imageServer.shared.model.SearchContent;
 import de.haumacher.imageServer.shared.model.SearchCriterion;
 import de.haumacher.imageServer.shared.model.SearchDate;
 import de.haumacher.imageServer.shared.model.SearchFolder;
@@ -138,6 +139,11 @@ public final class PhotoSearch {
 	 * answered narrower or wider than its author meant. The {@link SearchQuery#getGroupBy() grouping}
 	 * (issue #244) is no criterion: it is presentation, derived by the app, and never refused.
 	 * </p>
+	 *
+	 * <p>
+	 * A {@link SearchContent} criterion (issue #257) is refused where it cannot rank: below an OR or
+	 * a NOT, deeper than the root's AND, more than once, or without a text.
+	 * </p>
 	 */
 	public static String refusal(SearchQuery query) {
 		if (query == null) {
@@ -147,7 +153,109 @@ public final class PhotoSearch {
 			return NEWER;
 		}
 		// A criterion of a newer build is read as nothing: an absent one is never "everything".
-		return known(query.getRoot(), false) ? null : NEWER;
+		if (!known(query.getRoot(), false)) {
+			return NEWER;
+		}
+		return contentRefusal(query.getRoot());
+	}
+
+	/**
+	 * Why the {@link SearchContent} criteria of the given root cannot be answered, <code>null</code>
+	 * where they can: one at most, as the root or as a member of the root's {@link SearchAnd}, with a
+	 * text. A content criterion ranks; below an OR or a NOT there is nothing it could rank.
+	 */
+	private static String contentRefusal(SearchCriterion root) {
+		List<SearchContent> placed = new ArrayList<>();
+		if (root instanceof SearchContent) {
+			placed.add((SearchContent) root);
+		} else if (root instanceof SearchAnd) {
+			for (SearchCriterion member : ((SearchAnd) root).getCriteria()) {
+				if (member instanceof SearchContent) {
+					placed.add((SearchContent) member);
+				} else if (holdsContent(member)) {
+					return de.haumacher.imageServer.content.ContentSearch.COMBINED;
+				}
+			}
+		} else if (holdsContent(root)) {
+			return de.haumacher.imageServer.content.ContentSearch.COMBINED;
+		}
+		if (placed.size() > 1) {
+			return de.haumacher.imageServer.content.ContentSearch.COMBINED;
+		}
+		if (placed.size() == 1 && text(placed.get(0)).isEmpty()) {
+			return de.haumacher.imageServer.content.ContentSearch.EMPTY;
+		}
+		return null;
+	}
+
+	/** Whether the given criterion is or holds a {@link SearchContent}. */
+	private static boolean holdsContent(SearchCriterion criterion) {
+		if (criterion instanceof SearchContent) {
+			return true;
+		}
+		if (criterion instanceof SearchAnd) {
+			return ((SearchAnd) criterion).getCriteria().stream().anyMatch(PhotoSearch::holdsContent);
+		}
+		if (criterion instanceof SearchOr) {
+			return ((SearchOr) criterion).getCriteria().stream().anyMatch(PhotoSearch::holdsContent);
+		}
+		if (criterion instanceof SearchNot) {
+			SearchCriterion negated = ((SearchNot) criterion).getCriterion();
+			return negated != null && holdsContent(negated);
+		}
+		return false;
+	}
+
+	private static String text(SearchContent content) {
+		return content.getText() == null ? "" : content.getText().strip();
+	}
+
+	/**
+	 * A query split into what its {@link SearchContent} criterion ranks by and what narrows it, see
+	 * {@link PhotoSearch#content(SearchQuery)}.
+	 *
+	 * @param text
+	 *        The text of the content criterion, its blanks stripped.
+	 * @param filter
+	 *        The query without it: every other member of the root's AND, or every photograph.
+	 */
+	public record ContentQuery(String text, SearchQuery filter) {
+		// A pair.
+	}
+
+	/**
+	 * The given query split into the text it ranks by and the criteria that narrow it, see issue
+	 * #257; <code>null</code> for a query without a content criterion. Only for a query that passed
+	 * {@link #refusal(SearchQuery)}. The given query is never changed.
+	 */
+	public static ContentQuery content(SearchQuery query) {
+		if (query == null) {
+			return null;
+		}
+		SearchCriterion root = query.getRoot();
+		if (root instanceof SearchContent) {
+			return new ContentQuery(text((SearchContent) root), filter(query, new ArrayList<>()));
+		}
+		if (!(root instanceof SearchAnd)) {
+			return null;
+		}
+		String text = null;
+		List<SearchCriterion> rest = new ArrayList<>();
+		for (SearchCriterion member : ((SearchAnd) root).getCriteria()) {
+			if (member instanceof SearchContent && text == null) {
+				text = text((SearchContent) member);
+			} else {
+				rest.add(member);
+			}
+		}
+		return text == null ? null : new ContentQuery(text, filter(query, rest));
+	}
+
+	private static SearchQuery filter(SearchQuery query, List<SearchCriterion> rest) {
+		return SearchQuery.create()
+			.setVersion(query.getVersion())
+			.setRoot(SearchAnd.create().setCriteria(rest))
+			.setGroupBy(new ArrayList<>(query.getGroupBy()));
 	}
 
 	private static boolean known(SearchCriterion criterion, boolean mayBeAbsent) {
@@ -175,7 +283,8 @@ public final class PhotoSearch {
 	/** The criteria this build evaluates; a later build may read more. */
 	private static final Set<Class<?>> KNOWN = new HashSet<>(Arrays.asList(SearchAnd.class, SearchOr.class,
 		SearchNot.class, SearchPerson.class, SearchDate.class, SearchPlace.class, SearchLabel.class,
-		SearchRating.class, SearchMedia.class, SearchText.class, SearchCamera.class, SearchFolder.class));
+		SearchRating.class, SearchMedia.class, SearchText.class, SearchCamera.class, SearchFolder.class,
+		SearchContent.class));
 
 	private static boolean allKnown(List<SearchCriterion> criteria) {
 		for (SearchCriterion criterion : criteria) {
@@ -455,7 +564,8 @@ public final class PhotoSearch {
 			.setMissing(image.isMissing())
 			.setPlaces(image.getPlaces())
 			.setPlaceCaption(image.getPlaceCaption())
-			.setPartial(image.isPartial());
+			.setPartial(image.isPartial())
+			.setScore(image.getScore());
 	}
 
 	/**
