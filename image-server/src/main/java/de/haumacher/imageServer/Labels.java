@@ -65,6 +65,9 @@ public final class Labels {
 	}
 
 	/** Recognises a body that names the field at all, see {@link #keepUnknown}. */
+	/** The field of a photograph holding its labels, as the model writes it. */
+	public static final String FIELD = "labels";
+
 	private static final Pattern LABELS_KEY = Pattern.compile("\"labels\"\\s*:");
 
 	private Labels() {

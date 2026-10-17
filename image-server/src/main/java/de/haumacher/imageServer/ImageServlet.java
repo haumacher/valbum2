@@ -6377,6 +6377,24 @@ public class ImageServlet extends HttpServlet {
 				((AlbumInfo) resource).setKind(de.haumacher.imageServer.shared.model.AlbumKind.ALBUM);
 				((AlbumInfo) resource).setQuery(null);
 			}
+			// What this caller was not answered is not theirs to write: the body is merged onto
+			// the stored folder through the very answer a read gives them, see issue #296.
+			Resource answered = writerAnswer(context, resourcePath, caller, existing);
+			if (answered == null) {
+				LOG.warning("Hiding the inbox from a write at '" + context.request().getPathInfo() + "'.");
+				errorInfo(context, HttpServletResponse.SC_NOT_FOUND, Inboxes.NOT_FOUND);
+				return;
+			}
+			if (existing instanceof AlbumInfo && !(resource instanceof AlbumInfo)
+				&& !AnsweredWrite.showsAllImages(existing, answered)) {
+				LOG.warning("Refusing to write a folder of folders over the album '" + resourcePath.toFile()
+					+ "' that holds photographs the caller is not shown.");
+				errorInfo(context, HttpServletResponse.SC_FORBIDDEN, HIDDEN_PHOTOS_REFUSED);
+				return;
+			}
+			FolderResource merged = AnsweredWrite.merge(resource, existing, answered, withheld(caller, Privacy.PRIVATE));
+			rearranged |= merged != resource;
+			resource = merged;
 			// An inbox is answered flat and by date; what the client writes back must not freeze
 			// that derived order into the sidecar, see issue #131.
 			rearranged |= Inboxes.restoreArrangement(resourcePath.toFile(), resource);
@@ -6442,6 +6460,32 @@ public class ImageServlet extends HttpServlet {
 			CreateResult.create().setPath(location.spell(target.relativePath())).setMessage(message));
 	}
 
+	/**
+	 * The message a folder of folders written over an album is refused with where the album holds
+	 * photographs its writer is not shown, see issue #296.
+	 */
+	public static final String HIDDEN_PHOTOS_REFUSED =
+		"This album holds photographs you are not shown; it cannot be turned into a folder of folders by you.";
+
+	/**
+	 * What the given caller is answered for the folder at the given path, as a read answers it:
+	 * the inbox rule, privacy, the rating floor and the label of a link, the labels and the faces,
+	 * the rights, the place names in the caller's language. <code>null</code> where the folder is an
+	 * inbox the caller is not shown. Never for a collection or a saved search, whose answer is
+	 * built from other folders and remembers a picture, see {@link #searchWrite} and
+	 * {@link #collectionWrite}.
+	 */
+	private Resource writerAnswer(Context context, PathInfo path, Caller caller, Resource stored) {
+		int viewAs = Privacy.PRIVATE;
+		int clearance = Math.min(_auth.clearance(caller, path), viewAs);
+		Resource shown = Inboxes.filter(stored, Inboxes.visibility(_auth, caller, path, viewAs), caller.subject());
+		if (shown == null) {
+			return null;
+		}
+		Resource answer = folderAnswer(shown, path, caller, clearance, viewAs);
+		return PhotoSearch.partial(localized(withRights(answer, _auth.rights(caller, path)), context));
+	}
+
 	/** The message a folder sidecar written on a collection is refused with. */
 	public static final String COLLECTION_SIDECAR_REFUSED = "A collection is written as an album, not as a folder.";
 
@@ -6490,8 +6534,8 @@ public class ImageServlet extends HttpServlet {
 			shown.add(image.getName());
 		}
 		// A caller answered no labels writes none back: what they were not shown is not theirs to
-		// take away.
-		boolean labels = Faces.maySee(_auth, caller, Privacy.PRIVATE);
+		// take away, see #withheld(Caller, int) and issue #296.
+		boolean labels = !withheld(caller, Privacy.PRIVATE).contains(Labels.FIELD);
 		for (AlbumPart part : received.getParts()) {
 			List<ImagePart> images = part instanceof ImagePart ? Collections.singletonList((ImagePart) part)
 				: part instanceof ImageGroup ? ((ImageGroup) part).getImages() : Collections.<ImagePart> emptyList();
@@ -6598,7 +6642,8 @@ public class ImageServlet extends HttpServlet {
 			}
 		}
 		Map<String, ImagePart> stored = PhotoCollections.byName(existing);
-		boolean labels = Faces.maySee(_auth, caller, Privacy.PRIVATE);
+		// See #withheld(Caller, int) and issue #296.
+		boolean labels = !withheld(caller, Privacy.PRIVATE).contains(Labels.FIELD);
 
 		List<AlbumPart> parts = new ArrayList<>();
 		Set<String> kept = new HashSet<>();
@@ -10105,6 +10150,19 @@ public class ImageServlet extends HttpServlet {
 		}
 		return answer;
 	}
+
+	/**
+	 * The fields of a photograph {@link #withLabels} and {@link #withFaces} never answer the given
+	 * caller, whatever they hold: the labels and the face tags of a share link, an anonymous
+	 * visitor and the public preview. A write keeps them as stored, empty or not, see
+	 * {@link AnsweredWrite} and issue #296.
+	 */
+	private Set<String> withheld(Caller caller, int viewAs) {
+		return Faces.maySee(_auth, caller, viewAs) ? Collections.<String> emptySet() : WITHHELD_FROM_GUESTS;
+	}
+
+	/** See {@link #withheld(Caller, int)}. */
+	private static final Set<String> WITHHELD_FROM_GUESTS = Set.of(Labels.FIELD, Faces.TAGS_FIELD);
 
 	private Resource withFaces(Resource answer, PathInfo pathInfo, Caller caller, int viewAs) {
 		return withFaces(answer, pathInfo, caller, viewAs, true);
