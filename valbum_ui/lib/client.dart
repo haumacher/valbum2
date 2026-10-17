@@ -2164,6 +2164,13 @@ class VAlbumClient {
   /// itself out (issue #59); a caller that does not care leaves [onProgress]
   /// out, as the camera-roll sync does, which reports its own progress over
   /// its own batches, see `camera_roll.dart`.
+  ///
+  /// [checked] says that the caller asked the album at [path] about exactly
+  /// these [files] a moment ago and was told it holds none of them: the
+  /// camera-roll sync asks about a few hundred remembered hashes in one
+  /// request before it reads a single photo (issue #299), and asking again
+  /// for the few it then uploads would be a second request saying the same.
+  /// Every file must carry its [UploadFile.sha256] then.
   Future<UploadSummary> uploadNew(
     List<String> path,
     List<UploadFile> files, {
@@ -2171,6 +2178,7 @@ class VAlbumClient {
     UploadHandle? handle,
     UploadBatching batching = UploadBatching.standard,
     bool waitForIndex = false,
+    bool checked = false,
   }) async {
     if (files.isEmpty) {
       return const UploadSummary(stored: 0, present: 0);
@@ -2200,32 +2208,36 @@ class VAlbumClient {
     var known = <String>{};
     var presentIn = <String>[];
     IndexProgress? indexed;
-    try {
-      var check = await checkUploads(path, [for (var f in hashed) f.sha256!]);
-      known.addAll([for (var present in check.present) present.hash]);
-      indexed = check.indexed;
-      // A bare name is a photo of the album that was asked; a path is a photo
-      // that lies somewhere else in the library, see issue #118.
-      for (var present in check.present) {
-        if (present.name.contains("/") && !presentIn.contains(present.name)) {
-          presentIn.add(present.name);
+    if (!checked) {
+      try {
+        var check =
+            await checkUploads(path, [for (var f in hashed) f.sha256!]);
+        known.addAll([for (var present in check.present) present.hash]);
+        indexed = check.indexed;
+        // A bare name is a photo of the album that was asked; a path is a
+        // photo that lies somewhere else in the library, see issue #118.
+        for (var present in check.present) {
+          if (present.name.contains("/") && !presentIn.contains(present.name)) {
+            presentIn.add(present.name);
+          }
         }
-      }
-    } on VAlbumException catch (error) {
-      // An older server does not know the question (404/405): it still refuses
-      // a duplicate when the contents arrive, so the upload goes ahead. Any
-      // other answer is the server speaking — a refusal must not be followed
-      // by sending the contents anyway.
-      if (error.status != 404 && error.status != 405) {
-        rethrow;
-      }
-      if (kDebugMode) {
-        print("upload check !! $error");
-      }
-    } catch (error) {
-      // A transport failure: the upload attempt reports it in its own right.
-      if (kDebugMode) {
-        print("upload check refused !! $error");
+      } on VAlbumException catch (error) {
+        // An older server does not know the question (404/405): it still
+        // refuses a duplicate when the contents arrive, so the upload goes
+        // ahead. Any other answer is the server speaking — a refusal must not
+        // be followed by sending the contents anyway.
+        if (error.status != 404 && error.status != 405) {
+          rethrow;
+        }
+        if (kDebugMode) {
+          print("upload check !! $error");
+        }
+      } catch (error) {
+        // A transport failure: the upload attempt reports it in its own
+        // right.
+        if (kDebugMode) {
+          print("upload check refused !! $error");
+        }
       }
     }
 

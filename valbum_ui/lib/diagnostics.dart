@@ -12,6 +12,13 @@
 /// its *complete* text (a `SocketException` carries the OS message and its
 /// errno, which is what issue #58 was about).
 ///
+/// One exception (issue #299): every camera-roll sync run that had photos to
+/// look at leaves one terse timing record — photos seen, hashes remembered
+/// and computed, bytes read, checks, uploads, time per phase — see
+/// `SyncRunStats` of `camera_roll.dart`. A sync that "feels slow" on a phone
+/// is otherwise a story nobody can check; a run that found nothing new
+/// writes nothing.
+///
 /// The entries are bug-report text and stay English whatever the device's
 /// language, like the header of [DiagnosticsLog.copyText]: whoever reads a
 /// pasted log reads it next to the source code.

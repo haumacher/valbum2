@@ -226,10 +226,14 @@ void main() {
 
       await harness.sync.syncNow();
 
-      expect(harness.uploadedNames, [
-        ["a.jpg", "b.jpg"],
-        ["c.jpg"],
-      ]);
+      // Two batches go out at once (issue #299), so the server may receive
+      // the smaller one first.
+      expect(
+          harness.uploadedNames,
+          unorderedEquals([
+            ["a.jpg", "b.jpg"],
+            ["c.jpg"],
+          ]));
       expect(harness.sync.status.phase, CameraRollPhase.idle);
       expect(harness.sync.status.lastStored, 3);
       expect(harness.sync.status.lastPresent, 0);
@@ -592,10 +596,12 @@ void main() {
           reason: "The change is picked up when the run is through.");
     });
 
-    test('"Stop" ends a run after the batch it is transferring', () async {
+    test('"Stop" ends a run after the batches it is transferring', () async {
+      // Two batches are in flight at once (issue #299); both are finished
+      // and covered by the watermark, the third is never started.
       var gate = Completer<void>();
       var harness = Harness(
-        items: [photo("a.jpg", 1), photo("b.jpg", 2)],
+        items: [photo("a.jpg", 1), photo("b.jpg", 2), photo("c.jpg", 3)],
         batchSize: 1,
       );
       addTearDown(harness.dispose);
@@ -613,10 +619,11 @@ void main() {
 
       expect(harness.uploadedNames, [
         ["a.jpg"],
+        ["b.jpg"],
       ]);
       expect(harness.sync.status.running, isFalse);
       expect((await harness.store.loadCameraRollConfig()).since,
-          DateTime.utc(2026, 3, 1, 12, 1));
+          DateTime.utc(2026, 3, 1, 12, 2));
     });
   });
 
@@ -811,7 +818,7 @@ void main() {
         (WidgetTester tester) async {
       var gate = Completer<void>();
       var harness = Harness(
-        items: [photo("a.jpg", 1), photo("b.jpg", 2)],
+        items: [photo("a.jpg", 1), photo("b.jpg", 2), photo("c.jpg", 3)],
         batchSize: 1,
       );
       addTearDown(harness.dispose);
@@ -826,7 +833,7 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      expect(find.text("Uploading 1 of 2..."), findsOneWidget);
+      expect(find.text("Uploading 1 of 3..."), findsOneWidget);
       expect(find.byType(LinearProgressIndicator), findsOneWidget);
       expect(find.byKey(cameraRollStopKey), findsOneWidget);
 
@@ -835,7 +842,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(LinearProgressIndicator), findsNothing);
-      expect(harness.uploads, hasLength(1));
+      // The two batches in flight are finished (issue #299), the third is
+      // never started.
+      expect(harness.uploads, hasLength(2));
     });
 
     testWidgets('"Sync now" runs a sync and reports what it did',

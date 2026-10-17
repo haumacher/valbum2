@@ -73,6 +73,8 @@ const List<String> convertedFiles = [
   "lib/first_screen.dart",
   "lib/form_dialog.dart",
   "lib/group_by.dart",
+  "lib/hash_cache.dart",
+  "lib/hash_cache_file.dart",
   "lib/group_by_dialog.dart",
   "lib/group_view.dart",
   "lib/identify_view.dart",
@@ -363,6 +365,20 @@ const Map<String, String> allowedLiterals = {
   "response code": "keyword of the video failure classification",
   "unknown host": "keyword of the video failure classification",
   "not permitted": "keyword of the video failure classification",
+  // The timing record of a camera-roll sync run, issue #299: English in a
+  // bug report, like every other line of `diagnostics.dart`.
+  r"${} s": "diagnostics log",
+  r"Camera-roll sync looked at ${} photos in ${}": "diagnostics log",
+  r"Hashes: ${} remembered, ${} computed (${} bytes read)": "diagnostics log",
+  r"Checks: ${} (${} hashes)": "diagnostics log",
+  r"Uploads: ${} batches, ${} photos (${} bytes)": "diagnostics log",
+  r"Time: scan ${}, hash ${}, check ${}, upload ${}": "diagnostics log",
+  r"Outcome: ${}": "diagnostics log",
+  // The hash cache's own debug output and file header, issue #299: printed
+  // in a debug build only, or written into a file nobody reads but the app.
+  "valbum-hashes 1": "file format header",
+  r"Cannot read the hash cache: ${}": "debug output",
+  r"Cannot write the hash cache: ${}": "debug output",
   // The thrown message of `album_layout.dart`, see `allowedThrownLiterals`.
   r"Invalid JPEG orientation code: ${}": "thrown, see allowedThrownLiterals",
 };

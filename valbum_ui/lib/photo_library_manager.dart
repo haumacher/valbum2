@@ -364,7 +364,26 @@ class PhotoManagerLibrary extends PhotoLibrary {
       takenAt: asset.createDateTime,
       length: await asset.fileSize,
       openRead: () => _read(asset),
+      // Seconds, as the platform keeps it; absent means "never cached", see
+      // [HashCache] and issue #299.
+      modifiedAt: asset.modifiedDateSecond == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(
+              asset.modifiedDateSecond! * 1000,
+              isUtc: true,
+            ),
+      filePath: () => _path(asset),
     );
+  }
+
+  /// The file of [asset] to hash it from off the UI isolate, see
+  /// [PhotoItem.filePath]; the same file [_read] streams.
+  Future<String?> _path(AssetEntity asset) async {
+    try {
+      return (await asset.originFile)?.path;
+    } catch (error) {
+      throw PhotoLibraryException(PhotoLibraryFailed(platformErrorText(error)));
+    }
   }
 
   Stream<List<int>> _read(AssetEntity asset) async* {

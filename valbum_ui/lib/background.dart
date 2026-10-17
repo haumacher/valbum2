@@ -39,6 +39,7 @@ import 'locales.dart';
 import 'notices.dart';
 import 'client.dart';
 import 'connectivity.dart';
+import 'hash_cache.dart';
 import 'photo_library.dart';
 import 'platform.dart';
 import 'settings.dart';
@@ -334,13 +335,15 @@ class BackgroundRunResult {
 /// Every moving part can be replaced, so that a test never touches the device:
 /// [library] instead of the platform's photo library, [transport] instead of a
 /// real HTTP client, [connectivity] instead of the device's network,
-/// [clock] instead of the wall clock.
+/// [clock] instead of the wall clock, [hashCache] instead of the file of
+/// remembered hashes.
 Future<BackgroundRunResult> runBackgroundSync({
   SettingsStore store = const PreferencesSettingsStore(),
   PhotoLibrary? library,
   http.Client? transport,
   ConnectivitySource? connectivity,
   DateTime Function()? clock,
+  HashCache? hashCache,
 }) async {
   var now = clock ?? DateTime.now;
 
@@ -407,6 +410,9 @@ Future<BackgroundRunResult> runBackgroundSync({
     callerOf: () async => CallerInfo.of(await client.authInfo()),
     connectivity: network,
     clock: now,
+    // The same file the app on the screen keeps (issue #299): a photo the
+    // app hashed is not hashed again in the background, nor the reverse.
+    hashCache: hashCache ?? defaultHashCache(),
   );
   try {
     await sync.load();
