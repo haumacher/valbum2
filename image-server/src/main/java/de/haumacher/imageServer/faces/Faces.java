@@ -164,6 +164,9 @@ public final class Faces {
 		return Orientations.toCode(exif) >= 5;
 	}
 
+	/** The field of a photograph holding its face tags, as the model writes it, see {@link #withoutTags(ImagePart)}. */
+	public static final String TAGS_FIELD = "tags";
+
 	/**
 	 * Whether a request is answered the faces of an image at all, see issue #124.
 	 *
