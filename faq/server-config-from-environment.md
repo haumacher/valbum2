@@ -11,5 +11,5 @@ list any new variable.
 documents, the rest H2's page cache, applied with `SET CACHE_SIZE` on the writer — never in the
 JDBC URL, see `search-index.md`.
 
-`VALBUM_EMBEDDER_DIR`, `_PORT`, `_PRECISION`, `_URL` (content search, #257) are read by
-`EmbedderSettings` for `ServerEnvironment`.
+`VALBUM_EMBEDDER_DIR`, `_PORT`, `_PRECISION`, `_URL`, `_KEY`, `_CERT_SHA256` (content search,
+#257) are read by `EmbedderSettings` for `ServerEnvironment`.

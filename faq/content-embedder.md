@@ -9,3 +9,14 @@ download, offline installs would fail, every user would pay ~190 MB). `golden.js
 `tests/make_golden.py` in a scratch venv with PyTorch; `tests/test_golden.py` needs the model
 (`VALBUM_EMBEDDER_MODEL_DIR`) and is skipped without it. onnxruntime holds the GIL while it loads
 the model, so `/health` may not answer for those seconds.
+
+**On another machine (2026-10-17):** the package `valbum-embedder` (and its image) runs the same
+`embedder.py` for album servers that set `VALBUM_EMBEDDER_URL`; the server pushes previews to it,
+no worker pulls jobs (the author's decision). It carries no Java: the model is fetched by the
+service itself (`--fetch`, `Fetcher` in `embedder.py`, stdlib only) by the same rules and the same
+`.download` records as `ModelStore`, so a folder prepared by either is taken by the other — a JRE
+for a 100-line download would have cost a fresh machine ~200 MB. Its configuration is made by
+`postinst` with a fresh key and is deliberately **not** a conffile (policy forbids maintainer
+scripts to edit one); an empty key is the administrator's choice and stays empty. TLS is optional,
+never enforced. The service names its `PREPROCESSING` with every vector; the client refuses another
+than `ContentModel.PREPROCESSING` and any vector whose model differs from the stamp it reported.

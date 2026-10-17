@@ -1,0 +1,46 @@
+#!/bin/sh
+set -e
+
+EMBEDDER_USER=valbum-embedder
+EMBEDDER_GROUP=valbum-embedder
+EMBEDDER_HOME=/var/lib/valbum-embedder
+CONFIG=/etc/default/valbum-embedder
+
+case "$1" in
+	remove)
+		if [ -d /run/systemd/system ]; then
+			systemctl --system daemon-reload >/dev/null 2>&1 || true
+		fi
+		if command -v deb-systemd-helper >/dev/null 2>&1; then
+			deb-systemd-helper mask valbum-embedder.service >/dev/null 2>&1 || true
+		fi
+		;;
+	purge)
+		if command -v deb-systemd-helper >/dev/null 2>&1; then
+			deb-systemd-helper purge valbum-embedder.service >/dev/null 2>&1 || true
+			deb-systemd-helper unmask valbum-embedder.service >/dev/null 2>&1 || true
+		fi
+		if [ -d /run/systemd/system ]; then
+			systemctl --system daemon-reload >/dev/null 2>&1 || true
+		fi
+		# The configuration was made by postinst, not shipped: purge removes it.
+		rm -f "$CONFIG" "$CONFIG.dpkg-new"
+		# The model and the Python environment are a download, no data of anybody's:
+		# purge removes them too.
+		rm -rf "$EMBEDDER_HOME"
+		if getent passwd "$EMBEDDER_USER" >/dev/null; then
+			deluser --system "$EMBEDDER_USER" >/dev/null 2>&1 || true
+		fi
+		if getent group "$EMBEDDER_GROUP" >/dev/null; then
+			delgroup --system "$EMBEDDER_GROUP" >/dev/null 2>&1 || true
+		fi
+		;;
+	upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
+		;;
+	*)
+		echo "postrm called with unknown argument '$1'" >&2
+		exit 1
+		;;
+esac
+
+exit 0

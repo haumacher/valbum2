@@ -1,0 +1,23 @@
+#!/bin/sh
+#
+# The HEALTHCHECK of the embedder image (issue #257): the service answers its health check, with
+# its key. "downloading" and "loading" count as healthy - the first start fetches 1.8 GB - and
+# only a service that does not answer is not.
+#
+set -eu
+scheme=http
+if [ -n "${VALBUM_EMBEDDER_TLS_CERT:-}" ]; then
+	scheme=https
+fi
+exec /opt/venv/bin/python3 -I -c '
+import os, ssl, sys, urllib.request
+url = sys.argv[1]
+request = urllib.request.Request(url)
+key = os.environ.get("VALBUM_EMBEDDER_KEY", "").strip()
+if key:
+    request.add_header("Authorization", "Bearer " + key)
+# The own certificate on 127.0.0.1: nothing to verify against.
+context = ssl._create_unverified_context() if url.startswith("https") else None
+with urllib.request.urlopen(request, timeout=8, context=context) as response:
+    sys.exit(0 if response.status == 200 else 1)
+' "$scheme://127.0.0.1:${VALBUM_EMBEDDER_PORT:-8091}/health"

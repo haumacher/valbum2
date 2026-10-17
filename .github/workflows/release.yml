@@ -1,10 +1,12 @@
 name: Release
 
 # A tag `valbum-<x.y.z>` builds the server's Debian packages for arm64, amd64 and
-# armhf, a signed Android APK, publishes a GitHub Release with all of them and
-# rebuilds the APT repository on GitHub Pages. The container image (amd64 and
-# arm64, one multi-arch tag) is built from the same platform JARs and pushed to
-# ghcr.io and, where configured, to Docker Hub.
+# armhf, the package valbum-embedder (content search on a machine of its own,
+# #257) for arm64 and amd64, a signed Android APK, publishes a GitHub Release
+# with all of them and rebuilds the APT repository on GitHub Pages. The container
+# image (amd64 and arm64, one multi-arch tag) is built from the same platform
+# JARs and pushed to ghcr.io and, where configured, to Docker Hub; so is the
+# image valbum-embedder.
 #
 # The GitHub Release assets are the source of truth; the Pages site is a derived
 # view that is rebuilt from scratch on every run, so `workflow_dispatch` without
@@ -182,10 +184,31 @@ jobs:
               exit 1
             fi
           done
+          # The embedder service of its own (#257), for the architectures onnxruntime serves.
+          embedder="image-server/target/valbum-embedder_${{ needs.prepare.outputs.version }}_${{ matrix.arch }}.deb"
+          if [ "${{ matrix.arch }}" = armhf ]; then
+            if [ -e "$embedder" ]; then
+              echo "::error::$embedder was built, but onnxruntime has nothing for armhf."
+              exit 1
+            fi
+          else
+            if [ ! -f "$embedder" ]; then
+              echo "::error::Expected $embedder, but the build produced:"
+              ls -l image-server/target/*.deb
+              exit 1
+            fi
+            dpkg-deb --info "$embedder"
+            dpkg-deb --contents "$embedder" | grep -q './lib/systemd/system/valbum-embedder.service' \
+              || { echo "::error::$embedder carries no systemd unit."; exit 1; }
+            dpkg-deb --field "$embedder" Depends | grep -q python3-venv \
+              || { echo "::error::$embedder does not depend on python3-venv."; exit 1; }
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: deb-${{ matrix.arch }}
-          path: image-server/target/valbum_*.deb
+          path: |
+            image-server/target/valbum_*.deb
+            image-server/target/valbum-embedder_*.deb
           if-no-files-found: error
           retention-days: 7
       # The container image of #174 is built from this very JAR (the web app bundled in), so the
@@ -317,6 +340,87 @@ jobs:
           for image in "$GHCR" ${HUB:+"$HUB"}; do
             docker buildx imagetools inspect "$image:$VERSION"
           done
+
+  # The embedder service of content search as an image of its own (#257), for a machine other
+  # than the album server. Built from the sources (Python, no JAR), smoke-tested on amd64 without
+  # the model, then pushed for amd64 and arm64 in one run, beside the server's image.
+  docker-embedder:
+    name: Embedder image
+    needs: prepare
+    if: needs.prepare.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+      - name: Name the images
+        id: names
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          OWNER: ${{ github.repository_owner }}
+          HUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          HUB_USER: ${{ vars.DOCKERHUB_USERNAME }}
+          HUB_IMAGE: ${{ vars.DOCKERHUB_EMBEDDER_IMAGE }}
+        run: |
+          set -euo pipefail
+          ghcr="ghcr.io/${OWNER,,}/valbum-embedder"
+          images="$ghcr"
+          if [ -n "$HUB_TOKEN" ] && [ -n "$HUB_USER" ]; then
+            hub="${HUB_IMAGE:-$HUB_USER/valbum-embedder}"
+            images="$images $hub"
+            echo "hub=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Docker Hub is not configured (see RELEASE.md); the embedder image is pushed to $ghcr only."
+            echo "hub=false" >> "$GITHUB_OUTPUT"
+          fi
+          newest=$(git ls-remote --tags --refs origin 'valbum-*' \
+                     | sed -n 's|.*refs/tags/valbum-\([0-9]*\.[0-9]*\.[0-9]*\)$|\1|p' | sort -V | tail -1)
+          tags=""
+          for image in $images; do
+            tags="$tags,$image:$VERSION"
+            if [ "$VERSION" = "$newest" ]; then
+              tags="$tags,$image:latest"
+            fi
+          done
+          echo "Tags: ${tags#,}"
+          {
+            echo "tags=${tags#,}"
+            echo "revision=$(git rev-parse HEAD)"
+          } >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Smoke-test the amd64 image
+        run: |
+          docker buildx build --platform linux/amd64 --load -t valbum-embedder:smoke \
+            -f image-server/src/docker/Dockerfile.embedder image-server/src
+          image-server/src/docker/embedder-smoke-test valbum-embedder:smoke linux/amd64
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - if: steps.names.outputs.hub == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Build and push the multi-arch image
+        uses: docker/build-push-action@v6
+        with:
+          context: image-server/src
+          file: image-server/src/docker/Dockerfile.embedder
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.names.outputs.tags }}
+          labels: |
+            org.opencontainers.image.title=VAlbum embedder
+            org.opencontainers.image.description=The embedder service of VAlbum's content search, for a machine of its own
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ needs.prepare.outputs.version }}
+            org.opencontainers.image.revision=${{ steps.names.outputs.revision }}
 
   android:
     name: Android APK

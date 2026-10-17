@@ -1,0 +1,30 @@
+[Unit]
+Description=VAlbum embedder service (content search)
+Documentation=https://github.com/haumacher/valbum2
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=valbum-embedder
+Group=valbum-embedder
+WorkingDirectory=/var/lib/valbum-embedder
+EnvironmentFile=-/etc/default/valbum-embedder
+ExecStart=/usr/bin/valbum-embedder
+Restart=on-failure
+RestartSec=30
+
+# Below the interactive work of the machine it shares.
+Nice=10
+
+# Hardening: the service writes its folder only (VALBUM_EMBEDDER_DIR, below
+# /var/lib by default; one elsewhere needs a ReadWritePaths= in an override).
+ProtectSystem=strict
+ReadWritePaths=/var/lib/valbum-embedder
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

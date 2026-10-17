@@ -188,6 +188,15 @@ sudo systemctl restart valbum</code></pre>
 <p>Then open <code>http://&lt;your-pi&gt;:8080/</code> in a browser, or point the app's server
 setting at it and sign in with that secret.</p>
 
+<h2>Content search on another machine</h2>
+<p>A Raspberry Pi takes about 90 seconds per photo to see what it shows. A faster machine in the
+network can do it instead (64-bit x86 or ARM, Python 3.12 or newer): add this repository there and</p>
+<pre><code>sudo apt install valbum-embedder
+sudo grep ^VALBUM_EMBEDDER_KEY= /etc/default/valbum-embedder</code></pre>
+<p>then set <code>VALBUM_EMBEDDER_URL=http://&lt;that machine&gt;:8091/</code> and that
+<code>VALBUM_EMBEDDER_KEY</code> in the album server's <code>/etc/default/valbum</code>. The
+previews of the photos travel to it: HTTPS is recommended, see the README.</p>
+
 <h2>Updating</h2>
 <pre><code>sudo apt update &amp;&amp; sudo apt upgrade</code></pre>
 <p>Your library at <code>VALBUM_BASEPATH</code> (default <code>/var/lib/valbum</code>) is never

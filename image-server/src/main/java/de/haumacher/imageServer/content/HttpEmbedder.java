@@ -21,8 +21,22 @@ import java.net.http.HttpTimeoutException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.HexFormat;
+import java.util.Objects;
+import java.util.logging.Logger;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLEngine;
+import javax.net.ssl.SSLException;
+import javax.net.ssl.SSLHandshakeException;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509ExtendedTrustManager;
 
 /**
  * The {@link Embedder} that talks to an embedder service, see issue #257: the Python service of
@@ -42,8 +56,32 @@ import java.util.Base64;
  * fail with {@link EmbedderUnavailableException}, saying which. A refused input (a picture that is
  * no picture) fails with a plain {@link IOException}: that photograph will not do better later.
  * </p>
+ *
+ * <h2>A service on another machine</h2>
+ *
+ * <p>
+ * The package <code>valbum-embedder</code> runs the service on a machine of its own, see the
+ * README. Every request then carries its key (<code>Authorization: Bearer</code>,
+ * <code>VALBUM_EMBEDDER_KEY</code>); a refused key makes the service unavailable, with the
+ * service's reason. An <code>https</code> address is checked against the trusted certificate
+ * authorities of the JVM, or, where a SHA-256 fingerprint is pinned
+ * (<code>VALBUM_EMBEDDER_CERT_SHA256</code>, for a self-signed certificate), against that
+ * fingerprint alone.
+ * </p>
+ *
+ * <h2>The model of every vector</h2>
+ *
+ * <p>
+ * The service names the revision, precision and preprocessing of the model in its health and with
+ * every vector. A service whose preprocessing is not {@link ContentModel#PREPROCESSING} is refused
+ * (another release of the embedder: its vectors would carry a stamp that lies). A vector computed
+ * with another model than the one {@link #stamp()} answered is refused, and {@link #stamp()} follows
+ * the service afterwards: vectors of different stamps are never mixed.
+ * </p>
  */
 public class HttpEmbedder implements Embedder {
+
+	private static final Logger LOG = Logger.getLogger(HttpEmbedder.class.getName());
 
 	/** How long to wait for a connection. */
 	static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(5);
@@ -60,8 +98,9 @@ public class HttpEmbedder implements Embedder {
 	/** How long a picture may take: seconds on a PC, tens of seconds on a Raspberry Pi 5. */
 	static final Duration IMAGE_TIMEOUT = Duration.ofMinutes(10);
 
-	/** What {@link #health()} answers. */
-	public record Health(String status, String model, String revision, String precision, int dimension, String error) {
+	/** What {@link #health()} answers; <code>preprocessing</code> is -1 where the service names none. */
+	public record Health(String status, String model, String revision, String precision, int dimension, String error,
+			int preprocessing, String detail) {
 
 		/** Whether the service can embed. */
 		public boolean isReady() {
@@ -76,6 +115,8 @@ public class HttpEmbedder implements Embedder {
 
 	private final URI _base;
 
+	private final String _key;
+
 	private final HttpClient _http;
 
 	private final Duration _textTimeout;
@@ -86,21 +127,63 @@ public class HttpEmbedder implements Embedder {
 
 	private volatile Health _lastHealth;
 
+	private boolean _report;
+
+	private String _reported = "";
+
 	/**
 	 * Creates a {@link HttpEmbedder} for the service at the given address, e.g.
-	 * <code>http://127.0.0.1:8091/</code>.
+	 * <code>http://127.0.0.1:8091/</code>, that sends no key.
 	 */
 	public HttpEmbedder(URI base) {
-		this(base, TEXT_TIMEOUT, IMAGE_TIMEOUT);
+		this(base, null, null, TEXT_TIMEOUT, IMAGE_TIMEOUT);
+	}
+
+	/**
+	 * Creates a {@link HttpEmbedder} for a service of its own.
+	 *
+	 * @param key
+	 *        The key every request carries, <code>null</code> for none.
+	 * @param certSha256
+	 *        The SHA-256 of the service's certificate, 32 bytes, for a self-signed one; <code>null</code>
+	 *        to check an <code>https</code> address against the trusted certificate authorities.
+	 */
+	public HttpEmbedder(URI base, String key, byte[] certSha256) {
+		this(base, key, certSha256, TEXT_TIMEOUT, IMAGE_TIMEOUT);
 	}
 
 	/** Creates a {@link HttpEmbedder} with other time limits (a test). */
 	HttpEmbedder(URI base, Duration textTimeout, Duration imageTimeout) {
+		this(base, null, null, textTimeout, imageTimeout);
+	}
+
+	/** Creates a {@link HttpEmbedder} with a key, a pinned certificate and other time limits (a test). */
+	HttpEmbedder(URI base, String key, byte[] certSha256, Duration textTimeout, Duration imageTimeout) {
 		_base = base.toString().endsWith("/") ? base : URI.create(base + "/");
+		_key = key == null || key.isEmpty() ? null : key;
 		_textTimeout = textTimeout;
 		_imageTimeout = imageTimeout;
-		_http = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).version(HttpClient.Version.HTTP_1_1)
-			.followRedirects(HttpClient.Redirect.NEVER).build();
+		HttpClient.Builder http = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT)
+			.version(HttpClient.Version.HTTP_1_1).followRedirects(HttpClient.Redirect.NEVER);
+		if (certSha256 != null) {
+			http.sslContext(pinned(certSha256));
+		}
+		_http = http.build();
+	}
+
+	/**
+	 * Logs every change of what {@link #unavailability()} says, for an administrator who reads the
+	 * server's log: what a service of its own is used with; the {@link ManagedEmbedder} logs its child
+	 * itself.
+	 */
+	public HttpEmbedder reportChanges() {
+		_report = true;
+		return this;
+	}
+
+	/** Whether requests carry a key. */
+	public boolean hasKey() {
+		return _key != null;
 	}
 
 	/** The address of the service. */
@@ -149,18 +232,40 @@ public class HttpEmbedder implements Embedder {
 	}
 
 	private String stampOf(Health health) {
-		if (health.isReady() && health.revision() != null && health.precision() != null) {
+		if (health.isReady() && incompatibility(health) == null) {
 			_stamp = ContentModel.stamp(health.revision(), health.precision(), DIMENSION);
 		}
 		return _stamp;
 	}
 
+	/**
+	 * Why vectors of the service cannot be told apart from those of another model, <code>null</code>
+	 * where they can: it names its model, and preprocesses as this server's
+	 * {@link ContentModel#PREPROCESSING} says.
+	 */
+	private String incompatibility(Health health) {
+		if (health.revision() == null || health.precision() == null) {
+			return "the embedder service at " + _base + " does not name the revision and precision of its model";
+		}
+		if (health.preprocessing() != ContentModel.PREPROCESSING) {
+			return "the embedder service at " + _base + " preprocesses by version "
+				+ (health.preprocessing() < 0 ? "(none named)" : health.preprocessing()) + ", this server by version "
+				+ ContentModel.PREPROCESSING + ": its vectors would be stamped wrongly; install the embedder of the "
+				+ "same VAlbum release as this server";
+		}
+		return null;
+	}
+
 	@Override
 	public String unavailability() {
+		return note(problem());
+	}
+
+	private String problem() {
 		try {
 			Health health = health();
 			if (health.isReady()) {
-				return null;
+				return incompatibility(health);
 			}
 			return describe(health);
 		} catch (EmbedderUnavailableException ex) {
@@ -170,11 +275,32 @@ public class HttpEmbedder implements Embedder {
 		}
 	}
 
+	/** Logs a change of the availability, where {@link #reportChanges()} asks for it. */
+	private String note(String problem) {
+		if (_report) {
+			String text = Objects.requireNonNullElse(problem, "");
+			boolean changed;
+			synchronized (this) {
+				changed = !text.equals(_reported);
+				_reported = text;
+			}
+			if (changed) {
+				if (problem == null) {
+					LOG.info("Content search: the embedder service at " + _base + " is ready (" + _stamp + ").");
+				} else {
+					LOG.warning("Content search: " + problem);
+				}
+			}
+		}
+		return problem;
+	}
+
 	private String describe(Health health) {
 		if (health.isFailed()) {
 			return "the embedder service at " + _base + " cannot load the model: " + health.error();
 		}
-		return "the embedder service at " + _base + " is " + health.status() + " the model";
+		return "the embedder service at " + _base + " is " + health.status() + " the model"
+			+ (health.detail() == null ? "" : " (" + health.detail() + ")");
 	}
 
 	@Override
@@ -184,7 +310,8 @@ public class HttpEmbedder implements Embedder {
 			try {
 				Health health = health();
 				if (health.isReady()) {
-					return true;
+					// A service that is not of this server's preprocessing will not become one.
+					return incompatibility(health) == null;
 				}
 				if (health.isFailed()) {
 					return false;
@@ -200,10 +327,10 @@ public class HttpEmbedder implements Embedder {
 		}
 	}
 
-	/** Whether the last health check said the service failed to load its model for good. */
+	/** Whether the last health check said the service failed to load its model for good, or never fits. */
 	boolean lastHealthFailed() {
 		Health health = _lastHealth;
-		return health != null && health.isFailed();
+		return health != null && (health.isFailed() || health.isReady() && incompatibility(health) != null);
 	}
 
 	/**
@@ -213,14 +340,17 @@ public class HttpEmbedder implements Embedder {
 	 *         Where it does not answer.
 	 */
 	public Health health() throws IOException {
-		HttpRequest request = HttpRequest.newBuilder(_base.resolve("health")).timeout(HEALTH_TIMEOUT).GET().build();
+		HttpRequest request = authorised(HttpRequest.newBuilder(_base.resolve("health"))).timeout(HEALTH_TIMEOUT).GET()
+			.build();
 		String body = send(request, "health");
 		String status = null;
 		String model = null;
 		String revision = null;
 		String precision = null;
 		String error = null;
+		String detail = null;
 		int dimension = 0;
+		int preprocessing = -1;
 		try (JsonReader json = new JsonReader(new ReaderAdapter(new StringReader(body)))) {
 			json.beginObject();
 			while (json.hasNext()) {
@@ -231,6 +361,8 @@ public class HttpEmbedder implements Embedder {
 					case "precision" -> precision = json.nextString();
 					case "dimension" -> dimension = json.nextInt();
 					case "error" -> error = json.nextString();
+					case "detail" -> detail = json.nextString();
+					case "preprocessing" -> preprocessing = json.nextInt();
 					default -> json.skipValue();
 				}
 			}
@@ -241,7 +373,7 @@ public class HttpEmbedder implements Embedder {
 		if (status == null) {
 			throw new IOException("The embedder service names no status.");
 		}
-		Health result = new Health(status, model, revision, precision, dimension, error);
+		Health result = new Health(status, model, revision, precision, dimension, error, preprocessing, detail);
 		_lastHealth = result;
 		stampOf(result);
 		return result;
@@ -257,10 +389,49 @@ public class HttpEmbedder implements Embedder {
 			json.name("encoding_format").value("base64");
 			json.endObject();
 		}
-		HttpRequest request = HttpRequest.newBuilder(_base.resolve("v1/embeddings")).timeout(timeout)
+		HttpRequest request = authorised(HttpRequest.newBuilder(_base.resolve("v1/embeddings"))).timeout(timeout)
 			.header("Content-Type", "application/json")
 			.POST(HttpRequest.BodyPublishers.ofString(buffer.toString(), StandardCharsets.UTF_8)).build();
-		return vector(send(request, modality));
+		String body;
+		try {
+			body = send(request, modality);
+		} catch (EmbedderUnavailableException ex) {
+			note(ex.getMessage());
+			throw ex;
+		}
+		Answer answer = answer(body);
+		checkModel(answer);
+		return answer.vector();
+	}
+
+	/** Refuses a vector of another model than the one {@link #stamp()} answered. */
+	private void checkModel(Answer answer) throws EmbedderUnavailableException {
+		if (answer.revision() == null || answer.precision() == null || answer.preprocessing() < 0) {
+			throw new EmbedderUnavailableException(note("the embedder service at " + _base
+				+ " does not name the model of its vectors; install the embedder of the same VAlbum release as "
+				+ "this server"));
+		}
+		if (answer.preprocessing() != ContentModel.PREPROCESSING) {
+			_stamp = null;
+			throw new EmbedderUnavailableException(note("the embedder service at " + _base
+				+ " preprocesses by version " + answer.preprocessing() + ", this server by version "
+				+ ContentModel.PREPROCESSING + "; install the embedder of the same VAlbum release as this server"));
+		}
+		String stamp = ContentModel.stamp(answer.revision(), answer.precision(), DIMENSION);
+		String known = stamp();
+		if (!stamp.equals(known)) {
+			// The service was changed (another precision, another release) since its stamp was asked.
+			_stamp = null;
+			throw new EmbedderUnavailableException(note("the embedder service at " + _base + " now embeds with "
+				+ stamp + ", not " + known + "; the vector is not used, vectors of different models are never mixed"));
+		}
+	}
+
+	private HttpRequest.Builder authorised(HttpRequest.Builder request) {
+		if (_key != null) {
+			request.header("Authorization", "Bearer " + _key);
+		}
+		return request;
 	}
 
 	/** The body of a successful answer; every failure as the exception its kind asks for. */
@@ -276,6 +447,13 @@ public class HttpEmbedder implements Embedder {
 		} catch (InterruptedException ex) {
 			Thread.currentThread().interrupt();
 			throw new EmbedderUnavailableException("interrupted while waiting for the embedder service", ex);
+		} catch (SSLException ex) {
+			throw new EmbedderUnavailableException("the embedder service at " + _base + " fails the TLS handshake: "
+				+ reason(ex) + (ex instanceof SSLHandshakeException
+					? " (a self-signed certificate is accepted by its SHA-256 fingerprint, " + EmbedderSettings.CERT_SHA256
+						+ ")"
+					: ""),
+				ex);
 		} catch (IOException ex) {
 			// A connection reset by a service that just ended: it is not there.
 			throw new EmbedderUnavailableException("the embedder service at " + _base + " is not reachable: "
@@ -286,6 +464,10 @@ public class HttpEmbedder implements Embedder {
 			return response.body();
 		}
 		String message = errorMessage(response.body());
+		if (status == 401) {
+			throw new EmbedderUnavailableException("the embedder service at " + _base + " refuses this server: " + message
+				+ (_key == null ? " (" + EmbedderSettings.KEY + " is not set here)" : ""));
+		}
 		if (status == 503) {
 			throw new EmbedderUnavailableException("the embedder service at " + _base + " cannot embed now: " + message);
 		}
@@ -315,14 +497,40 @@ public class HttpEmbedder implements Embedder {
 		return body.length() > 200 ? body.substring(0, 200) + "..." : body;
 	}
 
+	/** An embeddings answer: its one vector, and the model it names (<code>null</code>, -1 where it names none). */
+	record Answer(float[] vector, String revision, String precision, int preprocessing) {
+		// A tuple.
+	}
+
 	/** The one vector of an answer, checked. */
 	static float[] vector(String body) throws IOException {
+		return answer(body).vector();
+	}
+
+	/** The answer to an embeddings request, its vector checked. */
+	static Answer answer(String body) throws IOException {
 		float[] result = null;
 		int count = 0;
+		String revision = null;
+		String precision = null;
+		int preprocessing = -1;
 		try (JsonReader json = new JsonReader(new ReaderAdapter(new StringReader(body)))) {
 			json.beginObject();
 			while (json.hasNext()) {
-				if (!"data".equals(json.nextName())) {
+				String name = json.nextName();
+				if ("revision".equals(name)) {
+					revision = json.nextString();
+					continue;
+				}
+				if ("precision".equals(name)) {
+					precision = json.nextString();
+					continue;
+				}
+				if ("preprocessing".equals(name)) {
+					preprocessing = json.nextInt();
+					continue;
+				}
+				if (!"data".equals(name)) {
 					json.skipValue();
 					continue;
 				}
@@ -349,7 +557,7 @@ public class HttpEmbedder implements Embedder {
 			throw new IOException("The embedder service answered " + count + " vectors for one input.");
 		}
 		check(result);
-		return result;
+		return new Answer(result, revision, precision, preprocessing);
 	}
 
 	private static float[] readArray(JsonReader json) throws IOException {
@@ -397,6 +605,97 @@ public class HttpEmbedder implements Embedder {
 		}
 		if (Math.abs(Math.sqrt(sum) - 1) > 1e-3) {
 			throw new IOException("The embedder service answered a vector of length " + Math.sqrt(sum) + ", not 1.");
+		}
+	}
+
+	private static String reason(Throwable ex) {
+		String message = ex.getMessage();
+		return message == null || message.isEmpty() ? ex.getClass().getSimpleName() : message;
+	}
+
+	/** The SHA-256 of a certificate's DER encoding, the fingerprint <code>openssl x509 -fingerprint -sha256</code> shows. */
+	static byte[] fingerprint(X509Certificate certificate) throws CertificateException {
+		try {
+			return MessageDigest.getInstance("SHA-256").digest(certificate.getEncoded());
+		} catch (NoSuchAlgorithmException ex) {
+			throw new CertificateException(ex);
+		}
+	}
+
+	/** A TLS context that trusts the one certificate of the given SHA-256 fingerprint, and nothing else. */
+	private static SSLContext pinned(byte[] sha256) {
+		try {
+			SSLContext context = SSLContext.getInstance("TLS");
+			context.init(null, new TrustManager[] { new PinnedTrustManager(sha256.clone()) }, null);
+			return context;
+		} catch (GeneralSecurityException ex) {
+			throw new IllegalStateException("No TLS in this JVM: " + ex.getMessage(), ex);
+		}
+	}
+
+	/**
+	 * Trusts the server certificate of one fingerprint. The pin replaces the check of the issuer and
+	 * of the host name: a self-signed certificate has no issuer to check, and whoever holds its private
+	 * key is the service, whatever name it is reached by. An {@link X509ExtendedTrustManager}, so that
+	 * the JSSE does not add a host name check of its own.
+	 */
+	private static final class PinnedTrustManager extends X509ExtendedTrustManager {
+
+		private final byte[] _sha256;
+
+		PinnedTrustManager(byte[] sha256) {
+			_sha256 = sha256;
+		}
+
+		private void check(X509Certificate[] chain) throws CertificateException {
+			if (chain == null || chain.length == 0) {
+				throw new CertificateException("the embedder service shows no certificate");
+			}
+			byte[] actual = fingerprint(chain[0]);
+			if (!MessageDigest.isEqual(actual, _sha256)) {
+				throw new CertificateException("the certificate of the embedder service has the SHA-256 fingerprint "
+					+ HexFormat.ofDelimiter(":").withUpperCase().formatHex(actual) + ", not the one pinned in "
+					+ EmbedderSettings.CERT_SHA256);
+			}
+		}
+
+		@Override
+		public void checkServerTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+			check(chain);
+		}
+
+		@Override
+		public void checkServerTrusted(X509Certificate[] chain, String authType, java.net.Socket socket)
+				throws CertificateException {
+			check(chain);
+		}
+
+		@Override
+		public void checkServerTrusted(X509Certificate[] chain, String authType, SSLEngine engine)
+				throws CertificateException {
+			check(chain);
+		}
+
+		@Override
+		public void checkClientTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+			throw new CertificateException("no client is trusted here");
+		}
+
+		@Override
+		public void checkClientTrusted(X509Certificate[] chain, String authType, java.net.Socket socket)
+				throws CertificateException {
+			throw new CertificateException("no client is trusted here");
+		}
+
+		@Override
+		public void checkClientTrusted(X509Certificate[] chain, String authType, SSLEngine engine)
+				throws CertificateException {
+			throw new CertificateException("no client is trusted here");
+		}
+
+		@Override
+		public X509Certificate[] getAcceptedIssuers() {
+			return new X509Certificate[0];
 		}
 	}
 

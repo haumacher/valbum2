@@ -1,0 +1,90 @@
+#!/bin/bash
+#
+# Starts the embedder image (issue #257) and checks what it promises without downloading the model:
+# the service answers on port 8091, refuses a request without its key or with a wrong one (401,
+# saying why), answers its health check with the key ("downloading": the model address points
+# nowhere here, so nothing is fetched, and the health says why), and the container's own health
+# check passes; a second container without a key starts and warns in its log that it is open.
+#
+# Run by the release before anything is pushed; usable by hand as well:
+#
+#   image-server/src/docker/embedder-smoke-test <image> [<platform>]   e.g. valbum-embedder:test linux/amd64
+#
+# Needs docker and curl.
+#
+set -euo pipefail
+
+IMAGE=$1
+PLATFORM=${2:-linux/amd64}
+PORT=${SMOKE_PORT:-18091}
+NAME=valbum-embedder-smoke-$$
+OPEN=$NAME-open
+KEY=smoke-test-key-$$
+URL=http://127.0.0.1:$PORT
+
+cleanup() {
+	status=$?
+	if [ "$status" != 0 ]; then
+		echo "--- container log"
+		docker logs "$NAME" 2>&1 | tail -40 || true
+	fi
+	docker rm -f "$NAME" "$OPEN" >/dev/null 2>&1 || true
+	exit "$status"
+}
+trap cleanup EXIT
+
+fail() {
+	echo "embedder-smoke-test: FAILED: $*" >&2
+	exit 1
+}
+
+wait_for() {
+	limit=$1
+	shift
+	start=$(date +%s)
+	until "$@"; do
+		if [ $(($(date +%s) - start)) -ge "$limit" ]; then
+			return 1
+		fi
+		sleep 2
+	done
+}
+
+echo "embedder-smoke-test: starting $IMAGE ($PLATFORM) on port $PORT"
+docker run -d --name "$NAME" --platform "$PLATFORM" -p "127.0.0.1:$PORT:8091" \
+	-e VALBUM_EMBEDDER_KEY="$KEY" -e VALBUM_EMBEDDER_MODEL_URL=http://127.0.0.1:9/ "$IMAGE" >/dev/null
+
+answers() {
+	curl --silent --max-time 5 --output /dev/null "$URL/health"
+}
+wait_for 120 answers || fail "the service does not answer on port $PORT"
+
+status=$(curl --silent --max-time 5 --output "${TMPDIR:-/tmp}/$NAME.json" --write-out '%{http_code}' "$URL/health")
+[ "$status" = 401 ] || fail "a health check without the key answered $status, not 401"
+grep -q 'needs a key' "${TMPDIR:-/tmp}/$NAME.json" || fail "the refusal does not say why: $(cat "${TMPDIR:-/tmp}/$NAME.json")"
+status=$(curl --silent --max-time 5 --output /dev/null --write-out '%{http_code}' -H "Authorization: Bearer wrong" \
+	-H 'Content-Type: application/json' --data '{"input": "x"}' "$URL/v1/embeddings")
+[ "$status" = 401 ] || fail "an embedding with a wrong key answered $status, not 401"
+
+health=$(curl --silent --fail --max-time 5 -H "Authorization: Bearer $KEY" "$URL/health") \
+	|| fail "the health check with the key failed"
+echo "embedder-smoke-test: health: $health"
+echo "$health" | grep -q '"status": "downloading"' || fail "the service is not fetching its model: $health"
+echo "$health" | grep -q '"preprocessing": ' || fail "the health names no preprocessing: $health"
+rm -f "${TMPDIR:-/tmp}/$NAME.json"
+
+docker exec "$NAME" /usr/local/bin/embedder-healthcheck || fail "the image's health check fails"
+docker exec "$NAME" sh -c 'test "$(id -u)" != 0' || fail "the service runs as root"
+docker logs "$NAME" 2>&1 | grep -q 'every request needs the key' || fail "the log does not say a key is needed"
+if docker logs "$NAME" 2>&1 | grep -q "$KEY"; then
+	fail "the key is in the log"
+fi
+
+docker run -d --name "$OPEN" --platform "$PLATFORM" -e VALBUM_EMBEDDER_MODEL_URL=http://127.0.0.1:9/ "$IMAGE" >/dev/null
+warned() {
+	docker logs "$OPEN" 2>&1 | grep -q 'WARNING: no key is set'
+}
+wait_for 60 warned || fail "a service without a key does not warn that it is open"
+
+docker stop -t 10 "$NAME" >/dev/null
+echo "embedder-smoke-test: OK"

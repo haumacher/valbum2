@@ -157,7 +157,9 @@ The `.deb` reads `/etc/default/valbum`; Docker takes the same variables from `en
 | `VALBUM_INDEX_MEMORY` | Megabytes of the spaces' indexes (`.valbum/index`) kept in memory, all spaces together | a sixteenth of the heap | a sixteenth of the heap |
 | `VALBUM_EMBEDDER_DIR` | Where [content search](#content-search-in-preparation) keeps its model and Python environment | `<VALBUM_BASEPATH>/.embedder` | `/photos/.embedder` |
 | `VALBUM_EMBEDDER_PRECISION` | `fp32` (exact) or `int8` (half the memory) | `fp32` | `fp32` |
-| `VALBUM_EMBEDDER_PORT` / `_URL` | The port of its service on `127.0.0.1` / a service of its own instead | any free port / none | any free port / none |
+| `VALBUM_EMBEDDER_PORT` / `_URL` | The port of its service on `127.0.0.1` / a service [on another machine](#content-search-on-another-machine) instead | any free port / none | any free port / none |
+| `VALBUM_EMBEDDER_KEY` | The key of that service | none | none |
+| `VALBUM_EMBEDDER_CERT_SHA256` | Its certificate's SHA-256 fingerprint, for a self-signed one | none | none |
 
 On the `.deb`, point it at your photos and restart:
 
@@ -389,7 +391,8 @@ for a new space). Processing your family's faces is your decision, not a default
 
 A coming version finds photos by what they show: "flowers", "Blumen im Regen". The server runs the
 model [EmbeddingGemma 2](https://huggingface.co/google/embeddinggemma-2) (Apache-2.0) itself; no
-photo leaves it. Nothing is downloaded or started until a space asks for it.
+photo leaves it — unless you let [another machine](#content-search-on-another-machine) do the work.
+Nothing is downloaded or started until a space asks for it.
 
 - **Needs** a 64-bit machine (x86-64, or ARM such as a Raspberry Pi 5), Python 3.12 or newer with
   `python3-venv` (the `.deb` recommends it, the image has it), about 2.2 GB of disk in
@@ -421,6 +424,51 @@ photo leaves it. Nothing is downloaded or started until a space asks for it.
   ```
   sudo -u valbum sh -c 'set -a; . /etc/default/valbum; java -cp /usr/share/valbum/valbum.jar de.haumacher.imageServer.content.EmbedderCheck --basepath "$VALBUM_BASEPATH" /path/to/some/*.jpg'
   ```
+
+#### Content search on another machine
+
+A Raspberry Pi needs about 90 seconds per photo. A faster computer in your network (64-bit x86 or
+ARM, Python 3.12 or newer, 2 GB of free memory) can do the work instead; the album server sends it
+the photos and asks it for each search.
+
+1. **On the faster machine**, add the APT repository as above, then:
+
+   ```
+   sudo apt install valbum-embedder
+   sudo grep ^VALBUM_EMBEDDER_KEY= /etc/default/valbum-embedder
+   ```
+
+   The package makes a random key at installation and starts the service on port 8091. Its first
+   start downloads the model (1.8 GB) and the Python packages (50 MB), each checked against its
+   pinned SHA-256; `journalctl -u valbum-embedder` shows how far it is. Without internet, place the
+   files as described above into `/var/lib/valbum-embedder`. With Docker instead:
+
+   ```
+   docker run -d --name valbum-embedder -p 8091:8091 -v valbum-embedder:/data \
+     -e VALBUM_EMBEDDER_KEY=$(openssl rand -hex 32) hauix/valbum-embedder
+   ```
+
+   (also `ghcr.io/haumacher/valbum-embedder`; `docker inspect valbum-embedder` shows the key again).
+2. **On the album server**, in `/etc/default/valbum` (Docker: `environment:`), then restart it:
+
+   ```
+   VALBUM_EMBEDDER_URL=http://faster-machine:8091/
+   VALBUM_EMBEDDER_KEY=<the key from step 1>
+   ```
+
+   The server's log says whether the service answers and accepts the key.
+
+**What travels:** the preview of every photo (a JPEG about 600 pixels high, never the original),
+the search texts, and the key. Without TLS anybody on the network between the two machines can read
+them — fine for many home networks, your choice. **TLS is recommended:** give the service a
+certificate (`VALBUM_EMBEDDER_TLS_CERT` and `_TLS_KEY` in `/etc/default/valbum-embedder`, which shows
+how to make one), name it `https://…` on the album server and, for a self-signed certificate, pin
+its fingerprint there as `VALBUM_EMBEDDER_CERT_SHA256` (`openssl x509 -noout -fingerprint -sha256
+-in cert.pem`). A reverse proxy with TLS in front of the service works as well.
+
+Without a key the service still runs, open to everybody who can reach it, and says so in its log.
+Both machines must run the same VAlbum release; the server refuses a service whose model handling
+differs, and never mixes vectors of different models.
 
 ## Administration
 
@@ -539,7 +587,8 @@ Linux-Rechner — und zeigt sie auf allen Geräten, ohne Cloud-Anbieter. Jeder O
 Album. Die Android-App lädt neue Photos in ein Eingangs-Album; Freigabe-Links, Einladungen,
 Sichtbarkeitsstufen, Gesichtserkennung (nur auf Wunsch) und mehrere getrennte Bibliotheken
 ("Spaces") auf einem Server gehören dazu. Die Suche nach Bildinhalten ("Blumen im Regen") ist in
-Vorbereitung; sie läuft ganz auf dem eigenen Server (siehe [Content search](#content-search-in-preparation)).
+Vorbereitung; sie läuft auf dem eigenen Server oder, mit dem Paket `valbum-embedder`, auf einem
+schnelleren Rechner im eigenen Netz (siehe [Content search](#content-search-in-preparation)).
 
 Deine Photos werden nie verändert. Titel, Bewertungen und Reihenfolge stehen in kleinen Dateien
 neben den Photos. Gelöscht wird nur, wenn ein Administrator die als "Trash" bewerteten Photos eines

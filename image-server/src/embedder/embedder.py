@@ -4,14 +4,23 @@
 #
 """The embedder service of VAlbum, see issue #257.
 
-A small HTTP service on 127.0.0.1 that turns text and pictures into vectors of EmbeddingGemma 2
+A small HTTP service that turns text and pictures into vectors of EmbeddingGemma 2
 (google/embeddinggemma-2, Apache-2.0), one shared space for both, so that a text query can be
 compared with a photograph directly. It runs the ONNX export onnx-community/embeddinggemma-2-ONNX
 with onnxruntime; only the text model and the vision encoder are loaded, never the audio encoder.
 
-The server (de.haumacher.imageServer.content) downloads the model, starts this service when a
-space asks for content search and talks to it; the service itself never touches the network and
-never sees a photograph's name, only the bytes of a preview.
+It runs in one of two ways:
+
+- Started by the album server (de.haumacher.imageServer.content.ManagedEmbedder) as its child on
+  127.0.0.1, when a space first asks for content search. The server downloads the model; the
+  service never touches the network.
+- On its own, on any machine - the package valbum-embedder, or its container image - and called by
+  album servers over the network (VALBUM_EMBEDDER_URL on their side). Then it listens on all
+  interfaces, fetches the model itself (--fetch, the files of model.json checked against their
+  SHA-256) and asks every request for its key (VALBUM_EMBEDDER_KEY, "Authorization: Bearer
+  <key>"); TLS is optional (--tls-cert, --tls-key).
+
+Either way it never sees a photograph's name, only the bytes of a preview.
 
 The protocol is the OpenAI embeddings call, with images as Infinity sends them:
 
@@ -24,7 +33,16 @@ The protocol is the OpenAI embeddings call, with images as Infinity sends them:
         "usage": {"prompt_tokens": 10, "total_tokens": 10}}
 
     GET /health
-    -> {"status": "ready", "model": ..., "revision": ..., "precision": "fp32", "dimension": 768}
+    -> {"status": "ready", "model": ..., "revision": ..., "precision": "fp32", "dimension": 768,
+        "preprocessing": 1}
+
+The status is "downloading" (with --fetch, a "detail" says how far), "loading", "ready" or
+"failed" (with an "error"). Every embeddings answer names the revision, precision and
+preprocessing it was computed with, so that a client never takes a vector of another model for
+one of the model it asked before.
+
+With a key configured, every request without "Authorization: Bearer <key>", the health check
+included, is answered 401 with the reason.
 
 Texts are embedded as given: the task prefixes of the model card ("task: search result | query: ",
 "title: none | text: ") are the client's business, so that what is embedded is visible where it is
@@ -37,13 +55,20 @@ Run "embedder.py --help" for the options, "embedder.py bench --help" for the ben
 import argparse
 import base64
 import binascii
+import hashlib
+import hmac
 import io
+import ipaddress
 import json
 import math
 import os
+import ssl
 import sys
 import threading
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # The heavy imports (numpy, onnxruntime, tokenizers, PIL) are deferred to the first use, so that
@@ -51,9 +76,14 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
+# The version of what is made of the model before and around it: the image preprocessing below
+# and the task prefixes the client adds. Named in every answer; the album server refuses a service
+# whose version is not its own (ContentModel.PREPROCESSING, which a test holds equal to this).
+PREPROCESSING = 1
+
 # What the vision encoder expects, from processor_config.json of the pinned revision
-# (image_processor: Gemma4ImageProcessor). Changing any of these changes every vector: the
-# server's stamp (ContentModel.PREPROCESSING) must change with them.
+# (image_processor: Gemma4ImageProcessor). Changing any of these changes every vector:
+# PREPROCESSING, and the server's ContentModel.PREPROCESSING with it, must change with them.
 PATCH_SIZE = 16
 POOLING_KERNEL = 3
 MAX_SOFT_TOKENS = 280
@@ -90,6 +120,228 @@ def model_files(manifest, precision):
     if len(text) != 1 or len(vision) != 1:
         raise ValueError("model.json names no text model and vision encoder for " + precision)
     return text[0], vision[0]
+
+
+# --- The model's files, fetched by the service of its own (--fetch) --------------------------------
+#
+# The same rules as the album server's ModelStore, and the same files on disk, so that a folder
+# prepared by either is taken by the other: the folder <repository name>@<revision[:8]> below the
+# model root, each file under its name in the repository, downloaded beside its place (.part),
+# resumed with a range request, checked against the SHA-256 of model.json and only then moved into
+# place; a record (<name>.download, Java properties) remembers the check, so that a restart does
+# not read two gigabytes again. A file placed by hand that is not the pinned one is never touched:
+# it is the administrator's, and the service says so and waits.
+
+HUGGING_FACE = "https://huggingface.co/"
+RECORD_SUFFIX = ".download"
+PART_SUFFIX = ".part"
+
+# How long a download may receive nothing before it is given up (and resumed at the next attempt).
+STALL_SECONDS = 120
+
+# The pause after a failed download, doubled with each further one up to the longest.
+FIRST_RETRY = 60
+MAX_RETRY = 3600
+
+
+class FetchError(Exception):
+    """A file of the model cannot be had now; `permanent` when only the administrator can help."""
+
+    def __init__(self, message, permanent=False):
+        super().__init__(message)
+        self.permanent = permanent
+
+
+def model_folder(manifest):
+    """The folder of the model below the model root: embeddinggemma-2-ONNX@daa72c51."""
+    return manifest["repository"].rsplit("/", 1)[-1] + "@" + manifest["revision"][:8]
+
+
+def megabytes(count):
+    return "%d MB" % ((count + 512 * 1024) // (1024 * 1024))
+
+
+def sha256_of(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        while True:
+            chunk = f.read(1 << 20)
+            if not chunk:
+                break
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _escape(value):
+    out = []
+    for c in value:
+        if c in "\\:=#!":
+            out.append("\\" + c)
+        elif c == "\n":
+            out.append("\\n")
+        else:
+            out.append(c)
+    return "".join(out)
+
+
+def read_record(path):
+    """The properties of a record, None where there is none or it cannot be read."""
+    try:
+        with open(path, encoding="latin-1") as f:
+            lines = f.read().splitlines()
+    except OSError:
+        return None
+    result = {}
+    for line in lines:
+        line = line.strip()
+        if not line or line[0] in "#!":
+            continue
+        key, value = [], []
+        target = key
+        escaped = False
+        for c in line:
+            if escaped:
+                target.append({"n": "\n", "t": "\t"}.get(c, c))
+                escaped = False
+            elif c == "\\":
+                escaped = True
+            elif target is key and c in "=:":
+                target = value
+            else:
+                target.append(c)
+        result["".join(key).strip()] = "".join(value).strip()
+    return result
+
+
+def modified_millis(path):
+    return os.stat(path).st_mtime_ns // 1_000_000
+
+
+class Fetcher:
+    """The files of one precision of the model in one folder, and the download that fetches them."""
+
+    def __init__(self, directory, manifest, precision, base_url=HUGGING_FACE):
+        self.directory = directory
+        self.manifest = manifest
+        self.files = manifest["files"]["common"] + manifest["files"][precision]
+        self.base_url = base_url if base_url.endswith("/") else base_url + "/"
+        self.total = sum(f["size"] for f in self.files)
+        self.received = 0
+        self.current = None
+
+    def progress(self):
+        if self.current is None:
+            return "checking the model files in " + self.directory
+        return "%s of %s into %s, now %s" % (megabytes(self.received), megabytes(self.total), self.directory,
+                                              self.current)
+
+    def _target(self, entry):
+        return os.path.join(self.directory, *entry["name"].split("/"))
+
+    def checked(self, entry):
+        """Whether the file is there and its record says it was checked as it is now."""
+        target = self._target(entry)
+        record = read_record(target + RECORD_SUFFIX)
+        if record is None:
+            return False
+        try:
+            return (record.get("sha256") == entry["sha256"] and os.path.getsize(target) == entry["size"]
+                    and record.get("modified") == str(modified_millis(target)))
+        except OSError:
+            return False
+
+    def ready(self):
+        return all(self.checked(entry) for entry in self.files)
+
+    def ensure(self):
+        """Makes every file ready; raises FetchError saying what is missing."""
+        for entry in self.files:
+            self._ensure(entry)
+        self.current = None
+
+    def _write_record(self, entry, source):
+        target = self._target(entry)
+        lines = [
+            "#Checked by VAlbum against the pinned SHA-256 (issue #257); without this file it is checked again",
+            "sha256=" + entry["sha256"],
+            "size=" + str(os.path.getsize(target)),
+            "modified=" + str(modified_millis(target)),
+            "source=" + _escape(source),
+            "checked=" + _escape(time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())),
+        ]
+        tmp = target + RECORD_SUFFIX + ".tmp"
+        with open(tmp, "w", encoding="latin-1") as f:
+            f.write("\n".join(lines) + "\n")
+        os.replace(tmp, target + RECORD_SUFFIX)
+
+    def _ensure(self, entry):
+        if self.checked(entry):
+            return
+        target = self._target(entry)
+        if os.path.isfile(target):
+            record = read_record(target + RECORD_SUFFIX)
+            digest = sha256_of(target)
+            if digest == entry["sha256"] and os.path.getsize(target) == entry["size"]:
+                self._write_record(entry, "placed by hand" if record is None else record.get("source", "downloaded"))
+                return
+            if record is None:
+                raise FetchError("%s was placed by hand but is not the file of the pinned model (SHA-256 %s, "
+                                 "expected %s); replace or remove it" % (target, digest, entry["sha256"]),
+                                 permanent=True)
+            # Downloaded once and changed since: fetched again.
+            os.remove(target)
+            os.remove(target + RECORD_SUFFIX)
+        self._download(entry)
+
+    def _download(self, entry):
+        target = self._target(entry)
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        part = target + PART_SUFFIX
+        url = "%s%s/resolve/%s/%s" % (self.base_url, self.manifest["repository"], self.manifest["revision"],
+                                      urllib.parse.quote(entry["name"]))
+        self.current = entry["name"]
+        have = os.path.getsize(part) if os.path.isfile(part) else 0
+        if have > entry["size"]:
+            os.remove(part)
+            have = 0
+        if have < entry["size"]:
+            headers = {"User-Agent": "VAlbum (https://github.com/haumacher/valbum2)"}
+            if have > 0:
+                headers["Range"] = "bytes=%d-" % have
+            try:
+                with urllib.request.urlopen(urllib.request.Request(url, headers=headers),
+                                            timeout=STALL_SECONDS) as response:
+                    append = response.status == 206 and have > 0
+                    if response.status not in (200, 206):
+                        raise FetchError("HTTP %d for %s" % (response.status, url))
+                    log("downloading %s (%s)%s" % (entry["name"], megabytes(entry["size"]),
+                                                  ", resumed at " + megabytes(have) if append else ""))
+                    with open(part, "ab" if append else "wb") as out:
+                        while True:
+                            chunk = response.read(1 << 16)
+                            if not chunk:
+                                break
+                            out.write(chunk)
+                            self.received += len(chunk)
+            except urllib.error.HTTPError as ex:
+                raise FetchError("HTTP %d for %s" % (ex.code, url))
+            except (urllib.error.URLError, OSError) as ex:
+                reason = getattr(ex, "reason", ex)
+                raise FetchError("the download of %s from %s failed: %s; it is resumed at the next attempt"
+                                 % (entry["name"], url, reason))
+        size = os.path.getsize(part)
+        if size != entry["size"]:
+            if size > entry["size"]:
+                os.remove(part)
+            raise FetchError("the download of %s stopped at %d of %d bytes" % (entry["name"], size, entry["size"]))
+        digest = sha256_of(part)
+        if digest != entry["sha256"]:
+            os.remove(part)
+            raise FetchError("the download of %s is not the file of the pinned model (SHA-256 %s, expected %s)"
+                             % (entry["name"], digest, entry["sha256"]))
+        os.replace(part, target)
+        self._write_record(entry, url)
+        log("downloaded and checked " + entry["name"])
 
 
 def truncate(vector, dimension):
@@ -247,16 +499,79 @@ class Model:
 class Service:
     """The state the HTTP handler answers from: the model once it is loaded, or why it is not."""
 
-    def __init__(self, args, manifest):
+    def __init__(self, args, manifest, key=None):
         self.args = args
         self.manifest = manifest
         self.model = None
         self.status = "loading"
         self.error = None
+        self.detail = None
+        # The key every request must carry, None for none; kept as its hash, compared in constant time.
+        self.key = hashlib.sha256(key.encode("utf-8")).digest() if key else None
         self.lock = threading.Lock()
         self.last_use = time.monotonic()
+        self.fetcher = None
+        self._refusals = {}
+        self._refusal_lock = threading.Lock()
+
+    def authorise(self, header):
+        """None where a request with the given Authorization header may be served, else the reason."""
+        if self.key is None:
+            return None
+        scheme, _, token = (header or "").strip().partition(" ")
+        token = token.strip()
+        if scheme.lower() != "bearer" or not token:
+            return ("this embedder service needs a key: the request must carry 'Authorization: Bearer <key>' "
+                    "(VALBUM_EMBEDDER_KEY on the album server, the same as on the service)")
+        if not hmac.compare_digest(hashlib.sha256(token.encode("utf-8")).digest(), self.key):
+            return ("the key is wrong: VALBUM_EMBEDDER_KEY on the album server is not the key of this embedder "
+                    "service")
+        return None
+
+    def note_refusal(self, client, reason):
+        """Logs a refused client, at most once a minute each, so that the administrator sees who knocks."""
+        now = time.monotonic()
+        with self._refusal_lock:
+            last = self._refusals.get(client)
+            if last is not None and now - last < 60:
+                return
+            self._refusals[client] = now
+        log("refused a request from %s: %s" % (client, reason.split(":")[0]))
+
+    def fetch(self):
+        """Fetches the model's files (--fetch); answers whether they are ready, trying again after failures."""
+        self.fetcher = Fetcher(self.args.model_dir, self.manifest, self.args.precision, self.args.model_url)
+        delay = FIRST_RETRY
+        while True:
+            self.status = "downloading"
+            self.detail = self.fetcher.progress()
+            try:
+                if not self.fetcher.ready():
+                    log("fetching the model (%s) into %s" % (megabytes(self.fetcher.total), self.args.model_dir))
+                    self.fetcher.ensure()
+                self.detail = None
+                return True
+            except FetchError as ex:
+                if ex.permanent:
+                    self.error = str(ex)
+                    self.status = "failed"
+                    self.detail = None
+                    log("cannot fetch the model: " + self.error)
+                    return False
+                self.detail = "%s; next attempt in %d s" % (ex, delay)
+                log(self.detail)
+            except OSError as ex:
+                # The folder is not writable, the disk is full: said, and tried again.
+                self.detail = "cannot write the model into %s: %s; next attempt in %d s" % (
+                    self.args.model_dir, ex, delay)
+                log(self.detail)
+            time.sleep(delay)
+            delay = min(delay * 2, MAX_RETRY)
 
     def load(self):
+        if getattr(self.args, "fetch", False) and not self.fetch():
+            return
+        self.status = "loading"
         start = time.monotonic()
         try:
             model = Model(self.args.model_dir, self.args.precision, self.args.threads, self.manifest)
@@ -277,9 +592,12 @@ class Service:
             "revision": self.manifest["revision"],
             "precision": self.args.precision,
             "dimension": self.manifest["dimension"],
+            "preprocessing": PREPROCESSING,
         }
         if self.error:
             result["error"] = self.error
+        if self.status == "downloading" and self.fetcher is not None:
+            result["detail"] = self.detail or self.fetcher.progress()
         return result
 
     def embed(self, request):
@@ -304,7 +622,8 @@ class Service:
         if encoding not in ("float", "base64"):
             return 400, error("'encoding_format' must be 'float' or 'base64'")
         if self.status != "ready":
-            return 503, error("the model is " + self.status + (": " + self.error if self.error else ""), "unavailable")
+            reason = self.error or (self.health().get("detail") if self.status == "downloading" else None)
+            return 503, error("the model is " + self.status + (": " + reason if reason else ""), "unavailable")
         data = []
         tokens = 0
         try:
@@ -328,6 +647,9 @@ class Service:
         return 200, {
             "object": "list",
             "model": self.manifest["model"],
+            "revision": self.manifest["revision"],
+            "precision": self.args.precision,
+            "preprocessing": PREPROCESSING,
             "data": data,
             "usage": {"prompt_tokens": tokens, "total_tokens": tokens},
         }
@@ -363,29 +685,50 @@ class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     service = None
 
+    # A connection that sends nothing for this long is closed: the service may face the network.
+    timeout = 300
+
     def log_message(self, format, *args):  # noqa: A002 - the name is http.server's
         # Quiet: every request would be a line in the server's log.
         pass
 
-    def _answer(self, status, body):
+    def _answer(self, status, body, headers=()):
         payload = json.dumps(body).encode("utf-8")
         try:
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(payload)))
+            for name, value in headers:
+                self.send_header(name, value)
             self.end_headers()
             self.wfile.write(payload)
         except (BrokenPipeError, ConnectionResetError):
             # The client gave up waiting (its time limit); nothing to tell anybody.
             self.close_connection = True
 
+    def _authorised(self):
+        """Whether the request carries the key; answers 401 with the reason where it does not."""
+        reason = self.service.authorise(self.headers.get("Authorization"))
+        if reason is None:
+            return True
+        self.service.note_refusal(self.client_address[0], reason)
+        # The body of a refused request is not read: the connection cannot be used again.
+        self.close_connection = True
+        self._answer(401, error(reason, "unauthorized"),
+                     [("WWW-Authenticate", 'Bearer realm="valbum-embedder"'), ("Connection", "close")])
+        return False
+
     def do_GET(self):  # noqa: N802 - the name is http.server's
+        if not self._authorised():
+            return
         if self.path == "/health":
             self._answer(200, self.service.health())
         else:
             self._answer(404, error("no such resource: " + self.path))
 
     def do_POST(self):  # noqa: N802 - the name is http.server's
+        if not self._authorised():
+            return
         if self.path != "/v1/embeddings":
             self._answer(404, error("no such resource: " + self.path))
             return
@@ -404,6 +747,43 @@ class Handler(BaseHTTPRequestHandler):
             return
         status, body = self.service.embed(request)
         self._answer(status, body)
+
+
+# How long a client may take for the TLS handshake.
+HANDSHAKE_SECONDS = 30
+
+
+class Server(ThreadingHTTPServer):
+    """The HTTP server, with TLS where a certificate is given; the handshake runs in the request's thread."""
+
+    daemon_threads = True
+    tls = None
+
+    def finish_request(self, request, client_address):
+        if self.tls is None:
+            super().finish_request(request, client_address)
+            return
+        request.settimeout(HANDSHAKE_SECONDS)
+        try:
+            secure = self.tls.wrap_socket(request, server_side=True)
+        except (ssl.SSLError, OSError):
+            # A client that speaks no TLS, or gives up: nothing to answer.
+            return
+        try:
+            super().finish_request(secure, client_address)
+        finally:
+            secure.close()
+
+
+def tls_context(cert, key):
+    """The TLS context of the given certificate (PEM, the chain) and private key; TLS 1.2 or newer."""
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    try:
+        context.load_cert_chain(cert, key)
+    except (OSError, ssl.SSLError) as ex:
+        raise SystemExit("valbum-embedder: cannot use the certificate %s with the key %s: %s" % (cert, key, ex))
+    return context
 
 
 def watch_stdin():
@@ -426,19 +806,48 @@ def watch_idle(service, seconds):
             os._exit(0)
 
 
+def is_loopback(host):
+    if host in ("localhost", ""):
+        return host == "localhost"
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
 def serve(args):
     manifest = read_manifest(args.manifest)
     if args.precision not in PRECISIONS:
         raise SystemExit("valbum-embedder: unknown precision " + args.precision)
+    if args.model_dir is None:
+        if args.model_root is None:
+            raise SystemExit("valbum-embedder: --model-dir or --model-root is needed")
+        args.model_dir = os.path.join(args.model_root, model_folder(manifest))
+    if bool(args.tls_cert) != bool(args.tls_key):
+        raise SystemExit("valbum-embedder: TLS needs both --tls-cert and --tls-key")
+    # The key comes from the environment, never from the command line, which every user of the
+    # machine can read.
+    key = os.environ.get("VALBUM_EMBEDDER_KEY", "").strip() or None
     if args.nice:
         os.nice(args.nice)
-    service = Service(args, manifest)
+    service = Service(args, manifest, key)
     Handler.service = service
-    httpd = ThreadingHTTPServer((args.host, args.port), Handler)
-    httpd.daemon_threads = True
+    httpd = Server((args.host, args.port), Handler)
+    if args.tls_cert:
+        httpd.tls = tls_context(args.tls_cert, args.tls_key)
     # The one line on stdout: the server that started this service reads the port from it.
     print(json.dumps({"listening": httpd.server_address[1]}), flush=True)
-    log("listening on %s:%d" % (args.host, httpd.server_address[1]))
+    scheme = "https" if httpd.tls else "http"
+    log("listening on %s://%s:%d" % (scheme, args.host, httpd.server_address[1]))
+    if not is_loopback(args.host):
+        if key is None:
+            log("WARNING: no key is set (VALBUM_EMBEDDER_KEY) - anybody who can reach this machine on port %d "
+                "can use the service. Set a key here and the same on the album server." % httpd.server_address[1])
+        else:
+            log("every request needs the key (VALBUM_EMBEDDER_KEY)")
+        if httpd.tls is None:
+            log("no TLS: the previews of the photos, the search texts and the key travel unencrypted; "
+                "recommended: --tls-cert and --tls-key (VALBUM_EMBEDDER_TLS_CERT, _TLS_KEY), or a reverse proxy")
     threading.Thread(target=service.load, name="load", daemon=True).start()
     if args.exit_with_stdin:
         threading.Thread(target=watch_stdin, name="stdin", daemon=True).start()
@@ -483,7 +892,10 @@ def bench(args):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="embedder.py", description="The embedder service of VAlbum (issue #257).")
-    parser.add_argument("--model-dir", required=True, help="the directory of the model files of model.json")
+    model = parser.add_mutually_exclusive_group(required=True)
+    model.add_argument("--model-dir", help="the directory of the model files of model.json")
+    model.add_argument("--model-root", help="the directory the model's own folder (<repository>@<revision>) is "
+                       "made in, see --fetch")
     parser.add_argument("--precision", default="fp32", choices=PRECISIONS, help="fp32 (default) or int8")
     parser.add_argument("--threads", type=int, default=0, help="threads of one inference, 0 for all cores")
     parser.add_argument("--manifest", default=None, help="the model manifest, model.json beside this file by default")
@@ -496,8 +908,16 @@ def main(argv=None):
     parser.add_argument("--nice", type=int, default=0, help="lower the priority by this much")
     parser.add_argument("--idle-exit", type=int, default=0, help="exit after this many seconds without a request")
     parser.add_argument("--exit-with-stdin", action="store_true", help="exit when stdin closes")
+    parser.add_argument("--fetch", action="store_true", help="download the model's missing files at start, each "
+                        "checked against model.json (the service of its own; the album server fetches for its child)")
+    parser.add_argument("--model-url", default=HUGGING_FACE, help="where --fetch downloads from, " + HUGGING_FACE
+                        + " by default")
+    parser.add_argument("--tls-cert", default=None, help="serve HTTPS with this certificate (PEM, with its chain)")
+    parser.add_argument("--tls-key", default=None, help="the private key of --tls-cert (PEM)")
     args = parser.parse_args(argv)
     if args.command == "bench":
+        if args.model_dir is None:
+            args.model_dir = os.path.join(args.model_root, model_folder(read_manifest(args.manifest)))
         bench(args)
     else:
         serve(args)

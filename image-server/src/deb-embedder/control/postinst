@@ -1,0 +1,97 @@
+#!/bin/sh
+set -e
+
+EMBEDDER_USER=valbum-embedder
+EMBEDDER_GROUP=valbum-embedder
+EMBEDDER_HOME=${VALBUM_EMBEDDER_HOME:-/var/lib/valbum-embedder}
+
+# The configuration is made here once, from the template, with a fresh key in it,
+# and never overwritten afterwards: it is not a conffile, because a conffile must
+# not be changed by a maintainer script, and the key is made by this one.
+CONFIG=${VALBUM_EMBEDDER_CONFIG:-/etc/default/valbum-embedder}
+TEMPLATE=${VALBUM_EMBEDDER_TEMPLATE:-/usr/share/valbum-embedder/valbum-embedder.default}
+
+# 32 random bytes in hex: printable, no blank, safe in a header and a shell file.
+new_key() {
+	od -An -N32 -tx1 /dev/urandom | tr -d ' \n'
+}
+
+make_config() {
+	key=$(new_key)
+	if [ ${#key} -ne 64 ]; then
+		echo "valbum-embedder: cannot make a key from /dev/urandom; set VALBUM_EMBEDDER_KEY in $CONFIG by hand." >&2
+		key=
+	fi
+	tmp="$CONFIG.dpkg-new"
+	(
+		umask 077
+		sed "s/^VALBUM_EMBEDDER_KEY=\$/VALBUM_EMBEDDER_KEY=$key/" "$TEMPLATE" > "$tmp"
+	)
+	chgrp "$EMBEDDER_GROUP" "$tmp"
+	chmod 0640 "$tmp"
+	mv "$tmp" "$CONFIG"
+	if [ -n "$key" ]; then
+		echo "valbum-embedder: made a key for the service; it is VALBUM_EMBEDDER_KEY in $CONFIG"
+		echo "valbum-embedder: (sudo grep ^VALBUM_EMBEDDER_KEY= $CONFIG). Set the same on the album server,"
+		echo "valbum-embedder: with VALBUM_EMBEDDER_URL=http://$(hostname 2>/dev/null || echo '<this machine>'):8091/"
+	fi
+}
+
+case "$1" in
+	configure)
+		if ! getent group "$EMBEDDER_GROUP" >/dev/null; then
+			addgroup --system "$EMBEDDER_GROUP"
+		fi
+		if ! getent passwd "$EMBEDDER_USER" >/dev/null; then
+			adduser --system --ingroup "$EMBEDDER_GROUP" --home "$EMBEDDER_HOME" \
+				--no-create-home --disabled-login --shell /usr/sbin/nologin \
+				--gecos "VAlbum embedder service" "$EMBEDDER_USER"
+		fi
+
+		if [ ! -e "$CONFIG" ]; then
+			make_config
+		else
+			# Kept as it is, the key the administrator set (or left empty) included;
+			# only its group and mode are held to the key's.
+			chgrp "$EMBEDDER_GROUP" "$CONFIG"
+			chmod 0640 "$CONFIG"
+		fi
+
+		# The folder of the model and the Python environment: handed to the service
+		# user while it is still root-owned, as unpacked.
+		if [ -d "$EMBEDDER_HOME" ]; then
+			owner=$(stat -c %U "$EMBEDDER_HOME" 2>/dev/null || echo "")
+			if [ "$owner" = "root" ]; then
+				chown "$EMBEDDER_USER:$EMBEDDER_GROUP" "$EMBEDDER_HOME"
+			fi
+			chmod 0750 "$EMBEDDER_HOME"
+		fi
+		;;
+	abort-upgrade|abort-remove|abort-deconfigure)
+		;;
+	*)
+		echo "postinst called with unknown argument '$1'" >&2
+		exit 1
+		;;
+esac
+
+# Systemd may be absent (a container during a package test); then there is
+# nothing to enable and nothing to start.
+if [ -d /run/systemd/system ]; then
+	if command -v deb-systemd-helper >/dev/null 2>&1; then
+		deb-systemd-helper unmask valbum-embedder.service >/dev/null 2>&1 || true
+		deb-systemd-helper enable valbum-embedder.service >/dev/null 2>&1 || true
+	fi
+	systemctl --system daemon-reload >/dev/null 2>&1 || true
+	if ! command -v deb-systemd-helper >/dev/null 2>&1; then
+		systemctl enable valbum-embedder.service >/dev/null 2>&1 || true
+	fi
+	if command -v deb-systemd-invoke >/dev/null 2>&1; then
+		deb-systemd-invoke restart valbum-embedder.service >/dev/null 2>&1 || true
+	else
+		systemctl restart valbum-embedder.service >/dev/null 2>&1 || true
+	fi
+	echo "valbum-embedder: started; the first start fetches the model (journalctl -u valbum-embedder)."
+fi
+
+exit 0

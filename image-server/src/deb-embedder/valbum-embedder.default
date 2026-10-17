@@ -1,0 +1,66 @@
+# Configuration of the VAlbum embedder service (valbum-embedder), the part of
+# content search that turns photos and search texts into vectors (issue #257).
+# It runs here, on a machine of its own, and album servers call it over the
+# network; each names it in its /etc/default/valbum:
+#
+#   VALBUM_EMBEDDER_URL=http://<this machine>:8091/
+#   VALBUM_EMBEDDER_KEY=<the key below>
+#
+# Made by the package at its first installation and never overwritten by an
+# upgrade; readable by root and the service's group only, because of the key.
+# After a change: sudo systemctl restart valbum-embedder
+
+# The key every request must carry ("Authorization: Bearer <key>"). Made at
+# installation; set the same on the album server. Without a key the service
+# still starts, but anybody who can reach this machine can use it, and its log
+# warns of it. A new one: od -An -N32 -tx1 /dev/urandom | tr -d ' \n'
+VALBUM_EMBEDDER_KEY=
+
+# The address and port to listen on: every interface, port 8091, by default.
+# 127.0.0.1 keeps it to this machine (behind a reverse proxy, for instance).
+#
+#   VALBUM_EMBEDDER_HOST=0.0.0.0
+#   VALBUM_EMBEDDER_PORT=8091
+
+# TLS. What travels between the album server and this service is the preview
+# of every photo (a JPEG some 600 pixels high), the search texts, and the key.
+# Unencrypted that is readable by anybody on the network between the two. A
+# certificate and its key (PEM, readable by the user valbum-embedder) make the
+# service speak HTTPS; the album server then names https://... and, for a
+# self-signed certificate, its fingerprint as VALBUM_EMBEDDER_CERT_SHA256:
+#
+#   openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes \
+#     -days 3650 -subj /CN=embedder -addext "subjectAltName=DNS:$(hostname)" \
+#     -keyout /etc/valbum-embedder/key.pem -out /etc/valbum-embedder/cert.pem
+#   openssl x509 -noout -fingerprint -sha256 -in /etc/valbum-embedder/cert.pem
+#
+#   VALBUM_EMBEDDER_TLS_CERT=/etc/valbum-embedder/cert.pem
+#   VALBUM_EMBEDDER_TLS_KEY=/etc/valbum-embedder/key.pem
+#
+# Or put a reverse proxy with TLS (Caddy, nginx) in front and keep this one on
+# 127.0.0.1.
+
+# fp32 (the reference, ~2 GB of memory, 1.8 GB download) or int8 (half of
+# both, less exact). Album servers keep vectors of the two apart: a change
+# means every photo is embedded again.
+#
+#   VALBUM_EMBEDDER_PRECISION=fp32
+
+# Threads of one inference, 0 for all cores.
+#
+#   VALBUM_EMBEDDER_THREADS=0
+
+# Where the model (about 1.8 GB) and the Python environment (about 190 MB) are
+# kept. Both are fetched at the first start, every file checked against its
+# pinned SHA-256: the model from huggingface.co, the Python packages from PyPI.
+# Without internet, place the model's files into
+# <dir>/embeddinggemma-2-ONNX@daa72c51/ and the wheels into <dir>/wheels/, as
+# the README of VAlbum describes.
+#
+#   VALBUM_EMBEDDER_DIR=/var/lib/valbum-embedder
+#   VALBUM_EMBEDDER_MODEL_URL=https://huggingface.co/
+
+# The Python the environment is made with, where python3 is older than 3.12
+# (Debian 12, Raspberry Pi OS bookworm); see the README of VAlbum for uv.
+#
+#   PYTHON=/opt/python/cpython-3.12-linux-x86_64-gnu/bin/python3.12

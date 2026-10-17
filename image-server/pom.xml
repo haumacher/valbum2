@@ -41,6 +41,14 @@
 
 		<!-- Where the filtered Debian control files are assembled, see the 'platform-jar' profile. -->
 		<deb.controlDir>${project.build.directory}/deb/control</deb.controlDir>
+
+		<!--
+			The package valbum-embedder (issue #257): the embedder service of content search on a
+			machine of its own. Built beside valbum for amd64 and arm64; not for armhf, for which
+			onnxruntime publishes nothing (the 'deb-armhf' profile skips it).
+		-->
+		<embedder.controlDir>${project.build.directory}/deb-embedder/control</embedder.controlDir>
+		<embedder.deb.skip>false</embedder.deb.skip>
 	</properties>
 
 	<profiles>
@@ -141,6 +149,32 @@
 										</resource>
 										<resource>
 											<directory>${project.basedir}/src/deb/control</directory>
+											<excludes>
+												<exclude>control</exclude>
+											</excludes>
+											<filtering>false</filtering>
+										</resource>
+									</resources>
+								</configuration>
+							</execution>
+							<execution>
+								<id>deb-embedder-control</id>
+								<phase>prepare-package</phase>
+								<goals>
+									<goal>copy-resources</goal>
+								</goals>
+								<configuration>
+									<outputDirectory>${embedder.controlDir}</outputDirectory>
+									<resources>
+										<resource>
+											<directory>${project.basedir}/src/deb-embedder/control</directory>
+											<includes>
+												<include>control</include>
+											</includes>
+											<filtering>true</filtering>
+										</resource>
+										<resource>
+											<directory>${project.basedir}/src/deb-embedder/control</directory>
 											<excludes>
 												<exclude>control</exclude>
 											</excludes>
@@ -266,6 +300,132 @@
 									</dataSet>
 								</configuration>
 							</execution>
+							<!--
+								Builds target/valbum-embedder_<version>_<arch>.deb: the embedder service of
+								content search for a machine of its own (issue #257). No JAR, no Java: the
+								service's own Python code, a start script, a systemd unit and the template of
+								its configuration, which postinst turns into /etc/default/valbum-embedder with
+								a fresh key (not a conffile, see postinst). The Python environment and the
+								model are fetched at the first start, pinned by SHA-256.
+							-->
+							<execution>
+								<id>deb-embedder</id>
+								<phase>package</phase>
+								<goals>
+									<goal>jdeb</goal>
+								</goals>
+								<configuration>
+									<skip>${embedder.deb.skip}</skip>
+									<deb>${project.build.directory}/valbum-embedder_${deb.version}_${deb.arch}.deb</deb>
+									<controlDir>${embedder.controlDir}</controlDir>
+									<snapshotExpand>false</snapshotExpand>
+									<skipPOMs>false</skipPOMs>
+									<verbose>false</verbose>
+									<dataSet>
+										<data>
+											<src>${project.basedir}/src/deb-embedder/valbum-embedder</src>
+											<type>file</type>
+											<dst>/usr/bin/valbum-embedder</dst>
+											<mapper>
+												<type>perm</type>
+												<filemode>755</filemode>
+												<user>root</user>
+												<group>root</group>
+											</mapper>
+										</data>
+										<data>
+											<src>${project.basedir}/src/embedder/embedder.py</src>
+											<type>file</type>
+											<dst>/usr/share/valbum-embedder/embedder.py</dst>
+											<mapper>
+												<type>perm</type>
+												<filemode>644</filemode>
+												<user>root</user>
+												<group>root</group>
+											</mapper>
+										</data>
+										<data>
+											<src>${project.basedir}/src/embedder/model.json</src>
+											<type>file</type>
+											<dst>/usr/share/valbum-embedder/model.json</dst>
+											<mapper>
+												<type>perm</type>
+												<filemode>644</filemode>
+												<user>root</user>
+												<group>root</group>
+											</mapper>
+										</data>
+										<data>
+											<src>${project.basedir}/src/embedder/requirements.txt</src>
+											<type>file</type>
+											<dst>/usr/share/valbum-embedder/requirements.txt</dst>
+											<mapper>
+												<type>perm</type>
+												<filemode>644</filemode>
+												<user>root</user>
+												<group>root</group>
+											</mapper>
+										</data>
+										<data>
+											<src>${project.basedir}/src/embedder/setup-venv</src>
+											<type>file</type>
+											<dst>/usr/share/valbum-embedder/setup-venv</dst>
+											<mapper>
+												<type>perm</type>
+												<filemode>755</filemode>
+												<user>root</user>
+												<group>root</group>
+											</mapper>
+										</data>
+										<data>
+											<src>${project.basedir}/src/deb-embedder/valbum-embedder.default</src>
+											<type>file</type>
+											<dst>/usr/share/valbum-embedder/valbum-embedder.default</dst>
+											<mapper>
+												<type>perm</type>
+												<filemode>644</filemode>
+												<user>root</user>
+												<group>root</group>
+											</mapper>
+										</data>
+										<data>
+											<src>${project.basedir}/src/deb-embedder/valbum-embedder.service</src>
+											<type>file</type>
+											<dst>/lib/systemd/system/valbum-embedder.service</dst>
+											<mapper>
+												<type>perm</type>
+												<filemode>644</filemode>
+												<user>root</user>
+												<group>root</group>
+											</mapper>
+										</data>
+										<data>
+											<src>${project.basedir}/src/deb-embedder/copyright</src>
+											<type>file</type>
+											<dst>/usr/share/doc/valbum-embedder/copyright</dst>
+											<mapper>
+												<type>perm</type>
+												<filemode>644</filemode>
+												<user>root</user>
+												<group>root</group>
+											</mapper>
+										</data>
+										<!-- The model and the Python environment; handed to the user by postinst. -->
+										<data>
+											<type>template</type>
+											<paths>
+												<path>/var/lib/valbum-embedder</path>
+											</paths>
+											<mapper>
+												<type>perm</type>
+												<dirmode>750</dirmode>
+												<user>root</user>
+												<group>root</group>
+											</mapper>
+										</data>
+									</dataSet>
+								</configuration>
+							</execution>
 						</executions>
 					</plugin>
 				</plugins>
@@ -311,6 +471,7 @@
 			</activation>
 			<properties>
 				<deb.arch>armhf</deb.arch>
+				<embedder.deb.skip>true</embedder.deb.skip>
 			</properties>
 		</profile>
 	</profiles>
