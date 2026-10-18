@@ -1545,7 +1545,14 @@ class CreateAlbumDialog extends StatefulWidget {
   /// see issue #114 and `moveWithPicker`.
   final DateTime? initialDate;
 
-  const CreateAlbumDialog({super.key, this.initialDate});
+  /// The title proposed, `null` for none.
+  ///
+  /// The folder picker fills it with what was typed in its search field, see
+  /// `FolderPickerState`: the album looked for and not found is the one to
+  /// create.
+  final String? initialTitle;
+
+  const CreateAlbumDialog({super.key, this.initialDate, this.initialTitle});
 
   @override
   State<StatefulWidget> createState() => CreateAlbumDialogState();
@@ -1604,6 +1611,7 @@ class CreateAlbumDialogState extends State<CreateAlbumDialog> {
             ),
           ),
           TextFormField(
+            initialValue: widget.initialTitle,
             decoration: InputDecoration(label: Text(l10n.titleLabel)),
             onSaved: (value) => albumTitle = value,
             validator: (String? value) {
@@ -1671,7 +1679,11 @@ class CreateAlbumDialogState extends State<CreateAlbumDialog> {
 /// is made in (a date may still be given in its properties). It answers the
 /// sidecar to create, of kind [AlbumKind.collection].
 class CreateCollectionDialog extends StatefulWidget {
-  const CreateCollectionDialog({super.key});
+  /// The name proposed, `null` for none — the folder picker fills it with what
+  /// was typed in its search field.
+  final String? initialTitle;
+
+  const CreateCollectionDialog({super.key, this.initialTitle});
 
   @override
   State<StatefulWidget> createState() => CreateCollectionDialogState();
@@ -1697,6 +1709,7 @@ class CreateCollectionDialogState extends State<CreateCollectionDialog> {
           TextFormField(
             key: const Key("collection-title"),
             autofocus: true,
+            initialValue: widget.initialTitle,
             decoration: InputDecoration(label: Text(l10n.titleLabel)),
             onSaved: (value) => title = value,
             validator: (String? value) => value == null || value.trim().isEmpty

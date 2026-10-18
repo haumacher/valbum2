@@ -397,6 +397,30 @@ void main() {
           '{"target":"New","names":[{"name":"a.jpg"}],"created":{"cover":""}}');
     });
 
+    testWidgets("the search field proposes the name of the new collection",
+        (tester) async {
+      var space = Space()..createdPath = "Best of Rome";
+      await pumpRoute(tester, space.client, const ["Inbox"]);
+      await enterEditMode(tester);
+      await openMenu(tester);
+      await tapKey(tester, "add-to-collection");
+      await tester.enterText(
+          find.byKey(const Key("picker-search")), " Best of Rome ");
+      await tester.pump(FolderPickerState.searchDelay);
+      await tester.pumpAndSettle();
+      await tapKey(tester, "picker-create-collection");
+
+      var field = tester.widget<EditableText>(find.descendant(
+          of: find.byKey(const Key("collection-title")),
+          matching: find.byType(EditableText)));
+      // A collection has no date: the whole text is its name.
+      expect(field.controller.text, "Best of Rome");
+      await tapKey(tester, "create-collection-confirm");
+
+      var put = space.puts.single;
+      expect(pathOf(put), "/valbum/data/Best of Rome/");
+    });
+
     testWidgets("a move never goes into a collection", (tester) async {
       var space = Space();
       await pumpRoute(tester, space.client, const ["Inbox"]);

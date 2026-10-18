@@ -57,6 +57,38 @@ Future<void> openProperties(
 }
 
 void main() {
+  group('splitAlbumName', () {
+    test('a text without a date is a title alone', () {
+      var split = splitAlbumName("  Trip to Bangalore ");
+      expect(split.date, isNull);
+      expect(split.title, "Trip to Bangalore");
+    });
+
+    test('a leading day is the date, the rest the title', () {
+      var split = splitAlbumName("2025-11-26 Trip to Bangalore");
+      expect(split.date, DateTime(2025, 11, 26));
+      expect(split.title, "Trip to Bangalore");
+    });
+
+    test('a month and a year are dates too', () {
+      expect(splitAlbumName("2025-11 Trip").date, DateTime(2025, 11));
+      expect(splitAlbumName("2025 Trip").date, DateTime(2025));
+      expect(splitAlbumName("2025_11_26-Trip").title, "Trip");
+    });
+
+    test('a date alone leaves the title empty', () {
+      var split = splitAlbumName("2025-11-26");
+      expect(split.date, DateTime(2025, 11, 26));
+      expect(split.title, "");
+    });
+
+    test('digits that are no word of their own are part of the title', () {
+      expect(splitAlbumName("2025er Urlaub").date, isNull);
+      expect(splitAlbumName("2025er Urlaub").title, "2025er Urlaub");
+      expect(splitAlbumName("20251126 Trip").date, isNull);
+    });
+  });
+
   group('sortedFolders', () {
     test('shows the newest first and the undated behind them by name', () {
       var folders = [
