@@ -239,6 +239,15 @@ in a separate service, and abuse and law (the DSA, GDPR) come first. Open questi
 
 ## Decisions log
 
+- **2026-10-18** — 2.15.0 released (tag `valbum-2.15.0` on the commit recording it).
+  - **Content search (#257):** photos found by what they show, in any language — an AI switch in the search view ranks by similarity, the other chips narrow inside the vector query, saved searches store the text; "More like this" takes a photo as the query (`SearchSimilar`, hash-anchored); bursts in an album stack into one tile, best shot on top; similar photos across albums get an overview beside the duplicates. Vectors live in the space's Lucene index (#264 slice 4), embeddings in each album's `.vacache`. Opt-in per space; the embedder is a package of its own (`valbum-embedder`, `.deb` and image) or the server's child. All thresholds uncalibrated (#302).
+  - **Space settings in the app:** an administrator switches faces, content search and the other space options on a settings page instead of editing `space.json`.
+  - **Android sync:** a new photo is uploaded about ten seconds after it is taken, the app open or not, and the transfer keeps going with the screen off (MediaStore trigger plus a foreground work); each camera-roll photo is hashed once in its life (#300 awaits the device check); the albums to sync are chosen in a dialog.
+  - **Search:** groups by album by default; "Show in album" from a found or collected photo; the viewer's actions follow the photo, not the view it was opened from (#294); choosers wait for their options instead of offering nothing (#288).
+  - **Albums and dialogs:** a video's poster is a moment chosen in the viewer; folder tiles show a photo count on hover (a collection counted only then); a saved search keeps a stored cover picture, also on its share card; the move dialog keeps the keyboard up on a phone, selects an album by tap, creates folders at any level; dialogs are compact on a phone and spaced from one place (`DialogSpacing`); grids walk by keyboard (#295).
+  - **Rights and writes:** decided in one place (`rightsOf`) and every write guarded alike; a save keeps what the caller was not answered (#296); a share link cannot write into an album it cannot reach.
+  - `SpaceIndex.SCHEMA` 3 → 4: the first start rebuilds the index; search fills in as the background re-reads the library, and the bell's read marks start afresh.
+
 - **2026-10-17** — **Content search on another machine (#257):** the embedder service ships as a package of its own, `valbum-embedder` (`.deb` for `amd64`/`arm64`, and an image), so a faster machine in the network can do the image encoding (a Pi 4 needs ~90 s per photo). Push model: the album server calls it (`VALBUM_EMBEDDER_URL`), no worker pulls jobs. Every request carries a key (`VALBUM_EMBEDDER_KEY`, made at installation); without one the service runs open and warns. TLS is recommended, never required (`VALBUM_EMBEDDER_CERT_SHA256` pins a self-signed certificate). The album server's own package keeps running the service as its child on 127.0.0.1.
 
 - **2026-10-14** — 2.14.0 released (tag `valbum-2.14.0` on the commit recording it).
