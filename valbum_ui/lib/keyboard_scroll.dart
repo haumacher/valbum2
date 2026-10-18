@@ -6,6 +6,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'key_guard.dart';
+
 /// How far a line key (`ArrowUp`, `ArrowDown`) scrolls, in logical pixels.
 const double keyboardLineScroll = 48;
 
@@ -30,20 +32,6 @@ bool get scrollbarAlwaysVisible {
     case TargetPlatform.fuchsia:
       return false;
   }
-}
-
-/// Whether the keyboard focus is in a text field right now: then every key
-/// is the text field's, and a page scrolls by none of them.
-///
-/// Asked from focus listeners as well, while a closing dialog or page is
-/// taken out of the tree: a focus whose widget is gone is no text field.
-bool get typingIntoText {
-  var context = FocusManager.instance.primaryFocus?.context;
-  if (context == null || !context.mounted) {
-    return false;
-  }
-  return context.widget is EditableText ||
-      context.findAncestorWidgetOfExactType<EditableText>() != null;
 }
 
 /// Wraps the one vertical scroll view of a page ([child]) with a visible,
@@ -117,9 +105,6 @@ class KeyboardScrollState extends State<KeyboardScroll> {
       return own;
     }
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
-      return KeyEventResult.ignored;
-    }
-    if (typingIntoText) {
       return KeyEventResult.ignored;
     }
     var positions = controller.positions;
@@ -222,7 +207,8 @@ class KeyboardScrollState extends State<KeyboardScroll> {
     return Focus(
       focusNode: _focus,
       autofocus: widget.autofocus,
-      onKeyEvent: _onKey,
+      // Nothing of the page's while a text field below has the focus.
+      onKeyEvent: guardKeys(_onKey),
       child: Listener(
         onPointerDown: _regainFocus,
         child: Scrollbar(

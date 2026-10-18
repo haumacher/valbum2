@@ -26,6 +26,7 @@ import 'image_properties.dart';
 import 'album_edit.dart' show PlaneTransform;
 import 'form_dialog.dart';
 import 'image_transform.dart';
+import 'key_guard.dart';
 import 'move_view.dart';
 import 'offline.dart';
 import 'people_registry.dart';
@@ -1813,7 +1814,7 @@ class ImageViewState extends State<ImageView>
   Widget _buildViewer(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: CallbackShortcuts(
+      body: PageShortcuts(
         bindings: <ShortcutActivator, VoidCallback>{
           const SingleActivator(LogicalKeyboardKey.arrowLeft): showPrevious,
           const SingleActivator(LogicalKeyboardKey.arrowRight): showNext,
@@ -1823,7 +1824,8 @@ class ImageViewState extends State<ImageView>
           const SingleActivator(LogicalKeyboardKey.arrowDown): showGroup,
           // Not a touch-only feature: a long press is what a phone has, `e`
           // is what a keyboard has (issue #80).
-          const SingleActivator(LogicalKeyboardKey.keyE): editDescription,
+          // By the character it types (issue #306), on every layout.
+          const CharacterActivator("e"): editDescription,
           // The way out of the edit-persons mode a keyboard has (issue #147),
           // and outside it the way out of the viewer (issue #228).
           const SingleActivator(LogicalKeyboardKey.escape): leaveOnEscape,

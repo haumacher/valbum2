@@ -25,6 +25,7 @@ import 'action_guard.dart';
 import 'album_layout.dart' show Orientations;
 import 'client.dart';
 import 'crop.dart';
+import 'key_guard.dart';
 import 'l10n/app_localizations.dart';
 import 'oriented_thumbnail.dart';
 import 'resource.dart';
@@ -363,7 +364,7 @@ class CropEditorState extends State<CropEditor> {
   @override
   Widget build(BuildContext context) {
     var l10n = AppLocalizations.of(context)!;
-    return CallbackShortcuts(
+    return PageShortcuts(
       bindings: <ShortcutActivator, VoidCallback>{
         const SingleActivator(LogicalKeyboardKey.enter): apply,
         const SingleActivator(LogicalKeyboardKey.numpadEnter): apply,

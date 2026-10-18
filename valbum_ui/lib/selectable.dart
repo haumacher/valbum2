@@ -35,7 +35,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
-import 'keyboard_scroll.dart';
+import 'key_guard.dart';
 
 /// A region whose text can be selected, see the library comment.
 ///

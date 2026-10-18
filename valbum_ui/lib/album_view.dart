@@ -34,6 +34,7 @@ import 'drag_scroll.dart';
 import 'form_dialog.dart';
 import 'group_by_dialog.dart';
 import 'image_properties.dart';
+import 'key_guard.dart';
 import 'keyboard_scroll.dart';
 import 'label_dialog.dart';
 import 'l10n/app_localizations.dart';
@@ -3379,7 +3380,7 @@ class AlbumContentState extends State<AlbumContent>
           // album's own keys ([onKey]) and on the ambient controller the
           // edge scrolling of issue #42 drives too.
           KeyboardScroll(
-            onKeyEvent: onKey,
+            onKeyEvent: guardKeys(onKey),
             child: LayoutBuilder(
               builder: (BuildContext context, BoxConstraints constraints) {
                 // The layout of the whole album — cheap, and it needs every
@@ -3470,15 +3471,12 @@ class AlbumContentState extends State<AlbumContent>
       cancelEdit();
       return KeyEventResult.handled;
     }
-    if (event.character == "+" ||
-        key == LogicalKeyboardKey.add ||
-        key == LogicalKeyboardKey.numpadAdd) {
+    // By the character typed (issue #306): a German `ß` is the US `-` key.
+    if (typedKey(event, "+", numpad: LogicalKeyboardKey.numpadAdd)) {
       showMore();
       return KeyEventResult.handled;
     }
-    if (event.character == "-" ||
-        key == LogicalKeyboardKey.minus ||
-        key == LogicalKeyboardKey.numpadSubtract) {
+    if (typedKey(event, "-", numpad: LogicalKeyboardKey.numpadSubtract)) {
       showLess();
       return KeyEventResult.handled;
     }

@@ -84,6 +84,7 @@ import 'dialog_style.dart';
 import 'downloads.dart';
 import 'form_dialog.dart';
 import 'image_properties.dart';
+import 'key_guard.dart';
 import 'keyboard_scroll.dart';
 import 'l10n/app_localizations.dart';
 import 'listing_view.dart';
@@ -1347,7 +1348,7 @@ class InboxContentState extends State<InboxContent>
                   )
                 // A scrollbar and the paging keys, issue #168.
                 : KeyboardScroll(
-                    onKeyEvent: onKey,
+                    onKeyEvent: guardKeys(onKey),
                     child: LayoutBuilder(
                       builder: (context, constraints) {
                         // Clear of a cutout or the navigation bar at a side

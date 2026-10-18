@@ -360,6 +360,43 @@ void main() {
 
     expect(find.byType(TextInputDialog), findsOneWidget);
     expect(dialogText(tester), "Am Meer");
+
+    // An `e` typed into the field is the field's (issue #306).
+    late bool handled;
+    await withFakeImageHttp(() async {
+      handled =
+          await tester.sendKeyDownEvent(LogicalKeyboardKey.keyE, character: "e");
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.keyE);
+      await tester.pumpAndSettle();
+    });
+    expect(handled, isFalse);
+    expect(find.byType(TextInputDialog), findsOneWidget);
+  });
+
+  testWidgets('is bound to the character "e", on whatever key it is',
+      (tester) async {
+    var image = imagePart("a.jpg", comment: "Am Meer");
+    linkedAlbum([image]);
+    var server = RecordingServer();
+
+    await pumpViewer(tester, image, server: server);
+    // A key of another layout that types an `e` opens it (issue #306) ...
+    await withFakeImageHttp(() async {
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyK, character: "e");
+      await tester.pumpAndSettle();
+    });
+    expect(find.byType(TextInputDialog), findsOneWidget);
+    await withFakeImageHttp(() async {
+      await tester.tap(find.text(testL10n.cancel));
+      await tester.pumpAndSettle();
+    });
+
+    // ... and the US `e` key typing something else does not.
+    await withFakeImageHttp(() async {
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyE, character: "é");
+      await tester.pumpAndSettle();
+    });
+    expect(find.byType(TextInputDialog), findsNothing);
   });
 
   testWidgets('writes nothing when the dialog is cancelled', (tester) async {
