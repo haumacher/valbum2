@@ -254,7 +254,7 @@ public final class CatchUp {
 			.setYielding(status.getStep() != null && Background.busy());
 	}
 
-	private static CatchUpStep step(String name) {
+	public static CatchUpStep step(String name) {
 		if (name == null) {
 			return CatchUpStep.IDLE;
 		}
@@ -463,7 +463,7 @@ public final class CatchUp {
 
 		private void report(File folder, File file, String failure) {
 			if (failure != null) {
-				_pipeline.reportFailure(folder, PREVIEWS + ": " + file.getName() + ": " + failure);
+				_pipeline.reportFailure(folder, PREVIEWS, file.getName(), failure, true);
 			}
 		}
 	}
@@ -537,7 +537,7 @@ public final class CatchUp {
 							() -> PreviewCache.createLargePreview(image, region));
 					}
 					if (failure != null) {
-						_pipeline.reportFailure(tile, COVER + ": " + picture.getImage() + ": " + failure);
+						_pipeline.reportFailure(tile, COVER, picture.getImage(), failure, true);
 					}
 				}
 			} catch (InterruptedException ex) {

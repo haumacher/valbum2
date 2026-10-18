@@ -24,7 +24,7 @@ import 'loadable.dart';
 import 'notices.dart';
 import 'photo_library.dart';
 import 'selectable.dart';
-import 'settings.dart';
+import 'status.dart';
 import 'upload_target_view.dart';
 
 /// The key of the switch enabling the sync, so that a test can address it.
@@ -100,9 +100,6 @@ const Key cameraRollSelectableKey = Key("cameraRoll.selectable");
 /// them (issue #54).
 const Key cameraRollNoSpaceKey = Key("cameraRoll.noSpace");
 
-/// The key of the app-bar indicator shown while a sync runs.
-const Key cameraRollIndicatorKey = Key("cameraRoll.indicator");
-
 /// The dialog saying why the app asks to show notifications (issue #300), and
 /// its button that goes on to the system's question.
 const Key cameraRollNotificationsWhyKey = Key("cameraRoll.notificationsWhy");
@@ -113,6 +110,10 @@ const Key cameraRollNotificationsNotNowKey =
 
 /// The line saying that the app may show no notifications (issue #300).
 const Key cameraRollNotificationsOffKey = Key("cameraRoll.notificationsOff");
+
+/// The key of the line leading from the camera roll to the status page
+/// (issue #305).
+const Key cameraRollStatusLinkKey = Key("camera-roll-status-link");
 
 /// Makes the [CameraRollSync] available to the widget tree.
 class CameraRollScope extends InheritedNotifier<CameraRollSync> {
@@ -401,6 +402,9 @@ class _CameraRollSectionState extends State<CameraRollSection> {
         const SizedBox(height: 16),
         Text(cameraRollLine(status, l10n), key: cameraRollStatusKey),
         _backgroundLine(sync),
+        // Everything that runs or failed, of this device and of the server,
+        // is on the status page (issue #305).
+        const StatusPageLink(key: cameraRollStatusLinkKey),
         // Refusals speak (issue #300): without the permission the upload runs
         // all the same, and this says that only its progress is not seen.
         if (config.enabled && _notificationsAllowed == false)
@@ -896,29 +900,6 @@ class _CameraRollSourcesDialogState extends State<CameraRollSourcesDialog> {
           onChanged: (value) => _toggle(album, value ?? false),
         ),
       );
-}
-
-/// The app-bar indicator saying that a camera-roll sync is running.
-///
-/// Nothing at all while nothing runs, so it can be placed in every app bar
-/// without changing its layout. Tapping it opens the server settings, where
-/// the whole story is.
-class CameraRollIndicator extends StatelessWidget {
-  const CameraRollIndicator({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    var sync = CameraRollScope.maybeOf(context);
-    if (sync == null || !sync.status.running) {
-      return const SizedBox.shrink();
-    }
-    return IconButton(
-      key: cameraRollIndicatorKey,
-      icon: const Icon(Icons.cloud_upload),
-      tooltip: cameraRollLine(sync.status, AppLocalizations.of(context)!),
-      onPressed: () => openServerSettings(context),
-    );
-  }
 }
 
 /// The sentence [notice] reads, [fallback] where there is no notice.

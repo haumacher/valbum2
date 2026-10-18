@@ -15,7 +15,6 @@ import 'album_view.dart'
     show AlbumProperties, AlbumPropertiesDialog, keyedMenuItem;
 import 'app.dart';
 import 'caller.dart';
-import 'camera_roll_view.dart';
 import 'client.dart';
 import 'crop.dart';
 import 'downloads.dart';
@@ -39,6 +38,8 @@ import 'share_view.dart';
 import 'thumbnails.dart';
 import 'tile_keys.dart';
 import 'upload_target_view.dart';
+import 'status.dart';
+import 'page_app_bar.dart';
 
 /// The edge length (in CSS pixels) of the square folder preview the retired
 /// GWT client rendered its index pictures into.
@@ -234,7 +235,7 @@ class ListingView extends StatelessWidget {
       // Black like the album pages, so that the way down does not flash from
       // a light page to a dark one, see issue #40.
       backgroundColor: Colors.black,
-      appBar: AppBar(
+      appBar: PageAppBar(
         // The way back is the leading control at the left on every page of
         // the app — the album, the viewer and this listing (issue #100).
         // Nothing to go up to at the root, see issue #40.
@@ -248,8 +249,9 @@ class ListingView extends StatelessWidget {
         automaticallyImplyLeading: false,
         title: Text(self.title),
         actions: <Widget>[
-          // Unobtrusive while a camera-roll sync runs, nothing otherwise.
-          const CameraRollIndicator(),
+          // What runs and what failed, for a member and while this device
+          // uploads (issue #305).
+          const StatusIndicator(),
           // What arrived from others, for a member (issue #268).
           const NewsBellButton(),
           if (maySearch)

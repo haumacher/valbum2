@@ -1,7 +1,8 @@
 /// Tests of the administrator's line showing how far the server has got
 /// preparing the albums in the background (issue #236): the progress in one
-/// line, the details below it, a refresh while the screen is open, and nothing
-/// at all for a caller who is no administrator.
+/// line and the details below it, on the status page since issue #305 — the
+/// settings lead there, and show nothing of it to a caller who is no
+/// administrator.
 library;
 
 import 'package:flutter/material.dart';
@@ -9,7 +10,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:valbum_ui/catch_up.dart';
+import 'package:jsontool/jsontool.dart';
 import 'package:valbum_ui/client.dart';
+import 'package:valbum_ui/resource.dart';
 import 'package:valbum_ui/settings.dart';
 import 'util/l10n.dart';
 
@@ -68,20 +71,24 @@ String idleStatus() => statusOf(
     failure: "",
     failureFolder: "");
 
-/// Pumps the section alone, asking the given transport.
-Future<void> pumpSection(WidgetTester tester, http.Client transport,
-    {Duration interval = const Duration(seconds: 5)}) async {
+/// Pumps the section alone, showing what the given transport answers.
+Future<void> pumpSection(WidgetTester tester, http.Client transport) async {
+  CatchUpStatus? status;
+  String? problem;
+  var answer = await transport.get(Uri.parse("${serverUrl}data/?type=status"));
+  if (answer.statusCode < 300) {
+    status = CatchUpStatus.read(JsonReader.fromString(answer.body));
+  } else {
+    problem = (Resource.read(JsonReader.fromString(answer.body)) as ErrorInfo)
+        .message;
+  }
   await tester.pumpWidget(
     MaterialApp(
       localizationsDelegates: testLocalizationsDelegates,
       supportedLocales: testSupportedLocales,
       home: Scaffold(
         body: ListView(children: [
-          CatchUpSection(
-            client: VAlbumClient(
-                dataUrl: "${serverUrl}data", httpClient: transport),
-            interval: interval,
-          ),
+          CatchUpSection(status: status, problem: problem),
         ]),
       ),
     ),
@@ -261,29 +268,6 @@ void main() {
     expect(find.textContaining("waiting for the content search"), findsNothing);
   });
 
-  testWidgets('asks again while it is on screen, and stops when it is gone',
-      (tester) async {
-    var asked = 0;
-    await pumpSection(
-      tester,
-      MockClient((request) async {
-        asked++;
-        return json(statusOf(done: asked, total: 10));
-      }),
-      interval: const Duration(seconds: 2),
-    );
-    expect(find.text("Albums prepared: 1 of 10"), findsOneWidget);
-
-    await tester.pump(const Duration(seconds: 2));
-    await tester.pump();
-    expect(find.text("Albums prepared: 2 of 10"), findsOneWidget);
-
-    await tester.pumpWidget(const SizedBox());
-    var before = asked;
-    await tester.pump(const Duration(seconds: 10));
-    expect(asked, before, reason: "Nothing is asked once the screen is left.");
-  });
-
   testWidgets('says the server\'s refusal', (tester) async {
     await pumpSection(
         tester,
@@ -296,21 +280,28 @@ void main() {
         findsOneWidget);
   });
 
-  testWidgets('an administrator finds it in the server settings',
-      (tester) async {
+  testWidgets(
+      'an administrator finds the way to it in the server settings '
+      '(issue #305)', (tester) async {
     var requests = <http.Request>[];
     await pumpSettings(tester, "admin", requests);
-    expect(find.byKey(catchUpLineKey), findsOneWidget);
-    expect(find.text("Albums prepared: 12 of 40"), findsOneWidget);
+    expect(find.byKey(catchUpLinkKey), findsOneWidget);
+    expect(
+        find.descendant(
+            of: find.byKey(catchUpLinkKey),
+            matching: find.text("Preparing the albums")),
+        findsOneWidget);
+    expect(find.text("Details on the status page"), findsWidgets);
     expect(requests.where((r) => r.url.queryParameters["type"] == "catch-up"),
-        isNotEmpty);
+        isEmpty,
+        reason: "The settings ask nothing of it any more.");
   });
 
   testWidgets('a member sees nothing of it, and nothing is asked',
       (tester) async {
     var requests = <http.Request>[];
     await pumpSettings(tester, "edit", requests);
-    expect(find.byKey(catchUpLineKey), findsNothing);
+    expect(find.byKey(catchUpLinkKey), findsNothing);
     expect(find.text("Preparing the albums"), findsNothing);
     expect(requests.where((r) => r.url.queryParameters["type"] == "catch-up"),
         isEmpty);

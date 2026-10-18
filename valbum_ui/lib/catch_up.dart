@@ -2,20 +2,15 @@
 /// of a space before their first visit (issue #236): previews, covers, faces,
 /// places and videos, made newest album first.
 ///
-/// One line with the progress in the server settings, expandable to what the
-/// server is doing right now, how many videos still wait, how far the content
-/// search has got and why it waits (issue #257), and what failed last.
-/// It asks the server again every few seconds while it is on screen, and never
-/// otherwise.
+/// One line with the progress on the status page (issue #305), expandable to
+/// what the server is doing right now, how many videos still wait, how far
+/// the content search has got and why it waits (issue #257), and what failed
+/// last. The page asks the server again every few seconds while it is open.
 library;
-
-import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'client.dart';
 import 'l10n/app_localizations.dart';
-import 'manage_view.dart' show refusalMessage;
 import 'resource.dart';
 
 /// The key of the section's line, see [CatchUpSection].
@@ -26,80 +21,33 @@ const Key catchUpDetailsKey = Key("settings.catchUp.details");
 
 /// How far the server has got preparing the albums, see the library comment.
 ///
-/// Shown to the administrator of the space only: the settings screen builds it
-/// for that role and no other, and the server refuses everybody else anyway.
-class CatchUpSection extends StatefulWidget {
-  /// Whom to ask.
-  final VAlbumClient client;
-
-  /// How often the server is asked while the section is on screen.
-  final Duration interval;
-
-  const CatchUpSection({
-    super.key,
-    required this.client,
-    this.interval = const Duration(seconds: 5),
-  });
-
-  @override
-  State<CatchUpSection> createState() => CatchUpSectionState();
-}
-
-class CatchUpSectionState extends State<CatchUpSection> {
+/// Shown to the administrator of the space only, on the status page of issue
+/// #305, from what `?type=status` answered ([StatusInfo.catchUp]); the server
+/// answers nobody else. [problem] says why the answer is not fresh, where
+/// the last question failed.
+class CatchUpSection extends StatelessWidget {
   /// What the server answered last, `null` before its first answer.
-  CatchUpStatus? _status;
+  final CatchUpStatus? status;
 
   /// Why the server could not be asked, `null` while it answers.
-  String? _problem;
+  final String? problem;
 
-  Timer? _timer;
+  const CatchUpSection({super.key, this.status, this.problem});
 
-  bool _asking = false;
+  CatchUpStatus? get _status => status;
 
-  @override
-  void initState() {
-    super.initState();
-    _ask();
-    _timer = Timer.periodic(widget.interval, (_) => _ask());
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  Future<void> _ask() async {
-    if (_asking) {
-      return;
-    }
-    _asking = true;
-    try {
-      var status = await widget.client.catchUp();
-      if (mounted) {
-        setState(() {
-          _status = status;
-          _problem = null;
-        });
-      }
-    } catch (error) {
-      if (mounted) {
-        setState(() => _problem = refusalMessage(error));
-      }
-    } finally {
-      _asking = false;
-    }
-  }
+  String? get _problem => problem;
 
   @override
   Widget build(BuildContext context) {
     var l10n = AppLocalizations.of(context)!;
     var status = _status;
     String line;
+    var problem = _problem;
     if (status == null) {
-      line = _problem == null
+      line = problem == null
           ? l10n.catchUpAsking
-          : l10n.catchUpUnavailable(_problem!);
+          : l10n.catchUpUnavailable(problem);
     } else if (_finished(status)) {
       line = l10n.catchUpComplete(status.albumsTotal);
     } else if (status.contentEnabled &&
@@ -162,8 +110,8 @@ class CatchUpSectionState extends State<CatchUpSection> {
       if (status.step == CatchUpStep.idle)
         _waits(status) ? l10n.catchUpWaiting : l10n.catchUpIdle
       else
-        l10n.catchUpNow(
-            _stepName(l10n, status.step), _folder(l10n, status.folder)),
+        l10n.catchUpNow(catchUpStepName(l10n, status.step),
+            _folder(l10n, status.folder)),
       if (status.yielding) l10n.catchUpYielding,
       l10n.catchUpVideos(status.videosRemaining),
       // Only where the space has the content search on (issue #257).
@@ -196,28 +144,31 @@ class CatchUpSectionState extends State<CatchUpSection> {
 
   static String _folder(AppLocalizations l10n, String folder) =>
       folder.isEmpty ? l10n.catchUpRoot : folder;
+}
 
-  static String _stepName(AppLocalizations l10n, CatchUpStep step) {
-    switch (step) {
-      case CatchUpStep.analysis:
-        return l10n.catchUpStepAnalysis;
-      case CatchUpStep.hash:
-        return l10n.catchUpStepHash;
-      case CatchUpStep.previews:
-        return l10n.catchUpStepPreviews;
-      case CatchUpStep.cover:
-        return l10n.catchUpStepCover;
-      case CatchUpStep.faces:
-        return l10n.catchUpStepFaces;
-      case CatchUpStep.places:
-        return l10n.catchUpStepPlaces;
-      case CatchUpStep.videos:
-        return l10n.catchUpStepVideos;
-      case CatchUpStep.content:
-        return l10n.catchUpStepContent;
-      case CatchUpStep.idle:
-      case CatchUpStep.other:
-        return l10n.catchUpStepOther;
-    }
+/// The name of the given step of the background in words; [raw] (the
+/// server's own name) where the step is one the app does not know.
+String catchUpStepName(AppLocalizations l10n, CatchUpStep step,
+    [String raw = ""]) {
+  switch (step) {
+    case CatchUpStep.analysis:
+      return l10n.catchUpStepAnalysis;
+    case CatchUpStep.hash:
+      return l10n.catchUpStepHash;
+    case CatchUpStep.previews:
+      return l10n.catchUpStepPreviews;
+    case CatchUpStep.cover:
+      return l10n.catchUpStepCover;
+    case CatchUpStep.faces:
+      return l10n.catchUpStepFaces;
+    case CatchUpStep.places:
+      return l10n.catchUpStepPlaces;
+    case CatchUpStep.videos:
+      return l10n.catchUpStepVideos;
+    case CatchUpStep.content:
+      return l10n.catchUpStepContent;
+    case CatchUpStep.idle:
+    case CatchUpStep.other:
+      return raw.isEmpty ? l10n.catchUpStepOther : raw;
   }
 }

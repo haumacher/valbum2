@@ -26,6 +26,7 @@ import 'device_code_scanner.dart';
 import 'diagnostics.dart';
 import 'duplicates_view.dart';
 import 'similar_view.dart';
+import 'status.dart';
 import 'first_screen.dart';
 import 'group_view.dart';
 import 'hash_cache.dart';
@@ -64,6 +65,7 @@ import 'urls.dart';
 import 'wakelock.dart';
 import 'page_insets.dart';
 import 'not_ready.dart';
+import 'page_app_bar.dart';
 
 typedef Action = void Function(BuildContext context);
 
@@ -462,6 +464,10 @@ class VAlbumAppState extends State<VAlbumApp> {
   /// What arrived from others, for a member (issue #268), see [NewsBell].
   final NewsBell newsBell = NewsBell();
 
+  /// What the server is doing and failing at, for the indicator and the
+  /// status page of a member (issue #305), see [StatusMonitor].
+  late final StatusMonitor statusMonitor = StatusMonitor(store: settings.store);
+
   /// Whether [_syncNews] is due after the frame.
   bool _newsSyncDue = false;
 
@@ -492,6 +498,7 @@ class VAlbumAppState extends State<VAlbumApp> {
       _newsSyncDue = false;
       if (mounted) {
         newsBell.attach(_newsClient);
+        statusMonitor.attach(_newsClient);
       }
     });
   }
@@ -1425,6 +1432,7 @@ class VAlbumAppState extends State<VAlbumApp> {
     }
     _router?.dispose();
     newsBell.dispose();
+    statusMonitor.dispose();
     if (widget.settings == null) {
       settings.dispose();
     }
@@ -1782,6 +1790,8 @@ class VAlbumAppState extends State<VAlbumApp> {
                     // The bell of a member, see issue #268.
                     child: NewsScope(
                       bell: newsBell,
+                      child: StatusScope(
+                      monitor: statusMonitor,
                       // A share link never sets a target (issue #240): inside
                       // a session there is no server of the device's own.
                       child: UploadTargetScope(
@@ -1792,6 +1802,7 @@ class VAlbumAppState extends State<VAlbumApp> {
                             : _readyForTheRouter && client != null
                                 ? _albumApp(client!)
                                 : _beforeTheRouter(),
+                      ),
                       ),
                     ),
                   ),
@@ -2716,6 +2727,11 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
             ListingOrAlbumRoute.root,
             route,
           ],
+        // And the status page (#305).
+        StatusRoute() => [
+            ListingOrAlbumRoute.root,
+            route,
+          ],
       };
 
   /// The levels of [route] as this delegate shows them, see [levelsOf].
@@ -2798,6 +2814,7 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
       TrashRoute() => "valbum:trash:$album",
       DuplicatesRoute() => "valbum:duplicates",
       SimilarRoute() => "valbum:similar",
+      StatusRoute() => "valbum:status",
       SearchRoute() => "valbum:search:$album",
       NewsRoute(:var key) => "valbum:news:$album:$key",
     };
@@ -2910,6 +2927,11 @@ class VAlbumNavigator extends InheritedWidget {
     required super.child,
   });
 
+  /// The navigation API of the enclosing [VAlbumApp], `null` outside its
+  /// router (the start screen, a view pumped on its own).
+  static VAlbumNavigator? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<VAlbumNavigator>();
+
   /// The navigation API of the enclosing [VAlbumApp].
   static VAlbumNavigator of(BuildContext context) {
     var result = context.dependOnInheritedWidgetOfExactType<VAlbumNavigator>();
@@ -2970,6 +2992,7 @@ class VAlbumState extends State<VAlbumView>
   void doLoad() {
     if (route is DuplicatesRoute ||
         route is SimilarRoute ||
+        route is StatusRoute ||
         route is SearchRoute) {
       // A page of the space that asks the server itself, see issues #220 and
       // #227: the listing it stands on is loaded by the level beneath it.
@@ -3013,6 +3036,9 @@ class VAlbumState extends State<VAlbumView>
     if (route is SimilarRoute) {
       return SimilarView(this);
     }
+    if (route is StatusRoute) {
+      return StatusPage(onUp: navigator.up);
+    }
     if (route is SearchRoute) {
       return SearchView(this);
     }
@@ -3037,7 +3063,7 @@ class VAlbumState extends State<VAlbumView>
   Widget buildLoading() {
     var l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.appTitle)),
+      appBar: PageAppBar(title: Text(l10n.appTitle)),
       body: Center(child: Text(l10n.loading)),
     );
   }
@@ -3139,7 +3165,7 @@ class VAlbumState extends State<VAlbumView>
     var scope = ServerSettingsScope.of(context);
     var dataUrl = scope.settings.dataUrl;
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.signInRequiredTitle)),
+      appBar: PageAppBar(title: Text(l10n.signInRequiredTitle)),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 480),
@@ -3201,7 +3227,7 @@ class VAlbumState extends State<VAlbumView>
   Widget buildMessage(String message) {
     var l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(
+      appBar: PageAppBar(
         title: Text(l10n.appTitle),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
@@ -3331,6 +3357,7 @@ class VAlbumState extends State<VAlbumView>
         TrashRoute() => "",
         DuplicatesRoute() => "",
         SimilarRoute() => "",
+        StatusRoute() => "",
         SearchRoute() => "",
         NewsRoute() => "",
       };

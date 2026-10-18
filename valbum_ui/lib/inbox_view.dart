@@ -77,7 +77,6 @@ import 'album_view.dart';
 import 'app.dart';
 import 'broken.dart';
 import 'caller.dart';
-import 'camera_roll_view.dart';
 import 'client.dart';
 import 'crop.dart';
 import 'crop_editor.dart' show cropPhoto;
@@ -101,6 +100,8 @@ import 'selectable.dart';
 import 'settings.dart';
 import 'share_session.dart';
 import 'trash_view.dart' show hasTrashedImages, trashRating;
+import 'status.dart';
+import 'page_app_bar.dart';
 
 // ---------------------------------------------------------------------------
 // The words of the inbox screen.
@@ -1296,7 +1297,7 @@ class InboxContentState extends State<InboxContent>
     var count = _selection.length;
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(
+      appBar: PageAppBar(
         // The way back is the leading control at the left on every page of
         // the app (issue #100).
         leading: path.isEmpty
@@ -1320,7 +1321,7 @@ class InboxContentState extends State<InboxContent>
         ),
         centerTitle: true,
         actions: [
-          const CameraRollIndicator(),
+          const StatusIndicator(),
           menu(context, inboxMenu(count)),
         ],
       ),

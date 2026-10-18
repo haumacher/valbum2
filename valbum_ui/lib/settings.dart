@@ -17,6 +17,7 @@
 library;
 
 import 'dart:async';
+import 'dart:math' show min;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -26,7 +27,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'caller.dart';
 import 'camera_roll_view.dart';
-import 'catch_up.dart';
 import 'client.dart';
 import 'device_code_payload.dart';
 import 'device_code_scanner.dart';
@@ -42,9 +42,11 @@ import 'resource.dart';
 import 'selectable.dart';
 import 'sign_in_form.dart';
 import 'space_settings_view.dart';
+import 'status.dart';
 import 'upload_target_view.dart';
 import 'urls.dart';
 import 'page_insets.dart';
+import 'page_app_bar.dart';
 
 /// Persistence of the server URL on the device.
 ///
@@ -139,6 +141,18 @@ abstract class SettingsStore {
 
   /// Stores whether the albums show their bursts as one tile each.
   Future<void> saveAlbumStacking(bool stacking) async {}
+
+  /// Which problems of this device the status page shows as seen (issue
+  /// #305), as stored JSON, or `null` for none seen.
+  ///
+  /// A view of this device: the server's problems are marked on the server,
+  /// shared by its administrators; the device's own (its sync, its log, the
+  /// server it cannot reach) here. Not abstract: a store that keeps none
+  /// forgets them, and everything is new again.
+  Future<String?> loadStatusSeen() async => null;
+
+  /// Stores which problems of this device were seen.
+  Future<void> saveStatusSeen(String json) async {}
 
   /// Reads again what another isolate of this process may have written since
   /// (issue #300).
@@ -252,6 +266,16 @@ class InMemorySettingsStore extends SettingsStore {
   @override
   Future<void> saveAlbumStacking(bool stacking) async =>
       albumStacking = stacking;
+
+  /// The stored seen problems of this device, see
+  /// [SettingsStore.loadStatusSeen].
+  String? statusSeen;
+
+  @override
+  Future<String?> loadStatusSeen() async => statusSeen;
+
+  @override
+  Future<void> saveStatusSeen(String json) async => statusSeen = json;
 }
 
 /// The [SettingsStore] of the app, backed by `shared_preferences`.
@@ -289,6 +313,10 @@ class PreferencesSettingsStore extends SettingsStore {
   /// The preferences key of whether the albums stack their bursts, see
   /// [SettingsStore.loadAlbumStacking].
   static const String albumStackingKey = "albumStacking";
+
+  /// The key of the seen problems of this device, see
+  /// [SettingsStore.loadStatusSeen].
+  static const String statusSeenKey = "statusSeen";
 
   const PreferencesSettingsStore();
 
@@ -384,6 +412,14 @@ class PreferencesSettingsStore extends SettingsStore {
   Future<void> saveAlbumStacking(bool stacking) async =>
       (await SharedPreferences.getInstance())
           .setBool(albumStackingKey, stacking);
+
+  @override
+  Future<String?> loadStatusSeen() async =>
+      (await SharedPreferences.getInstance()).getString(statusSeenKey);
+
+  @override
+  Future<void> saveStatusSeen(String json) async =>
+      (await SharedPreferences.getInstance()).setString(statusSeenKey, json);
 }
 
 /// The server URL the app uses, and the way it is changed.
@@ -596,7 +632,7 @@ class ServerSettingsScope extends InheritedNotifier<ServerSettings> {
 /// Opens the server settings on top of the view the user is in.
 ///
 /// A [ServerSettingsScope] must be in scope, see [VAlbumApp].
-void openServerSettings(BuildContext context) {
+void openServerSettings(BuildContext context, {SettingsFocus? focus}) {
   var scope = ServerSettingsScope.of(context);
   Navigator.of(context).push(
     MaterialPageRoute<void>(
@@ -606,10 +642,22 @@ void openServerSettings(BuildContext context) {
           clientFor: scope.clientFor,
           diagnostics: scope.diagnostics,
           closable: true,
+          focus: focus,
         ),
       ),
     ),
   );
+}
+
+/// A section of the settings the screen is opened at, see
+/// [openServerSettings]: where the status page of issue #305 sends a person
+/// to fix a problem.
+enum SettingsFocus {
+  /// The camera roll of this device.
+  cameraRoll,
+
+  /// The settings of the space, with the content search.
+  spaceSettings,
 }
 
 /// Signs this device out: the one way to sign out, which the sign-out button
@@ -1086,6 +1134,10 @@ const Key clearCacheButtonKey = Key("settings.clearCache");
 /// The diagnostics section, collapsed until somebody needs it (issue #58).
 const Key diagnosticsSectionKey = Key("settings.diagnostics");
 
+/// The key of the line leading from the settings to the progress of the
+/// server's background on the status page (issue #305).
+const Key catchUpLinkKey = Key("settings.catchUp.link");
+
 /// The button putting the whole log, header and all, on the clipboard.
 const Key diagnosticsCopyKey = Key("settings.diagnostics.copy");
 
@@ -1138,6 +1190,9 @@ class ServerSettingsScreen extends StatefulWidget {
   /// the web and pumps this screen both ways.
   final bool isWeb;
 
+  /// The section the screen scrolls to when it opens, `null` for none.
+  final SettingsFocus? focus;
+
   const ServerSettingsScreen({
     super.key,
     required this.settings,
@@ -1145,6 +1200,7 @@ class ServerSettingsScreen extends StatefulWidget {
     this.diagnostics,
     this.closable = true,
     this.isWeb = kIsWeb,
+    this.focus,
   });
 
   @override
@@ -1203,6 +1259,14 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
   /// The outcome of the last connection test, if any.
   ConnectionTestResult? result;
 
+  /// The section of the camera roll, see [SettingsFocus.cameraRoll].
+  final GlobalKey _cameraRollKey = GlobalKey();
+
+  /// The section of the space settings, see [SettingsFocus.spaceSettings].
+  final GlobalKey _spaceSettingsKey = GlobalKey();
+
+  final ScrollController _scroll = ScrollController();
+
   /// Whether a connection test is running.
   bool testing = false;
 
@@ -1247,6 +1311,40 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
     // A screen opened with an invitation already in the field (the app was
     // pointed here by one) asks about it at once, exactly as a paste does.
     _enteredChanged();
+    if (widget.focus != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _reveal());
+    }
+  }
+
+  /// Scrolls to the section of [ServerSettingsScreen.focus]: the list builds
+  /// what it shows, so it is walked down until the section is built.
+  Future<void> _reveal() async {
+    var key = switch (widget.focus) {
+      SettingsFocus.cameraRoll => _cameraRollKey,
+      SettingsFocus.spaceSettings => _spaceSettingsKey,
+      null => null,
+    };
+    if (key == null) {
+      return;
+    }
+    for (var step = 0; step < 50 && mounted; step++) {
+      var target = key.currentContext;
+      if (target != null && target.mounted) {
+        await Scrollable.ensureVisible(target,
+            duration: const Duration(milliseconds: 200));
+        return;
+      }
+      if (!_scroll.hasClients) {
+        return;
+      }
+      var position = _scroll.position;
+      if (position.pixels >= position.maxScrollExtent) {
+        return;
+      }
+      _scroll.jumpTo(min(position.pixels + position.viewportDimension * 0.8,
+          position.maxScrollExtent));
+      await WidgetsBinding.instance.endOfFrame;
+    }
   }
 
   /// What the URL in the field names, `null` while it names nothing usable.
@@ -1407,6 +1505,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
   void dispose() {
     widget.settings.removeListener(_settingsChanged);
     controller.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
@@ -1427,7 +1526,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
     var settings = widget.settings;
     var l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(
+      appBar: PageAppBar(
         title: Text(l10n.serverScreenTitle),
         automaticallyImplyLeading: widget.closable,
       ),
@@ -1435,6 +1534,7 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 640),
           child: ListView(
+            controller: _scroll,
             padding: pagePadding(context, const EdgeInsets.all(16)),
             children: [
               if (widget.isWeb)
@@ -1447,7 +1547,11 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
               // Where new photos go (issue #240): on the web as well, where
               // the upload into the inbox follows it.
               const UploadTargetSection(),
-              if (!widget.isWeb) const CameraRollSection(),
+              if (!widget.isWeb)
+                KeyedSubtree(
+                  key: _cameraRollKey,
+                  child: const CameraRollSection(),
+                ),
               ..._cacheSection(l10n),
               ..._diagnosticsSection(l10n, settings),
             ],
@@ -1642,7 +1746,12 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
         identity?.role != roleAdmin) {
       return const [];
     }
-    return [SpaceSettingsSection(client: client)];
+    return [
+      KeyedSubtree(
+        key: _spaceSettingsKey,
+        child: SpaceSettingsSection(client: client),
+      ),
+    ];
   }
 
   /// How far the server has got preparing the albums (issue #236): the
@@ -1655,7 +1764,13 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
         identity?.role != roleAdmin) {
       return const [];
     }
-    return [CatchUpSection(client: client)];
+    // On the status page since issue #305; the place it was points there.
+    return [
+      StatusPageLink(
+        key: catchUpLinkKey,
+        title: AppLocalizations.of(context)!.catchUpHeading,
+      ),
+    ];
   }
 
   /// A scanned payload names a server too: it goes into the field above
@@ -2039,12 +2154,8 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
     });
   }
 
-  /// The diagnostics section: the problems this app ran into (issues #58,
-  /// #184).
-  ///
-  /// Collapsed by default — the settings screen keeps its shape for everyone
-  /// who never needs it — and monospaced, newest last, because what is pasted
-  /// into a bug report is read line by line.
+  /// The diagnostics: this device's log (issues #58, #184), on the status
+  /// page since issue #305, which this leads to.
   List<Widget> _diagnosticsSection(
     AppLocalizations l10n,
     ServerSettings settings,
@@ -2052,102 +2163,15 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
       [
         const SizedBox(height: 8),
         const Divider(),
-        ExpansionTile(
+        StatusPageLink(
           key: diagnosticsSectionKey,
-          tilePadding: EdgeInsets.zero,
-          // What a background run wrote in its own engine since the app read
-          // the log last, see [DiagnosticsLog.reload].
-          onExpansionChanged: (expanded) {
-            if (expanded) {
-              unawaited(log.reload());
-            }
-          },
-          childrenPadding: const EdgeInsets.only(bottom: 16),
-          title: Text(
-            l10n.diagnosticsHeading,
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          subtitle: Text(l10n.diagnosticsLead),
-          children: [
-            AnimatedBuilder(
-              animation: log,
-              builder: (context, _) => Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: double.infinity,
-                    constraints: const BoxConstraints(maxHeight: 240),
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Theme.of(context).dividerColor),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: SingleChildScrollView(
-                      // Anchored at the end: the newest line is the one the
-                      // person came here to read.
-                      reverse: true,
-                      child: SelectableText(
-                        _logText(l10n),
-                        style: const TextStyle(
-                          fontFamily: "monospace",
-                          fontSize: 11,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      FilledButton.icon(
-                        key: diagnosticsCopyKey,
-                        onPressed: () => _copyDiagnostics(settings),
-                        icon: const Icon(Icons.copy_all),
-                        label: Text(l10n.copy),
-                      ),
-                      TextButton.icon(
-                        key: diagnosticsClearKey,
-                        onPressed: log.isEmpty ? null : log.clear,
-                        icon: const Icon(Icons.delete_outline),
-                        label: Text(l10n.clear),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
+          title: l10n.diagnosticsHeading,
+          subtitle: l10n.statusLinkSubtitle,
+          // The screen's own log where it keeps one (a test, an embedder).
+          log: widget.diagnostics == null ? null : log,
+          settings: widget.diagnostics == null ? null : settings,
         ),
       ];
-
-  /// The log as the box shows it, oldest first.
-  String _logText(AppLocalizations l10n) {
-    var entries = log.entries;
-    if (entries.isEmpty) {
-      return l10n.diagnosticsEmpty;
-    }
-    return entries.join("\n");
-  }
-
-  /// Puts the whole log, header and all, on the clipboard and says so.
-  Future<void> _copyDiagnostics(ServerSettings settings) async {
-    var copied = AppLocalizations.of(context)!.diagnosticsCopied;
-    var text = log.copyText(
-      serverUrl: settings.serverUrl ?? settings.dataUrl,
-      platform: platformDescription(),
-    );
-    await Clipboard.setData(ClipboardData(text: text));
-    if (!mounted) {
-      return;
-    }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(copied),
-        duration: const Duration(seconds: 4),
-      ),
-    );
-  }
 
   /// Forgets the token of this device; the server keeps its entry.
   ///

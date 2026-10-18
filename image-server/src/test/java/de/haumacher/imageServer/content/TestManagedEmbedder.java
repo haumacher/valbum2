@@ -86,7 +86,15 @@ public class TestManagedEmbedder extends TestCase {
 		return new File("/bin/sh").canExecute();
 	}
 
-	public void testNothingStartsUntilAVectorIsAskedFor() throws Exception {
+	/** What the service says of a request it refused is a warning in the server's log, see issue #305. */
+	public void testTheServicesWarningsAreWarnings() {
+		assertEquals(java.util.logging.Level.WARNING,
+			ManagedEmbedder.level("valbum-embedder: WARNING: refused an embeddings request: the body is no JSON"));
+		assertEquals(java.util.logging.Level.INFO,
+			ManagedEmbedder.level("valbum-embedder: embedded 1 image (600x450) in 89.2 s"));
+	}
+
+		public void testNothingStartsUntilAVectorIsAskedFor() throws Exception {
 		ShellLauncher launcher = new ShellLauncher();
 		try (ManagedEmbedder embedder = new ManagedEmbedder(launcher)) {
 			assertEquals("Known without a start.", "embeddinggemma-2@daa72c5/256/fp32/1", embedder.stamp());

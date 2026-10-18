@@ -224,7 +224,7 @@ public class TestUnreadableFile extends TestCase {
 		List<String> said = new ArrayList<>();
 		ResourceCache cache = new ResourceCache();
 		try {
-			cache.setRefusals((folder, reason) -> said.add(folder.getName() + " " + reason));
+			cache.setRefusals((folder, name, reason) -> said.add(folder.getName() + " " + name + ": " + reason));
 			PathInfo album = new PathInfo(_base, Path.of("Album"));
 
 			assertEquals(Arrays.asList("a.jpg", "x.mp4"), sorted(names((AlbumInfo) cache.lookup(album))));

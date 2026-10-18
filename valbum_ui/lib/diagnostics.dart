@@ -47,13 +47,38 @@ import 'package:http/http.dart' as http;
 
 import 'urls.dart';
 
-/// The version of the app, as `pubspec.yaml` spells it.
+/// The version of `pubspec.yaml`, a placeholder no release carries: what
+/// [appVersionOf] falls back on where the build says nothing (a test).
+const String pubspecVersion = "1.0.0+1";
+
+/// The version of the app as the build says it, see [appVersionOf].
+final String appVersion = appVersionOf(
+  release: const String.fromEnvironment("VALBUM_VERSION"),
+  name: const String.fromEnvironment("FLUTTER_BUILD_NAME"),
+  number: const String.fromEnvironment("FLUTTER_BUILD_NUMBER"),
+);
+
+/// The version a build was made as: the build name and number the Flutter
+/// tool defines (`--build-name`/`--build-number`, which the release workflow
+/// passes for the APK: `2.15.1+215`); the release version alone where the
+/// tool's name is another (`VALBUM_VERSION` of a web release, whose build
+/// name the tool takes from `pubspec.yaml`); [pubspecVersion] where the build
+/// defines nothing at all (a test).
 ///
-/// A constant rather than a `package_info_plus` lookup: the plugin would be a
-/// dependency and a platform channel for one line of a bug report, and the
-/// version is in the build anyway. Keep it in step with the `version:` of
-/// `pubspec.yaml`.
-const String appVersion = "1.0.0+1";
+/// Not a hand-kept constant any more: the 2.15.1 APK said "App: 1.0.0+1".
+String appVersionOf({
+  String release = "",
+  String name = "",
+  String number = "",
+}) {
+  if (release.isNotEmpty && release != name) {
+    return release;
+  }
+  if (name.isNotEmpty) {
+    return number.isEmpty ? name : "$name+$number";
+  }
+  return pubspecVersion;
+}
 
 /// How many entries a [DiagnosticsLog] keeps.
 const int diagnosticsCapacity = 300;
@@ -612,9 +637,10 @@ class DiagnosticsLog extends ChangeNotifier {
   String copyText({
     String? serverUrl,
     String platform = "unknown",
-    String version = appVersion,
+    String? version,
     DateTime? at,
   }) {
+    version ??= appVersion;
     var stamp = at ?? now();
     var buffer = StringBuffer()
       ..writeln("VAlbum diagnostics")

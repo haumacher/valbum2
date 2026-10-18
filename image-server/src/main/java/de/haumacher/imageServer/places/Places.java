@@ -543,6 +543,21 @@ public final class Places {
 		return _store.status();
 	}
 
+	/** The files of place names whose download failed, see {@link GeoNamesStore#failures()}. */
+	public List<GeoNamesStore.Failed> failures() {
+		return _store.failures();
+	}
+
+	/** The files of place names being downloaded, see {@link GeoNamesStore#loading()}. */
+	public List<String> loading() {
+		return _store.loading();
+	}
+
+	/** Downloads the given file of place names again now, see {@link GeoNamesStore#retryNow(String)}. */
+	public boolean retryNow(String name) {
+		return _store.retryNow(name);
+	}
+
 	private static PlaceResult unavailable(List<Problem> problems) {
 		List<String> reasons = new ArrayList<>();
 		for (Problem problem : problems) {

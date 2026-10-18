@@ -5542,6 +5542,728 @@ CatchUpStep readCatchUpStep(JsonReader json) {
 	}
 }
 
+///  Everything the server of a space is doing, waiting for and failing at, for the status page of
+///  issue #305: <code>&lt;data&gt;/?type=status</code>.
+/// 
+///  <p>
+///  Derived from what the server is doing at the moment it is asked; only the "seen" marks of the
+///  {@link StatusProblem problems} are stored (in the index of the space, shared by its
+///  administrators). Answered to every member, and refused to a share link and an anonymous caller:
+///  a member who is no administrator gets {@link #admin} <code>false</code> and nothing else, because
+///  what fails names albums and files the member may not be allowed to see, and the paths on the
+///  server are the administrator's business. Nothing secret is in it: no key, no token.
+///  </p>
+class StatusInfo extends _JsonObject {
+	///  Whether the caller administers the space; every other field is empty where not.
+	bool admin;
+
+	///  The background work of the space, as <code>?type=catch-up</code> answers it.
+	CatchUpStatus? catchUp;
+
+	///  How many albums each photo step of the background is done with, in the order the steps run;
+	///  counted since the server started, of {@link CatchUpStatus#albumsTotal}.
+	List<StatusStep> steps;
+
+	///  How far the index of the photos' contents (their hashes, which the duplicates and the
+	///  camera-roll sync wait for) has got.
+	IndexProgress? index;
+
+	///  The files of place names being downloaded or waiting for their download, by name.
+	List<StatusKey> placesLoading;
+
+	///  Every problem of the server, merged by cause: the background's failures, the folders the server
+	///  cannot write, the embedder that does not answer, faces or videos this machine cannot make, a
+	///  download of place names that failed. A problem is gone when it is fixed.
+	List<StatusProblem> problems;
+
+	///  The folder of the space on the server, absolute: where the paths of the problems are below.
+	String root;
+
+	/// Creates a StatusInfo.
+	StatusInfo({
+			this.admin = false, 
+			this.catchUp, 
+			this.steps = const [], 
+			this.index, 
+			this.placesLoading = const [], 
+			this.problems = const [], 
+			this.root = "", 
+	});
+
+	/// Parses a StatusInfo from a string source.
+	static StatusInfo? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a StatusInfo instance from the given reader.
+	static StatusInfo read(JsonReader json) {
+		StatusInfo result = StatusInfo();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "StatusInfo";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "admin": {
+				admin = json.expectBool();
+				break;
+			}
+			case "catchUp": {
+				catchUp = json.tryNull() ? null : CatchUpStatus.read(json);
+				break;
+			}
+			case "steps": {
+				json.expectArray();
+				steps = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = StatusStep.read(json);
+						if (value != null) {
+							steps.add(value);
+						}
+					}
+				}
+				break;
+			}
+			case "index": {
+				index = json.tryNull() ? null : IndexProgress.read(json);
+				break;
+			}
+			case "placesLoading": {
+				json.expectArray();
+				placesLoading = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = StatusKey.read(json);
+						if (value != null) {
+							placesLoading.add(value);
+						}
+					}
+				}
+				break;
+			}
+			case "problems": {
+				json.expectArray();
+				problems = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = StatusProblem.read(json);
+						if (value != null) {
+							problems.add(value);
+						}
+					}
+				}
+				break;
+			}
+			case "root": {
+				root = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("admin");
+		json.addBool(admin);
+
+		var _catchUp = catchUp;
+		if (_catchUp != null) {
+			json.addKey("catchUp");
+			_catchUp.writeContent(json);
+		}
+
+		json.addKey("steps");
+		json.startArray();
+		for (var _element in steps) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+
+		var _index = index;
+		if (_index != null) {
+			json.addKey("index");
+			_index.writeContent(json);
+		}
+
+		json.addKey("placesLoading");
+		json.startArray();
+		for (var _element in placesLoading) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+
+		json.addKey("problems");
+		json.startArray();
+		for (var _element in problems) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+
+		json.addKey("root");
+		json.addString(root);
+	}
+
+}
+
+///  How far one step of the background has got, see {@link StatusInfo#steps}.
+class StatusStep extends _JsonObject {
+	///  The step, {@link CatchUpStep#OTHER} for one this description does not name.
+	CatchUpStep step;
+
+	///  The step's own name, as the server's log says it.
+	String name;
+
+	///  How many albums the step is done with.
+	int done;
+
+	///  How many albums there are.
+	int total;
+
+	/// Creates a StatusStep.
+	StatusStep({
+			this.step = CatchUpStep.idle, 
+			this.name = "", 
+			this.done = 0, 
+			this.total = 0, 
+	});
+
+	/// Parses a StatusStep from a string source.
+	static StatusStep? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a StatusStep instance from the given reader.
+	static StatusStep read(JsonReader json) {
+		StatusStep result = StatusStep();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "StatusStep";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "step": {
+				step = readCatchUpStep(json);
+				break;
+			}
+			case "name": {
+				name = json.expectString();
+				break;
+			}
+			case "done": {
+				done = json.expectInt();
+				break;
+			}
+			case "total": {
+				total = json.expectInt();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("step");
+		writeCatchUpStep(json, step);
+
+		json.addKey("name");
+		json.addString(name);
+
+		json.addKey("done");
+		json.addNumber(done);
+
+		json.addKey("total");
+		json.addNumber(total);
+	}
+
+}
+
+///  What a {@link StatusProblem} is about.
+enum StatusProblemKind {
+	///  A step of the background failed on files or folders; the first constant, also for a kind a client does not know.
+	failure,
+	///  Folders the server's user cannot write: nothing generated can be stored beside their photos.
+	unwritable,
+	///  The embedder of the content search does not answer, see issue #257.
+	embedder,
+	///  The space asked for faces, and this machine cannot detect them.
+	faces,
+	///  This machine cannot make the renditions of videos.
+	videos,
+	///  A file of place names could not be downloaded, see issue #234.
+	places,
+}
+
+/// Writes a value of StatusProblemKind to a JSON stream.
+void writeStatusProblemKind(JsonSink json, StatusProblemKind value) {
+	switch (value) {
+		case StatusProblemKind.failure: json.addString("FAILURE"); break;
+		case StatusProblemKind.unwritable: json.addString("UNWRITABLE"); break;
+		case StatusProblemKind.embedder: json.addString("EMBEDDER"); break;
+		case StatusProblemKind.faces: json.addString("FACES"); break;
+		case StatusProblemKind.videos: json.addString("VIDEOS"); break;
+		case StatusProblemKind.places: json.addString("PLACES"); break;
+		default: throw ("No such literal: " + value.name);
+	}
+}
+
+/// Reads a value of StatusProblemKind from a JSON stream.
+StatusProblemKind readStatusProblemKind(JsonReader json) {
+	switch (json.expectString()) {
+		case "FAILURE": return StatusProblemKind.failure;
+		case "UNWRITABLE": return StatusProblemKind.unwritable;
+		case "EMBEDDER": return StatusProblemKind.embedder;
+		case "FACES": return StatusProblemKind.faces;
+		case "VIDEOS": return StatusProblemKind.videos;
+		case "PLACES": return StatusProblemKind.places;
+		default: return StatusProblemKind.failure;
+	}
+}
+
+///  One problem of the server, see {@link StatusInfo#problems}: one cause, with every file or folder
+///  it concerns.
+class StatusProblem extends _JsonObject {
+	///  What identifies the cause: the kind, the step and the reason. The same while the cause is the
+	///  same, so that the app can mark it as seen.
+	String id;
+
+	///  What the problem is about.
+	StatusProblemKind kind;
+
+	///  The step that failed, for {@link StatusProblemKind#FAILURE}.
+	CatchUpStep step;
+
+	///  The step's own name, for {@link StatusProblemKind#FAILURE}.
+	String stepName;
+
+	///  Why, as the server words it.
+	String reason;
+
+	///  How many files (or folders, where the cause is a folder's) it concerns: {@link #items}.
+	int files;
+
+	///  In how many albums.
+	int albums;
+
+	///  Every file or folder it concerns, by folder and name; for {@link StatusProblemKind#UNWRITABLE}
+	///  every folder with its path on the server and how many photos it holds.
+	List<StatusItem> items;
+
+	///  Whether an administrator marked the problem as seen, and it did not change since: no new file,
+	///  no other reason.
+	bool seen;
+
+	///  Whether <code>?action=status-retry</code> can do something for it now.
+	bool retryable;
+
+	///  When it is tried again by itself, in milliseconds since the epoch; <code>0</code> for not by itself.
+	int retryAt;
+
+	/// Creates a StatusProblem.
+	StatusProblem({
+			this.id = "", 
+			this.kind = StatusProblemKind.failure, 
+			this.step = CatchUpStep.idle, 
+			this.stepName = "", 
+			this.reason = "", 
+			this.files = 0, 
+			this.albums = 0, 
+			this.items = const [], 
+			this.seen = false, 
+			this.retryable = false, 
+			this.retryAt = 0, 
+	});
+
+	/// Parses a StatusProblem from a string source.
+	static StatusProblem? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a StatusProblem instance from the given reader.
+	static StatusProblem read(JsonReader json) {
+		StatusProblem result = StatusProblem();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "StatusProblem";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "id": {
+				id = json.expectString();
+				break;
+			}
+			case "kind": {
+				kind = readStatusProblemKind(json);
+				break;
+			}
+			case "step": {
+				step = readCatchUpStep(json);
+				break;
+			}
+			case "stepName": {
+				stepName = json.expectString();
+				break;
+			}
+			case "reason": {
+				reason = json.expectString();
+				break;
+			}
+			case "files": {
+				files = json.expectInt();
+				break;
+			}
+			case "albums": {
+				albums = json.expectInt();
+				break;
+			}
+			case "items": {
+				json.expectArray();
+				items = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = StatusItem.read(json);
+						if (value != null) {
+							items.add(value);
+						}
+					}
+				}
+				break;
+			}
+			case "seen": {
+				seen = json.expectBool();
+				break;
+			}
+			case "retryable": {
+				retryable = json.expectBool();
+				break;
+			}
+			case "retryAt": {
+				retryAt = json.expectInt();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("id");
+		json.addString(id);
+
+		json.addKey("kind");
+		writeStatusProblemKind(json, kind);
+
+		json.addKey("step");
+		writeCatchUpStep(json, step);
+
+		json.addKey("stepName");
+		json.addString(stepName);
+
+		json.addKey("reason");
+		json.addString(reason);
+
+		json.addKey("files");
+		json.addNumber(files);
+
+		json.addKey("albums");
+		json.addNumber(albums);
+
+		json.addKey("items");
+		json.startArray();
+		for (var _element in items) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+
+		json.addKey("seen");
+		json.addBool(seen);
+
+		json.addKey("retryable");
+		json.addBool(retryable);
+
+		json.addKey("retryAt");
+		json.addNumber(retryAt);
+	}
+
+}
+
+///  One file or folder of a {@link StatusProblem}.
+class StatusItem extends _JsonObject {
+	///  The folder, relative to the root of the space; empty for the root.
+	String folder;
+
+	///  The file (or video) in it, empty where the problem is the folder's.
+	String name;
+
+	///  The folder's path on the server, absolute, for {@link StatusProblemKind#UNWRITABLE}.
+	String path;
+
+	///  How many photos and videos the folder holds, for {@link StatusProblemKind#UNWRITABLE}.
+	int photos;
+
+	///  What could not be stored there, for {@link StatusProblemKind#UNWRITABLE}.
+	String what;
+
+	/// Creates a StatusItem.
+	StatusItem({
+			this.folder = "", 
+			this.name = "", 
+			this.path = "", 
+			this.photos = 0, 
+			this.what = "", 
+	});
+
+	/// Parses a StatusItem from a string source.
+	static StatusItem? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a StatusItem instance from the given reader.
+	static StatusItem read(JsonReader json) {
+		StatusItem result = StatusItem();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "StatusItem";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "folder": {
+				folder = json.expectString();
+				break;
+			}
+			case "name": {
+				name = json.expectString();
+				break;
+			}
+			case "path": {
+				path = json.expectString();
+				break;
+			}
+			case "photos": {
+				photos = json.expectInt();
+				break;
+			}
+			case "what": {
+				what = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("folder");
+		json.addString(folder);
+
+		json.addKey("name");
+		json.addString(name);
+
+		json.addKey("path");
+		json.addString(path);
+
+		json.addKey("photos");
+		json.addNumber(photos);
+
+		json.addKey("what");
+		json.addString(what);
+	}
+
+}
+
+///  A name or an id in a list, see {@link StatusInfo#placesLoading} and {@link StatusSeen#ids}.
+class StatusKey extends _JsonObject {
+	///  The name or id.
+	String id;
+
+	/// Creates a StatusKey.
+	StatusKey({
+			this.id = "", 
+	});
+
+	/// Parses a StatusKey from a string source.
+	static StatusKey? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a StatusKey instance from the given reader.
+	static StatusKey read(JsonReader json) {
+		StatusKey result = StatusKey();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "StatusKey";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "id": {
+				id = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("id");
+		json.addString(id);
+	}
+
+}
+
+///  Marks problems of the status as seen, <code>POST &lt;data&gt;/?action=status-seen</code>, see
+///  {@link StatusProblem#seen}; answered with the {@link StatusInfo} as it is then. An
+///  administrator's write.
+class StatusSeen extends _JsonObject {
+	///  The {@link StatusProblem#id ids} of the problems marked.
+	List<StatusKey> ids;
+
+	///  Whether every problem is marked ("Mark all as seen").
+	bool all;
+
+	/// Creates a StatusSeen.
+	StatusSeen({
+			this.ids = const [], 
+			this.all = false, 
+	});
+
+	/// Parses a StatusSeen from a string source.
+	static StatusSeen? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a StatusSeen instance from the given reader.
+	static StatusSeen read(JsonReader json) {
+		StatusSeen result = StatusSeen();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "StatusSeen";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "ids": {
+				json.expectArray();
+				ids = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = StatusKey.read(json);
+						if (value != null) {
+							ids.add(value);
+						}
+					}
+				}
+				break;
+			}
+			case "all": {
+				all = json.expectBool();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("ids");
+		json.startArray();
+		for (var _element in ids) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+
+		json.addKey("all");
+		json.addBool(all);
+	}
+
+}
+
+///  Tries again what a problem of the status failed at, now, <code>POST &lt;data&gt;/?action=status-retry</code>:
+///  for a cause fixed elsewhere (the embedder started, the permissions mended). Answered with the
+///  {@link StatusInfo} as it is then; a problem that is fixed leaves the list once the retry is done.
+///  An administrator's write.
+class StatusRetry extends _JsonObject {
+	///  The {@link StatusProblem#id} of the problem.
+	String id;
+
+	/// Creates a StatusRetry.
+	StatusRetry({
+			this.id = "", 
+	});
+
+	/// Parses a StatusRetry from a string source.
+	static StatusRetry? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a StatusRetry instance from the given reader.
+	static StatusRetry read(JsonReader json) {
+		StatusRetry result = StatusRetry();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "StatusRetry";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "id": {
+				id = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("id");
+		json.addString(id);
+	}
+
+}
+
 ///  The photographs of a space that lie in more than one album, see issue #220 and
 ///  <code>&lt;data&gt;/?type=duplicates</code>.
 /// 

@@ -144,7 +144,9 @@ void main() {
     );
     expect(find.text(de.invitedForPending("Oma")), findsOneWidget);
     expect(find.text(de.diagnosticsHeading), findsOneWidget);
-    expect(find.text(de.diagnosticsLead), findsOneWidget);
+    // The log itself is on the status page since issue #305; the line leads
+    // there.
+    expect(find.text(de.statusLinkSubtitle), findsOneWidget);
 
     // And nothing English is left standing where German belongs.
     var en = l10nOf(const Locale("en"));

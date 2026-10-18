@@ -52,6 +52,8 @@ const List<String> writeMethods = [
   "removeContactSignIn",
   "saveSpaceSettings",
   "markNewsRead",
+  "markStatusSeen",
+  "retryStatus",
   "createPerson",
   "renamePerson",
   "mergePersons",

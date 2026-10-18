@@ -3118,6 +3118,50 @@ class VAlbumClient {
     return CatchUpStatus.read(JsonReader.fromString(response.body));
   }
 
+  /// Everything the server of this space is doing, waiting for and failing
+  /// at (issue #305): the whole of it for an administrator, that the caller
+  /// is none for a member; a share link and an anonymous caller are refused
+  /// with the server's own sentence.
+  Future<StatusInfo> status() async {
+    var url = "${folderUrl(const [])}?type=status";
+    var response = await _http.get(Uri.parse(url), headers: authHeaders);
+    if (response.statusCode >= 300) {
+      throw failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingAsking("'$url'"),
+      );
+    }
+    return StatusInfo.read(JsonReader.fromString(response.body));
+  }
+
+  /// Marks the problems of the server named by [ids] as seen — every one
+  /// where [all] (issue #305) — and answers the status as it is then. The
+  /// marks are the space's, shared by its administrators.
+  Future<StatusInfo> markStatusSeen({
+    List<String> ids = const [],
+    bool all = false,
+  }) async {
+    var url = "${folderUrl(const [])}?action=status-seen";
+    var response = await _postBody(
+      url,
+      _jsonOf(
+        StatusSeen(ids: [for (var id in ids) StatusKey(id: id)], all: all)
+            .writeContent,
+      ),
+    );
+    return StatusInfo.read(JsonReader.fromString(response));
+  }
+
+  /// Tries again now what the server's problem of [id] failed at (issue
+  /// #305), and answers the status as it is then.
+  Future<StatusInfo> retryStatus(String id) async {
+    var url = "${folderUrl(const [])}?action=status-retry";
+    var response =
+        await _postBody(url, _jsonOf(StatusRetry(id: id).writeContent));
+    return StatusInfo.read(JsonReader.fromString(response));
+  }
+
   /// The settings of this space (issue #297): its name, whether visitors
   /// see its public photos, its faces, its map, its time zone and its inbox,
   /// with what the server knows around them (why a switch decides nothing

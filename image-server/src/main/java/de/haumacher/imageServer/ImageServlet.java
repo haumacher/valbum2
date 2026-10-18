@@ -124,6 +124,9 @@ import de.haumacher.imageServer.shared.model.ShareLinkCreated;
 import de.haumacher.imageServer.shared.model.ShareLinkList;
 import de.haumacher.imageServer.shared.model.ShareResend;
 import de.haumacher.imageServer.shared.model.SimilarList;
+import de.haumacher.imageServer.shared.model.StatusKey;
+import de.haumacher.imageServer.shared.model.StatusRetry;
+import de.haumacher.imageServer.shared.model.StatusSeen;
 import de.haumacher.imageServer.shared.model.TagFaces;
 import de.haumacher.imageServer.shared.model.ThumbnailInfo;
 import de.haumacher.imageServer.shared.model.UploadCheck;
@@ -386,6 +389,29 @@ public class ImageServlet extends HttpServlet {
 	/** What <code>?type=catch-up</code> is refused with to everybody but an administrator. */
 	public static final String CATCH_UP_REFUSED =
 		"How far the server has got preparing the albums is shown to the administrator of this space only.";
+
+	/** The type of the status page of issue #305: everything that runs, waits or fails, see {@link ServerStatus}. */
+	public static final String STATUS_TYPE = "status";
+
+	/** What <code>?type=status</code> and its actions are refused with to a share link and an anonymous caller. */
+	public static final String STATUS_REFUSED =
+		"What the server is doing and what failed is shown to the members of this space only.";
+
+	/** What the actions of the status page are refused with to a member who is no administrator. */
+	public static final String STATUS_ADMIN_ONLY =
+		"Only the administrator of this space marks the server's problems as seen or retries them.";
+
+	/** The action marking problems of the status page as seen, see {@link ServerStatus#markSeen}. */
+	public static final String STATUS_SEEN_ACTION = "status-seen";
+
+	/** The action retrying a problem of the status page, see {@link ServerStatus#retry}. */
+	public static final String STATUS_RETRY_ACTION = "status-retry";
+
+	/** What an unreadable request of the status page's actions is refused with. */
+	public static final String STATUS_UNREADABLE = "The request about the server's problems cannot be read.";
+
+	/** What a retry of a problem that is no more is answered with. */
+	public static final String STATUS_GONE = "This problem is no more: it was fixed meanwhile.";
 
 	/** The type of the bell of issue #268: what arrived from others, see {@link Arrivals}. */
 	public static final String NEWS_TYPE = "news";
@@ -1089,7 +1115,8 @@ public class ImageServlet extends HttpServlet {
 		// background work (issue #252); where no background runs (a test's servlet), the request
 		// that records the folder says so.
 		_index.pipeline().addStep(new AnalysisStep(_cache, _index.pipeline()));
-		_cache.setRefusals((folder, reason) -> _index.pipeline().reportFailure(folder, reason));
+		_cache.setRefusals((folder, name, reason) -> _index.pipeline()
+			.reportFailure(folder, de.haumacher.imageServer.cache.AnalysisStep.NAME, name, reason, false));
 		_collections = new PhotoCollections(_basePath, _index);
 		_faces = new FaceIndex(_basePath, facesEnabled, _spaceIndex);
 		_reanalysis = new Reanalysis(_cache, _space.isEmpty() ? basePath.getName() : _space);
@@ -1540,6 +1567,10 @@ public class ImageServlet extends HttpServlet {
 		}
 		if (CATCH_UP_TYPE.equals(type)) {
 			serveCatchUp(context, caller);
+			return;
+		}
+		if (STATUS_TYPE.equals(type)) {
+			serveStatus(context, caller);
 			return;
 		}
 		if (NEWS_TYPE.equals(type) || NEWS_COUNT_TYPE.equals(type)) {
@@ -6002,6 +6033,14 @@ public class ImageServlet extends HttpServlet {
 			markNewsRead(context, postCaller);
 			return;
 		}
+		if (STATUS_SEEN_ACTION.equals(action)) {
+			markStatusSeen(context, postCaller);
+			return;
+		}
+		if (STATUS_RETRY_ACTION.equals(action)) {
+			retryStatus(context, postCaller);
+			return;
+		}
 		if ("move".equals(action)) {
 			moveEntries(context);
 			return;
@@ -7962,6 +8001,113 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 		serveJsonObject(context.response(), CatchUp.status(_index.pipeline(), _content));
+	}
+
+	/**
+	 * Answers the status page of issue #305 at <code>&lt;data&gt;/?type=status</code>, see
+	 * {@link ServerStatus}.
+	 *
+	 * <p>
+	 * Asked of every member, refused like {@link #serveDuplicates the duplicates} to a share link and
+	 * an anonymous caller ({@link #STATUS_REFUSED}). A member who is no administrator is answered
+	 * that alone ({@link ServerStatus#forMember()}): what fails names albums and files they may not be
+	 * allowed to see, and the paths on the server are the administrator's business; their own device's
+	 * side of the page is the app's. Under <code>--auth off</code> everybody is the owner.
+	 * </p>
+	 */
+	private void serveStatus(Context context, Caller caller) throws IOException {
+		if (!mayAskStatus(context, caller)) {
+			return;
+		}
+		serveJsonObject(context.response(),
+			_auth.maySeeUsers(caller) ? serverStatus().forAdmin() : ServerStatus.forMember());
+	}
+
+	/** Whether the given caller may ask for the status at all; refuses everybody else, see {@link #serveStatus}. */
+	private boolean mayAskStatus(Context context, Caller caller) throws IOException {
+		if (caller.isShareLink() || (!caller.isPaired() && _auth.getMode() != AuthMode.OFF)) {
+			LOG.warning("Refusing the status to " + (caller.isShareLink()
+				? "the share link '" + caller.getShareLabel() + "'" : "an anonymous caller") + ".");
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, STATUS_REFUSED);
+			return false;
+		}
+		return true;
+	}
+
+	/** Whether the given caller may act on the status: an administrator; refuses everybody else. */
+	private boolean mayActOnStatus(Context context, Caller caller) throws IOException {
+		if (!mayAskStatus(context, caller)) {
+			return false;
+		}
+		if (!_auth.maySeeUsers(caller)) {
+			LOG.warning("Refusing an action on the status to '" + caller.getUserName() + "'.");
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, STATUS_ADMIN_ONLY);
+			return false;
+		}
+		return true;
+	}
+
+	/**
+	 * Marks problems of the status as seen, <code>POST &lt;data&gt;/?action=status-seen</code> with a
+	 * {@link StatusSeen}, and answers the status as it is then; an administrator's write.
+	 */
+	private void markStatusSeen(Context context, Caller caller) throws IOException {
+		if (!mayActOnStatus(context, caller)) {
+			return;
+		}
+		StatusSeen request;
+		try {
+			request = StatusSeen.readStatusSeen(json(readBody(context.request())));
+		} catch (IOException | RuntimeException ex) {
+			LOG.warning("Rejecting an unreadable request marking problems as seen: " + ex.getMessage());
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, STATUS_UNREADABLE);
+			return;
+		}
+		List<String> ids = new ArrayList<>();
+		for (StatusKey key : request.getIds()) {
+			ids.add(key.getId());
+		}
+		ServerStatus status = serverStatus();
+		status.markSeen(ids, request.isAll());
+		serveJsonObject(context.response(), status.forAdmin());
+	}
+
+	/**
+	 * Tries a problem of the status again now, <code>POST &lt;data&gt;/?action=status-retry</code> with
+	 * a {@link StatusRetry}, and answers the status as it is then; an administrator's write. A problem
+	 * that is no more is answered <code>404</code>, one nothing can be retried for while the server
+	 * runs <code>409</code>, each with its reason.
+	 */
+	private void retryStatus(Context context, Caller caller) throws IOException {
+		if (!mayActOnStatus(context, caller)) {
+			return;
+		}
+		StatusRetry request;
+		try {
+			request = StatusRetry.readStatusRetry(json(readBody(context.request())));
+		} catch (IOException | RuntimeException ex) {
+			LOG.warning("Rejecting an unreadable request retrying a problem: " + ex.getMessage());
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, STATUS_UNREADABLE);
+			return;
+		}
+		ServerStatus status = serverStatus();
+		switch (status.retry(request.getId())) {
+			case UNKNOWN:
+				errorInfo(context, HttpServletResponse.SC_NOT_FOUND, STATUS_GONE);
+				return;
+			case NOT_RETRYABLE:
+				errorInfo(context, HttpServletResponse.SC_CONFLICT, ServerStatus.NOT_RETRYABLE);
+				return;
+			default:
+				LOG.info("Retrying the problem '" + request.getId() + "' for '" + caller.getUserName() + "'.");
+				serveJsonObject(context.response(), status.forAdmin());
+		}
+	}
+
+	/** The status of this space, see {@link ServerStatus}. */
+	ServerStatus serverStatus() {
+		return new ServerStatus(_basePath, _index.pipeline(), _content, _faces, this::places,
+			_index::progress, VideoRenditions::unavailability, _spaceIndex, System::currentTimeMillis);
 	}
 
 	/**

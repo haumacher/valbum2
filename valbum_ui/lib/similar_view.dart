@@ -30,6 +30,7 @@ import 'oriented_thumbnail.dart';
 import 'page_insets.dart';
 import 'resource.dart';
 import 'routes.dart';
+import 'page_app_bar.dart';
 
 /// The side of a thumbnail of the overview, in logical pixels.
 const double similarThumbnailSize = 112;
@@ -143,7 +144,7 @@ class SimilarViewState extends State<SimilarView> {
   Widget build(BuildContext context) {
     var list = _list;
     return Scaffold(
-      appBar: AppBar(
+      appBar: PageAppBar(
         leading: IconButton(
           key: const Key("similar-up"),
           icon: const Icon(Icons.arrow_back),

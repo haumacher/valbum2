@@ -380,12 +380,21 @@ public final class ManagedEmbedder implements Embedder {
 	}
 
 	/** The service's stderr into the server's log. */
-	private static void pipeLog(Process process) {
+	/**
+	 * The level the given line of the service's log is said at in the server's: WARNING where the
+	 * service says so (a refused request, see issue #305), INFO otherwise, such as the line of every
+	 * request it served.
+	 */
+	static Level level(String line) {
+		return line.contains(": WARNING: ") || line.startsWith("WARNING: ") ? Level.WARNING : Level.INFO;
+	}
+
+		private static void pipeLog(Process process) {
 		Thread thread = new Thread(() -> {
 			try (BufferedReader err = new BufferedReader(new InputStreamReader(process.getErrorStream(), StandardCharsets.UTF_8))) {
 				String line;
 				while ((line = err.readLine()) != null) {
-					LOG.info("Content search: " + line);
+					LOG.log(level(line), "Content search: " + line);
 				}
 			} catch (IOException ex) {
 				// The process ended.

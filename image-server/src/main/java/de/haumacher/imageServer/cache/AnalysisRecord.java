@@ -229,6 +229,22 @@ public final class AnalysisRecord {
 		}
 	}
 
+	/**
+	 * A file of a folder that cannot be read, and why, see {@link Result#getBroken()}.
+	 *
+	 * @param name
+	 *        The file's name.
+	 * @param reason
+	 *        Why it cannot be read.
+	 */
+	public record Broken(String name, String reason) {
+		/** As the status of the background says it: <code>"name: reason"</code>. */
+		@Override
+		public String toString() {
+			return name + ": " + reason;
+		}
+	}
+
 	/** What {@link AnalysisRecord#update(File, Analyst, boolean)} did. */
 	public static final class Result {
 
@@ -239,13 +255,13 @@ public final class AnalysisRecord {
 
 		private final boolean _unwritable;
 
-		private final List<String> _failures;
+		private final List<Broken> _failures;
 
-		private final List<String> _fresh;
+		private final List<Broken> _fresh;
 
 		private final int _analysed;
 
-		Result(boolean written, boolean unwritable, List<String> failures, List<String> fresh, int analysed) {
+		Result(boolean written, boolean unwritable, List<Broken> failures, List<Broken> fresh, int analysed) {
 			_written = written;
 			_unwritable = unwritable;
 			_failures = failures;
@@ -265,12 +281,30 @@ public final class AnalysisRecord {
 
 		/** Every file of the folder that cannot be read, <code>"name: reason"</code>. */
 		public List<String> getFailures() {
-			return _failures;
+			return names(_failures);
 		}
 
 		/** The ones of {@link #getFailures()} found in this update. */
 		public List<String> getFresh() {
+			return names(_fresh);
+		}
+
+		/** Every file of the folder that cannot be read, by its parts. */
+		public List<Broken> getBroken() {
+			return _failures;
+		}
+
+		/** The ones of {@link #getBroken()} found in this update. */
+		public List<Broken> getFreshBroken() {
 			return _fresh;
+		}
+
+		private static List<String> names(List<Broken> broken) {
+			List<String> result = new ArrayList<>(broken.size());
+			for (Broken each : broken) {
+				result.add(each.toString());
+			}
+			return result;
 		}
 
 		/** How many files were analysed in this update. */
@@ -500,7 +534,7 @@ public final class AnalysisRecord {
 		AnalysisRecord before = read(folder);
 		Map<String, Entry> entries = new TreeMap<>();
 		boolean changed = before == null;
-		List<String> fresh = new ArrayList<>();
+		List<Broken> fresh = new ArrayList<>();
 		int analysed = 0;
 		for (File file : files) {
 			String name = file.getName();
@@ -545,7 +579,7 @@ public final class AnalysisRecord {
 			} catch (Exception ex) {
 				String reason = reason(ex);
 				entries.put(name, new Entry(name, size, modified, null, reason, ANALYSIS));
-				fresh.add(name + ": " + reason);
+				fresh.add(new Broken(name, reason));
 				LOG.log(Level.WARNING, "Cannot read '" + file + "', shown as a broken file: " + reason, ex);
 			}
 		}
@@ -567,10 +601,10 @@ public final class AnalysisRecord {
 				}
 			}
 		}
-		List<String> failures = new ArrayList<>();
+		List<Broken> failures = new ArrayList<>();
 		for (Entry entry : entries.values()) {
 			if (entry.isBroken()) {
-				failures.add(entry.getName() + ": " + entry.getFailure());
+				failures.add(new Broken(entry.getName(), entry.getFailure()));
 			}
 		}
 		if (!changed) {

@@ -23,6 +23,7 @@ import 'oriented_thumbnail.dart';
 import 'resource.dart';
 import 'page_insets.dart';
 import 'selectable.dart';
+import 'page_app_bar.dart';
 
 /// The height a row of the group layout aims at, as in the album view.
 const double _maxRowHeight = 250;
@@ -64,7 +65,7 @@ class GroupView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
+      appBar: PageAppBar(
         title: Text(title),
         centerTitle: true,
         leading: IconButton(

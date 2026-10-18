@@ -22,6 +22,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -215,6 +216,9 @@ public final class GeoNamesStore implements Closeable {
 
 		int _failures;
 
+		/** Why the last attempt failed, without its time; <code>null</code> while it did not. */
+		String _cause;
+
 		Instant _nextAttempt = Instant.MIN;
 
 		String _error;
@@ -401,6 +405,68 @@ public final class GeoNamesStore implements Closeable {
 		}
 	}
 
+	/**
+	 * A file whose download failed and is not being tried right now, see {@link #failures()}.
+	 *
+	 * @param name
+	 *        The file.
+	 * @param cause
+	 *        Why the last attempt failed.
+	 * @param nextAttempt
+	 *        When it is tried again by itself.
+	 */
+	public record Failed(String name, String cause, Instant nextAttempt) {
+		// A triple.
+	}
+
+	/** The files whose last download failed, by name, see issue #305. */
+	public List<Failed> failures() {
+		List<Failed> result = new ArrayList<>();
+		synchronized (_states) {
+			for (Map.Entry<String, State> entry : new TreeMap<>(_states).entrySet()) {
+				State state = entry.getValue();
+				if (state._cause != null && !state._running && !state._queued) {
+					result.add(new Failed(entry.getKey(), state._cause, state._nextAttempt));
+				}
+			}
+		}
+		return result;
+	}
+
+	/** The files being downloaded or queued for their download, by name, see issue #305. */
+	public List<String> loading() {
+		List<String> result = new ArrayList<>();
+		synchronized (_states) {
+			for (Map.Entry<String, State> entry : new TreeMap<>(_states).entrySet()) {
+				if (entry.getValue()._running || entry.getValue()._queued) {
+					result.add(entry.getKey());
+				}
+			}
+		}
+		return result;
+	}
+
+	/**
+	 * Downloads the given file again now, rather than when its back-off is over: "Retry now" of the
+	 * status page, see issue #305.
+	 *
+	 * @return Whether a download was started.
+	 */
+	public boolean retryNow(String name) {
+		if (_settings == null) {
+			return false;
+		}
+		synchronized (_states) {
+			State state = _states.get(name);
+			if (state == null || state._cause == null || state._running || state._queued) {
+				return false;
+			}
+			state._nextAttempt = Instant.MIN;
+		}
+		schedule(name);
+		return true;
+	}
+
 	/** What is known about every file asked for or present, for a report. */
 	public List<FileStatus> status() {
 		TreeSet<String> names = new TreeSet<>();
@@ -474,6 +540,7 @@ public final class GeoNamesStore implements Closeable {
 				if (error == null) {
 					state._failures = 0;
 					state._error = null;
+					state._cause = null;
 					state._nextAttempt = Instant.MIN;
 				} else {
 					state._failures++;
@@ -481,6 +548,7 @@ public final class GeoNamesStore implements Closeable {
 					if (backoff.compareTo(_settings.maxBackoff) > 0) {
 						backoff = _settings.maxBackoff;
 					}
+					state._cause = error;
 					state._error = error + " at " + _settings.clock.instant();
 					state._nextAttempt = _settings.clock.instant().plus(backoff);
 					LOG.warning("GeoNames: " + name + ": " + state._error + "; next attempt after "

@@ -39,6 +39,7 @@ import 'resource.dart';
 import 'routes.dart';
 import 'selectable.dart';
 import 'trash_view.dart' show trashRating;
+import 'page_app_bar.dart';
 
 /// The side of a group's thumbnail, in logical pixels.
 const double duplicatesThumbnailSize = 112;
@@ -261,7 +262,7 @@ class DuplicatesViewState extends State<DuplicatesView> {
   Widget build(BuildContext context) {
     var list = _list;
     return Scaffold(
-      appBar: AppBar(
+      appBar: PageAppBar(
         leading: IconButton(
           key: const Key("duplicates-up"),
           icon: const Icon(Icons.arrow_back),

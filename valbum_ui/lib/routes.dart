@@ -23,6 +23,7 @@
 /// | `/.duplicates/2005-08-24 Blumen/IMG_0417.JPG/alternatives/` | [AlternativesRoute] seen from the overview |
 /// | `/.duplicates/2005-08-24 Blumen/IMG_0417.JPG/alternatives/IMG_0418.JPG` | [MemberRoute] seen from the overview |
 /// | `/.similar/`                                 | [SimilarRoute]                            |
+/// | `/.status/`                                  | [StatusRoute]                             |
 /// | `/.similar/2005-08-24 Blumen/IMG_0417.JPG`    | [ImageRoute] seen from that overview      |
 /// | `/2005-08-24 Blumen/.news/<key>/`             | [NewsRoute], an entry of the bell        |
 /// | `/2005-08-24 Blumen/.news/<key>/IMG_0417.JPG` | [ImageRoute] paging through that entry   |
@@ -84,6 +85,11 @@ const String duplicatesSegment = ".duplicates";
 /// scenery in several albums (#257), addressed at the root as `/.similar/`,
 /// beside [duplicatesSegment] and shadowing nothing for the same reason.
 const String similarSegment = ".similar";
+
+/// The path segment of the status page of issue #305, addressed at the root
+/// as `/.status/`, beside [duplicatesSegment] and shadowing nothing for the
+/// same reason.
+const String statusSegment = ".status";
 
 /// The segment of the search view below a folder (`/<folder>/.search/`), see
 /// issue #227 and [SearchRoute]. No folder of a library carries a leading dot,
@@ -568,6 +574,36 @@ class SimilarRoute extends VAlbumRoute {
   String toString() => "SimilarRoute($path)";
 }
 
+/// The status page of issue #305: what runs, waits or fails, on the server
+/// and on this device. A level on the root listing like [DuplicatesRoute],
+/// read-only, with no leave guard.
+class StatusRoute extends VAlbumRoute {
+  const StatusRoute();
+
+  /// It lives at the root of the space.
+  @override
+  List<String> get albumPath => const [];
+
+  @override
+  VAlbumRoute? get up => ListingOrAlbumRoute.root;
+
+  @override
+  List<String> get segments => const [statusSegment, ""];
+
+  /// The page belongs to the space, not to a folder.
+  @override
+  VAlbumRoute withAlbumPath(List<String> path) => this;
+
+  @override
+  bool operator ==(Object other) => other is StatusRoute;
+
+  @override
+  int get hashCode => statusSegment.hashCode;
+
+  @override
+  String toString() => "StatusRoute($path)";
+}
+
 /// The search view below a folder, see issue #227: the photographs of the
 /// folder and everything below it that match the criteria chosen there.
 ///
@@ -768,6 +804,10 @@ VAlbumRoute parseRoute(Uri uri, {String basePath = "/"}) {
     // `/.similar/`, at the root only (issue #257).
     if (segments.length == 1 && segments.single == similarSegment) {
       return const SimilarRoute();
+    }
+    // `/.status/`, at the root only (issue #305).
+    if (segments.length == 1 && segments.single == statusSegment) {
+      return const StatusRoute();
     }
     // `.../<album>/persons/`
     if (segments.isNotEmpty && segments.last == personsSegment) {

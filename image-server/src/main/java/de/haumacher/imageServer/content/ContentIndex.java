@@ -283,6 +283,7 @@ public final class ContentIndex {
 				_guessed.clear();
 				// Counted again from the albums when it is on again.
 				_tallies.clear();
+				_described.clear();
 				_total = 0;
 				_pending = 0;
 				if (_retry != null) {
@@ -481,8 +482,75 @@ public final class ContentIndex {
 		}
 	}
 
+	/**
+	 * What the embedder described of one album since its last line in the log, see
+	 * {@link ContentIndex#described(File, String, long)}.
+	 */
+	private static final class Described {
+
+		/** When the first of them was described, from {@link System#nanoTime()}. */
+		final long _since;
+
+		int _count;
+
+		long _nanos;
+
+		Described(long since) {
+			_since = since;
+		}
+	}
+
+	/** What was described of each album since its last line in the log, by path; guarded by this. */
+	private final Map<String, Described> _described = new HashMap<>();
+
+	/**
+	 * The embedder described the photo of the given name in the given album, which took the given
+	 * time: a FINE line for the photo, and an INFO line for the album once nothing of it is left to
+	 * describe, see issue #305 ("ich würde erwarten, dass da ein Logeintrag für jedes analysierte
+	 * Bild steht").
+	 */
+	private void described(File folder, String name, long nanos) {
+		String path = pathOf(folder);
+		if (path == null) {
+			return;
+		}
+		LOG.fine("Content search of '" + _label + "': described '" + (path.isEmpty() ? "" : path + "/") + name
+			+ "' in " + duration(nanos) + ".");
+		String line = null;
+		synchronized (this) {
+			long now = System.nanoTime();
+			Described album = _described.computeIfAbsent(path, x -> new Described(now - nanos));
+			album._count++;
+			album._nanos += nanos;
+			Tally tally = _tallies.get(path);
+			if (tally == null || tally._pending.isEmpty()) {
+				_described.remove(path);
+				line = "Content search of '" + _label + "': described " + album._count
+					+ (album._count == 1 ? " photo" : " photos") + " in '" + (path.isEmpty() ? "/" : path) + "' in "
+					+ duration(now - album._since) + " (" + duration(album._nanos / album._count) + " each); "
+					+ (_total - _pending) + " of " + _total + " described.";
+			}
+		}
+		if (line != null) {
+			LOG.info(line);
+		}
+	}
+
+	/** The given time in words for the log: seconds, or minutes from a minute on. */
+	static String duration(long nanos) {
+		long millis = nanos / 1_000_000;
+		if (millis < 10_000) {
+			return String.format(java.util.Locale.ROOT, "%.1f s", Double.valueOf(millis / 1000.0));
+		}
+		if (millis < 60_000) {
+			return (millis / 1000) + " s";
+		}
+		return (millis / 60_000) + " min";
+	}
+
 	/** Forgets the tallies of the albums the given test picks. */
 	private synchronized void untally(java.util.function.Predicate<String> drop) {
+		_described.keySet().removeIf(drop);
 		for (java.util.Iterator<Map.Entry<String, Tally>> it = _tallies.entrySet().iterator(); it.hasNext();) {
 			Map.Entry<String, Tally> entry = it.next();
 			if (drop.test(entry.getKey())) {
@@ -612,6 +680,25 @@ public final class ContentIndex {
 		}
 		LOG.log(changed ? Level.WARNING : Level.FINE, "Content search of '" + _label + "' waits: " + problem
 			+ " (asked again in " + (delay >= 60_000 ? delay / 60_000 + " min" : delay / 1000 + " s") + ").");
+	}
+
+	/**
+	 * Asks the embedder again now, rather than when the back-off is over: "Retry now" of the status
+	 * page of issue #305, for an embedder started or mended by hand. Asked on the thread of the
+	 * back-off, never on the caller's.
+	 *
+	 * @return Whether there was anything to ask again: the content search is on and waits for the
+	 *         embedder.
+	 */
+	public boolean retryNow() {
+		synchronized (this) {
+			if (!_enabled || _closed || !_asked || _problem == null) {
+				return false;
+			}
+			_retryAt = 0;
+			scheduleRetry(0);
+		}
+		return true;
 	}
 
 	/** Asks the embedder again after the given time, unless switched off; called while synchronized. */
@@ -954,6 +1041,7 @@ public final class ContentIndex {
 			waitFor(folder);
 			return Outcome.WAITING;
 		}
+		long started = System.nanoTime();
 		String stamp;
 		synchronized (this) {
 			stamp = _stamp;
@@ -992,6 +1080,7 @@ public final class ContentIndex {
 			});
 			_onWritten.accept(folder);
 			counted(folder, name, false);
+			described(folder, name, System.nanoTime() - started);
 			return Outcome.DONE;
 		} catch (EmbedderUnavailableException ex) {
 			refused(ex.getMessage());

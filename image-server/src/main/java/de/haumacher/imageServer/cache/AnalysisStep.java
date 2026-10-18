@@ -73,9 +73,9 @@ public final class AnalysisStep implements FolderPipeline.Step {
 	@Override
 	public Outcome run(File folder) throws IOException {
 		AnalysisRecord.Result result = AnalysisRecord.update(folder, _analyst, true);
-		for (String failure : result.getFailures()) {
+		for (AnalysisRecord.Broken failure : result.getBroken()) {
 			// Outstanding as long as the file stays broken, see FolderPipeline#reportFailure.
-			_pipeline.reportFailure(folder, failure);
+			_pipeline.reportFailure(folder, NAME, failure.name(), failure.reason(), false);
 		}
 		if (Thread.currentThread().isInterrupted()) {
 			return Outcome.WAITING;

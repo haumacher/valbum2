@@ -9,6 +9,7 @@ import base64
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -149,6 +150,36 @@ def test_a_bad_request_is_refused_saying_why(service, body, message):
     status, answer = call(service.url + "/v1/embeddings", body)
     assert status == 400
     assert message in answer["error"]["message"]
+
+
+def test_every_request_served_is_a_line_of_the_log(service, capsys):
+    """Issue #305: what kind, how many, the picture sizes and the time; never what was embedded."""
+    call(service.url + "/v1/embeddings", {"input": ["a secret text", "abcd"]})
+    call(service.url + "/v1/embeddings", {"input": [jpeg(30, 40), jpeg(40, 30)], "modality": "image"})
+    call(service.url + "/v1/embeddings", {"input": jpeg(30, 40), "modality": "image"})
+    err = capsys.readouterr().err
+    assert re.search(r"^valbum-embedder: embedded 2 texts in \d+\.\d+ s$", err, re.M), err
+    assert re.search(r"^valbum-embedder: embedded 2 images \(30x40, 40x30\) in \d+\.\d+ s$", err, re.M), err
+    assert re.search(r"^valbum-embedder: embedded 1 image \(30x40\) in \d+\.\d+ s$", err, re.M), err
+    assert "secret" not in err
+
+
+def test_a_refused_request_is_a_warning_with_its_reason(service, capsys):
+    call(service.url + "/v1/embeddings", {"input": "x", "modality": "audio"})
+    err = capsys.readouterr().err
+    assert "valbum-embedder: WARNING: refused an embeddings request: 'modality' must be" in err, err
+
+
+def test_a_wrong_key_is_a_warning_without_the_key(capsys):
+    keyed = start(key="the-right-key")
+    try:
+        status, _ = call(keyed.url + "/v1/embeddings", {"input": "x"}, key="a-wrong-key")
+        assert status == 401
+    finally:
+        stop(keyed)
+    err = capsys.readouterr().err
+    assert "valbum-embedder: WARNING: refused a request from 127.0.0.1: the key is wrong" in err, err
+    assert "a-wrong-key" not in err and "the-right-key" not in err
 
 
 def test_while_the_model_is_not_there_the_service_says_why(service):

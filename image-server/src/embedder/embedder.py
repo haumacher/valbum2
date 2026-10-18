@@ -536,7 +536,7 @@ class Service:
             if last is not None and now - last < 60:
                 return
             self._refusals[client] = now
-        log("refused a request from %s: %s" % (client, reason.split(":")[0]))
+        log("WARNING: refused a request from %s: %s" % (client, reason.split(":")[0]))
 
     def fetch(self):
         """Fetches the model's files (--fetch); answers whether they are ready, trying again after failures."""
@@ -600,27 +600,38 @@ class Service:
             result["detail"] = self.detail or self.fetcher.progress()
         return result
 
+    def refuse(self, reason, status=400):
+        """The answer to a request that cannot be served, said as one WARNING line."""
+        log("WARNING: refused an embeddings request: " + reason)
+        return status, error(reason)
+
     def embed(self, request):
-        """The answer to an embeddings request, as (status, body)."""
+        """The answer to an embeddings request, as (status, body).
+
+        Every request served is one line in the log: what kind, how many, the size of each picture,
+        the time it took; a refused one is a WARNING with the reason. Never the key, never what was
+        embedded: the service knows nothing of albums, and says nothing of them.
+        """
+        start = time.monotonic()
         if not isinstance(request, dict):
-            return 400, error("the request is no JSON object")
+            return self.refuse("the request is no JSON object")
         inputs = request.get("input")
         if isinstance(inputs, str):
             inputs = [inputs]
         if not isinstance(inputs, list) or not inputs or not all(isinstance(i, str) for i in inputs):
-            return 400, error("'input' must be a string or a non-empty list of strings")
+            return self.refuse("'input' must be a string or a non-empty list of strings")
         if len(inputs) > MAX_ITEMS:
-            return 400, error("at most %d inputs per request" % MAX_ITEMS)
+            return self.refuse("at most %d inputs per request" % MAX_ITEMS)
         modality = request.get("modality", "text")
         if modality not in ("text", "image"):
-            return 400, error("'modality' must be 'text' or 'image'")
+            return self.refuse("'modality' must be 'text' or 'image'")
         full = self.manifest["dimension"]
         dimension = request.get("dimensions", full)
         if not isinstance(dimension, int) or isinstance(dimension, bool) or not 1 <= dimension <= full:
-            return 400, error("'dimensions' must be a number from 1 to %d" % full)
+            return self.refuse("'dimensions' must be a number from 1 to %d" % full)
         encoding = request.get("encoding_format", "float")
         if encoding not in ("float", "base64"):
-            return 400, error("'encoding_format' must be 'float' or 'base64'")
+            return self.refuse("'encoding_format' must be 'float' or 'base64'")
         if self.status != "ready":
             reason = self.error or (self.health().get("detail") if self.status == "downloading" else None)
             return 503, error("the model is " + self.status + (": " + reason if reason else ""), "unavailable")
@@ -643,7 +654,8 @@ class Service:
                     data.append({"object": "embedding", "index": index, "embedding": value})
                 self.last_use = time.monotonic()
         except ValueError as ex:
-            return 400, error(str(ex))
+            return self.refuse(str(ex))
+        log(served(modality, len(inputs), images, time.monotonic() - start))
         return 200, {
             "object": "list",
             "model": self.manifest["model"],
@@ -653,6 +665,16 @@ class Service:
             "data": data,
             "usage": {"prompt_tokens": tokens, "total_tokens": tokens},
         }
+
+
+def served(modality, count, images, seconds):
+    """The line of the log for a request served: "embedded 1 image (600x450) in 89.2 s"."""
+    if modality == "image":
+        what = "%d image%s (%s)" % (count, "" if count == 1 else "s",
+                                     ", ".join("%dx%d" % image.size for image in images))
+    else:
+        what = "%d text%s" % (count, "" if count == 1 else "s")
+    return "embedded %s in %s" % (what, ("%.2f s" if seconds < 1 else "%.1f s") % seconds)
 
 
 def data_uri(text):
@@ -738,12 +760,13 @@ class Handler(BaseHTTPRequestHandler):
             length = -1
         if length < 0 or length > MAX_BODY:
             self.close_connection = True
-            self._answer(413 if length > MAX_BODY else 411, error("a body of at most %d bytes is needed" % MAX_BODY))
+            self._answer(*self.service.refuse("a body of at most %d bytes is needed" % MAX_BODY,
+                                              413 if length > MAX_BODY else 411))
             return
         try:
             request = json.loads(self.rfile.read(length))
         except (ValueError, UnicodeDecodeError):
-            self._answer(400, error("the body is no JSON"))
+            self._answer(*self.service.refuse("the body is no JSON"))
             return
         status, body = self.service.embed(request)
         self._answer(status, body)

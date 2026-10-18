@@ -108,17 +108,19 @@ public class ResourceCache {
 	public interface Refusals {
 
 		/** Hears nothing. */
-		Refusals NONE = (folder, reason) -> {
+		Refusals NONE = (folder, name, reason) -> {
 			// The log says it.
 		};
 
 		/**
 		 * The given folder holds a file that was left out of it.
 		 *
+		 * @param name
+		 *        The file's name.
 		 * @param reason
-		 *        The file's name and why it cannot be read, <code>"name: reason"</code>.
+		 *        Why it cannot be read.
 		 */
-		void refused(File folder, String reason);
+		void refused(File folder, String name, String reason);
 	}
 
 	/**
@@ -795,9 +797,9 @@ public class ResourceCache {
 			}
 			try {
 				AnalysisRecord.Result result = AnalysisRecord.update(dir, this::analyze, true);
-				for (String failure : result.getFresh()) {
+				for (AnalysisRecord.Broken failure : result.getFreshBroken()) {
 					try {
-						_refusals.refused(dir, failure);
+						_refusals.refused(dir, failure.name(), failure.reason());
 					} catch (RuntimeException ex) {
 						LOG.log(Level.WARNING, "Cannot report '" + failure + "': " + ex.getMessage(), ex);
 					}

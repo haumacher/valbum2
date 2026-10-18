@@ -23,7 +23,6 @@ import 'album_stacks.dart';
 import 'app.dart';
 import 'broken.dart';
 import 'cache_refresh.dart';
-import 'camera_roll_view.dart';
 import 'caller.dart';
 import 'client.dart';
 import 'collections.dart';
@@ -62,6 +61,8 @@ import 'thumbnails.dart';
 import 'tile_keys.dart';
 import 'trash_view.dart' show hasTrashedImages, trashRating;
 import 'video_view.dart';
+import 'status.dart';
+import 'page_app_bar.dart';
 
 /// The clearance an album is shown with in the edit mode, see issue #46.
 ///
@@ -2615,7 +2616,7 @@ class AlbumContentState extends State<AlbumContent>
             )
           : immersive
               ? null
-              : AppBar(
+              : PageAppBar(
                   leading: editing && up.isNotEmpty ? up.first : null,
                   automaticallyImplyLeading: false,
                   title: Column(
@@ -2771,8 +2772,6 @@ class AlbumContentState extends State<AlbumContent>
   /// menu is the touch equivalent, telling the current threshold and offering
   /// the two steps, each disabled at its GWT bound.
   List<Widget> albumMenu(BuildContext context) => [
-        // Unobtrusive while a camera-roll sync runs, nothing otherwise.
-        const CameraRollIndicator(),
         menu(context, [
           // Whose album this is and what may be done with it, where that is
           // not simply "mine", see issue #49.
@@ -3436,6 +3435,9 @@ class AlbumContentState extends State<AlbumContent>
               child: floating([
                 if (!isNewsView) ...searchAction(),
                 if (!isSearchView && !isNewsView) const NewsBellButton(),
+                // What runs and what failed, on every page (issue #305): the
+                // floating bar of an album stands in for its app bar.
+                const StatusIndicator(),
                 ...(isNewsView ? newsMenu(context) : albumMenu(context)),
               ]),
             ),

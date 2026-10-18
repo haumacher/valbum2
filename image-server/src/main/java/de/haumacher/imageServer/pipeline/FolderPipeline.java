@@ -568,13 +568,26 @@ public class FolderPipeline {
 		/** When it was reported, in the order of all failures. */
 		final long _seq;
 
-		Failure(String folder, String reason, String step, String origin, String unit, long seq) {
+		/** What failed: the step that said so, see {@link Problem#kind()}. */
+		final String _kind;
+
+		/** The file (or unit's item) it failed on, <code>null</code> for the folder as a whole. */
+		final String _file;
+
+		/** Why, without the step and the file. */
+		final String _message;
+
+		Failure(String folder, String reason, String step, String origin, String unit, long seq, String kind,
+				String file, String message) {
 			_folder = folder;
 			_reason = reason;
 			_step = step;
 			_origin = origin;
 			_unit = unit;
 			_seq = seq;
+			_kind = kind;
+			_file = file;
+			_message = message;
 		}
 
 		/** The same failure reported again replaces the one before. */
@@ -586,6 +599,22 @@ public class FolderPipeline {
 		boolean of(String step, String origin, String unit) {
 			return step.equals(_step) && origin.equals(_origin) && Objects.equals(unit, _unit);
 		}
+	}
+
+	/**
+	 * One outstanding failure as the status page of issue #305 shows it, see {@link #problems()}.
+	 *
+	 * @param folder
+	 *        Where it failed, relative to the space root.
+	 * @param kind
+	 *        The step that said so (its {@link Step#name()}), <code>null</code> where none ran.
+	 * @param file
+	 *        The file (or the item of a unit) it failed on, <code>null</code> for the folder.
+	 * @param message
+	 *        Why, without the step and the file: what failures of one cause share.
+	 */
+	public record Problem(String folder, String kind, String file, String message) {
+		// A tuple.
 	}
 
 	/** The units of one {@link UnitStep} waiting to run in one folder. */
@@ -1608,11 +1637,12 @@ public class FolderPipeline {
 				ReadOnlyFolders.report(folder, "the results of '" + name + "'");
 				continue;
 			}
-			String reason = name + ": " + (problem == null ? "failed"
-				: problem.getMessage() == null ? problem.getClass().getSimpleName() : problem.getMessage());
+			String message = problem == null ? "failed"
+				: problem.getMessage() == null ? problem.getClass().getSimpleName() : problem.getMessage();
+			String reason = name + ": " + message;
 			Skip skip = failedSkip(skipKey, fingerprint, Collections.singleton(reason));
 			_skipped.put(skipKey, skip);
-			failed(path, reason, name, path, null);
+			failed(path, reason, name, path, null, name, null, message);
 			if (problem != null) {
 				LOG.log(repeated(skipped, reason) ? Level.FINE : Level.WARNING, "Step '" + name + "' failed on '"
 					+ folder.getAbsolutePath() + "' (tried again in " + minutes(skip) + "): " + problem.getMessage(),
@@ -1677,7 +1707,76 @@ public class FolderPipeline {
 	 */
 	public void reportFailure(File folder, String reason) {
 		String path = relative(folder);
-		failed(path == null ? folder.getAbsolutePath() : path, reason, _currentStep, _currentFolder, null);
+		String kind = _currentStep;
+		String prefix = kind + ": ";
+		String message = kind != null && reason.startsWith(prefix) ? reason.substring(prefix.length()) : reason;
+		failed(path == null ? folder.getAbsolutePath() : path, reason, _currentStep, _currentFolder, null, kind, null,
+			message);
+	}
+
+	/**
+	 * Tells the status about a file of the given folder that the given kind of work failed on, see
+	 * {@link #reportFailure(File, String)}: by its parts, so that the status page of issue #305 merges
+	 * the failures of one cause.
+	 *
+	 * @param kind
+	 *        The work that failed, a {@link Step#name()}.
+	 * @param file
+	 *        The file's name.
+	 * @param message
+	 *        Why.
+	 * @param named
+	 *        Whether the reason the status says starts with the kind (<code>"previews: a.jpg: ..."</code>),
+	 *        or with the file alone (<code>"a.jpg: ..."</code>, a file that cannot be read at all).
+	 */
+	public void reportFailure(File folder, String kind, String file, String message, boolean named) {
+		String path = relative(folder);
+		String reason = (named ? kind + ": " : "") + file + ": " + message;
+		failed(path == null ? folder.getAbsolutePath() : path, reason, _currentStep, _currentFolder, null, kind, file,
+			message);
+	}
+
+	/** Every failure that is still outstanding, the most recent last, see {@link Problem}. */
+	public synchronized List<Problem> problems() {
+		List<Problem> result = new ArrayList<>(_outstanding.size());
+		for (Failure failure : _outstanding.values()) {
+			result.add(new Problem(failure._folder, failure._kind, failure._file, failure._message));
+		}
+		return result;
+	}
+
+	/**
+	 * Tries the given folders again now, as if a watch had seen them change (see
+	 * {@link #changed(File)}), see issue #305: a cause fixed elsewhere (the permissions mended, a
+	 * program installed) needs no change in the folder. A step that could not store its results there
+	 * is run again, too; what fails again is reported again, what succeeds leaves the status.
+	 *
+	 * @param paths
+	 *        The folders, relative to the space root.
+	 */
+	public void retry(Collection<String> paths) {
+		long now = _clock.getAsLong();
+		for (String path : paths) {
+			File folder = path.isEmpty() ? _root.toFile() : _root.resolve(path).toFile();
+			if (relative(folder) == null) {
+				continue;
+			}
+			for (java.util.Iterator<Map.Entry<String, Skip>> it = _skipped.entrySet().iterator(); it.hasNext();) {
+				Map.Entry<String, Skip> entry = it.next();
+				if (!pathOf(entry.getKey()).equals(path)) {
+					continue;
+				}
+				Skip skip = entry.getValue();
+				if (skip._outcome == Outcome.FAILED) {
+					skip._retryAt = Math.min(skip._retryAt, now);
+					skip._retrying = true;
+				} else {
+					it.remove();
+				}
+			}
+			ReadOnlyFolders.writtenAgain(folder);
+			notice(folder, false);
+		}
 	}
 
 	/**
@@ -1691,12 +1790,13 @@ public class FolderPipeline {
 	 * @param unit
 	 *        The unit of a {@link UnitStep} that failed, <code>null</code> for a whole folder.
 	 */
-	private synchronized void failed(String path, String reason, String step, String origin, String unit) {
+	private synchronized void failed(String path, String reason, String step, String origin, String unit, String kind,
+			String file, String message) {
 		if (unit != null) {
 			// A unit has one outcome: the one before is replaced.
 			_outstanding.values().removeIf(failure -> failure.of(step, origin, unit));
 		}
-		Failure failure = new Failure(path, reason, step, origin, unit, ++_failures);
+		Failure failure = new Failure(path, reason, step, origin, unit, ++_failures, kind, file, message);
 		_outstanding.remove(failure.key());
 		_outstanding.put(failure.key(), failure);
 	}
@@ -2194,10 +2294,11 @@ public class FolderPipeline {
 					break;
 				case FAILED: {
 					work._failed = true;
-					String reason = name + ": " + work._step.itemOf(unit)
-						+ (problem == null || problem.getMessage() == null ? "" : ": " + problem.getMessage());
+					String item = work._step.itemOf(unit);
+					String message = problem == null || problem.getMessage() == null ? "" : problem.getMessage();
+					String reason = name + ": " + item + (message.isEmpty() ? "" : ": " + message);
 					work._reasons.add(reason);
-					failed(work._path, reason, name, work._path, unit);
+					failed(work._path, reason, name, work._path, unit, name, item, message);
 					if (problem != null) {
 						LOG.log(repeated(_skipped.get(key), reason) ? Level.FINE : Level.WARNING, "Step '" + name
 							+ "' failed on '" + unit + "' in '" + work._folder.getAbsolutePath() + "': "
@@ -2268,6 +2369,32 @@ public class FolderPipeline {
 		}
 		return new Status(done, _known.size(), _currentStep, _currentFolder, videos.size(),
 			last == null ? null : last._reason, last == null ? null : last._folder, remaining);
+	}
+
+	/**
+	 * How many of the albums the pass knows of (see {@link Status#getTotal()}) each step of
+	 * {@link Stage#PHOTOS} is recorded as done with, by the step's name, in the order the steps run;
+	 * for the status page of issue #305.
+	 */
+	public Map<String, Integer> doneByStep() {
+		List<Step> steps = byStage();
+		synchronized (this) {
+			Map<String, Integer> result = new LinkedHashMap<>();
+			for (Step step : steps) {
+				if (step.stage() != Stage.PHOTOS) {
+					continue;
+				}
+				int done = 0;
+				for (String path : _known) {
+					Record record = _records.get(path);
+					if (record != null && record._done.contains(step.name())) {
+						done++;
+					}
+				}
+				result.put(step.name(), Integer.valueOf(done));
+			}
+			return result;
+		}
 	}
 
 	/** How many failures are outstanding, see {@link #MAX_OUTSTANDING}; for the tests. */

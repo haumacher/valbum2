@@ -156,6 +156,10 @@ public final class SpaceIndex implements AutoCloseable {
 	 * <code>0</code> for a stamp nobody checked; <code>face_prototypes</code>, per album the
 	 * normalised embedding of every face confirmed in it, with the person id as it is stored in the
 	 * album, never resolved (a merge is felt when a suggestion is computed).</li>
+	 * <li>The "seen" marks of the problems of the status page of issue #305, see
+	 * <code>de.haumacher.imageServer.ServerStatus</code>: <code>status_seen</code>, one row per file or
+	 * folder of a problem an administrator marked as seen, with the reason it had then and when it was
+	 * marked; shared by every administrator of the space, and known to no sidecar.</li>
 	 * </ol>
 	 */
 	private static final String[][] MIGRATIONS = {
@@ -165,6 +169,10 @@ public final class SpaceIndex implements AutoCloseable {
 			"CREATE TABLE IF NOT EXISTS face_prototypes (album VARCHAR NOT NULL REFERENCES face_albums(path) "
 				+ "ON DELETE CASCADE, n INT NOT NULL, person VARCHAR NOT NULL, embedding VARBINARY NOT NULL, "
 				+ "PRIMARY KEY (album, n))",
+		},
+		{
+			"CREATE TABLE IF NOT EXISTS status_seen (item VARCHAR PRIMARY KEY, reason VARCHAR NOT NULL, "
+				+ "marked BIGINT NOT NULL)",
 		},
 	};
 

@@ -7124,6 +7124,282 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Show every shot singly'**
   String get unstackShotsAction;
+
+  /// Title of the status page (issue #305): everything that runs, waits or fails, on the server and on this device; also the name of the links leading there
+  ///
+  /// In en, this message translates to:
+  /// **'Status'**
+  String get statusTitle;
+
+  /// Tooltip of the status indicator in the app bar while nothing runs and no problem is new
+  ///
+  /// In en, this message translates to:
+  /// **'Status: all is well'**
+  String get statusTooltipQuiet;
+
+  /// Tooltip of the status indicator in the app bar while the server prepares albums or this device uploads
+  ///
+  /// In en, this message translates to:
+  /// **'Status: work in progress'**
+  String get statusTooltipRunning;
+
+  /// Tooltip of the status indicator in the app bar while problems were not marked as seen
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Status: 1 new problem} other{Status: {count} new problems}}'**
+  String statusTooltipProblem(int count);
+
+  /// Heading of the first section of the status page: what failed, each with its reason
+  ///
+  /// In en, this message translates to:
+  /// **'Problems'**
+  String get statusProblemsHeading;
+
+  /// Said in the problems section of the status page when nothing failed that was not seen
+  ///
+  /// In en, this message translates to:
+  /// **'No problems.'**
+  String get statusNoProblems;
+
+  /// Button of the status page marking every problem as seen: it stays in the list, collapsed, and no longer lights the red dot
+  ///
+  /// In en, this message translates to:
+  /// **'Mark all as seen'**
+  String get statusMarkAllSeen;
+
+  /// Button of one problem of the status page marking it as seen
+  ///
+  /// In en, this message translates to:
+  /// **'Seen'**
+  String get statusMarkSeen;
+
+  /// Collapsed section of the status page holding the problems marked as seen
+  ///
+  /// In en, this message translates to:
+  /// **'Known problems ({count})'**
+  String statusKnownProblems(int count);
+
+  /// Button of a problem of the status page: the server tries again now what failed, for a cause fixed elsewhere
+  ///
+  /// In en, this message translates to:
+  /// **'Retry now'**
+  String get statusRetryNow;
+
+  /// Message after 'Retry now' on the status page
+  ///
+  /// In en, this message translates to:
+  /// **'Tried again. The problem leaves the list once it is fixed.'**
+  String get statusRetryStarted;
+
+  /// Line of a problem of the status page: when the server tries again by itself
+  ///
+  /// In en, this message translates to:
+  /// **'{minutes, plural, =0{Tried again in a moment.} =1{Tried again in a minute.} other{Tried again in {minutes} minutes.}}'**
+  String statusRetryAt(int minutes);
+
+  /// Heading of the second section of the status page: this device's upload and the server's work
+  ///
+  /// In en, this message translates to:
+  /// **'What runs'**
+  String get statusRunningHeading;
+
+  /// Said in the section 'What runs' of the status page when nothing runs
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing runs right now.'**
+  String get statusNothingRuns;
+
+  /// Line of the status page with the state of this device's camera-roll upload
+  ///
+  /// In en, this message translates to:
+  /// **'This device\'s upload: {line}'**
+  String statusDeviceUpload(String line);
+
+  /// Line of the status page for a member who is no administrator: why the server's part is not shown
+  ///
+  /// In en, this message translates to:
+  /// **'What the server works on and what fails there is shown to the administrator of this space.'**
+  String get statusMemberNote;
+
+  /// Line of the status page: how many albums one step of the server's background is done with
+  ///
+  /// In en, this message translates to:
+  /// **'Step {step}: {done} of {total} albums'**
+  String statusStepProgress(String step, int done, int total);
+
+  /// Line of the status page: how far the index of the photos' fingerprints has got (duplicates and the camera-roll upload wait for it)
+  ///
+  /// In en, this message translates to:
+  /// **'Photo index: {done} of {total} folders'**
+  String statusIndexProgress(int done, int total);
+
+  /// Line of the status page: which files of place names the server downloads
+  ///
+  /// In en, this message translates to:
+  /// **'Place names being downloaded: {names}'**
+  String statusPlacesLoading(String names);
+
+  /// Heading of the last section of the status page: the problems this app ran into
+  ///
+  /// In en, this message translates to:
+  /// **'This device\'s log'**
+  String get statusLogHeading;
+
+  /// Title of a problem of the status page: the camera-roll upload of this device failed
+  ///
+  /// In en, this message translates to:
+  /// **'This device\'s upload failed'**
+  String get statusSyncFailed;
+
+  /// Button of a problem of the status page leading to the camera-roll settings of this device
+  ///
+  /// In en, this message translates to:
+  /// **'Camera-roll settings'**
+  String get statusOpenCameraRoll;
+
+  /// Title of a problem of the status page: entries of this device's log not seen yet
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{Entries of this device\'s log} =1{This device noted 1 problem} other{This device noted {count} problems}}'**
+  String statusLogNew(int count);
+
+  /// Line of the log problem of the status page
+  ///
+  /// In en, this message translates to:
+  /// **'The entries are in this device\'s log below.'**
+  String get statusLogNewReason;
+
+  /// Line of the log problem of the status page once it was marked as seen
+  ///
+  /// In en, this message translates to:
+  /// **'Every entry of this device\'s log was seen.'**
+  String get statusLogSeen;
+
+  /// Button of the log problem of the status page scrolling to the log
+  ///
+  /// In en, this message translates to:
+  /// **'Show the log'**
+  String get statusShowLog;
+
+  /// Title of a problem of the status page: the status of the server could not be read
+  ///
+  /// In en, this message translates to:
+  /// **'The server cannot be asked'**
+  String get statusServerUnreachable;
+
+  /// Button of a problem of the status page leading to the server settings
+  ///
+  /// In en, this message translates to:
+  /// **'Server settings'**
+  String get statusOpenServerSettings;
+
+  /// Title of a problem of the status page: one step of the server's background failed on several files for one reason; files and albums are 'statusFileCount' and 'statusAlbumCount'
+  ///
+  /// In en, this message translates to:
+  /// **'Step {step}: {files} in {albums}'**
+  String statusFailure(String step, String files, String albums);
+
+  /// Part of 'statusFailure': how many files failed
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 file} other{{count} files}}'**
+  String statusFileCount(int count);
+
+  /// Part of 'statusFailure': in how many albums
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 album} other{{count} albums}}'**
+  String statusAlbumCount(int count);
+
+  /// Expandable list of the files of a problem of the status page
+  ///
+  /// In en, this message translates to:
+  /// **'Files ({count})'**
+  String statusFiles(int count);
+
+  /// Tooltip of the button of a file or folder of a problem of the status page opening its album
+  ///
+  /// In en, this message translates to:
+  /// **'Open album'**
+  String get statusOpenAlbum;
+
+  /// Title of a problem of the status page: folders the server's user has no write permission for
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{The server cannot write 1 folder} other{The server cannot write {count} folders}}'**
+  String statusUnwritable(int count);
+
+  /// Expandable list of the folders the server cannot write, on the status page
+  ///
+  /// In en, this message translates to:
+  /// **'Folders ({count})'**
+  String statusFolders(int count);
+
+  /// Line of a folder the server cannot write: how many photos it holds and what could not be stored there (the server's words)
+  ///
+  /// In en, this message translates to:
+  /// **'Photos: {count}; not stored: {what}'**
+  String statusFolderPhotos(int count, String what);
+
+  /// Button copying the path on the server of every folder the server cannot write
+  ///
+  /// In en, this message translates to:
+  /// **'Copy all paths'**
+  String get statusCopyPaths;
+
+  /// Message after 'Copy all paths' on the status page
+  ///
+  /// In en, this message translates to:
+  /// **'The paths are on the clipboard.'**
+  String get statusPathsCopied;
+
+  /// Title of a problem of the status page: the embedder of the content search does not answer
+  ///
+  /// In en, this message translates to:
+  /// **'The content search waits for its embedder'**
+  String get statusEmbedder;
+
+  /// Button of a problem of the status page leading to the settings of the space (the content search)
+  ///
+  /// In en, this message translates to:
+  /// **'Space settings'**
+  String get statusOpenSpaceSettings;
+
+  /// Title of a problem of the status page
+  ///
+  /// In en, this message translates to:
+  /// **'Faces cannot be detected on this server'**
+  String get statusFaces;
+
+  /// Title of a problem of the status page
+  ///
+  /// In en, this message translates to:
+  /// **'Videos cannot be converted on this server'**
+  String get statusVideos;
+
+  /// Title of a problem of the status page
+  ///
+  /// In en, this message translates to:
+  /// **'Place names cannot be downloaded'**
+  String get statusPlaces;
+
+  /// Subtitle of a line of the settings leading to the status page
+  ///
+  /// In en, this message translates to:
+  /// **'Details on the status page'**
+  String get statusSeeStatusPage;
+
+  /// Subtitle of the line of the settings that leads to the status page where the diagnostics log now is
+  ///
+  /// In en, this message translates to:
+  /// **'This device\'s log, and what runs and failed, on the status page'**
+  String get statusLinkSubtitle;
+
+  /// Line of the status page above this device's log: the version of the app, as the copied log names it
+  ///
+  /// In en, this message translates to:
+  /// **'This app: version {version}'**
+  String statusAppVersion(String version);
 }
 
 class _AppLocalizationsDelegate

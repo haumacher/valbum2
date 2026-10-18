@@ -37,6 +37,7 @@ import 'resource.dart';
 import 'share_session.dart';
 import 'sign_in_options.dart';
 import 'urls.dart';
+import 'page_app_bar.dart';
 
 /// The overview page, with everything it asks before it shows the albums.
 class SharedOverviewPage extends StatefulWidget {
@@ -364,7 +365,7 @@ class SharedOverviewView extends StatelessWidget {
     var l10n = AppLocalizations.of(context)!;
     return Scaffold(
       key: const Key("shared-overview"),
-      appBar: AppBar(
+      appBar: PageAppBar(
         title: Text(l10n.sharedWithYouTitle),
         actions: [_menu(context, l10n)],
       ),

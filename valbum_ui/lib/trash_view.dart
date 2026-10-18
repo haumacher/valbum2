@@ -44,6 +44,7 @@ import 'select_mode.dart';
 import 'selectable.dart';
 import 'share_session.dart';
 import 'page_insets.dart';
+import 'page_app_bar.dart';
 
 /// The rating of a photograph in the trash, the lowest of the scale.
 const int trashRating = -2;
@@ -403,7 +404,7 @@ class TrashContentState extends State<TrashContent> {
                 ),
               ],
             )
-          : AppBar(
+          : PageAppBar(
               leading: IconButton(
                 key: const Key("trash-up"),
                 icon: const Icon(Icons.arrow_back),

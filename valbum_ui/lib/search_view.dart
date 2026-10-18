@@ -89,6 +89,7 @@ import 'routes.dart';
 import 'search_query.dart';
 import 'selectable.dart';
 import 'thumbnails.dart' show ThumbnailImage;
+import 'page_app_bar.dart';
 
 /// What the search view below one folder holds: the criteria, the search
 /// running or done, and the options offered, see issue #227.
@@ -416,7 +417,7 @@ class SearchViewState extends State<SearchView> {
       backgroundColor: Colors.black,
       appBar: selecting
           ? null
-          : AppBar(
+          : PageAppBar(
               leading: IconButton(
                 key: const Key("search-up"),
                 icon: const Icon(Icons.arrow_back),

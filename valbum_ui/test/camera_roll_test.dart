@@ -934,28 +934,28 @@ void main() {
           home: CameraRollScope(
             sync: harness.sync,
             child: Scaffold(
-              appBar: AppBar(actions: const [CameraRollIndicator()]),
+              appBar: AppBar(actions: const [StatusIndicator()]),
               body: const SizedBox.shrink(),
             ),
           ),
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.byKey(cameraRollIndicatorKey), findsNothing);
+      expect(find.byKey(statusIndicatorKey), findsNothing);
 
       unawaited(harness.sync.syncNow());
       await tester.pump();
       await tester.pump();
 
-      expect(find.byKey(cameraRollIndicatorKey), findsOneWidget);
+      expect(find.byKey(statusIndicatorKey), findsOneWidget);
       expect(
-        tester.widget<IconButton>(find.byKey(cameraRollIndicatorKey)).tooltip,
+        tester.widget<IconButton>(find.byKey(statusIndicatorKey)).tooltip,
         "Uploading 1 of 1...",
       );
 
       gate.complete();
       await tester.pumpAndSettle();
-      expect(find.byKey(cameraRollIndicatorKey), findsNothing);
+      expect(find.byKey(statusIndicatorKey), findsNothing);
     });
 
     testWidgets('the listing shows it while a sync runs',
@@ -995,14 +995,14 @@ void main() {
         ));
         await tester.pumpAndSettle();
 
-        expect(find.byKey(cameraRollIndicatorKey), findsOneWidget,
+        expect(find.byKey(statusIndicatorKey), findsOneWidget,
             reason: "The sync starts with the app.");
 
         gate.complete();
         await tester.pumpAndSettle();
       });
 
-      expect(find.byKey(cameraRollIndicatorKey), findsNothing);
+      expect(find.byKey(statusIndicatorKey), findsNothing);
     });
   });
 

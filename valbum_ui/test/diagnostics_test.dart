@@ -21,6 +21,33 @@ String messagesOf(DiagnosticsLog log) =>
     log.entries.map((entry) => entry.message).join("\n");
 
 void main() {
+  group('the version of the app', () {
+    test('is the pubspec\'s where the build defines nothing', () {
+      expect(appVersionOf(), pubspecVersion);
+    });
+
+    test('is the build name and number of a release APK', () {
+      expect(
+          appVersionOf(release: "2.15.1", name: "2.15.1", number: "215"),
+          "2.15.1+215");
+    });
+
+    test('is the release alone where the tool took its name elsewhere', () {
+      // A web release: VALBUM_VERSION, and the pubspec's build name.
+      expect(appVersionOf(release: "2.15.1", name: "1.0.0", number: "1"),
+          "2.15.1");
+    });
+
+    test('is the build name of a build that says no release', () {
+      expect(appVersionOf(name: "2.16.0", number: "216"), "2.16.0+216");
+      expect(appVersionOf(name: "2.16.0"), "2.16.0");
+    });
+
+    test('heads the copied log', () {
+      expect(DiagnosticsLog().copyText(), contains("App: $appVersion\n"));
+    });
+  });
+
   group('the request log', () {
     test('records nothing for a request that succeeds (issue #184)', () async {
       var log = DiagnosticsLog();
@@ -398,7 +425,7 @@ void main() {
   });
 
   group('the diagnostics section of the settings', () {
-    testWidgets('is collapsed, shows the log and copies it with its header',
+    testWidgets('leads to the status page, which shows the log and copies it with its header',
         (tester) async {
       var log = DiagnosticsLog();
       var settings = ServerSettings(
@@ -442,10 +469,12 @@ void main() {
       expect(find.text("Diagnostics"), findsOneWidget);
       expect(find.byKey(diagnosticsCopyKey), findsNothing);
 
+      // On the status page since issue #305: the settings lead there.
       await tester.ensureVisible(find.text("Diagnostics"));
       await tester.pumpAndSettle();
       await tester.tap(find.text("Diagnostics"));
       await tester.pumpAndSettle();
+      expect(find.byType(StatusPage), findsOneWidget);
 
       // Empty: one line saying so (issue #184).
       expect(find.text("No problems recorded."), findsOneWidget);

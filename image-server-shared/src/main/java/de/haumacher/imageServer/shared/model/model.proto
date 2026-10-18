@@ -2358,6 +2358,184 @@ enum CatchUpStep {
 }
 
 /**
+ * Everything the server of a space is doing, waiting for and failing at, for the status page of
+ * issue #305: <code>&lt;data&gt;/?type=status</code>.
+ *
+ * <p>
+ * Derived from what the server is doing at the moment it is asked; only the "seen" marks of the
+ * {@link StatusProblem problems} are stored (in the index of the space, shared by its
+ * administrators). Answered to every member, and refused to a share link and an anonymous caller:
+ * a member who is no administrator gets {@link #admin} <code>false</code> and nothing else, because
+ * what fails names albums and files the member may not be allowed to see, and the paths on the
+ * server are the administrator's business. Nothing secret is in it: no key, no token.
+ * </p>
+ */
+message StatusInfo {
+	/** Whether the caller administers the space; every other field is empty where not. */
+	bool admin;
+
+	/** The background work of the space, as <code>?type=catch-up</code> answers it. */
+	CatchUpStatus catchUp;
+
+	/**
+	 * How many albums each photo step of the background is done with, in the order the steps run;
+	 * counted since the server started, of {@link CatchUpStatus#albumsTotal}.
+	 */
+	repeated StatusStep steps;
+
+	/**
+	 * How far the index of the photos' contents (their hashes, which the duplicates and the
+	 * camera-roll sync wait for) has got.
+	 */
+	IndexProgress index;
+
+	/** The files of place names being downloaded or waiting for their download, by name. */
+	repeated StatusKey placesLoading;
+
+	/**
+	 * Every problem of the server, merged by cause: the background's failures, the folders the server
+	 * cannot write, the embedder that does not answer, faces or videos this machine cannot make, a
+	 * download of place names that failed. A problem is gone when it is fixed.
+	 */
+	repeated StatusProblem problems;
+
+	/** The folder of the space on the server, absolute: where the paths of the problems are below. */
+	string root;
+}
+
+/** How far one step of the background has got, see {@link StatusInfo#steps}. */
+message StatusStep {
+	/** The step, {@link CatchUpStep#OTHER} for one this description does not name. */
+	CatchUpStep step;
+
+	/** The step's own name, as the server's log says it. */
+	string name;
+
+	/** How many albums the step is done with. */
+	int done;
+
+	/** How many albums there are. */
+	int total;
+}
+
+/** What a {@link StatusProblem} is about. */
+enum StatusProblemKind {
+	/** A step of the background failed on files or folders; the first constant, also for a kind a client does not know. */
+	FAILURE;
+
+	/** Folders the server's user cannot write: nothing generated can be stored beside their photos. */
+	UNWRITABLE;
+
+	/** The embedder of the content search does not answer, see issue #257. */
+	EMBEDDER;
+
+	/** The space asked for faces, and this machine cannot detect them. */
+	FACES;
+
+	/** This machine cannot make the renditions of videos. */
+	VIDEOS;
+
+	/** A file of place names could not be downloaded, see issue #234. */
+	PLACES;
+}
+
+/**
+ * One problem of the server, see {@link StatusInfo#problems}: one cause, with every file or folder
+ * it concerns.
+ */
+message StatusProblem {
+	/**
+	 * What identifies the cause: the kind, the step and the reason. The same while the cause is the
+	 * same, so that the app can mark it as seen.
+	 */
+	string id;
+
+	/** What the problem is about. */
+	StatusProblemKind kind;
+
+	/** The step that failed, for {@link StatusProblemKind#FAILURE}. */
+	CatchUpStep step;
+
+	/** The step's own name, for {@link StatusProblemKind#FAILURE}. */
+	string stepName;
+
+	/** Why, as the server words it. */
+	string reason;
+
+	/** How many files (or folders, where the cause is a folder's) it concerns: {@link #items}. */
+	int files;
+
+	/** In how many albums. */
+	int albums;
+
+	/**
+	 * Every file or folder it concerns, by folder and name; for {@link StatusProblemKind#UNWRITABLE}
+	 * every folder with its path on the server and how many photos it holds.
+	 */
+	repeated StatusItem items;
+
+	/**
+	 * Whether an administrator marked the problem as seen, and it did not change since: no new file,
+	 * no other reason.
+	 */
+	bool seen;
+
+	/** Whether <code>?action=status-retry</code> can do something for it now. */
+	bool retryable;
+
+	/** When it is tried again by itself, in milliseconds since the epoch; <code>0</code> for not by itself. */
+	long retryAt;
+}
+
+/** One file or folder of a {@link StatusProblem}. */
+message StatusItem {
+	/** The folder, relative to the root of the space; empty for the root. */
+	string folder;
+
+	/** The file (or video) in it, empty where the problem is the folder's. */
+	string name;
+
+	/** The folder's path on the server, absolute, for {@link StatusProblemKind#UNWRITABLE}. */
+	string path;
+
+	/** How many photos and videos the folder holds, for {@link StatusProblemKind#UNWRITABLE}. */
+	int photos;
+
+	/** What could not be stored there, for {@link StatusProblemKind#UNWRITABLE}. */
+	string what;
+}
+
+/** A name or an id in a list, see {@link StatusInfo#placesLoading} and {@link StatusSeen#ids}. */
+message StatusKey {
+	/** The name or id. */
+	string id;
+}
+
+/**
+ * Marks problems of the status as seen, <code>POST &lt;data&gt;/?action=status-seen</code>, see
+ * {@link StatusProblem#seen}; answered with the {@link StatusInfo} as it is then. An
+ * administrator's write.
+ */
+message StatusSeen {
+	/** The {@link StatusProblem#id ids} of the problems marked. */
+	repeated StatusKey ids;
+
+	/** Whether every problem is marked ("Mark all as seen"). */
+	bool all;
+}
+
+/**
+ * Tries again what a problem of the status failed at, now, <code>POST &lt;data&gt;/?action=status-retry</code>:
+ * for a cause fixed elsewhere (the embedder started, the permissions mended). Answered with the
+ * {@link StatusInfo} as it is then; a problem that is fixed leaves the list once the retry is done.
+ * An administrator's write.
+ */
+message StatusRetry {
+	/** The {@link StatusProblem#id} of the problem. */
+	string id;
+}
+
+/**
  * The photographs of a space that lie in more than one album, see issue #220 and
  * <code>&lt;data&gt;/?type=duplicates</code>.
  *

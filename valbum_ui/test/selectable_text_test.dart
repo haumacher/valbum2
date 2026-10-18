@@ -141,10 +141,36 @@ Future<void> pumpSettings(WidgetTester tester) async {
 
 void main() {
   group('the settings', () {
-    testWidgets('the failure of the catch-up can be selected and copied',
-        (tester) async {
+    testWidgets(
+        'the failure of the catch-up can be selected and copied on the '
+        'status page (issue #305)', (tester) async {
       var copied = recordClipboard(tester);
-      await pumpSettings(tester);
+      var monitor = StatusMonitor();
+      monitor.attach(VAlbumClient(
+        dataUrl: "http://server/valbum/data",
+        httpClient: MockClient((request) async =>
+            json('{"admin": true, "catchUp": ${statusOf()}}')),
+      ));
+      await tester.binding.setSurfaceSize(const Size(800, 3600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(StatusScope(
+        monitor: monitor,
+        child: MaterialApp(
+          localizationsDelegates: testLocalizationsDelegates,
+          supportedLocales: testSupportedLocales,
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: TextButton(
+                key: const Key("open-status"),
+                onPressed: () => openStatusPage(context),
+                child: const Text("Status"),
+              ),
+            ),
+          ),
+        ),
+      ));
+      await tester.tap(find.byKey(const Key("open-status")));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(catchUpLineKey));
       await tester.pumpAndSettle();
 
@@ -156,6 +182,8 @@ void main() {
       await dragAndCopy(tester, line);
       expect(copied, isNotEmpty);
       expect(copied.last, contains("previews: broken.jpg: Cannot read."));
+      await tester.pumpWidget(const SizedBox());
+      monitor.dispose();
     });
 
     testWidgets(

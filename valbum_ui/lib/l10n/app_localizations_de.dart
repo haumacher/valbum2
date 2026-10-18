@@ -4680,4 +4680,222 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get unstackShotsAction => 'Jedes Foto einzeln anzeigen';
+
+  @override
+  String get statusTitle => 'Status';
+
+  @override
+  String get statusTooltipQuiet => 'Status: alles in Ordnung';
+
+  @override
+  String get statusTooltipRunning => 'Status: Arbeit läuft';
+
+  @override
+  String statusTooltipProblem(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Status: $count neue Probleme',
+      one: 'Status: 1 neues Problem',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get statusProblemsHeading => 'Probleme';
+
+  @override
+  String get statusNoProblems => 'Keine Probleme.';
+
+  @override
+  String get statusMarkAllSeen => 'Alle als gesehen markieren';
+
+  @override
+  String get statusMarkSeen => 'Gesehen';
+
+  @override
+  String statusKnownProblems(int count) {
+    return 'Bekannte Probleme ($count)';
+  }
+
+  @override
+  String get statusRetryNow => 'Jetzt erneut versuchen';
+
+  @override
+  String get statusRetryStarted =>
+      'Erneut versucht. Das Problem verschwindet aus der Liste, sobald es behoben ist.';
+
+  @override
+  String statusRetryAt(int minutes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: 'Wird in $minutes Minuten erneut versucht.',
+      one: 'Wird in einer Minute erneut versucht.',
+      zero: 'Wird gleich erneut versucht.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get statusRunningHeading => 'Was läuft';
+
+  @override
+  String get statusNothingRuns => 'Derzeit läuft nichts.';
+
+  @override
+  String statusDeviceUpload(String line) {
+    return 'Upload dieses Geräts: $line';
+  }
+
+  @override
+  String get statusMemberNote =>
+      'Woran der Server arbeitet und was dort fehlschlägt, sieht der Administrator dieses Bereichs.';
+
+  @override
+  String statusStepProgress(String step, int done, int total) {
+    return 'Schritt $step: $done von $total Alben';
+  }
+
+  @override
+  String statusIndexProgress(int done, int total) {
+    return 'Fotoindex: $done von $total Ordnern';
+  }
+
+  @override
+  String statusPlacesLoading(String names) {
+    return 'Ortsnamen werden heruntergeladen: $names';
+  }
+
+  @override
+  String get statusLogHeading => 'Das Protokoll dieses Geräts';
+
+  @override
+  String get statusSyncFailed => 'Der Upload dieses Geräts ist fehlgeschlagen';
+
+  @override
+  String get statusOpenCameraRoll => 'Einstellungen der Kamerarolle';
+
+  @override
+  String statusLogNew(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Dieses Gerät hat $count Probleme festgestellt',
+      one: 'Dieses Gerät hat 1 Problem festgestellt',
+      zero: 'Einträge im Protokoll dieses Geräts',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get statusLogNewReason =>
+      'Die Einträge stehen unten im Protokoll dieses Geräts.';
+
+  @override
+  String get statusLogSeen =>
+      'Jeder Eintrag im Protokoll dieses Geräts wurde gesehen.';
+
+  @override
+  String get statusShowLog => 'Protokoll anzeigen';
+
+  @override
+  String get statusServerUnreachable =>
+      'Der Server kann nicht abgefragt werden';
+
+  @override
+  String get statusOpenServerSettings => 'Server-Einstellungen';
+
+  @override
+  String statusFailure(String step, String files, String albums) {
+    return 'Schritt $step: $files in $albums';
+  }
+
+  @override
+  String statusFileCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Dateien',
+      one: '1 Datei',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String statusAlbumCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Alben',
+      one: '1 Album',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String statusFiles(int count) {
+    return 'Dateien ($count)';
+  }
+
+  @override
+  String get statusOpenAlbum => 'Album öffnen';
+
+  @override
+  String statusUnwritable(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Der Server kann $count Ordner nicht beschreiben',
+      one: 'Der Server kann 1 Ordner nicht beschreiben',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String statusFolders(int count) {
+    return 'Ordner ($count)';
+  }
+
+  @override
+  String statusFolderPhotos(int count, String what) {
+    return 'Fotos: $count; nicht gespeichert: $what';
+  }
+
+  @override
+  String get statusCopyPaths => 'Alle Pfade kopieren';
+
+  @override
+  String get statusPathsCopied =>
+      'Die Pfade befinden sich in der Zwischenablage.';
+
+  @override
+  String get statusEmbedder =>
+      'Die Inhaltssuche wartet auf ihren Einbettungsdienst';
+
+  @override
+  String get statusOpenSpaceSettings => 'Bereichseinstellungen';
+
+  @override
+  String get statusFaces =>
+      'Auf diesem Server können keine Gesichter erkannt werden';
+
+  @override
+  String get statusVideos =>
+      'Auf diesem Server können keine Videos konvertiert werden';
+
+  @override
+  String get statusPlaces => 'Ortsnamen können nicht heruntergeladen werden';
+
+  @override
+  String get statusSeeStatusPage => 'Details auf der Statusseite';
+
+  @override
+  String get statusLinkSubtitle =>
+      'Das Protokoll dieses Geräts, was läuft und was fehlschlug: auf der Statusseite';
+
+  @override
+  String statusAppVersion(String version) {
+    return 'Diese App: Version $version';
+  }
 }

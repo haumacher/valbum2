@@ -7635,5 +7635,355 @@
   "@unstackShotsAction": {
     "description": "Entry of an album's menu (issue #257) switching off that bursts of photos that look alike are shown as one tile each, so every photo gets a tile of its own again; remembered on this device.",
     "x-translated": "72a30463"
+  },
+  "statusTitle": "Status",
+  "@statusTitle": {
+    "description": "Title of the status page (issue #305): everything that runs, waits or fails, on the server and on this device; also the name of the links leading there",
+    "x-translated": "7cac602a"
+  },
+  "statusTooltipQuiet": "Status: all is well",
+  "@statusTooltipQuiet": {
+    "description": "Tooltip of the status indicator in the app bar while nothing runs and no problem is new",
+    "x-translated": "e24366ba"
+  },
+  "statusTooltipRunning": "Status: work in progress",
+  "@statusTooltipRunning": {
+    "description": "Tooltip of the status indicator in the app bar while the server prepares albums or this device uploads",
+    "x-translated": "54f1f7a5"
+  },
+  "statusTooltipProblem": "{count, plural, =1{Status: 1 new problem} other{Status: {count} new problems}}",
+  "@statusTooltipProblem": {
+    "description": "Tooltip of the status indicator in the app bar while problems were not marked as seen",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "2"
+      }
+    },
+    "x-translated": "703158b3"
+  },
+  "statusProblemsHeading": "Problems",
+  "@statusProblemsHeading": {
+    "description": "Heading of the first section of the status page: what failed, each with its reason",
+    "x-translated": "77100013"
+  },
+  "statusNoProblems": "No problems.",
+  "@statusNoProblems": {
+    "description": "Said in the problems section of the status page when nothing failed that was not seen",
+    "x-translated": "c013e63e"
+  },
+  "statusMarkAllSeen": "Mark all as seen",
+  "@statusMarkAllSeen": {
+    "description": "Button of the status page marking every problem as seen: it stays in the list, collapsed, and no longer lights the red dot",
+    "x-translated": "3740d7ce"
+  },
+  "statusMarkSeen": "Seen",
+  "@statusMarkSeen": {
+    "description": "Button of one problem of the status page marking it as seen",
+    "x-translated": "460a526"
+  },
+  "statusKnownProblems": "Known problems ({count})",
+  "@statusKnownProblems": {
+    "description": "Collapsed section of the status page holding the problems marked as seen",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "3"
+      }
+    },
+    "x-translated": "cfd316a0"
+  },
+  "statusRetryNow": "Retry now",
+  "@statusRetryNow": {
+    "description": "Button of a problem of the status page: the server tries again now what failed, for a cause fixed elsewhere",
+    "x-translated": "46d6d32e"
+  },
+  "statusRetryStarted": "Tried again. The problem leaves the list once it is fixed.",
+  "@statusRetryStarted": {
+    "description": "Message after 'Retry now' on the status page",
+    "x-translated": "87aa24fb"
+  },
+  "statusRetryAt": "{minutes, plural, =0{Tried again in a moment.} =1{Tried again in a minute.} other{Tried again in {minutes} minutes.}}",
+  "@statusRetryAt": {
+    "description": "Line of a problem of the status page: when the server tries again by itself",
+    "placeholders": {
+      "minutes": {
+        "type": "int",
+        "example": "4"
+      }
+    },
+    "x-translated": "dff2a34f"
+  },
+  "statusRunningHeading": "What runs",
+  "@statusRunningHeading": {
+    "description": "Heading of the second section of the status page: this device's upload and the server's work",
+    "x-translated": "2ef9009e"
+  },
+  "statusNothingRuns": "Nothing runs right now.",
+  "@statusNothingRuns": {
+    "description": "Said in the section 'What runs' of the status page when nothing runs",
+    "x-translated": "77308bef"
+  },
+  "statusDeviceUpload": "This device's upload: {line}",
+  "@statusDeviceUpload": {
+    "description": "Line of the status page with the state of this device's camera-roll upload",
+    "placeholders": {
+      "line": {
+        "type": "String",
+        "example": "Uploading 3 of 12..."
+      }
+    },
+    "x-translated": "20a10a8a"
+  },
+  "statusMemberNote": "What the server works on and what fails there is shown to the administrator of this space.",
+  "@statusMemberNote": {
+    "description": "Line of the status page for a member who is no administrator: why the server's part is not shown",
+    "x-translated": "547cbe41"
+  },
+  "statusStepProgress": "Step {step}: {done} of {total} albums",
+  "@statusStepProgress": {
+    "description": "Line of the status page: how many albums one step of the server's background is done with",
+    "placeholders": {
+      "step": {
+        "type": "String",
+        "example": "Faces"
+      },
+      "done": {
+        "type": "int",
+        "example": "12"
+      },
+      "total": {
+        "type": "int",
+        "example": "40"
+      }
+    },
+    "x-translated": "dec70cd3"
+  },
+  "statusIndexProgress": "Photo index: {done} of {total} folders",
+  "@statusIndexProgress": {
+    "description": "Line of the status page: how far the index of the photos' fingerprints has got (duplicates and the camera-roll upload wait for it)",
+    "placeholders": {
+      "done": {
+        "type": "int",
+        "example": "120"
+      },
+      "total": {
+        "type": "int",
+        "example": "130"
+      }
+    },
+    "x-translated": "f1493d1f"
+  },
+  "statusPlacesLoading": "Place names being downloaded: {names}",
+  "@statusPlacesLoading": {
+    "description": "Line of the status page: which files of place names the server downloads",
+    "placeholders": {
+      "names": {
+        "type": "String",
+        "example": "DE, FR"
+      }
+    },
+    "x-translated": "b07cac8d"
+  },
+  "statusLogHeading": "This device's log",
+  "@statusLogHeading": {
+    "description": "Heading of the last section of the status page: the problems this app ran into",
+    "x-translated": "59a36d9b"
+  },
+  "statusSyncFailed": "This device's upload failed",
+  "@statusSyncFailed": {
+    "description": "Title of a problem of the status page: the camera-roll upload of this device failed",
+    "x-translated": "54fc3778"
+  },
+  "statusOpenCameraRoll": "Camera-roll settings",
+  "@statusOpenCameraRoll": {
+    "description": "Button of a problem of the status page leading to the camera-roll settings of this device",
+    "x-translated": "70b1f746"
+  },
+  "statusLogNew": "{count, plural, =0{Entries of this device's log} =1{This device noted 1 problem} other{This device noted {count} problems}}",
+  "@statusLogNew": {
+    "description": "Title of a problem of the status page: entries of this device's log not seen yet",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "2"
+      }
+    },
+    "x-translated": "7519a31"
+  },
+  "statusLogNewReason": "The entries are in this device's log below.",
+  "@statusLogNewReason": {
+    "description": "Line of the log problem of the status page",
+    "x-translated": "55b0526f"
+  },
+  "statusLogSeen": "Every entry of this device's log was seen.",
+  "@statusLogSeen": {
+    "description": "Line of the log problem of the status page once it was marked as seen",
+    "x-translated": "e133f706"
+  },
+  "statusShowLog": "Show the log",
+  "@statusShowLog": {
+    "description": "Button of the log problem of the status page scrolling to the log",
+    "x-translated": "ea613582"
+  },
+  "statusServerUnreachable": "The server cannot be asked",
+  "@statusServerUnreachable": {
+    "description": "Title of a problem of the status page: the status of the server could not be read",
+    "x-translated": "c8837031"
+  },
+  "statusOpenServerSettings": "Server settings",
+  "@statusOpenServerSettings": {
+    "description": "Button of a problem of the status page leading to the server settings",
+    "x-translated": "803f13e3"
+  },
+  "statusFailure": "Step {step}: {files} in {albums}",
+  "@statusFailure": {
+    "description": "Title of a problem of the status page: one step of the server's background failed on several files for one reason; files and albums are 'statusFileCount' and 'statusAlbumCount'",
+    "placeholders": {
+      "step": {
+        "type": "String",
+        "example": "Previews"
+      },
+      "files": {
+        "type": "String",
+        "example": "12 files"
+      },
+      "albums": {
+        "type": "String",
+        "example": "3 albums"
+      }
+    },
+    "x-translated": "46a44b9f"
+  },
+  "statusFileCount": "{count, plural, =1{1 file} other{{count} files}}",
+  "@statusFileCount": {
+    "description": "Part of 'statusFailure': how many files failed",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "12"
+      }
+    },
+    "x-translated": "a3b86982"
+  },
+  "statusAlbumCount": "{count, plural, =1{1 album} other{{count} albums}}",
+  "@statusAlbumCount": {
+    "description": "Part of 'statusFailure': in how many albums",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "3"
+      }
+    },
+    "x-translated": "b34e80fe"
+  },
+  "statusFiles": "Files ({count})",
+  "@statusFiles": {
+    "description": "Expandable list of the files of a problem of the status page",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "12"
+      }
+    },
+    "x-translated": "fb8365c0"
+  },
+  "statusOpenAlbum": "Open album",
+  "@statusOpenAlbum": {
+    "description": "Tooltip of the button of a file or folder of a problem of the status page opening its album",
+    "x-translated": "c70cf281"
+  },
+  "statusUnwritable": "{count, plural, =1{The server cannot write 1 folder} other{The server cannot write {count} folders}}",
+  "@statusUnwritable": {
+    "description": "Title of a problem of the status page: folders the server's user has no write permission for",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "2"
+      }
+    },
+    "x-translated": "e30843b3"
+  },
+  "statusFolders": "Folders ({count})",
+  "@statusFolders": {
+    "description": "Expandable list of the folders the server cannot write, on the status page",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "2"
+      }
+    },
+    "x-translated": "f439293"
+  },
+  "statusFolderPhotos": "Photos: {count}; not stored: {what}",
+  "@statusFolderPhotos": {
+    "description": "Line of a folder the server cannot write: how many photos it holds and what could not be stored there (the server's words)",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "40"
+      },
+      "what": {
+        "type": "String",
+        "example": "its photo hashes"
+      }
+    },
+    "x-translated": "b26b1586"
+  },
+  "statusCopyPaths": "Copy all paths",
+  "@statusCopyPaths": {
+    "description": "Button copying the path on the server of every folder the server cannot write",
+    "x-translated": "e1e6386c"
+  },
+  "statusPathsCopied": "The paths are on the clipboard.",
+  "@statusPathsCopied": {
+    "description": "Message after 'Copy all paths' on the status page",
+    "x-translated": "d6800168"
+  },
+  "statusEmbedder": "The content search waits for its embedder",
+  "@statusEmbedder": {
+    "description": "Title of a problem of the status page: the embedder of the content search does not answer",
+    "x-translated": "975849b4"
+  },
+  "statusOpenSpaceSettings": "Space settings",
+  "@statusOpenSpaceSettings": {
+    "description": "Button of a problem of the status page leading to the settings of the space (the content search)",
+    "x-translated": "7fbc0960"
+  },
+  "statusFaces": "Faces cannot be detected on this server",
+  "@statusFaces": {
+    "description": "Title of a problem of the status page",
+    "x-translated": "20f84598"
+  },
+  "statusVideos": "Videos cannot be converted on this server",
+  "@statusVideos": {
+    "description": "Title of a problem of the status page",
+    "x-translated": "46ceafb8"
+  },
+  "statusPlaces": "Place names cannot be downloaded",
+  "@statusPlaces": {
+    "description": "Title of a problem of the status page",
+    "x-translated": "23edf5de"
+  },
+  "statusSeeStatusPage": "Details on the status page",
+  "@statusSeeStatusPage": {
+    "description": "Subtitle of a line of the settings leading to the status page",
+    "x-translated": "88d155f6"
+  },
+  "statusLinkSubtitle": "This device's log, and what runs and failed, on the status page",
+  "@statusLinkSubtitle": {
+    "description": "Subtitle of the line of the settings that leads to the status page where the diagnostics log now is",
+    "x-translated": "4e79f818"
+  },
+  "statusAppVersion": "This app: version {version}",
+  "@statusAppVersion": {
+    "description": "Line of the status page above this device's log: the version of the app, as the copied log names it",
+    "placeholders": {
+      "version": {
+        "type": "String",
+        "example": "2.15.1+215"
+      }
+    },
+    "x-translated": "8e1377f9"
   }
 }

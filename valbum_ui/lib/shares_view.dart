@@ -37,6 +37,7 @@ import 'selectable.dart';
 import 'share_session.dart' show ratingName;
 import 'share_view.dart';
 import 'urls.dart';
+import 'page_app_bar.dart';
 
 /// How the shares screen groups the links.
 enum SharesGrouping { album, person }
@@ -391,7 +392,7 @@ class SharesScreenState extends State<SharesScreen> {
             .length;
     return Scaffold(
       key: const Key("shares-screen"),
-      appBar: AppBar(title: Text(l10n.sharesHeading)),
+      appBar: PageAppBar(title: Text(l10n.sharesHeading)),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

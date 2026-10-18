@@ -21,7 +21,9 @@ import 'l10n/app_localizations.dart';
 import 'manage_view.dart' show refusalMessage;
 import 'page_insets.dart';
 import 'resource.dart';
+import 'status.dart';
 import 'selectable.dart';
+import 'page_app_bar.dart';
 
 /// The key of the section in the server settings.
 const Key spaceSettingsSectionKey = Key("settings.space");
@@ -43,6 +45,10 @@ const Key spaceSettingsContentKey = Key("spaceSettings.content");
 
 /// The key of the line saying whether the embedder of the content search can
 /// describe photos now.
+/// The key of the line leading from the content search to the status page
+/// (issue #305).
+const Key spaceSettingsStatusLinkKey = Key("space-settings-status-link");
+
 const Key spaceSettingsContentStatusKey = Key("spaceSettings.content.status");
 
 /// The key of the map field.
@@ -239,7 +245,7 @@ class SpaceSettingsScreenState extends State<SpaceSettingsScreen> {
   Widget build(BuildContext context) {
     var l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.spaceSettingsTitle)),
+      appBar: PageAppBar(title: Text(l10n.spaceSettingsTitle)),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 640),
@@ -351,6 +357,9 @@ class SpaceSettingsScreenState extends State<SpaceSettingsScreen> {
               ),
             ],
           ),
+          // How far the content search has got, and why it waits, are on
+          // the status page (issue #305).
+          const StatusPageLink(key: spaceSettingsStatusLinkKey),
         ],
         const SizedBox(height: 16),
         TextField(

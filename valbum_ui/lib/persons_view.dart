@@ -72,6 +72,7 @@ import 'selectable.dart';
 import 'share_session.dart';
 import 'thumbnails.dart';
 import 'page_insets.dart';
+import 'page_app_bar.dart';
 
 /// How often the editor asks again while the server is still detecting.
 ///
@@ -1568,7 +1569,7 @@ class PersonsContentState extends State<PersonsContent>
         return KeyEventResult.ignored;
       },
       child: Scaffold(
-        appBar: AppBar(
+        appBar: PageAppBar(
           leading: IconButton(
             key: const Key("persons-up"),
             icon: const Icon(Icons.arrow_back),

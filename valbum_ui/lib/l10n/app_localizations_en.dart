@@ -4619,4 +4619,216 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get unstackShotsAction => 'Show every shot singly';
+
+  @override
+  String get statusTitle => 'Status';
+
+  @override
+  String get statusTooltipQuiet => 'Status: all is well';
+
+  @override
+  String get statusTooltipRunning => 'Status: work in progress';
+
+  @override
+  String statusTooltipProblem(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Status: $count new problems',
+      one: 'Status: 1 new problem',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get statusProblemsHeading => 'Problems';
+
+  @override
+  String get statusNoProblems => 'No problems.';
+
+  @override
+  String get statusMarkAllSeen => 'Mark all as seen';
+
+  @override
+  String get statusMarkSeen => 'Seen';
+
+  @override
+  String statusKnownProblems(int count) {
+    return 'Known problems ($count)';
+  }
+
+  @override
+  String get statusRetryNow => 'Retry now';
+
+  @override
+  String get statusRetryStarted =>
+      'Tried again. The problem leaves the list once it is fixed.';
+
+  @override
+  String statusRetryAt(int minutes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: 'Tried again in $minutes minutes.',
+      one: 'Tried again in a minute.',
+      zero: 'Tried again in a moment.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get statusRunningHeading => 'What runs';
+
+  @override
+  String get statusNothingRuns => 'Nothing runs right now.';
+
+  @override
+  String statusDeviceUpload(String line) {
+    return 'This device\'s upload: $line';
+  }
+
+  @override
+  String get statusMemberNote =>
+      'What the server works on and what fails there is shown to the administrator of this space.';
+
+  @override
+  String statusStepProgress(String step, int done, int total) {
+    return 'Step $step: $done of $total albums';
+  }
+
+  @override
+  String statusIndexProgress(int done, int total) {
+    return 'Photo index: $done of $total folders';
+  }
+
+  @override
+  String statusPlacesLoading(String names) {
+    return 'Place names being downloaded: $names';
+  }
+
+  @override
+  String get statusLogHeading => 'This device\'s log';
+
+  @override
+  String get statusSyncFailed => 'This device\'s upload failed';
+
+  @override
+  String get statusOpenCameraRoll => 'Camera-roll settings';
+
+  @override
+  String statusLogNew(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'This device noted $count problems',
+      one: 'This device noted 1 problem',
+      zero: 'Entries of this device\'s log',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get statusLogNewReason =>
+      'The entries are in this device\'s log below.';
+
+  @override
+  String get statusLogSeen => 'Every entry of this device\'s log was seen.';
+
+  @override
+  String get statusShowLog => 'Show the log';
+
+  @override
+  String get statusServerUnreachable => 'The server cannot be asked';
+
+  @override
+  String get statusOpenServerSettings => 'Server settings';
+
+  @override
+  String statusFailure(String step, String files, String albums) {
+    return 'Step $step: $files in $albums';
+  }
+
+  @override
+  String statusFileCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count files',
+      one: '1 file',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String statusAlbumCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count albums',
+      one: '1 album',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String statusFiles(int count) {
+    return 'Files ($count)';
+  }
+
+  @override
+  String get statusOpenAlbum => 'Open album';
+
+  @override
+  String statusUnwritable(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'The server cannot write $count folders',
+      one: 'The server cannot write 1 folder',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String statusFolders(int count) {
+    return 'Folders ($count)';
+  }
+
+  @override
+  String statusFolderPhotos(int count, String what) {
+    return 'Photos: $count; not stored: $what';
+  }
+
+  @override
+  String get statusCopyPaths => 'Copy all paths';
+
+  @override
+  String get statusPathsCopied => 'The paths are on the clipboard.';
+
+  @override
+  String get statusEmbedder => 'The content search waits for its embedder';
+
+  @override
+  String get statusOpenSpaceSettings => 'Space settings';
+
+  @override
+  String get statusFaces => 'Faces cannot be detected on this server';
+
+  @override
+  String get statusVideos => 'Videos cannot be converted on this server';
+
+  @override
+  String get statusPlaces => 'Place names cannot be downloaded';
+
+  @override
+  String get statusSeeStatusPage => 'Details on the status page';
+
+  @override
+  String get statusLinkSubtitle =>
+      'This device\'s log, and what runs and failed, on the status page';
+
+  @override
+  String statusAppVersion(String version) {
+    return 'This app: version $version';
+  }
 }

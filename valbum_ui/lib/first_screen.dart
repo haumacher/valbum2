@@ -24,6 +24,7 @@ import 'settings.dart';
 import 'sign_in_form.dart';
 import 'urls.dart';
 import 'page_insets.dart';
+import 'page_app_bar.dart';
 
 /// The key of the whole screen.
 const Key firstScreenKey = Key("first.screen");
@@ -135,7 +136,7 @@ class FirstScreenState extends State<FirstScreen> {
     var server = accepted;
     return Scaffold(
       key: firstScreenKey,
-      appBar: AppBar(title: Text(firstScreenTitle(l10n))),
+      appBar: PageAppBar(title: Text(firstScreenTitle(l10n))),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 480),
@@ -404,7 +405,7 @@ class ServerPairingPage extends StatelessWidget {
   Widget build(BuildContext context) {
     var l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.appLinkPairingTitle)),
+      appBar: PageAppBar(title: Text(l10n.appLinkPairingTitle)),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 480),

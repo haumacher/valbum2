@@ -390,6 +390,73 @@ public class TestContentSearch extends TestCase {
 	}
 
 	/**
+	 * The log says what the embedder did (issue #305): one INFO line per album once its photos are
+	 * described, with how many, how long and how far the space has got, and one FINE line per photo.
+	 */
+	public void testTheLogSaysWhatWasDescribed() throws Exception {
+		java.util.logging.Logger log = java.util.logging.Logger.getLogger(ContentIndex.class.getName());
+		java.util.logging.Level level = log.getLevel();
+		List<java.util.logging.LogRecord> records = new CopyOnWriteArrayList<>();
+		java.util.logging.Handler handler = new java.util.logging.Handler() {
+			@Override
+			public void publish(java.util.logging.LogRecord record) {
+				records.add(record);
+			}
+
+			@Override
+			public void flush() {
+				// Kept.
+			}
+
+			@Override
+			public void close() {
+				// Kept.
+			}
+		};
+		handler.setLevel(java.util.logging.Level.ALL);
+		log.setLevel(java.util.logging.Level.FINE);
+		log.addHandler(handler);
+		try {
+			library(true);
+			start();
+			awaitDescribed();
+		} finally {
+			log.removeHandler(handler);
+			log.setLevel(level);
+		}
+		List<String> info = new ArrayList<>();
+		List<String> fine = new ArrayList<>();
+		for (java.util.logging.LogRecord record : records) {
+			if (record.getMessage().contains("': described ")) {
+				(record.getLevel() == java.util.logging.Level.INFO ? info : fine).add(record.getMessage());
+			}
+		}
+		String album = null;
+		String other = null;
+		for (String line : info) {
+			if (line.contains("described 3 photos in '" + NEW + "' in ")) {
+				album = line;
+			}
+			if (line.contains("described 2 photos in '" + OLD + "' in ")) {
+				other = line;
+			}
+		}
+		assertNotNull("One line for the new album: " + info, album);
+		assertNotNull("And one for the old one: " + info, other);
+		assertTrue(album, album.matches(".* each\\); [0-5] of 5 described\\."));
+		assertTrue("The last line counts everything: " + info, info.get(info.size() - 1).endsWith("; 5 of 5 described."));
+		assertEquals("One line per album: " + info, 2, info.size());
+		assertEquals("One fine line per photo: " + fine, MEDIA.length, fine.size());
+		for (String medium : MEDIA) {
+			boolean found = false;
+			for (String line : fine) {
+				found |= line.contains("described '" + medium + "' in ");
+			}
+			assertTrue("The photo is named: " + medium + " in " + fine, found);
+		}
+	}
+
+	/**
 	 * The quality that picks the best shot of a burst (issue #257, package 6) is measured from the
 	 * preview right where the picture is described, a photograph's alone; a cache written before it
 	 * existed has it added from the previews, without a single picture sent again.
