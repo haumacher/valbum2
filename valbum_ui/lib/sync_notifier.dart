@@ -18,6 +18,7 @@ import 'package:flutter/foundation.dart';
 import 'package:sync_notification/sync_notification.dart' as plugin;
 
 import 'camera_roll.dart';
+import 'diagnostics.dart';
 import 'l10n/app_localizations.dart';
 
 /// The notification channel of the camera-roll upload.
@@ -129,9 +130,17 @@ class NoSyncNotifier extends SyncNotifier {
 /// The [SyncNotifier] of Android, through `packages/sync_notification`.
 ///
 /// A plugin that fails is never a reason for a run to fail: the notification
-/// is a courtesy, the upload is the point.
+/// is a courtesy, the upload is the point. It is written into [log], with the
+/// complete text of the failure.
 class PluginSyncNotifier extends SyncNotifier {
-  const PluginSyncNotifier();
+  /// Where a failure of the plugin is written, `null` for nowhere.
+  final DiagnosticsLog? log;
+
+  const PluginSyncNotifier({this.log});
+
+  /// Writes the failure of [what] into [log].
+  void _failed(String what, Object error) =>
+      syncNotificationFailed(log, what, error);
 
   @override
   bool get available => true;
@@ -140,7 +149,8 @@ class PluginSyncNotifier extends SyncNotifier {
   Future<bool> allowed() async {
     try {
       return await plugin.notificationsAllowed();
-    } catch (_) {
+    } catch (error) {
+      _failed("ask whether notifications are shown", error);
       return true;
     }
   }
@@ -149,7 +159,8 @@ class PluginSyncNotifier extends SyncNotifier {
   Future<bool> askable() async {
     try {
       return await plugin.notificationsAskable();
-    } catch (_) {
+    } catch (error) {
+      _failed("ask whether notifications may be asked for", error);
       return false;
     }
   }
@@ -158,7 +169,8 @@ class PluginSyncNotifier extends SyncNotifier {
   Future<bool> request() async {
     try {
       return await plugin.requestNotifications();
-    } catch (_) {
+    } catch (error) {
+      _failed("ask for the permission to show notifications", error);
       return false;
     }
   }
@@ -176,8 +188,8 @@ class PluginSyncNotifier extends SyncNotifier {
         done: notice.done,
         total: notice.total,
       );
-    } catch (_) {
-      // See the class comment.
+    } catch (error) {
+      _failed("show the upload notification", error);
     }
   }
 
@@ -185,10 +197,24 @@ class PluginSyncNotifier extends SyncNotifier {
   Future<void> clear(int id) async {
     try {
       await plugin.clearSyncNotification(id);
-    } catch (_) {
-      // See the class comment.
+    } catch (error) {
+      _failed("remove the upload notification", error);
     }
   }
+}
+
+/// Writes into [log] that the notification plugin failed to [what], with the
+/// complete text of [error].
+void syncNotificationFailed(DiagnosticsLog? log, String what, Object error) {
+  log?.record(
+    "Could not $what: the camera-roll sync goes on without it",
+    facts: [platformErrorFact(error)],
+    cause: failureCause(
+      attempt: "notification $what",
+      platformError: errorCause(error),
+    ),
+    window: const Duration(hours: 1),
+  );
 }
 
 /// A [SyncNotifier] that records what it was asked, used by tests.

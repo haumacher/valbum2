@@ -48,6 +48,9 @@ class PhotoManagerLibrary extends PhotoLibrary {
   @override
   AppNotice? accessProblem;
 
+  @override
+  Object? accessError;
+
   /// The album paths the last [albums] answered, by their id.
   final Map<String, AssetPathEntity> _paths = {};
 
@@ -62,8 +65,8 @@ class PhotoManagerLibrary extends PhotoLibrary {
   /// request needs an Activity whenever a permission is not held yet, and the
   /// engine WorkManager starts has none, so asking there threw instead of
   /// answering. A background library therefore only *reads* what was granted
-  /// ([PhotoManager.getPermissionState] and [locationGranted], neither of
-  /// which needs an Activity) and declines where that is not enough.
+  /// ([photoAccess] and [locationGranted], neither of which needs an
+  /// Activity) and declines where that is not enough.
   ///
   /// A property of the library rather than a parameter of [requestAccess],
   /// because it is a property of the process the library lives in: the sync
@@ -81,16 +84,65 @@ class PhotoManagerLibrary extends PhotoLibrary {
   /// in every engine, the background one included. A test replaces it.
   final Future<bool> Function() locationGranted;
 
+  /// Which photos and videos the app may read, asked without asking anybody
+  /// — the check of a background library, see [interactive].
+  ///
+  /// Not `photo_manager`: on Android its `getPermissionState` reads through
+  /// the `Application` of the Activity it was bound to, which the engine
+  /// WorkManager starts never binds, and it answers with a
+  /// `NullPointerException` there — "Attempt to invoke virtual method
+  /// 'java.lang.Class java.lang.Object.getClass()' on a null object
+  /// reference" in a release build, whose R8 turns Kotlin's `!!` into a
+  /// `getClass()` (photo_manager 3.12.0, `PermissionsUtils.getAuthValue`).
+  /// Since every run of the app is handed to such an engine (issue #300),
+  /// every run failed with it. The question goes to the app's own plugin
+  /// instead (`packages/media_location`), which asks
+  /// `Context.checkSelfPermission` of the application context. A test
+  /// replaces it.
+  final Future<MediaAccess> Function() photoAccess;
+
   PhotoManagerLibrary({
     this.interactive = true,
     Future<bool> Function()? locationGranted,
-  }) : locationGranted = locationGranted ?? _deviceLocationGranted;
+    Future<MediaAccess> Function()? photoAccess,
+  })  : locationGranted = locationGranted ?? _deviceLocationGranted,
+        photoAccess = photoAccess ?? _devicePhotoAccess;
 
   /// The device's answer: asked on Android, where the position is redacted
   /// without the permission; `true` everywhere else, where there is nothing
   /// to ask.
   static Future<bool> _deviceLocationGranted() =>
       Platform.isAndroid ? isMediaLocationGranted() : Future.value(true);
+
+  /// The device's answer: the app's own plugin on Android, see
+  /// [photoAccess]; `photo_manager` on iOS, whose answer needs no Activity.
+  static Future<MediaAccess> _devicePhotoAccess() async {
+    if (Platform.isAndroid) {
+      return readMediaAccess();
+    }
+    var state = await PhotoManager.getPermissionState(
+      requestOption: withMediaLocation,
+    );
+    return state.isAuth
+        ? MediaAccess.full
+        : state == PermissionState.limited
+            ? MediaAccess.limited
+            : MediaAccess.none;
+  }
+
+  /// Answers that the library cannot be opened, for [error].
+  bool _openFailed(Object error) {
+    accessProblem = PhotoLibraryOpenFailed(platformErrorText(error));
+    accessError = error;
+    return false;
+  }
+
+  /// Answers [problem], a refusal that is no platform failure.
+  bool _refused(AppNotice problem) {
+    accessProblem = problem;
+    accessError = null;
+    return false;
+  }
 
   @override
   int get scanLimit => photoScanLimit;
@@ -106,17 +158,16 @@ class PhotoManagerLibrary extends PhotoLibrary {
         requestOption: withMediaLocation,
       );
     } catch (error) {
-      accessProblem = PhotoLibraryOpenFailed(platformErrorText(error));
-      return false;
+      return _openFailed(error);
     }
     if (state.isAuth || state == PermissionState.limited) {
       // "Limited" is a legitimate answer: the user picked the photos this app
       // may see, and those are the ones that get uploaded.
       accessProblem = null;
+      accessError = null;
       return true;
     }
-    accessProblem = const PhotoAccessDenied();
-    return false;
+    return _refused(const PhotoAccessDenied());
   }
 
   /// [requestAccess] without asking anybody, see [interactive].
@@ -127,32 +178,30 @@ class PhotoManagerLibrary extends PhotoLibrary {
   /// with [MediaLocationNotGranted] instead, until the app is opened and
   /// asks. A question the platform cannot answer declines as well — never is
   /// an unknown answer read as "granted".
+  ///
+  /// "Limited" counts, as it does in the foreground: the user picked the
+  /// photos this app may see.
   Future<bool> _checkAccess() async {
-    PermissionState state;
+    MediaAccess access;
     try {
-      state = await PhotoManager.getPermissionState(
-        requestOption: withMediaLocation,
-      );
+      access = await photoAccess();
     } catch (error) {
-      accessProblem = PhotoLibraryOpenFailed(platformErrorText(error));
-      return false;
+      return _openFailed(error);
     }
-    if (!state.isAuth && state != PermissionState.limited) {
-      accessProblem = const PhotoAccessDenied();
-      return false;
+    if (access == MediaAccess.none) {
+      return _refused(const PhotoAccessDenied());
     }
     bool located;
     try {
       located = await locationGranted();
     } catch (error) {
-      accessProblem = PhotoLibraryOpenFailed(platformErrorText(error));
-      return false;
+      return _openFailed(error);
     }
     if (!located) {
-      accessProblem = const MediaLocationNotGranted();
-      return false;
+      return _refused(const MediaLocationNotGranted());
     }
     accessProblem = null;
+    accessError = null;
     return true;
   }
 
@@ -266,6 +315,7 @@ class PhotoManagerLibrary extends PhotoLibrary {
       );
     } catch (error) {
       accessProblem = PhotoLibraryFailed(platformErrorText(error));
+      accessError = error;
       return const [];
     }
     var albums = <PhotoAlbum>[];
@@ -382,7 +432,10 @@ class PhotoManagerLibrary extends PhotoLibrary {
     try {
       return (await asset.originFile)?.path;
     } catch (error) {
-      throw PhotoLibraryException(PhotoLibraryFailed(platformErrorText(error)));
+      throw PhotoLibraryException(
+        PhotoLibraryFailed(platformErrorText(error)),
+        error: error,
+      );
     }
   }
 
@@ -391,7 +444,10 @@ class PhotoManagerLibrary extends PhotoLibrary {
     try {
       file = await asset.originFile;
     } catch (error) {
-      throw PhotoLibraryException(PhotoLibraryFailed(platformErrorText(error)));
+      throw PhotoLibraryException(
+        PhotoLibraryFailed(platformErrorText(error)),
+        error: error,
+      );
     }
     if (file == null) {
       // Not a reason to skip it: skipping would advance the watermark past a
@@ -445,7 +501,9 @@ Future<void> askToAddToPhotoLibrary() async {
     );
   } catch (error) {
     throw PhotoLibraryException(
-        PhotoLibraryOpenFailed(platformErrorText(error)));
+      PhotoLibraryOpenFailed(platformErrorText(error)),
+      error: error,
+    );
   }
   if (!state.isAuth && state != PermissionState.limited) {
     throw const PhotoLibraryException(PhotoAccessDenied());
@@ -474,6 +532,8 @@ Future<void> saveFileToPhotoLibrary(
     rethrow;
   } catch (error) {
     throw PhotoLibraryException(
-        PhotoLibraryOpenFailed(platformErrorText(error)));
+      PhotoLibraryOpenFailed(platformErrorText(error)),
+      error: error,
+    );
   }
 }

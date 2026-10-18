@@ -15,13 +15,27 @@ library;
 import 'package:connectivity_plus/connectivity_plus.dart';
 
 import 'connectivity.dart';
+import 'diagnostics.dart';
 
 /// The device's network, through `connectivity_plus`.
 class PluginConnectivity extends ConnectivitySource {
   final Connectivity _connectivity;
 
-  PluginConnectivity({Connectivity? connectivity})
+  /// Where a failure of the plugin is written, `null` for nowhere.
+  final DiagnosticsLog? log;
+
+  PluginConnectivity({Connectivity? connectivity, this.log})
       : _connectivity = connectivity ?? Connectivity();
+
+  void _failed(String what, Object error) => log?.record(
+        "Could not $what: the network is taken as unknown",
+        facts: [platformErrorFact(error)],
+        cause: failureCause(
+          attempt: "connectivity $what",
+          platformError: errorCause(error),
+        ),
+        window: const Duration(hours: 1),
+      );
 
   /// The kind of network the device is on, [NetworkKind.unknown] where the
   /// platform refuses to say.
@@ -34,14 +48,16 @@ class PluginConnectivity extends ConnectivitySource {
   Future<NetworkKind> current() async {
     try {
       return kindOf(await _connectivity.checkConnectivity());
-    } catch (_) {
+    } catch (error) {
+      _failed("ask which network the device is on", error);
       return NetworkKind.unknown;
     }
   }
 
   @override
   Stream<NetworkKind> get changes =>
-      _connectivity.onConnectivityChanged.map(kindOf).handleError((_) {});
+      _connectivity.onConnectivityChanged.map(kindOf).handleError(
+          (Object error) => _failed("follow the network of the device", error));
 
   /// The kind of network the given plugin answer describes.
   ///

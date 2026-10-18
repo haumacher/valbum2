@@ -2123,6 +2123,11 @@ class AppLocalizationsDe extends AppLocalizations {
   }
 
   @override
+  String noticeSyncFailed(String problem) {
+    return 'Die Synchronisierung der Kamerarolle ist unerwartet fehlgeschlagen: $problem';
+  }
+
+  @override
   String get noticePhotoAccessDenied =>
       'Der Zugriff auf die Fotobibliothek wurde verweigert. Erlauben Sie VAlbum in den Systemeinstellungen den Zugriff auf Fotos und versuchen Sie es dann erneut.';
 

@@ -3504,6 +3504,16 @@
     },
     "x-translated": "1e407e54"
   },
+  "noticeSyncFailed": "The camera-roll sync failed unexpectedly: {problem}",
+  "@noticeSyncFailed": {
+    "description": "Says that the camera-roll sync ran into a failure nothing in it expected (a full disk, a broken store); the problem is the technical text of the failure",
+    "placeholders": {
+      "problem": {
+        "type": "String"
+      }
+    },
+    "x-translated": "843fcba7"
+  },
   "noticePhotoAccessDenied": "Access to the photo library was denied. Allow photo access for VAlbum in the system settings, then try again.",
   "@noticePhotoAccessDenied": {
     "description": "Says that the device refused access to its photos",

@@ -44,6 +44,7 @@ import 'client.dart';
 import 'connectivity.dart';
 import 'diagnostics.dart';
 import 'hash_cache.dart';
+import 'locales.dart';
 import 'platform.dart' show sha256OfFile;
 import 'photo_library.dart';
 import 'resource.dart';
@@ -262,14 +263,20 @@ class CameraRollConfig {
   ///
   /// The `inbox` an app before issue #226 stored is ignored: the server names
   /// the one inbox of the space, see [CallerInfo.inbox].
-  static CameraRollConfig parse(String? text) {
+  ///
+  /// A text that is no configuration reads as [disabled] — and is handed to
+  /// [onError], since a sync that switched itself off must say why somewhere.
+  static CameraRollConfig parse(
+    String? text, {
+    void Function(Object error)? onError,
+  }) {
     if (text == null || text.trim().isEmpty) {
       return disabled;
     }
     try {
       var json = jsonDecode(text);
       if (json is! Map) {
-        return disabled;
+        throw FormatException("not a JSON object", text);
       }
       var since = json["since"];
       return CameraRollConfig(
@@ -293,7 +300,8 @@ class CameraRollConfig {
             "${entry.key}": SourceMark.parse(entry.value)
         },
       );
-    } catch (_) {
+    } catch (error) {
+      onError?.call(error);
       return disabled;
     }
   }
@@ -355,8 +363,25 @@ List<String> defaultSources(List<PhotoAlbum> albums) {
 /// Typed access to the camera-roll configuration of a [SettingsStore].
 extension CameraRollStorage on SettingsStore {
   /// The stored configuration, [CameraRollConfig.disabled] if there is none.
-  Future<CameraRollConfig> loadCameraRollConfig() async =>
-      CameraRollConfig.parse(await loadCameraRoll());
+  ///
+  /// One that cannot be read is [CameraRollConfig.disabled] as well, and is
+  /// written into [log].
+  Future<CameraRollConfig> loadCameraRollConfig({DiagnosticsLog? log}) async =>
+      CameraRollConfig.parse(
+        await loadCameraRoll(),
+        onError: log == null
+            ? null
+            : (error) => log.record(
+                  "Could not read the camera-roll settings: the sync is "
+                  "switched off until it is switched on again",
+                  facts: [platformErrorFact(error)],
+                  cause: failureCause(
+                    attempt: "camera-roll settings",
+                    platformError: errorCause(error),
+                  ),
+                  window: syncFailureMergeWindow,
+                ),
+      );
 
   /// Stores the given configuration.
   Future<void> saveCameraRollConfig(CameraRollConfig config) =>
@@ -738,6 +763,68 @@ const List<Duration> retryDelays = [
   Duration(minutes: 30),
 ];
 
+/// How far apart two failures of a run for the same reason may be and still be
+/// one entry of the diagnostics log: longer than the longest retry delay and
+/// than the period of the background run, so that a sync that keeps failing
+/// for a day is one entry, "Repeated: 60 times", see [DiagnosticsLog.record].
+const Duration syncFailureMergeWindow = Duration(minutes: 35);
+
+/// The reason a run ended with, as the diagnostics log writes it: the
+/// server's sentence verbatim, else the app's own [notice] in English — the
+/// very sentence the camera-roll section shows, read off the same ARB, see
+/// [englishMessages].
+String syncReasonText({String? message, AppNotice? notice}) =>
+    message ??
+    (notice == null ? "no reason given" : noticeText(notice, englishMessages));
+
+/// The platform error behind [error] for the log: what a
+/// [PhotoLibraryException] carries, else [error] itself; `null` for a
+/// refusal of the server, whose sentence is the whole of it.
+Object? syncPlatformError(Object? error) => switch (error) {
+      PhotoLibraryException(error: var cause) => cause,
+      VAlbumException() => null,
+      _ => error,
+    };
+
+/// Writes a camera-roll run that did not finish into [log]: the sentence the
+/// camera-roll section shows ([syncReasonText]), what the server answered,
+/// the complete text of the platform's [error], the [task] of the run, and
+/// what happens next ([outcome]). A failure of the same reason merges into the
+/// entry of the last one, see [syncFailureMergeWindow].
+///
+/// The one way a failure of a run is written, wherever the run fails — in the
+/// engine, or in the background run around it, see `runBackgroundSync`.
+void logSyncFailure(
+  DiagnosticsLog? log, {
+  String? message,
+  AppNotice? notice,
+  Object? error,
+  required String task,
+  required String outcome,
+  List<String> more = const [],
+}) {
+  var reason = syncReasonText(message: message, notice: notice);
+  var platform = syncPlatformError(error);
+  log?.record(
+    "Camera-roll sync did not finish: $reason",
+    facts: [
+      if (error is VAlbumException)
+        "Server answered: ${error.status ?? "no status"}"
+            "${error.url == null ? "" : ", ${maskUrl(error.url!)}"}",
+      if (platform != null) platformErrorFact(platform),
+      ...more,
+      "Run: $task",
+      "Outcome: $outcome",
+    ],
+    cause: failureCause(
+      attempt: "camera-roll sync $task",
+      answer: reason,
+      platformError: platform == null ? null : errorCause(platform),
+    ),
+    window: syncFailureMergeWindow,
+  );
+}
+
 /// The engine watching the device's photo library and filling the inbox album.
 ///
 /// Every moving part is injected: the [library] the photos come from, the
@@ -852,6 +939,15 @@ class CameraRollSync extends ChangeNotifier {
   /// through it for the permission to show one when the sync is switched on.
   final SyncNotifier notifier;
 
+  /// Where every failure of a run is written, see [_fail]; the log of the
+  /// current client where none is given.
+  ///
+  /// Every refusal and every failure of a run leaves one entry, with the
+  /// sentence the camera-roll section shows and the complete text of what
+  /// the platform threw: a run in the engine WorkManager starts has no screen,
+  /// and the log is what a person reading a bug report has of it.
+  final DiagnosticsLog? log;
+
   CameraRollConfig _config = CameraRollConfig.disabled;
   CameraRollStatus _status = const CameraRollStatus();
   bool _loaded = false;
@@ -919,6 +1015,7 @@ class CameraRollSync extends ChangeNotifier {
     this.claimPatience = Duration.zero,
     this.handoverPoll = const Duration(seconds: 5),
     this.notifier = const NoSyncNotifier(),
+    this.log,
   })  : hashCache = hashCache ?? MemoryHashCache(),
         hashFile = hashFile ?? sha256OfFile,
         targets = targets ??
@@ -955,7 +1052,7 @@ class CameraRollSync extends ChangeNotifier {
 
   /// Reads the stored configuration; called once when the app starts.
   Future<void> load() async {
-    _config = await store.loadCameraRollConfig();
+    _config = await store.loadCameraRollConfig(log: _logOf());
     _lastBackgroundRun = await store.loadBackgroundRunRecord();
     _loaded = true;
     _publish(_restingStatus());
@@ -989,7 +1086,13 @@ class CameraRollSync extends ChangeNotifier {
     _watch ??= library.changes.listen((_) => trigger());
     // What a run elsewhere in the process does is shown here (issue #300):
     // the one this app handed over, and the one a new photo started.
-    _relayWatch ??= relay?.watch().listen(_onRelay);
+    _relayWatch ??= relay?.watch().listen(
+          _onRelay,
+          onError: (Object error) => _logProblem(
+            "Could not follow the camera-roll runs elsewhere in the app",
+            error,
+          ),
+        );
     // A run refused for the lack of Wi-Fi must start again when Wi-Fi is
     // back, without the user waiting for the next periodic scan (issue #36).
     _network ??= connectivity.changes.listen((kind) {
@@ -1124,8 +1227,8 @@ class CameraRollSync extends ChangeNotifier {
           (!reached || _relayTask != handover.task)) {
         await handover.cancel();
       }
-    } catch (_) {
-      // Nothing to stop is nothing to say.
+    } catch (error) {
+      _logProblem("Could not stop the camera-roll run elsewhere", error);
     }
   }
 
@@ -1173,9 +1276,14 @@ class CameraRollSync extends ChangeNotifier {
       }
       _backgroundProblem = null;
     } catch (error) {
-      _backgroundProblem = enabled
+      var problem = _backgroundProblem = enabled
           ? BackgroundScheduleFailed(platformErrorText(error))
           : BackgroundUnscheduleFailed(platformErrorText(error));
+      _logProblem(
+        "Could not ${enabled ? "register" : "remove"} the background sync: "
+        "${syncReasonText(notice: problem)}",
+        error,
+      );
     }
     if (!_disposed) {
       notifyListeners();
@@ -1272,8 +1380,9 @@ class CameraRollSync extends ChangeNotifier {
     if (relay != null) {
       try {
         await store.reload();
-      } catch (_) {
+      } catch (error) {
         // What this engine read last is the best it has.
+        _logProblem("Could not read the camera-roll settings afresh", error);
       }
       _config = await store.loadCameraRollConfig();
     }
@@ -1292,7 +1401,11 @@ class CameraRollSync extends ChangeNotifier {
     _status = status;
     // Whoever watches the process sees the run this engine carries out
     // (issue #300).
-    _claim?.publish(status.toWire());
+    try {
+      _claim?.publish(status.toWire());
+    } catch (error) {
+      _logProblem("Could not report the camera-roll run to the app", error);
+    }
     if (!_disposed) {
       notifyListeners();
     }
@@ -1333,7 +1446,20 @@ class CameraRollSync extends ChangeNotifier {
       await _runPasses(passes);
       return true;
     }
-    var claim = await relay.claim(task: runTask, patience: claimPatience);
+    RunClaim? claim;
+    try {
+      claim = await relay.claim(task: runTask, patience: claimPatience);
+    } catch (error) {
+      // Not a reason to leave the photos where they are: a run beside
+      // another uploads nothing twice, the server is asked for every hash.
+      _logProblem(
+        "Could not wait for the other camera-roll runs of the app: "
+        "this one runs regardless",
+        error,
+      );
+      await _runPasses(passes);
+      return true;
+    }
     if (claim == null) {
       // The run that holds it scans after this one asked, and the app on the
       // screen shows what it does.
@@ -1343,7 +1469,14 @@ class CameraRollSync extends ChangeNotifier {
     var stops = claim.stopRequests.listen((_) => stop());
     try {
       await _runPasses(passes);
-      claim.publish(_status.toWire(), finished: true, retryable: _retryable);
+      // Written before it is said: the app reads the log when it hears that
+      // the run ended, see [_reloadAfterRemote].
+      await _logOf()?.flush();
+      try {
+        claim.publish(_status.toWire(), finished: true, retryable: _retryable);
+      } catch (error) {
+        _logProblem("Could not report the camera-roll run to the app", error);
+      }
     } finally {
       _claim = null;
       await stops.cancel();
@@ -1421,7 +1554,13 @@ class CameraRollSync extends ChangeNotifier {
       bool accepted;
       try {
         accepted = await handover.request();
-      } catch (_) {
+      } catch (error) {
+        // The run is carried out here instead, as before #300.
+        _logProblem(
+          "Could not hand the camera-roll run to WorkManager: "
+          "it runs in the app",
+          error,
+        );
         accepted = false;
       }
       if (!accepted) {
@@ -1441,6 +1580,22 @@ class CameraRollSync extends ChangeNotifier {
         return true;
       }
       await _reloadAfterRemote();
+      if (message == null) {
+        _logOf()?.record(
+          "Camera-roll sync did not finish: the run handed to WorkManager "
+          "ended without a report",
+          facts: [
+            "Run: $runTask, handed to ${handover.task}",
+            "Outcome: the platform stopped the work, cut it off, or it "
+                "crashed; what it wrote itself is above",
+          ],
+          cause: failureCause(
+            attempt: "camera-roll handover ${handover.task}",
+            answer: "no report",
+          ),
+          window: syncFailureMergeWindow,
+        );
+      }
       _applyRemoteEnd(message);
       return true;
     } finally {
@@ -1475,6 +1630,10 @@ class CameraRollSync extends ChangeNotifier {
       }
       return false;
     } catch (_) {
+      // Silent on purpose: the run that is handed over asks the library the
+      // same question in its own engine, fails the same way, and writes that
+      // into the log — written here as well, it would be one failure told
+      // twice.
       return true;
     }
   }
@@ -1486,7 +1645,9 @@ class CameraRollSync extends ChangeNotifier {
       bool pending;
       try {
         pending = await handover.pending();
-      } catch (_) {
+      } catch (error) {
+        _logProblem(
+            "Could not ask WorkManager about the camera-roll run", error);
         return;
       }
       if (!pending) {
@@ -1511,7 +1672,9 @@ class CameraRollSync extends ChangeNotifier {
       bool pending;
       try {
         pending = await handover.pending();
-      } catch (_) {
+      } catch (error) {
+        _logProblem(
+            "Could not ask WorkManager about the camera-roll run", error);
         pending = false;
       }
       if (end.isCompleted) {
@@ -1562,12 +1725,17 @@ class CameraRollSync extends ChangeNotifier {
 
   /// Reads what a run elsewhere in the process wrote: the watermark, its
   /// report and the upload target it may have cleared or followed.
+  ///
+  /// The diagnostics log as well: what the run wrote into it in its own
+  /// engine is shown by the app's.
   Future<void> _reloadAfterRemote() async {
     try {
       await store.reload();
-    } catch (_) {
+    } catch (error) {
       // What this engine read last is the best it has.
+      _logProblem("Could not read the camera-roll settings afresh", error);
     }
+    await _logOf()?.reload();
     _config = await store.loadCameraRollConfig();
     _lastBackgroundRun = await store.loadBackgroundRunRecord();
     await targets.load();
@@ -1603,7 +1771,8 @@ class CameraRollSync extends ChangeNotifier {
       case CameraRollPhase.waiting || CameraRollPhase.failed
           when message.retryable:
         _status = status;
-        _fail(message: status.message, notice: status.notice);
+        // Written into the log by the run that failed, in its own engine.
+        _fail(message: status.message, notice: status.notice, logged: true);
       default:
         _publish(status);
     }
@@ -1636,6 +1805,23 @@ class CameraRollSync extends ChangeNotifier {
     var watch = Stopwatch()..start();
     try {
       await _runInner();
+    } catch (error, stack) {
+      // Nothing a run runs into may leave it "running" for good, nor end it
+      // without a word: what no step expected ends it like a failed transfer
+      // — said, written down with where it was thrown, and retried.
+      if (error is VAlbumException) {
+        _fail(message: error.message, error: error, stack: stack);
+      } else {
+        _fail(
+          notice: error is PhotoLibraryException ||
+                  error is PlatformException ||
+                  VAlbumClient.isTransportFailure(error)
+              ? _reasonOf(error)
+              : SyncFailed("$error"),
+          error: error,
+          stack: stack,
+        );
+      }
     } finally {
       _stats.totalTime = watch.elapsed;
       if (_stats.seen > 0) {
@@ -1651,11 +1837,49 @@ class CameraRollSync extends ChangeNotifier {
   }
 
   DiagnosticsLog? _logOf() {
+    var log = this.log;
+    if (log != null) {
+      return log;
+    }
     try {
       return clientOf()?.log;
     } catch (_) {
+      // Silent on purpose: without a client there is no log to write into,
+      // and the run says why it does not run itself.
       return null;
     }
+  }
+
+  /// Writes into the log that the device's library could not [what] for a
+  /// view of the sync — the albums of the camera-roll section — with the
+  /// sentence the view shows of [notice] and the complete text of [error].
+  void logLibraryProblem(String what, {AppNotice? notice, Object? error}) {
+    var reason = notice == null ? null : syncReasonText(notice: notice);
+    var platform = syncPlatformError(error);
+    _logOf()?.record(
+      "Could not $what${reason == null ? "" : ": $reason"}",
+      facts: [if (platform != null) platformErrorFact(platform)],
+      cause: failureCause(
+        attempt: "camera-roll $what",
+        answer: reason,
+        platformError: platform == null ? null : errorCause(platform),
+      ),
+      window: syncFailureMergeWindow,
+    );
+  }
+
+  /// Writes a failure beside the run — of the relay, the handover, the
+  /// scheduler, the store — with the complete text of [error].
+  void _logProblem(String headline, Object error) {
+    _logOf()?.record(
+      headline,
+      facts: [platformErrorFact(error), "Run: $runTask"],
+      cause: failureCause(
+        attempt: "camera-roll $headline",
+        platformError: errorCause(error),
+      ),
+      window: syncFailureMergeWindow,
+    );
   }
 
   Future<void> _runInner() async {
@@ -1668,9 +1892,16 @@ class CameraRollSync extends ChangeNotifier {
       return;
     }
     if (!await library.requestAccess()) {
+      var notice = library.accessProblem ?? const PhotoLibraryUnreadable();
+      _retryable = false;
+      _logFailure(
+        notice: notice,
+        error: library.accessError,
+        outcome: "not retried until the app is opened and access is granted",
+      );
       _publish(_status.copyWith(
         phase: CameraRollPhase.unavailable,
-        notice: library.accessProblem ?? const PhotoLibraryUnreadable(),
+        notice: notice,
       ));
       return;
     }
@@ -1685,12 +1916,12 @@ class CameraRollSync extends ChangeNotifier {
     } on VAlbumException catch (error) {
       // The server answered and refused to say; its own sentence is the
       // reason, and the run is tried again.
-      _fail(message: error.message);
+      _fail(message: error.message, error: error);
       return;
     } catch (error) {
       // The server could not be asked where the inbox is (issue #226): the
       // transport's reason, retried like any failed transfer.
-      _fail(notice: _reasonOf(error));
+      _fail(notice: _reasonOf(error), error: error);
       return;
     }
     if (caller?.isGuest ?? false) {
@@ -1720,7 +1951,7 @@ class CameraRollSync extends ChangeNotifier {
     try {
       sources = await _sources();
     } catch (error) {
-      _fail(notice: PhotoLibraryFailed(platformErrorText(error)));
+      _failLibrary(error);
       return;
     }
     if (sources.isEmpty) {
@@ -1757,7 +1988,7 @@ class CameraRollSync extends ChangeNotifier {
                 source == CameraRollConfig.wholeLibrary ? const [] : [source],
           );
         } catch (error) {
-          _fail(notice: PhotoLibraryFailed(platformErrorText(error)));
+          _failLibrary(error);
           return;
         } finally {
           stats.scanTime += scanning.elapsed;
@@ -1917,7 +2148,14 @@ class CameraRollSync extends ChangeNotifier {
               tally.presentIn.add(present.name);
             }
           }
-        } catch (_) {
+        } catch (error) {
+          // Not a reason to stop: every photo is offered by its upload, which
+          // asks for its own batch, see above.
+          _logProblem(
+            "Could not ask the server which photos it holds: the photos are "
+            "offered by their uploads instead",
+            error,
+          );
           known = null;
         } finally {
           stats.checkTime += checking.elapsed;
@@ -2087,11 +2325,20 @@ class CameraRollSync extends ChangeNotifier {
   /// Ends the run with the reason [error] gives, see [_fail].
   void _failWith(Object error) {
     if (error is VAlbumException) {
-      _fail(message: error.message);
+      _fail(message: error.message, error: error);
     } else {
-      _fail(notice: _reasonOf(error));
+      _fail(notice: _reasonOf(error), error: error);
     }
   }
+
+  /// Ends the run with the reason of [error], which the device's library
+  /// threw.
+  void _failLibrary(Object error) => _fail(
+        notice: error is PhotoLibraryException
+            ? error.notice
+            : PhotoLibraryFailed(platformErrorText(error)),
+        error: error,
+      );
 
   /// Sends [items] by [send], and where the server refuses the batch as
   /// unsupported media (415) sends them one by one, skipping exactly the items
@@ -2187,7 +2434,19 @@ class CameraRollSync extends ChangeNotifier {
     if (chosen != null) {
       return chosen;
     }
-    return defaultSources(await library.albums());
+    // A library that fails to list its albums answers none and says why in
+    // its [PhotoLibrary.accessProblem]; a run must not take that for "nothing
+    // to upload" and succeed.
+    var before = library.accessError;
+    var albums = await library.albums();
+    var failure = library.accessError;
+    if (albums.isEmpty && failure != null && !identical(failure, before)) {
+      throw PhotoLibraryException(
+        library.accessProblem ?? const PhotoLibraryUnreadable(),
+        error: failure,
+      );
+    }
+    return defaultSources(albums);
   }
 
   /// Records that [batch], scanned from [source], was accepted by the server.
@@ -2285,8 +2544,32 @@ class CameraRollSync extends ChangeNotifier {
   ///
   /// Exactly one of the two is given: [message] is what the **server** said,
   /// verbatim, and [notice] is the app's own reason as data, see issue #108.
-  void _fail({String? message, AppNotice? notice, bool retry = true}) {
+  /// [error] is what was thrown, if anything.
+  ///
+  /// Every failure is written into the diagnostics log, see [_logFailure] —
+  /// unless it was [logged] already, by the run elsewhere that failed.
+  void _fail({
+    String? message,
+    AppNotice? notice,
+    bool retry = true,
+    Object? error,
+    StackTrace? stack,
+    bool logged = false,
+  }) {
     _retryable = retry;
+    if (!logged) {
+      _logFailure(
+        message: message,
+        notice: notice,
+        error: error,
+        more: stack == null ? const [] : stackFacts(stack),
+        outcome: !retry
+            ? "not retried: a retry changes nothing"
+            : !_armRetries
+                ? "retried by the next run"
+                : "retried in ${_delayText(nextDelay)}",
+      );
+    }
     if (!retry || !_armRetries) {
       _publish(_status.copyWith(
         phase: CameraRollPhase.failed,
@@ -2314,6 +2597,31 @@ class CameraRollSync extends ChangeNotifier {
       total: 0,
     ));
   }
+
+  /// Writes the end of a run that did not finish into the diagnostics log:
+  /// the sentence the camera-roll section shows ([syncReasonText]), what the
+  /// server said, the complete text of the platform's [error], which run it
+  /// was, and what happens next. A failure of the same reason merges into the
+  /// entry of the last one, see [syncFailureMergeWindow].
+  void _logFailure({
+    String? message,
+    AppNotice? notice,
+    Object? error,
+    List<String> more = const [],
+    required String outcome,
+  }) =>
+      logSyncFailure(
+        _logOf(),
+        message: message,
+        notice: notice,
+        error: error,
+        task: runTask,
+        outcome: outcome,
+        more: more,
+      );
+
+  static String _delayText(Duration delay) =>
+      delay.inSeconds < 60 ? "${delay.inSeconds} s" : "${delay.inMinutes} min";
 
   /// Why a run could not finish, as data (issue #108).
   ///

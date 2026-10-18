@@ -16,6 +16,8 @@
 /// server cannot be reached.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -2053,6 +2055,13 @@ class ServerSettingsScreenState extends State<ServerSettingsScreen> {
         ExpansionTile(
           key: diagnosticsSectionKey,
           tilePadding: EdgeInsets.zero,
+          // What a background run wrote in its own engine since the app read
+          // the log last, see [DiagnosticsLog.reload].
+          onExpansionChanged: (expanded) {
+            if (expanded) {
+              unawaited(log.reload());
+            }
+          },
           childrenPadding: const EdgeInsets.only(bottom: 16),
           title: Text(
             l10n.diagnosticsHeading,

@@ -3429,6 +3429,12 @@ abstract class AppLocalizations {
   /// **'The photo library could not be read: {problem}'**
   String noticePhotoLibraryFailed(String problem);
 
+  /// Says that the camera-roll sync ran into a failure nothing in it expected (a full disk, a broken store); the problem is the technical text of the failure
+  ///
+  /// In en, this message translates to:
+  /// **'The camera-roll sync failed unexpectedly: {problem}'**
+  String noticeSyncFailed(String problem);
+
   /// Says that the device refused access to its photos
   ///
   /// In en, this message translates to:

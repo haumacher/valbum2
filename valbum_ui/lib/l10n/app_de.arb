@@ -1165,5 +1165,6 @@
   "stackCount": "{count, plural, =1{1 ähnliche Aufnahme} other{{count} ähnliche Aufnahmen}}",
   "stackCollapse": "Ähnliche Aufnahmen wieder als eine Kachel anzeigen",
   "stackShotsAction": "Ähnliche Aufnahmen stapeln",
-  "unstackShotsAction": "Jedes Foto einzeln anzeigen"
+  "unstackShotsAction": "Jedes Foto einzeln anzeigen",
+  "noticeSyncFailed": "Die Synchronisierung der Kamerarolle ist unerwartet fehlgeschlagen: {problem}"
 }

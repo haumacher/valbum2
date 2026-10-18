@@ -10,6 +10,7 @@ import 'background.dart';
 import 'sync_notifier.dart';
 import 'sync_relay.dart';
 import 'client.dart';
+import 'diagnostics.dart';
 import 'downloads.dart';
 import 'hash_cache.dart';
 import 'connectivity.dart';
@@ -37,7 +38,11 @@ OfflineCache defaultOfflineCache() => MemoryOfflineCache();
 /// The memory of the photos' content hashes in a browser: memory only, see
 /// [HashCache]. A browser has no camera roll to sync (issue #30), so there is
 /// nothing to remember across a reload.
-HashCache defaultHashCache() => MemoryHashCache();
+HashCache defaultHashCache({DiagnosticsLog? log}) => MemoryHashCache();
+
+/// A browser has one engine and no file: the diagnostics log stays in
+/// memory.
+DiagnosticsStore? defaultDiagnosticsStore() => null;
 
 /// The hash of a file by its path: a browser has no paths, and no
 /// [PhotoItem.filePath] is ever set there.
@@ -80,7 +85,8 @@ DeviceCodeScanner defaultDeviceCodeScanner() => const NoDeviceCodeScanner();
 /// to sync anyway; the Wi-Fi-only setting therefore never refuses anything
 /// here (issue #36). The `connectivity_plus` plugin is never imported in the
 /// web build.
-ConnectivitySource defaultConnectivity() => const UnknownConnectivity();
+ConnectivitySource defaultConnectivity({DiagnosticsLog? log}) =>
+    const UnknownConnectivity();
 
 /// The background execution of a browser tab: there is none, see
 /// [BackgroundScheduler].
@@ -99,7 +105,8 @@ void executeBackgroundTask(Future<bool> Function(String task) task) {}
 SyncRelay? defaultSyncRelay() => null;
 
 /// The notification of a camera-roll upload: none in a browser.
-SyncNotifier defaultSyncNotifier() => const NoSyncNotifier();
+SyncNotifier defaultSyncNotifier({DiagnosticsLog? log}) =>
+    const NoSyncNotifier();
 
 /// Where the camera-roll runs are handed to: nowhere in a browser.
 SyncHandover? defaultSyncHandover(BackgroundScheduler scheduler) => null;

@@ -99,6 +99,15 @@ AppLocalizations get platformMessages => lookupAppLocalizations(
       ),
     );
 
+/// The strings in English, whatever language the device speaks: what the
+/// diagnostics log writes a reason of the app's own with.
+///
+/// Its entries are bug-report text and stay English (see `diagnostics.dart`),
+/// and they are read off the very same ARB the screens read: a failure the
+/// camera-roll section shows and the entry the log keeps of it say the same
+/// sentence, see [noticeText].
+AppLocalizations get englishMessages => lookupAppLocalizations(sourceLocale);
+
 /// The platform the app reads its language from.
 ///
 /// There are two [PlatformDispatcher]s to be had, and in a running app they

@@ -49,6 +49,7 @@ import 'locales.dart';
 import 'notices.dart';
 import 'client.dart';
 import 'connectivity.dart';
+import 'diagnostics.dart';
 import 'hash_cache.dart';
 import 'photo_library.dart';
 import 'platform.dart';
@@ -419,6 +420,8 @@ class BackgroundRunRecord {
         message: message is String ? message : null,
       );
     } catch (_) {
+      // Silent on purpose: a report that cannot be read is no report — the
+      // section shows none, and the next run writes a new one.
       return null;
     }
   }
@@ -506,6 +509,13 @@ class BackgroundRunResult {
 /// with a [relay] the run waits its turn behind another run of the process
 /// and reports to the app on the screen; [notifier] shows its progress while
 /// it uploads.
+///
+/// Every failure is written into [log]: the platform's run hands it a log
+/// over the store every engine of the app shares (see
+/// [backgroundSyncDispatcher] and [defaultDiagnosticsStore]), so that the app
+/// on the screen shows what went wrong here; without one the log is in
+/// memory, and a test touches no file. The run waits for the log to be
+/// written before it answers: the isolate is torn down after.
 Future<BackgroundRunResult> runBackgroundSync({
   SettingsStore store = const PreferencesSettingsStore(),
   PhotoLibrary? library,
@@ -517,10 +527,44 @@ Future<BackgroundRunResult> runBackgroundSync({
   SyncRelay? relay,
   SyncNotifier notifier = const NoSyncNotifier(),
   BackgroundScheduler? scheduler,
+  DiagnosticsLog? log,
 }) async {
   var now = clock ?? DateTime.now;
+  var diagnostics = log ?? DiagnosticsLog(now: now);
+  try {
+    return await _runBackgroundSync(
+      store: store,
+      library: library,
+      transport: transport,
+      connectivity: connectivity,
+      now: now,
+      hashCache: hashCache,
+      task: task,
+      relay: relay,
+      notifier: notifier,
+      scheduler: scheduler,
+      log: diagnostics,
+    );
+  } finally {
+    await diagnostics.flush();
+  }
+}
 
-  var config = await store.loadCameraRollConfig();
+/// [runBackgroundSync], writing into [log].
+Future<BackgroundRunResult> _runBackgroundSync({
+  required SettingsStore store,
+  required PhotoLibrary? library,
+  required http.Client? transport,
+  required ConnectivitySource? connectivity,
+  required DateTime Function() now,
+  required HashCache? hashCache,
+  required String task,
+  required SyncRelay? relay,
+  required SyncNotifier notifier,
+  required BackgroundScheduler? scheduler,
+  required DiagnosticsLog log,
+}) async {
+  var config = await store.loadCameraRollConfig(log: log);
   if (!config.enabled) {
     // Not a failure and not a report: the user switched the sync off, and the
     // task is on its way out (see [BackgroundScheduler.cancel]).
@@ -540,6 +584,18 @@ Future<BackgroundRunResult> runBackgroundSync({
       if (kDebugMode) {
         print("background sync task: no next trigger !! $error");
       }
+      // The run goes on; the next photo starts no run until the app is
+      // opened or the periodic run registers the trigger again.
+      log.record(
+        "Could not register the next background trigger: a new photo starts "
+        "no camera-roll run until the app or the periodic run registers it",
+        facts: [platformErrorFact(error), "Run: $task"],
+        cause: failureCause(
+          attempt: "background trigger",
+          platformError: errorCause(error),
+        ),
+        window: syncFailureMergeWindow,
+      );
     }
   }
 
@@ -552,6 +608,12 @@ Future<BackgroundRunResult> runBackgroundSync({
   await settings.load();
   var dataUrl = settings.dataUrl;
   if (dataUrl == null) {
+    logSyncFailure(
+      log,
+      notice: const NoServerConfigured(),
+      task: task,
+      outcome: "not retried until a server is set up in the app",
+    );
     return record(
       BackgroundRunRecord.failed(
         now(),
@@ -567,6 +629,8 @@ Future<BackgroundRunResult> runBackgroundSync({
     dataUrl: dataUrl,
     token: settings.token,
     httpClient: transport ?? ownTransport!,
+    // Every request that fails is written, as in the app.
+    log: log,
   );
 
   // A background run has no Activity to ask for a permission with (issue
@@ -580,7 +644,7 @@ Future<BackgroundRunResult> runBackgroundSync({
   // The Wi-Fi-only setting holds for a background run exactly as it does for
   // a foreground one (issue #36): the platform's "a network is connected"
   // constraint says nothing about *which* network, so the run asks.
-  var ownNetwork = connectivity == null ? defaultConnectivity() : null;
+  var ownNetwork = connectivity == null ? defaultConnectivity(log: log) : null;
   var network = connectivity ?? ownNetwork!;
 
   var sync = CameraRollSync(
@@ -599,10 +663,11 @@ Future<BackgroundRunResult> runBackgroundSync({
     clock: now,
     // The same file the app on the screen keeps (issue #299): a photo the
     // app hashed is not hashed again in the background, nor the reverse.
-    hashCache: hashCache ?? defaultHashCache(),
+    hashCache: hashCache ?? defaultHashCache(log: log),
     relay: relay,
     runTask: task,
     claimPatience: claimPatienceOf(task),
+    log: log,
   );
 
   // The notification says how many photos are still to go (issue #300); a
@@ -641,7 +706,16 @@ Future<BackgroundRunResult> runBackgroundSync({
         ),
       _ => BackgroundRunRecord.failed(now(), reasonOfStatus(status)),
     });
-  } catch (error) {
+  } catch (error, stack) {
+    // Told as the report the section shows tells it.
+    logSyncFailure(
+      log,
+      message: platformErrorText(error),
+      error: error,
+      task: task,
+      outcome: "retried by the next background run",
+      more: stackFacts(stack),
+    );
     return await record(
         BackgroundRunRecord.failed(now(), platformErrorText(error)));
   } finally {
@@ -672,21 +746,59 @@ Future<BackgroundRunResult> runBackgroundSync({
 @pragma('vm:entry-point')
 void backgroundSyncDispatcher() {
   executeBackgroundTask((task) async {
+    // One log for the whole task, over the store the app reads (issue #300).
+    var log = DiagnosticsLog(store: defaultDiagnosticsStore());
     try {
       await runBackgroundSync(
         task: task,
         relay: defaultSyncRelay(),
-        notifier: defaultSyncNotifier(),
+        notifier: defaultSyncNotifier(log: log),
         scheduler: defaultBackgroundScheduler(),
+        log: log,
       );
       return true;
-    } catch (error) {
+    } catch (error, stack) {
       if (kDebugMode) {
         print("background sync task !! $error");
       }
+      logBackgroundTaskFailure(log, task, error, stack);
+      await log.flush();
       return false;
     }
   });
+}
+
+/// Writes into [log] that the background [task] itself threw [error] — not a
+/// refusal of the run, but something wrong with this code — with the top of
+/// its [stack].
+void logBackgroundTaskFailure(
+  DiagnosticsLog log,
+  String task,
+  Object error,
+  StackTrace stack,
+) {
+  log.record(
+    "The background task '$task' failed: ${platformErrorText(error)}",
+    facts: [platformErrorFact(error), ...stackFacts(stack)],
+    cause: failureCause(
+      attempt: "background task $task",
+      platformError: errorCause(error),
+    ),
+    window: syncFailureMergeWindow,
+  );
+}
+
+/// The top of [stack] as lines of an entry: where an unexpected failure was
+/// thrown is what a bug report needs of it.
+List<String> stackFacts(StackTrace stack, {int frames = 6}) {
+  var lines = [
+    for (var line in "$stack".split("\n"))
+      if (line.trim().isNotEmpty) line.trim()
+  ];
+  return [
+    for (var line in lines.take(frames)) "Stack: $line",
+    if (lines.length > frames) "Stack: … ${lines.length - frames} more",
+  ];
 }
 
 /// Why a background run did not finish, in words the persisted report keeps.

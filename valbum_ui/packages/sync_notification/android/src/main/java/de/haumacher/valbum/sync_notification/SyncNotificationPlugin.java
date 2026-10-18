@@ -10,6 +10,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Build;
+import android.util.Log;
 
 import androidx.annotation.NonNull;
 
@@ -31,6 +32,12 @@ import io.flutter.plugin.common.PluginRegistry;
  * foreground service once the run is over. It also asks for {@code POST_NOTIFICATIONS}, a runtime
  * permission from Android 13 on; that needs the Activity, the rest needs only the application
  * context, so the engine WorkManager starts for a background run has all of it but the asking.
+ * </p>
+ *
+ * <p>
+ * Nothing here throws into the engine: a plugin detached from its engine, a system service that is
+ * not there, or a failure of the system is answered as an error with its complete text, which the
+ * app writes into its diagnostics log.
  * </p>
  */
 public class SyncNotificationPlugin implements FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler,
@@ -65,7 +72,9 @@ public class SyncNotificationPlugin implements FlutterPlugin, ActivityAware, Met
 
 	@Override
 	public void onDetachedFromEngine(@NonNull FlutterPluginBinding binding) {
-		_channel.setMethodCallHandler(null);
+		if (_channel != null) {
+			_channel.setMethodCallHandler(null);
+		}
 		_channel = null;
 		_context = null;
 	}
@@ -96,47 +105,56 @@ public class SyncNotificationPlugin implements FlutterPlugin, ActivityAware, Met
 
 	@Override
 	public void onMethodCall(@NonNull MethodCall call, @NonNull MethodChannel.Result result) {
-		switch (call.method) {
-			case "allowed":
-				result.success(allowed());
-				break;
-			case "askable":
-				result.success(askable());
-				break;
-			case "request":
-				request(result);
-				break;
-			case "show":
-				show(call);
-				result.success(null);
-				break;
-			case "clear":
-				Integer id = call.argument("id");
-				if (id != null) {
-					manager().cancel(id);
-				}
-				result.success(null);
-				break;
-			default:
-				result.notImplemented();
+		Context context = _context;
+		if (context == null) {
+			result.error("no_context", "The sync_notification plugin is not attached to an engine.", null);
+			return;
+		}
+		try {
+			switch (call.method) {
+				case "allowed":
+					result.success(allowed(context));
+					break;
+				case "askable":
+					result.success(askable(context));
+					break;
+				case "request":
+					request(context, result);
+					break;
+				case "show":
+					show(context, call);
+					result.success(null);
+					break;
+				case "clear":
+					Integer id = call.argument("id");
+					if (id != null) {
+						manager(context).cancel(id);
+					}
+					result.success(null);
+					break;
+				default:
+					result.notImplemented();
+			}
+		} catch (RuntimeException ex) {
+			result.error("sync_notification_failed", String.valueOf(ex), Log.getStackTraceString(ex));
 		}
 	}
 
 	/** Whether the app's notifications are shown. */
-	private boolean allowed() {
-		return manager().areNotificationsEnabled();
+	private static boolean allowed(Context context) {
+		return manager(context).areNotificationsEnabled();
 	}
 
 	/** Whether the system can still be asked to show them: Android 13 and newer, not yet granted. */
-	private boolean askable() {
+	private static boolean askable(Context context) {
 		return Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
-			&& _context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+			&& context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
 				!= PackageManager.PERMISSION_GRANTED;
 	}
 
-	private void request(MethodChannel.Result result) {
-		if (!askable()) {
-			result.success(allowed());
+	private void request(Context context, MethodChannel.Result result) {
+		if (!askable(context)) {
+			result.success(allowed(context));
 			return;
 		}
 		Activity activity = _binding == null ? null : _binding.getActivity();
@@ -162,7 +180,7 @@ public class SyncNotificationPlugin implements FlutterPlugin, ActivityAware, Met
 		return true;
 	}
 
-	private void show(MethodCall call) {
+	private static void show(Context context, MethodCall call) {
 		Integer id = call.argument("id");
 		String channelId = call.argument("channel");
 		String channelName = call.argument("channelName");
@@ -173,16 +191,16 @@ public class SyncNotificationPlugin implements FlutterPlugin, ActivityAware, Met
 		if (id == null || channelId == null) {
 			return;
 		}
-		NotificationManager manager = manager();
+		NotificationManager manager = manager(context);
 		Notification.Builder builder;
 		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
 			// The channel WorkManager's notification of the same work was created in; creating it
 			// again only updates its name.
 			manager.createNotificationChannel(new NotificationChannel(channelId,
 				channelName == null ? channelId : channelName, NotificationManager.IMPORTANCE_LOW));
-			builder = new Notification.Builder(_context, channelId).setTimeoutAfter(TIMEOUT_MILLIS);
+			builder = new Notification.Builder(context, channelId).setTimeoutAfter(TIMEOUT_MILLIS);
 		} else {
-			builder = new Notification.Builder(_context).setPriority(Notification.PRIORITY_LOW);
+			builder = new Notification.Builder(context).setPriority(Notification.PRIORITY_LOW);
 		}
 		int max = total == null ? 0 : total;
 		int progress = done == null ? 0 : Math.min(done, max);
@@ -194,7 +212,7 @@ public class SyncNotificationPlugin implements FlutterPlugin, ActivityAware, Met
 			.setOnlyAlertOnce(true)
 			.setCategory(Notification.CATEGORY_PROGRESS)
 			.setProgress(max, progress, max == 0);
-		PendingIntent open = openApp();
+		PendingIntent open = openApp(context);
 		if (open != null) {
 			builder.setContentIntent(open);
 		}
@@ -202,17 +220,23 @@ public class SyncNotificationPlugin implements FlutterPlugin, ActivityAware, Met
 	}
 
 	/** Opens the app where the notification is tapped, {@code null} where it has no launcher entry. */
-	private PendingIntent openApp() {
-		Intent launch = _context.getPackageManager().getLaunchIntentForPackage(_context.getPackageName());
+	private static PendingIntent openApp(Context context) {
+		Intent launch = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
 		if (launch == null) {
 			return null;
 		}
-		return PendingIntent.getActivity(_context, 0, launch,
+		return PendingIntent.getActivity(context, 0, launch,
 			PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 	}
 
-	private NotificationManager manager() {
-		return (NotificationManager) _context.getSystemService(Context.NOTIFICATION_SERVICE);
+	/** The notification service; never {@code null}, a missing one is a failure with its own text. */
+	private static NotificationManager manager(Context context) {
+		NotificationManager manager =
+			(NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+		if (manager == null) {
+			throw new IllegalStateException("The system has no notification service.");
+		}
+		return manager;
 	}
 
 }

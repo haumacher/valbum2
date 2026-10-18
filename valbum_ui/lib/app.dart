@@ -248,8 +248,15 @@ class VAlbumAppState extends State<VAlbumApp> {
   /// One per app, handed to every client it builds — a session client
   /// included — so that the diagnostics section of the settings shows all of
   /// it, whichever server a request went to.
-  late final DiagnosticsLog diagnostics =
-      widget.diagnostics ?? DiagnosticsLog();
+  ///
+  /// Kept in the store every engine of the app shares (a file on a device,
+  /// see [defaultDiagnosticsStore]), so that it shows what a background run
+  /// wrote as well — unless a test or an embedder drives this app, see
+  /// [_defaultCache].
+  late final DiagnosticsLog diagnostics = widget.diagnostics ??
+      DiagnosticsLog(
+        store: widget.client != null ? null : defaultDiagnosticsStore(),
+      );
 
   /// Whether [offlineState] was created here and must be disposed.
   bool get _ownsOfflineState => widget.offlineState == null;
@@ -307,15 +314,21 @@ class VAlbumAppState extends State<VAlbumApp> {
     targets: uploadTargets,
     // A file of the device (issue #299), unless a test or an embedder drives
     // this app, see [_defaultCache].
-    hashCache: widget.client != null ? MemoryHashCache() : defaultHashCache(),
+    hashCache: widget.client != null
+        ? MemoryHashCache()
+        : defaultHashCache(log: diagnostics),
     // On Android a run is handed to a foreground work, which goes on with the
     // screen off, and every run of the process meets the others in one relay
     // (issue #300); nothing of it where a test or an embedder drives this
     // app, exactly as with the scheduler.
     relay: widget.client != null ? null : defaultSyncRelay(),
     handover: defaultSyncHandover(backgroundScheduler),
-    notifier:
-        widget.client != null ? const NoSyncNotifier() : defaultSyncNotifier(),
+    notifier: widget.client != null
+        ? const NoSyncNotifier()
+        : defaultSyncNotifier(log: diagnostics),
+    // Every failure of a run, whichever server the client of the moment
+    // talks to — and the one where there is no client at all.
+    log: diagnostics,
   );
 
   /// Where new photos of this device go besides the inbox, per server
@@ -329,7 +342,7 @@ class VAlbumAppState extends State<VAlbumApp> {
   /// [_defaultScheduler].
   late final ConnectivitySource connectivity = widget.client != null
       ? const UnknownConnectivity()
-      : defaultConnectivity();
+      : defaultConnectivity(log: diagnostics);
 
   /// The cache used when the app is not told otherwise.
   ///
@@ -725,6 +738,9 @@ class VAlbumAppState extends State<VAlbumApp> {
     // A run that uploaded something changed what waits in the inbox, and the
     // badge on the start page says how much (issue #226).
     cameraRoll.addListener(_cameraRollChanged);
+    // What the engines of the app wrote before it started — a background run
+    // while it was closed above all.
+    unawaited(diagnostics.reload());
     settingsLoaded.then((_) => _finishMemberSignIn());
     settingsLoaded.then((_) => uploadTargets.load());
     settingsLoaded.then((_) => cameraRoll.load()).then((_) {

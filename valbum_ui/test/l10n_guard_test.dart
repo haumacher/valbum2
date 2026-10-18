@@ -67,6 +67,7 @@ const List<String> convertedFiles = [
   "lib/device_code_scanner.dart",
   "lib/device_code_scanner_plugin.dart",
   "lib/diagnostics.dart",
+  "lib/diagnostics_file.dart",
   "lib/dialog_style.dart",
   "lib/duplicates_view.dart",
   "lib/downloads.dart",
@@ -332,7 +333,75 @@ const Map<String, String> allowedLiterals = {
   "no VAlbumNavigator in the widget tree": "assertion, never shown to a user",
   "No VAlbumScope found in the widget tree.":
       "assertion, never shown to a user",
+  // The entries every failure of a camera-roll run writes, in any engine
+  // (2.15.0), see `logSyncFailure` and `diagnostics_file.dart`.
+  r"background task ${}": "diagnostics log",
+  "background trigger": "diagnostics log",
+  "camera-roll settings": "diagnostics log",
+  r"camera-roll sync ${}": "diagnostics log",
+  r"Camera-roll sync did not finish: ${}": "diagnostics log",
+  r"Could not ${} the background sync: ${}": "diagnostics log",
+  "Could not follow the camera-roll runs elsewhere in the app":
+      "diagnostics log",
+  "Could not read the camera-roll settings afresh": "diagnostics log",
+  "Could not read the camera-roll settings: the sync is switched off until it is switched on again":
+      "diagnostics log",
+  "Could not register the next background trigger: a new photo starts no camera-roll run until the app or the periodic run registers it":
+      "diagnostics log",
+  "Could not report the camera-roll run to the app": "diagnostics log",
+  "Could not stop the camera-roll run elsewhere": "diagnostics log",
+  "Could not wait for the other camera-roll runs of the app: this one runs regardless":
+      "diagnostics log",
+  "no reason given": "diagnostics log",
+  "not retried until a server is set up in the app": "diagnostics log",
+  "retried by the next background run": "diagnostics log",
+  r"Run: ${}": "diagnostics log",
+  r"Server answered: ${}${}": "diagnostics log",
+  r"Stack: ${}": "diagnostics log",
+  r"Stack: … ${} more": "diagnostics log",
+  r"The background task '${}' failed: ${}": "diagnostics log",
+  r"${} min": "diagnostics log",
+  "ask which network the device is on": "diagnostics log",
+  r"camera-roll ${}": "diagnostics log",
+  r"camera-roll handover ${}": "diagnostics log",
+  "Camera-roll sync did not finish: the run handed to WorkManager ended without a report":
+      "diagnostics log",
+  r"connectivity ${}": "diagnostics log",
+  r"Could not ${}${}": "diagnostics log",
+  r"Could not ${}: the network is taken as unknown": "diagnostics log",
+  "Could not ask the server which photos it holds: the photos are offered by their uploads instead":
+      "diagnostics log",
+  "Could not ask WorkManager about the camera-roll run": "diagnostics log",
+  "Could not hand the camera-roll run to WorkManager: it runs in the app":
+      "diagnostics log",
+  "follow the network of the device": "diagnostics log",
+  "list the albums of the device": "diagnostics log",
+  "no report": "diagnostics log",
+  "not retried: a retry changes nothing": "diagnostics log",
+  "not retried until the app is opened and access is granted":
+      "diagnostics log",
+  "Outcome: the platform stopped the work, cut it off, or it crashed; what it wrote itself is above":
+      "diagnostics log",
+  "retried by the next run": "diagnostics log",
+  r"retried in ${}": "diagnostics log",
+  r"Run: ${}, handed to ${}": "diagnostics log",
+  "ask for the permission to show notifications": "diagnostics log",
+  "ask whether notifications are shown": "diagnostics log",
+  "ask whether notifications may be asked for": "diagnostics log",
+  r"Cannot ${} the hash cache: ${}": "diagnostics log",
+  r"Could not ${}: the camera-roll sync goes on without it": "diagnostics log",
+  r"Could not ${} the hash cache: the camera-roll sync hashes the photos again":
+      "diagnostics log",
+  "Could not keep the diagnostics log on the device: it is kept in memory from now on":
+      "diagnostics log",
+  "Engine: the entries of other engines (a background run) are not shown here until the app is started again":
+      "diagnostics log",
+  r"hash cache ${}": "diagnostics log",
+  r"notification ${}": "diagnostics log",
+  "remove the upload notification": "diagnostics log",
+  "show the upload notification": "diagnostics log",
   // Thrown, never shown: see `allowedThrownLiterals`.
+  "not a JSON object": "thrown, see allowedThrownLiterals",
   "Not an absolute server URL (expected e.g. 'http://host:8080/valbum/').":
       "thrown, see allowedThrownLiterals",
   r"The thumbnail at ${} is empty.": "thrown, see allowedThrownLiterals",
@@ -403,6 +472,9 @@ const Map<String, String> allowedLiterals = {
 /// a localized sentence of the app's own. A message that is shown belongs in
 /// the ARB, not in this map.
 const Map<String, String> allowedThrownLiterals = {
+  "not a JSON object":
+      "FormatException of `CameraRollConfig.parse`, caught there and written "
+          "into the diagnostics log only, which is English by design",
   "XMLHttpRequest error.":
       "the `ClientException` of `browser_upload.dart`, in the very words "
           "`BrowserClient` throws for the same failure (issue #170); a "

@@ -8,6 +8,8 @@ import 'package:flutter/foundation.dart';
 
 import 'background.dart';
 import 'client.dart';
+import 'diagnostics.dart';
+import 'diagnostics_file.dart';
 import 'downloads.dart';
 import 'hash_cache.dart';
 import 'hash_cache_file.dart';
@@ -36,7 +38,17 @@ OfflineCache defaultOfflineCache() => FileOfflineCache.underSupportDirectory();
 
 /// The memory of the photos' content hashes the camera-roll sync keeps, see
 /// [HashCache]: a file under the application support directory (issue #299).
-HashCache defaultHashCache() => FileHashCache.underSupportDirectory();
+///
+/// What it cannot read or write is written into [log].
+HashCache defaultHashCache({DiagnosticsLog? log}) =>
+    FileHashCache.underSupportDirectory(log: log);
+
+/// Where the diagnostics log is kept beyond one engine: a file under the
+/// application support directory, which every engine of the app — the
+/// background run of WorkManager included — appends to, see
+/// `diagnostics_file.dart`.
+DiagnosticsStore? defaultDiagnosticsStore() =>
+    FileDiagnosticsStore.underSupportDirectory();
 
 /// The hash of the file at [path] and the bytes read, computed off the UI
 /// isolate, see [sha256OfFileInIsolate].
@@ -121,9 +133,12 @@ DeviceCodeScanner defaultDeviceCodeScanner() =>
 /// [defaultPhotoLibrary]: this asks which *machine* the code runs on, and a
 /// widget test runs on a desktop while it says it is a phone — a background
 /// run in a test must reach no plugin channel.
-ConnectivitySource defaultConnectivity() => Platform.isAndroid || Platform.isIOS
-    ? PluginConnectivity()
-    : const UnknownConnectivity();
+///
+/// A failure of the plugin is written into [log].
+ConnectivitySource defaultConnectivity({DiagnosticsLog? log}) =>
+    Platform.isAndroid || Platform.isIOS
+        ? PluginConnectivity(log: log)
+        : const UnknownConnectivity();
 
 /// The platform's periodic background execution, see [BackgroundScheduler].
 ///
@@ -160,8 +175,10 @@ SyncRelay? defaultSyncRelay() => Platform.isAndroid ? IsolateSyncRelay() : null;
 
 /// The notification of a camera-roll upload (issue #300): the plugin on
 /// Android, nothing anywhere else.
-SyncNotifier defaultSyncNotifier() =>
-    Platform.isAndroid ? const PluginSyncNotifier() : const NoSyncNotifier();
+///
+/// A failure of the plugin is written into [log].
+SyncNotifier defaultSyncNotifier({DiagnosticsLog? log}) =>
+    Platform.isAndroid ? PluginSyncNotifier(log: log) : const NoSyncNotifier();
 
 /// Where the app on the screen hands its camera-roll runs to (issue #300):
 /// the foreground work of [scheduler] on Android, nobody anywhere else — the

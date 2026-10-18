@@ -8,9 +8,13 @@
 /// failed with a `NullPointerException` and its whole Java stack on the
 /// settings screen. These tests pin the four decisions of the fix:
 ///
-///  * a background library only reads the state (`getPermissionState`) and
-///    asks the app's own `media_location` plugin whether the location may be
-///    read — both answered without an Activity;
+///  * a background library only reads what was granted, and asks the app's
+///    own `media_location` plugin both whether the photos and whether their
+///    location may be read — answered without an Activity. Not
+///    `photo_manager`'s `getPermissionState`: in the engine WorkManager starts
+///    it reads through an Activity that is not there, and a release build
+///    answers "… getClass() on a null object reference" (2.15.0, where every
+///    run of the app went to that engine, issue #300);
 ///  * without the location permission the background run uploads nothing and
 ///    says why, because every original would be read as its redacted copy;
 ///  * a platform failure is told by its message, never by its stack;
@@ -61,6 +65,16 @@ class FakePlatform {
   /// How often the location question was asked.
   int locationQuestions = 0;
 
+  /// How often the photo question of a background library was asked.
+  int accessQuestions = 0;
+
+  /// What `media_location` answers about the photos: `full`, `limited`,
+  /// `none` — or anything else a later version might say.
+  String access;
+
+  /// What that question throws instead of answering, if anything.
+  PlatformException? accessFailure;
+
   /// The permission state answered, as `photo_manager` encodes it
   /// ([PermissionState.index]).
   PermissionState photos;
@@ -74,6 +88,7 @@ class FakePlatform {
   FakePlatform({
     this.photos = PermissionState.authorized,
     this.location = true,
+    this.access = "full",
   });
 
   /// Installs the handlers; they are removed when the test ends.
@@ -96,6 +111,14 @@ class FakePlatform {
       }
     });
     messenger.setMockMethodCallHandler(mediaLocationChannel, (call) async {
+      if (call.method == mediaAccessMethod) {
+        accessQuestions++;
+        var failure = accessFailure;
+        if (failure != null) {
+          throw failure;
+        }
+        return access;
+      }
       expect(call.method, mediaLocationHeldMethod);
       locationQuestions++;
       return location;
@@ -112,11 +135,12 @@ class FakePlatform {
 
 /// The library a background run builds, talking to the mocked channels.
 ///
-/// The location question goes to the plugin's channel directly: the library's
-/// own default asks it on Android only, and the test runs on the host.
+/// Both questions go to the plugin's channel directly: the library's own
+/// defaults ask it on Android only, and the test runs on the host.
 PhotoManagerLibrary backgroundLibrary() => PhotoManagerLibrary(
       interactive: false,
       locationGranted: isMediaLocationGranted,
+      photoAccess: readMediaAccess,
     );
 
 /// A store holding a switched-on sync into `Inbox` on a paired server.
@@ -153,8 +177,9 @@ class FakeServer {
 Future<BackgroundRunResult> runInBackground(
   WidgetTester tester,
   InMemorySettingsStore store,
-  FakeServer server,
-) async {
+  FakeServer server, {
+  DiagnosticsLog? log,
+}) async {
   var library = backgroundLibrary();
   addTearDown(library.dispose);
   return (await tester.runAsync(() => runBackgroundSync(
@@ -163,6 +188,7 @@ Future<BackgroundRunResult> runInBackground(
         transport: server.transport,
         connectivity: FakeConnectivity(),
         clock: () => now,
+        log: log,
       )))!;
 }
 
@@ -195,21 +221,19 @@ Future<void> pumpSection(
 
 void main() {
   group('the access check of a background library', () {
-    testWidgets('reads the state and never requests a permission',
+    testWidgets('asks the app\'s own plugin, never photo_manager',
         (tester) async {
       var platform = FakePlatform()..install();
       var library = backgroundLibrary();
 
       expect(await library.requestAccess(), isTrue);
 
-      expect(platform.photoMethods, ["getPermissionState"]);
-      expect(platform.photoMethods, isNot(contains("requestPermissionExtend")));
-      // It asks about the same permissions the foreground requests, the
-      // location included, so that "limited" and "denied" mean the same.
-      var arguments = platform.photoCalls.single.arguments as Map;
-      expect((arguments["androidPermission"] as Map)["mediaLocation"], isTrue);
+      // Not even `getPermissionState`: that one needs the Activity.
+      expect(platform.photoMethods, isEmpty);
+      expect(platform.accessQuestions, 1);
       expect(platform.locationQuestions, 1);
       expect(library.accessProblem, isNull);
+      expect(library.accessError, isNull);
     });
 
     testWidgets('the app on the screen still asks, the location included',
@@ -223,6 +247,7 @@ void main() {
       expect(platform.photoMethods, ["requestPermissionExtend"]);
       var arguments = platform.photoCalls.single.arguments as Map;
       expect((arguments["androidPermission"] as Map)["mediaLocation"], isTrue);
+      expect(platform.accessQuestions, 0);
     });
 
     testWidgets('declines without the location permission', (tester) async {
@@ -232,12 +257,13 @@ void main() {
       expect(await library.requestAccess(), isFalse);
 
       expect(library.accessProblem, const MediaLocationNotGranted());
-      expect(platform.photoMethods, isNot(contains("requestPermissionExtend")));
+      expect(library.accessError, isNull);
+      expect(platform.photoMethods, isEmpty);
     });
 
     testWidgets('answers the photo refusal where the photos are not allowed',
         (tester) async {
-      var platform = FakePlatform(photos: PermissionState.denied)..install();
+      var platform = FakePlatform(access: "none")..install();
       var library = backgroundLibrary();
 
       expect(await library.requestAccess(), isFalse);
@@ -245,15 +271,34 @@ void main() {
       expect(library.accessProblem, const PhotoAccessDenied());
       // Nothing to ask about the location of photos it may not read.
       expect(platform.locationQuestions, 0);
-      expect(platform.photoMethods, ["getPermissionState"]);
+      expect(platform.photoMethods, isEmpty);
     });
 
     testWidgets('accepts the photos the user picked ("limited")',
         (tester) async {
-      FakePlatform(photos: PermissionState.limited).install();
+      var platform = FakePlatform(access: "limited")..install();
       var library = backgroundLibrary();
 
       expect(await library.requestAccess(), isTrue);
+      expect(platform.photoMethods, isEmpty);
+    });
+
+    testWidgets('accepts full access', (tester) async {
+      FakePlatform(access: "full").install();
+      var library = backgroundLibrary();
+
+      expect(await library.requestAccess(), isTrue);
+    });
+
+    testWidgets('never reads an answer it does not know as granted',
+        (tester) async {
+      FakePlatform(access: "partially").install();
+      var library = backgroundLibrary();
+
+      expect(await library.requestAccess(), isFalse);
+
+      expect(library.accessProblem, isA<PhotoLibraryOpenFailed>());
+      expect(library.accessError, isA<FormatException>());
     });
 
     testWidgets('declines where the location question cannot be answered',
@@ -261,12 +306,40 @@ void main() {
       FakePlatform().install();
       var library = PhotoManagerLibrary(
         interactive: false,
+        photoAccess: readMediaAccess,
         locationGranted: () async => throw MissingPluginException("gone"),
       );
 
       expect(await library.requestAccess(), isFalse);
 
       expect(library.accessProblem, const PhotoLibraryOpenFailed("gone"));
+      expect(library.accessError, isA<MissingPluginException>());
+    });
+
+    testWidgets('declines where the photo question throws, keeping the error',
+        (tester) async {
+      var platform = FakePlatform()..install();
+      var failure = PlatformException(
+        code: "error",
+        message: javaMessage,
+        details: javaStack,
+      );
+      platform.accessFailure = failure;
+      var library = backgroundLibrary();
+
+      expect(await library.requestAccess(), isFalse);
+
+      expect(library.accessProblem, const PhotoLibraryOpenFailed(javaMessage));
+      // The very exception, re-encoded by the channel: code, message and
+      // details, for the diagnostics log.
+      expect(
+        library.accessError,
+        isA<PlatformException>()
+            .having((e) => e.code, "code", failure.code)
+            .having((e) => e.message, "message", failure.message)
+            .having((e) => e.details, "details", failure.details),
+      );
+      expect(platform.photoMethods, isEmpty);
     });
   });
 
@@ -274,7 +347,7 @@ void main() {
     testWidgets('is told by its message, not by its Java stack',
         (tester) async {
       var platform = FakePlatform()..install();
-      platform.permissionFailure = PlatformException(
+      platform.accessFailure = PlatformException(
         code: "error",
         message: javaMessage,
         details: javaStack,
@@ -333,7 +406,7 @@ void main() {
       expect(result.ok, isFalse);
       expect(server.uploads, isEmpty);
       // Nothing of the library was read, so nothing redacted could be.
-      expect(platform.photoMethods, ["getPermissionState"]);
+      expect(platform.photoMethods, isEmpty);
       expect(
         result.record?.message,
         testL10n.noticeMediaLocationNotGranted,
@@ -384,16 +457,64 @@ void main() {
       var result = await runInBackground(tester, store, server);
 
       expect(result.ok, isTrue, reason: "$result");
-      expect(platform.photoMethods.first, "getPermissionState");
+      expect(platform.photoMethods, isNot(contains("getPermissionState")));
       expect(platform.photoMethods, isNot(contains("requestPermissionExtend")));
       // It went on to read the library.
       expect(platform.photoMethods, contains("getAssetPathList"));
       expect(platform.locationQuestions, 1);
     });
 
+    testWidgets('with the limited access of Android 14 proceeds as well',
+        (tester) async {
+      var platform = FakePlatform(access: "limited")..install();
+      var store = enabledStore();
+      var server = FakeServer();
+
+      var result = await runInBackground(tester, store, server);
+
+      expect(result.ok, isTrue, reason: "$result");
+      expect(platform.photoMethods, contains("getAssetPathList"));
+      expect(platform.photoMethods, isNot(contains("getPermissionState")));
+    });
+
+    testWidgets(
+        'whose check throws the getClass NPE writes the whole of it '
+        'into the diagnostics log', (tester) async {
+      var platform = FakePlatform()..install();
+      platform.accessFailure = PlatformException(
+        code: "error",
+        message: javaMessage,
+        details: javaStack,
+      );
+      var store = enabledStore();
+      var server = FakeServer();
+      var log = DiagnosticsLog(now: () => now);
+
+      var result = await runInBackground(tester, store, server, log: log);
+
+      expect(result.ok, isFalse);
+      expect(server.uploads, isEmpty);
+      expect(platform.photoMethods, isEmpty);
+      var entry = log.entries.single;
+      expect(
+        entry.headline,
+        "Camera-roll sync did not finish: "
+        "${noticeText(const PhotoLibraryOpenFailed(javaMessage), testL10n)}",
+      );
+      expect(
+        entry.facts,
+        contains("Platform error: code error, message $javaMessage, "
+            "details $javaStack"),
+      );
+      expect(entry.facts, contains("Run: $backgroundSyncTaskName"));
+      // The report the section shows tells the same story.
+      expect(result.record?.message,
+          noticeText(const PhotoLibraryOpenFailed(javaMessage), testL10n));
+    });
+
     testWidgets('without photo access records the photo refusal',
         (tester) async {
-      FakePlatform(photos: PermissionState.denied).install();
+      FakePlatform(access: "none").install();
       var store = enabledStore();
       var server = FakeServer();
 

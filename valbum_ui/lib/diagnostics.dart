@@ -23,12 +23,22 @@
 /// language, like the header of [DiagnosticsLog.copyText]: whoever reads a
 /// pasted log reads it next to the source code.
 ///
+/// **Every engine of the app writes into the same log.** A camera-roll run on
+/// Android is carried out in the engine WorkManager starts (issue #300), an
+/// isolate of its own that shares no memory with the app on the screen. So
+/// the log is kept in a [DiagnosticsStore] as well — on a device a small file
+/// of the application support directory, see `diagnostics_file.dart` — which
+/// every engine appends to and the app reads back: at start, when a run
+/// elsewhere ends, and when the diagnostics section is opened. In a browser
+/// there is one engine and no file, and the log stays in memory.
+///
 /// Nothing secret is ever written here: no request bodies at all (the pairing
 /// request carries the code), never the value of an `Authorization` header
 /// (only whether there was one), and every token in a URL path is masked, see
 /// [maskUrl].
 library;
 
+import 'dart:async';
 import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
@@ -93,6 +103,10 @@ class DiagnosticsEntry {
   /// that is never merged.
   final String? cause;
 
+  /// How far after its latest occurrence a failure of the same [cause] is
+  /// still merged into this entry, see [DiagnosticsLog.record].
+  final Duration window;
+
   /// How often the failure happened.
   int _count = 1;
 
@@ -108,10 +122,69 @@ class DiagnosticsEntry {
     this.facts = const [],
     this.cause,
     String? item,
+    this.window = diagnosticsMergeWindow,
   ]) : _lastAt = at {
     if (item != null) {
       _items.add(item);
     }
+  }
+
+  /// The entry as one record of a [DiagnosticsStore]: plain values that a
+  /// JSON line holds.
+  Map<String, Object?> toRecord() => {
+        "v": 1,
+        "at": at.microsecondsSinceEpoch,
+        if (at.isUtc) "utc": true,
+        "h": headline,
+        if (facts.isNotEmpty) "f": facts,
+        if (cause != null) "c": cause,
+        if (window != diagnosticsMergeWindow) "w": window.inMilliseconds,
+        if (_count != 1) "n": _count,
+        if (_lastAt != at) "last": _lastAt.microsecondsSinceEpoch,
+        if (_items.isNotEmpty) "i": _items,
+      };
+
+  /// The entry [record] holds, see [toRecord]; `null` for anything that is
+  /// not one — a line torn by a crash, or one of a later version.
+  static DiagnosticsEntry? fromRecord(Object? record) {
+    if (record is! Map || record["v"] != 1) {
+      return null;
+    }
+    var at = record["at"];
+    var headline = record["h"];
+    if (at is! int || headline is! String) {
+      return null;
+    }
+    var utc = record["utc"] == true;
+    DateTime time(int micros) =>
+        DateTime.fromMicrosecondsSinceEpoch(micros, isUtc: utc);
+    var facts = record["f"];
+    var cause = record["c"];
+    var window = record["w"];
+    var count = record["n"];
+    var last = record["last"];
+    var items = record["i"];
+    var entry = DiagnosticsEntry(
+      time(at),
+      headline,
+      List.unmodifiable([
+        if (facts is List)
+          for (var fact in facts) "$fact"
+      ]),
+      cause is String ? cause : null,
+      null,
+      window is int ? Duration(milliseconds: window) : diagnosticsMergeWindow,
+    );
+    if (count is int && count > 1) {
+      entry._count = count;
+    }
+    if (last is int) {
+      entry._lastAt = time(last);
+    }
+    if (items is List) {
+      entry._items.addAll([for (var item in items) "$item"]);
+    }
+    return entry;
   }
 
   /// How often the failure happened, 1 for a single one.
@@ -123,12 +196,16 @@ class DiagnosticsEntry {
   /// The distinct items the failure happened for.
   List<String> get items => List.unmodifiable(_items);
 
-  /// Counts one more occurrence at [time], for [item].
-  void _repeat(DateTime time, String? item) {
-    _count++;
-    _lastAt = time;
-    if (item != null && !_items.contains(item)) {
-      _items.add(item);
+  /// Counts the occurrences of [other], a later failure of the same cause.
+  void _absorb(DiagnosticsEntry other) {
+    _count += other._count;
+    if (other._lastAt.isAfter(_lastAt)) {
+      _lastAt = other._lastAt;
+    }
+    for (var item in other._items) {
+      if (!_items.contains(item)) {
+        _items.add(item);
+      }
     }
   }
 
@@ -176,13 +253,99 @@ class DiagnosticsEntry {
   static String _three(int value) => value.toString().padLeft(3, "0");
 }
 
+/// Where a [DiagnosticsLog] keeps its entries beyond the memory of one
+/// isolate, see the library comment.
+///
+/// A store holds *records* ([DiagnosticsEntry.toRecord]): every failure is
+/// appended as a record of its own, and reading answers them in order, to be
+/// merged exactly as [DiagnosticsLog.record] merges them, see
+/// [replayDiagnostics]. Several engines may append at once; a store must
+/// neither lose nor tear a record then, and a record it cannot read back is
+/// skipped, never a reason to fail.
+abstract class DiagnosticsStore {
+  /// Every record kept, oldest first.
+  Future<List<Map<String, Object?>>> read();
+
+  /// Keeps [record] after the others.
+  Future<void> append(Map<String, Object?> record);
+
+  /// Forgets every record.
+  Future<void> clear();
+}
+
+/// A [DiagnosticsStore] in memory, shared by every log handed the same
+/// instance — a test's stand-in for the file of a device.
+class MemoryDiagnosticsStore implements DiagnosticsStore {
+  final List<Map<String, Object?>> records = [];
+
+  @override
+  Future<List<Map<String, Object?>>> read() async => [...records];
+
+  @override
+  Future<void> append(Map<String, Object?> record) async => records.add(record);
+
+  @override
+  Future<void> clear() async => records.clear();
+}
+
+/// The entries [records] make, merged as [DiagnosticsLog.record] merges
+/// them, the last [capacity] of them; a record that is none is skipped.
+///
+/// In the order they happened, not in the order they were written: two
+/// engines append to one store, and the one that failed first may write
+/// last. Records of the same moment keep their order.
+List<DiagnosticsEntry> replayDiagnostics(
+  Iterable<Object?> records,
+  int capacity,
+) {
+  var read = records
+      .map(DiagnosticsEntry.fromRecord)
+      .whereType<DiagnosticsEntry>()
+      .toList();
+  var order = [for (var index = 0; index < read.length; index++) index]
+    ..sort((a, b) {
+      var byTime = read[a].at.compareTo(read[b].at);
+      return byTime != 0 ? byTime : a.compareTo(b);
+    });
+  var entries = Queue<DiagnosticsEntry>();
+  for (var index in order) {
+    _mergeEntry(entries, read[index], capacity);
+  }
+  return entries.toList();
+}
+
+/// Adds [incoming] to [entries], or merges it into the newest entry of its
+/// cause whose latest occurrence lies at most [DiagnosticsEntry.window] of
+/// [incoming] before it; the oldest entries are dropped beyond [capacity].
+void _mergeEntry(
+  Queue<DiagnosticsEntry> entries,
+  DiagnosticsEntry incoming,
+  int capacity,
+) {
+  var cause = incoming.cause;
+  if (cause != null) {
+    for (var entry in entries.toList().reversed) {
+      if (entry.cause == cause &&
+          incoming.at.difference(entry.lastAt) <= incoming.window) {
+        entry._absorb(incoming);
+        return;
+      }
+    }
+  }
+  entries.addLast(incoming);
+  while (entries.length > capacity) {
+    entries.removeFirst();
+  }
+}
+
 /// The problems the app ran into, the last [capacity] of them.
 ///
-/// One instance per app, handed to every [VAlbumClient] the app builds (the
-/// way the offline state and the cache are), so that every failure lands in
-/// the same log whichever server it came from. A [ChangeNotifier], so that the
-/// diagnostics section of the settings screen shows what arrives while it is
-/// open.
+/// One instance per engine: the app's is handed to every [VAlbumClient] the
+/// app builds (the way the offline state and the cache are), so that every
+/// failure lands in the same log whichever server it came from; a background
+/// run builds one of its own over the same [store], see the library comment.
+/// A [ChangeNotifier], so that the diagnostics section of the settings screen
+/// shows what arrives while it is open.
 class DiagnosticsLog extends ChangeNotifier {
   /// How many entries are kept; the oldest are dropped beyond it.
   final int capacity;
@@ -190,12 +353,38 @@ class DiagnosticsLog extends ChangeNotifier {
   /// The clock, so that a test can pin the timestamps.
   final DateTime Function() now;
 
+  /// Where the entries are kept beyond this isolate, `null` for a log in
+  /// memory only.
+  ///
+  /// A store that fails is dropped: the log goes on in memory and says so
+  /// in an entry of its own.
+  DiagnosticsStore? _store;
+
   final Queue<DiagnosticsEntry> _entries = Queue<DiagnosticsEntry>();
+
+  /// The last of the writes to [_store], which run one after the other;
+  /// `null` while none is pending.
+  ///
+  /// Not a completed future while there is nothing to wait for: a future
+  /// completes in the zone it was made in, and a log made in one zone and
+  /// flushed in another — a test's fake clock and its real one — would wait
+  /// for a zone that never runs.
+  Future<void>? _writes;
+
+  /// For every [reload] that has not read yet, the entries recorded since it
+  /// was asked for: their writes come after its read, so its answer cannot
+  /// hold them.
+  final List<List<DiagnosticsEntry>> _arrivals = [];
 
   DiagnosticsLog({
     this.capacity = diagnosticsCapacity,
     DateTime Function()? now,
-  }) : now = now ?? DateTime.now;
+    DiagnosticsStore? store,
+  })  : now = now ?? DateTime.now,
+        _store = store;
+
+  /// Where the entries are kept beyond this isolate, see [_store].
+  DiagnosticsStore? get store => _store;
 
   /// What is in the log, oldest first.
   List<DiagnosticsEntry> get entries => List.unmodifiable(_entries);
@@ -223,28 +412,122 @@ class DiagnosticsLog extends ChangeNotifier {
     List<String> facts = const [],
     String? cause,
     String? item,
-  ]) {
-    var time = now();
-    if (cause != null) {
-      for (var entry in _entries.toList().reversed) {
-        if (time.difference(entry.lastAt) > diagnosticsMergeWindow) {
-          break;
-        }
-        if (entry.cause == cause) {
-          entry._repeat(time, item);
-          notifyListeners();
-          return;
-        }
+  ]) =>
+      record(headline, facts: facts, cause: cause, item: item);
+
+  /// [add], with a merge [window] of its own.
+  ///
+  /// A failure that comes back only every few minutes — a camera-roll run
+  /// retried with its back-off, a background run every quarter of an hour —
+  /// is still one problem: its entry merges every repetition that comes at
+  /// most [window] after the last one, see [failureCause].
+  void record(
+    String headline, {
+    List<String> facts = const [],
+    String? cause,
+    String? item,
+    Duration window = diagnosticsMergeWindow,
+  }) {
+    var entry = DiagnosticsEntry(
+      now(),
+      headline,
+      List.unmodifiable(facts),
+      cause,
+      item,
+      window,
+    );
+    // The record is taken before the merge: the store keeps the occurrence,
+    // and merges it again whenever it is read.
+    var record = entry.toRecord();
+    for (var arriving in _arrivals) {
+      arriving.add(DiagnosticsEntry.fromRecord(record)!);
+    }
+    _mergeEntry(_entries, entry, capacity);
+    notifyListeners();
+    var store = _store;
+    if (store != null) {
+      _write(() => store.append(record));
+    }
+  }
+
+  /// Queues [write] of the store behind the ones before it.
+  Future<void> _write(Future<void> Function() write) {
+    var before = _writes;
+    Future<void> run() async {
+      if (before != null) {
+        await before;
+      }
+      if (_store == null) {
+        return;
+      }
+      try {
+        await write();
+      } catch (error) {
+        _storeFailed(error);
       }
     }
-    _entries.addLast(
-      DiagnosticsEntry(time, headline, List.unmodifiable(facts), cause, item),
+
+    late Future<void> queued;
+    queued = run().whenComplete(() {
+      if (identical(_writes, queued)) {
+        _writes = null;
+      }
+    });
+    return _writes = queued;
+  }
+
+  /// Drops a store that failed, and says so in memory.
+  void _storeFailed(Object error) {
+    _store = null;
+    _mergeEntry(
+      _entries,
+      DiagnosticsEntry(
+        now(),
+        "Could not keep the diagnostics log on the device: "
+        "it is kept in memory from now on",
+        [
+          platformErrorFact(error),
+          "Engine: the entries of other engines (a background run) are not "
+              "shown here until the app is started again",
+        ],
+      ),
+      capacity,
     );
-    while (_entries.length > capacity) {
-      _entries.removeFirst();
-    }
     notifyListeners();
   }
+
+  /// Reads what every engine wrote into [store] — a background run included
+  /// — and shows it; a log without a store keeps what it has.
+  ///
+  /// Asked when the app starts, when a run elsewhere ends and when the
+  /// diagnostics section is opened. What this log recorded meanwhile is kept.
+  Future<void> reload() {
+    if (_store == null) {
+      return flush();
+    }
+    var arriving = <DiagnosticsEntry>[];
+    _arrivals.add(arriving);
+    return _write(() async {
+      var store = _store!;
+      try {
+        var records = await store.read();
+        var entries = replayDiagnostics(records, capacity);
+        _entries
+          ..clear()
+          ..addAll(entries);
+        for (var entry in arriving) {
+          _mergeEntry(_entries, entry, capacity);
+        }
+        notifyListeners();
+      } finally {
+        _arrivals.remove(arriving);
+      }
+    }).whenComplete(() => _arrivals.remove(arriving));
+  }
+
+  /// Completes once every entry recorded so far is in [store] — the last
+  /// thing a background run does before its isolate is torn down.
+  Future<void> flush() => _writes ?? Future<void>.value();
 
   /// Records a request the server refused — a status of 400 or more.
   ///
@@ -306,8 +589,12 @@ class DiagnosticsLog extends ChangeNotifier {
         requestItem(url),
       );
 
-  /// Forgets everything recorded so far.
+  /// Forgets everything recorded so far, in [store] as well.
   void clear() {
+    var store = _store;
+    if (store != null) {
+      _write(store.clear);
+    }
     if (_entries.isEmpty) {
       return;
     }

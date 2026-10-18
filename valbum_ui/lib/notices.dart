@@ -92,6 +92,17 @@ class PhotoLibraryFailed extends AppNotice {
   List<Object?> get _values => [problem];
 }
 
+/// The camera-roll sync ran into a failure none of its steps expected — a
+/// store that cannot be written, a full disk — with its technical text.
+class SyncFailed extends AppNotice {
+  final String problem;
+
+  const SyncFailed(this.problem);
+
+  @override
+  List<Object?> get _values => [problem];
+}
+
 /// The device's photo library could not be opened.
 class PhotoLibraryOpenFailed extends AppNotice {
   final String problem;
@@ -282,6 +293,7 @@ String noticeText(AppNotice notice, AppLocalizations l10n) => switch (notice) {
         l10n.noticePhotoLibraryFailed(problem),
       PhotoLibraryOpenFailed(problem: var problem) =>
         l10n.noticePhotoLibraryOpenFailed(problem),
+      SyncFailed(problem: var problem) => l10n.noticeSyncFailed(problem),
       PhotoAccessDenied() => l10n.noticePhotoAccessDenied,
       MediaLocationNotGranted() => l10n.noticeMediaLocationNotGranted,
       PhotoNotOnDevice(name: var name) => l10n.noticeAlbumNotOnDevice(name),
@@ -329,6 +341,7 @@ List<Object?> noticeToWire(AppNotice notice) => switch (notice) {
           "libraryOpenFailed",
           problem
         ],
+      SyncFailed(problem: var problem) => ["syncFailed", problem],
       PhotoAccessDenied() => const ["accessDenied"],
       MediaLocationNotGranted() => const ["mediaLocation"],
       PhotoNotOnDevice(name: var name) => ["notOnDevice", name],
@@ -389,6 +402,8 @@ AppNotice? noticeFromWire(Object? wire) {
       return PhotoLibraryFailed(at(1));
     case "libraryOpenFailed":
       return PhotoLibraryOpenFailed(at(1));
+    case "syncFailed":
+      return SyncFailed(at(1));
     case "accessDenied":
       return const PhotoAccessDenied();
     case "mediaLocation":

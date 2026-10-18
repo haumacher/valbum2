@@ -12,6 +12,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'client.dart';
+import 'diagnostics.dart';
 import 'hash_cache.dart';
 
 /// The first line of a hash cache file, naming its format.
@@ -38,18 +39,26 @@ const String hashCacheFileName = "valbum-hashes.txt";
 /// append of one is a single write, and a line the other's rewrite loses is a
 /// photo hashed once more, never a wrong answer. A line that does not read
 /// back as an entry is skipped.
+///
+/// A file that cannot be read or written is no reason for a run to fail — the
+/// cache in memory serves it, and a photo is hashed once more — but it is
+/// written into [log], see [hashCacheFailed].
 class FileHashCache extends MemoryHashCache {
   final Future<File> Function() _file;
+
+  /// Where a failure to read or write the file is written, `null` for none.
+  final DiagnosticsLog? log;
 
   bool _loaded = false;
   File? _open;
   int _lines = 0;
   final StringBuffer _pending = StringBuffer();
 
-  FileHashCache._(this._file);
+  FileHashCache._(this._file, {this.log});
 
   /// The cache in the given file, used by the tests.
-  factory FileHashCache.inFile(File file) => FileHashCache._(() async => file);
+  factory FileHashCache.inFile(File file, {DiagnosticsLog? log}) =>
+      FileHashCache._(() async => file, log: log);
 
   /// The cache of the app, under the application support directory.
   ///
@@ -58,11 +67,13 @@ class FileHashCache extends MemoryHashCache {
   /// restores the app's data from a backup, the file comes back with it,
   /// which is harmless: a photo of another id, time or size is not found in
   /// it.
-  factory FileHashCache.underSupportDirectory() => FileHashCache._(
+  factory FileHashCache.underSupportDirectory({DiagnosticsLog? log}) =>
+      FileHashCache._(
         () async => File(
           "${(await getApplicationSupportDirectory()).path}"
           "${Platform.pathSeparator}$hashCacheFileName",
         ),
+        log: log,
       );
 
   /// Whether the file read ends in the middle of a line, see [ensureLoaded].
@@ -116,7 +127,7 @@ class FileHashCache extends MemoryHashCache {
     } catch (error) {
       // No readable file (a platform without `path_provider`, a test binding
       // without the plugin): the sync runs with a cache in memory.
-      _log("Cannot read the hash cache: $error");
+      _failed("read", error);
     }
   }
 
@@ -153,7 +164,7 @@ class FileHashCache extends MemoryHashCache {
       _cutOff = false;
       await file.writeAsString(text, mode: FileMode.append, flush: true);
     } catch (error) {
-      _log("Cannot write the hash cache: $error");
+      _failed("write", error);
     }
   }
 
@@ -186,15 +197,31 @@ class FileHashCache extends MemoryHashCache {
       await next.writeAsString(text.toString(), flush: true);
       await next.rename(file.path);
     } catch (error) {
-      _log("Cannot write the hash cache: $error");
+      _failed("write", error);
     }
   }
 
-  static void _log(String message) {
+  void _failed(String what, Object error) {
     if (kDebugMode) {
-      print(message);
+      print("Cannot $what the hash cache: $error");
     }
+    hashCacheFailed(log, what, error);
   }
+}
+
+/// Writes into [log] that the hash cache could not [what] (`read`, `write`)
+/// its file, with the complete text of [error].
+void hashCacheFailed(DiagnosticsLog? log, String what, Object error) {
+  var text = errorCause(error);
+  log?.record(
+    "Could not $what the hash cache: the camera-roll sync hashes the photos "
+    "again",
+    facts: [
+      platformErrorFact(error),
+    ],
+    cause: failureCause(attempt: "hash cache $what", platformError: text),
+    window: const Duration(hours: 1),
+  );
 }
 
 /// The SHA-256 of the file at [path] and the number of bytes read, computed

@@ -148,6 +148,7 @@ void main() {
         const PhotoLibraryUnreadable(),
         const PhotoLibraryFailed("broken"),
         const PhotoLibraryOpenFailed("closed"),
+        const SyncFailed("disk full"),
         const PhotoAccessDenied(),
         const MediaLocationNotGranted(),
         const PhotoNotOnDevice("a.jpg"),

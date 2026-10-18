@@ -254,11 +254,30 @@ class _CameraRollSectionState extends State<CameraRollSection> {
       return const [];
     }
     if (!await library.requestAccess()) {
+      // Shown by the section in the library's own words; the log keeps it
+      // with what the platform threw, if anything.
+      sync.logLibraryProblem(
+        "list the albums of the device",
+        notice: library.accessProblem ?? const PhotoLibraryUnreadable(),
+        error: library.accessError,
+      );
       return const [];
     }
     try {
-      return selectableSources(await library.albums());
+      var before = library.accessError;
+      var albums = await library.albums();
+      var failure = library.accessError;
+      if (albums.isEmpty && failure != null && !identical(failure, before)) {
+        // A library that cannot list its albums answers none and says why.
+        sync.logLibraryProblem(
+          "list the albums of the device",
+          notice: library.accessProblem,
+          error: failure,
+        );
+      }
+      return selectableSources(albums);
     } on PlatformException catch (failure) {
+      sync.logLibraryProblem("list the albums of the device", error: failure);
       // The platform's sentence, not the exception's dump.
       throw failure.message ?? failure.code;
     }

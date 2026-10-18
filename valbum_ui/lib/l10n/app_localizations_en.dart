@@ -2095,6 +2095,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String noticeSyncFailed(String problem) {
+    return 'The camera-roll sync failed unexpectedly: $problem';
+  }
+
+  @override
   String get noticePhotoAccessDenied =>
       'Access to the photo library was denied. Allow photo access for VAlbum in the system settings, then try again.';
 

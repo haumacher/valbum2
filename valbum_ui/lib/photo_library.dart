@@ -30,7 +30,14 @@ class PhotoLibraryException implements Exception {
   /// Why the library could not answer.
   final AppNotice notice;
 
-  const PhotoLibraryException(this.notice);
+  /// What the platform threw, `null` where it threw nothing.
+  ///
+  /// The [notice] carries the platform's *sentence*, which is what a person
+  /// reads; the diagnostics log wants the whole of it — code, message and
+  /// details — see `platformErrorFact`.
+  final Object? error;
+
+  const PhotoLibraryException(this.notice, {this.error});
 
   @override
   String toString() => "PhotoLibraryException($notice)";
@@ -187,6 +194,11 @@ abstract class PhotoLibrary {
   /// (issue #108).
   AppNotice? get accessProblem;
 
+  /// What the platform threw where [accessProblem] is a platform failure,
+  /// `null` otherwise — for the diagnostics log, which keeps its complete
+  /// text, see [PhotoLibraryException.error].
+  Object? get accessError => null;
+
   /// The items taken at or after [since], oldest first.
   ///
   /// `null` asks from the beginning of time: that is what a freshly installed
@@ -294,6 +306,9 @@ class FakePhotoLibrary extends PhotoLibrary {
   @override
   AppNotice? accessProblem;
 
+  @override
+  Object? accessError;
+
   /// The number of times [itemsSince] was asked, and with which bound.
   final List<DateTime?> scans = [];
 
@@ -310,6 +325,7 @@ class FakePhotoLibrary extends PhotoLibrary {
     List<PhotoItem>? items,
     this.granted = true,
     this.accessProblem,
+    this.accessError,
   }) : items = [...?items];
 
   @override
