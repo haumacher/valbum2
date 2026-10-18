@@ -77,14 +77,18 @@ import java.util.zip.CRC32;
  *
  * <pre>
  * "VACV"  u8 version  u16 dimension
- * str image stamp   u32 n   n x (32 bytes hash, i64 poster millis, dimension x f32)
+ * str image stamp   u32 n   n x (32 bytes hash, i64 poster millis, f32 quality, dimension x f32)
  * str text stamp    u32 m   m x (32 bytes text hash, dimension x f32)
  * u32 p   p x (str name, 32 bytes hash, i64 poster millis, 32 bytes text hash)
  * u32 CRC-32 of everything before
  * </pre>
  *
  * <p>
- * <code>str</code> is a u16 length and UTF-8. A file that is not this (another version, a foreign
+ * <code>str</code> is a u16 length and UTF-8. The <code>quality</code> of a picture (version 2,
+ * issue #257) is what decides the best shot of a burst: see {@link #quality(ImageKey)}. A file of
+ * version 1, which has none, is read with every quality unknown, and its vectors are kept: the
+ * content step measures what is missing from the previews alone, without the embedder. A file that
+ * is not this (another version, a foreign
  * or truncated file, a wrong checksum) is ignored and written anew, never fatal. Every change is a
  * read, a change and a write under one lock per album ({@link #update(File, Consumer)}), through a
  * temporary sibling.
@@ -98,7 +102,10 @@ public final class ContentCache {
 	public static final String FILE_NAME = "content.bin";
 
 	/** The version this build writes. */
-	public static final int VERSION = 1;
+	public static final int VERSION = 2;
+
+	/** The version before the {@link #quality(ImageKey) quality} of a picture, still read. */
+	static final int VERSION_1 = 1;
 
 	private static final byte[] MAGIC = { 'V', 'A', 'C', 'V' };
 
@@ -124,6 +131,9 @@ public final class ContentCache {
 	private String _textStamp;
 
 	private final Map<ImageKey, float[]> _images = new LinkedHashMap<>();
+
+	/** The quality of each picture that has one, see {@link #quality(ImageKey)}. */
+	private final Map<ImageKey, Float> _qualities = new LinkedHashMap<>();
 
 	private final Map<String, float[]> _texts = new LinkedHashMap<>();
 
@@ -222,7 +232,12 @@ public final class ContentCache {
 					to._imageStamp = from._imageStamp;
 				}
 				for (Map.Entry<ImageKey, float[]> entry : vectors.entrySet()) {
-					to._images.putIfAbsent(entry.getKey(), entry.getValue());
+					if (to._images.putIfAbsent(entry.getKey(), entry.getValue()) == null) {
+						Float quality = from._qualities.get(entry.getKey());
+						if (quality != null) {
+							to._qualities.put(entry.getKey(), quality);
+						}
+					}
 				}
 				if (!to.equals(before)) {
 					to.write(target);
@@ -242,6 +257,7 @@ public final class ContentCache {
 	void restamp(String imageStamp, String textStamp) {
 		if (!Objects.equals(_imageStamp, imageStamp)) {
 			_images.clear();
+			_qualities.clear();
 			_photos.clear();
 			_imageStamp = imageStamp;
 		}
@@ -265,6 +281,29 @@ public final class ContentCache {
 	/** The image vector of the given key, <code>null</code> where there is none. */
 	public float[] image(ImageKey key) {
 		return _images.get(key);
+	}
+
+	/**
+	 * How sharp and well exposed the picture of the given key is, for the best shot of a burst (see
+	 * {@link de.haumacher.imageServer.shared.model.PhotoStack}): {@link Quality#measure}, the larger
+	 * the better; {@link Float#NaN} where it was not measured yet, and a negative number where it
+	 * cannot be measured (a preview that does not decode).
+	 */
+	public float quality(ImageKey key) {
+		Float result = _qualities.get(key);
+		return result == null ? Float.NaN : result.floatValue();
+	}
+
+	/** Stores the quality of the picture of the given key, whose vector must be stored. */
+	public void putQuality(ImageKey key, float quality) {
+		if (!_images.containsKey(key)) {
+			throw new IllegalArgumentException("A quality needs its picture's vector: " + key);
+		}
+		if (Float.isNaN(quality)) {
+			_qualities.remove(key);
+		} else {
+			_qualities.put(key, Float.valueOf(quality));
+		}
 	}
 
 	/** The text vector of the text of the given hash, <code>null</code> where there is none. */
@@ -314,6 +353,7 @@ public final class ContentCache {
 		Set<String> keepHashes = new HashSet<>(hashes);
 		_photos.keySet().retainAll(keepNames);
 		_images.keySet().removeIf(key -> !keepHashes.contains(key.hash()));
+		_qualities.keySet().retainAll(_images.keySet());
 		_photos.values().removeIf(photo -> !_images.containsKey(photo.image()));
 		Set<String> texts = new HashSet<>();
 		for (Photo photo : _photos.values()) {
@@ -362,7 +402,7 @@ public final class ContentCache {
 	byte[] toBytes() throws IOException {
 		int entry = _dimension * Float.BYTES;
 		ByteArrayOutputStream bytes = new ByteArrayOutputStream(
-			64 + _images.size() * (HASH_BYTES + 8 + entry) + _texts.size() * (HASH_BYTES + entry) + _photos.size() * 96);
+			64 + _images.size() * (HASH_BYTES + 8 + 4 + entry) + _texts.size() * (HASH_BYTES + entry) + _photos.size() * 96);
 		DataOutputStream data = new DataOutputStream(bytes);
 		ByteBuffer vector = ByteBuffer.allocate(entry).order(ByteOrder.LITTLE_ENDIAN);
 		data.write(MAGIC);
@@ -373,6 +413,7 @@ public final class ContentCache {
 		for (Map.Entry<ImageKey, float[]> each : _images.entrySet()) {
 			data.write(hashBytes(each.getKey().hash()));
 			writeLong(data, each.getKey().poster());
+			writeInt(data, Float.floatToIntBits(quality(each.getKey())));
 			data.write(floats(vector, each.getValue()));
 		}
 		writeString(data, _textStamp);
@@ -417,20 +458,26 @@ public final class ContentCache {
 		in.position(MAGIC.length);
 		try {
 			int version = in.get() & 0xFF;
-			if (version != VERSION) {
+			if (version != VERSION && version != VERSION_1) {
 				throw new IOException("version " + version + ", not " + VERSION);
 			}
+			boolean qualities = version >= VERSION;
 			int dimension = in.getShort() & 0xFFFF;
 			if (dimension <= 0) {
 				throw new IOException("no dimension");
 			}
 			String imageStamp = readString(in);
 			ContentCache result = new ContentCache(imageStamp, "", dimension);
-			int images = count(in, HASH_BYTES + 8 + dimension * Float.BYTES);
+			int images = count(in, HASH_BYTES + 8 + (qualities ? 4 : 0) + dimension * Float.BYTES);
 			for (int n = 0; n < images; n++) {
 				String hash = readHash(in);
 				long poster = in.getLong();
-				result._images.put(new ImageKey(hash, poster), readFloats(in, dimension));
+				float quality = qualities ? in.getFloat() : Float.NaN;
+				ImageKey key = new ImageKey(hash, poster);
+				result._images.put(key, readFloats(in, dimension));
+				if (!Float.isNaN(quality)) {
+					result._qualities.put(key, Float.valueOf(quality));
+				}
 			}
 			result._textStamp = readString(in);
 			int texts = count(in, HASH_BYTES + dimension * Float.BYTES);
@@ -530,7 +577,8 @@ public final class ContentCache {
 		}
 		ContentCache that = (ContentCache) other;
 		return _dimension == that._dimension && _imageStamp.equals(that._imageStamp)
-			&& _textStamp.equals(that._textStamp) && _photos.equals(that._photos) && sameVectors(_images, that._images)
+			&& _textStamp.equals(that._textStamp) && _photos.equals(that._photos) && _qualities.equals(that._qualities)
+			&& sameVectors(_images, that._images)
 			&& sameVectors(_texts, that._texts);
 	}
 

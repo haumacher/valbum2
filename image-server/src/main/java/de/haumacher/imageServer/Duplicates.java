@@ -63,6 +63,26 @@ public class Duplicates {
 		 * clearance, below their rating floor, the trash, or of an inbox they are not shown it in.
 		 */
 		ImagePart photo(String path);
+
+		/**
+		 * Every photograph of the album at the given folder path the caller is answered, by its
+		 * name, as {@link #photo(String)} answers each: what an overview asking for many photographs
+		 * of one album asks once. Empty where the caller may not see the album.
+		 */
+		default Map<String, ImagePart> photos(String folder) {
+			Map<String, ImagePart> result = new HashMap<>();
+			AlbumInfo album = album(folder);
+			if (album == null) {
+				return result;
+			}
+			for (ImagePart image : PhotoSearch.images(album)) {
+				ImagePart shown = photo(folder.isEmpty() ? image.getName() : folder + "/" + image.getName());
+				if (shown != null) {
+					result.put(image.getName(), shown);
+				}
+			}
+			return result;
+		}
 	}
 
 	/**
@@ -140,7 +160,7 @@ public class Duplicates {
 	}
 
 	/** What the thumbnail of the given photograph needs, and nothing else of it. */
-	private static ImagePart tile(ImagePart image) {
+	static ImagePart tile(ImagePart image) {
 		ImagePart result = ImagePart.create()
 			.setKind(image.getKind())
 			.setName(image.getName())

@@ -22,6 +22,8 @@
 /// | `/.duplicates/2005-08-24 Blumen/IMG_0417.JPG` | [ImageRoute] seen from the overview     |
 /// | `/.duplicates/2005-08-24 Blumen/IMG_0417.JPG/alternatives/` | [AlternativesRoute] seen from the overview |
 /// | `/.duplicates/2005-08-24 Blumen/IMG_0417.JPG/alternatives/IMG_0418.JPG` | [MemberRoute] seen from the overview |
+/// | `/.similar/`                                 | [SimilarRoute]                            |
+/// | `/.similar/2005-08-24 Blumen/IMG_0417.JPG`    | [ImageRoute] seen from that overview      |
 /// | `/2005-08-24 Blumen/.news/<key>/`             | [NewsRoute], an entry of the bell        |
 /// | `/2005-08-24 Blumen/.news/<key>/IMG_0417.JPG` | [ImageRoute] paging through that entry   |
 ///
@@ -77,6 +79,11 @@ const String trashSegment = "trash";
 /// this address shadows no album a library could hold, and a page load of it
 /// is a deep link like any other (its last segment is the trailing slash's).
 const String duplicatesSegment = ".duplicates";
+
+/// The path segment of the space-level overview of the shots of the same
+/// scenery in several albums (#257), addressed at the root as `/.similar/`,
+/// beside [duplicatesSegment] and shadowing nothing for the same reason.
+const String similarSegment = ".similar";
 
 /// The segment of the search view below a folder (`/<folder>/.search/`), see
 /// issue #227 and [SearchRoute]. No folder of a library carries a leading dot,
@@ -135,6 +142,11 @@ sealed class VAlbumRoute {
   /// alternatives of its group ([AlternativesRoute]) and one of their members
   /// ([MemberRoute]) — and a step from one of them to another passes it on.
   bool get fromDuplicates => false;
+
+  /// Whether this view of an image was reached from the overview of the
+  /// shots of the same scenery and leads back there, see [SimilarRoute]
+  /// (issue #257) — passed on exactly as [fromDuplicates] is.
+  bool get fromSimilar => false;
 
   /// Whether this view of an image was opened from the search view below
   /// [albumPath] and returns there, see [SearchRoute] (issue #227).
@@ -204,6 +216,11 @@ class ImageRoute extends VAlbumRoute {
   @override
   final bool fromDuplicates;
 
+  /// Whether the viewer was opened from the overview of the shots of the
+  /// same scenery and returns there, see [SimilarRoute].
+  @override
+  final bool fromSimilar;
+
   /// Whether the viewer pages through the results of the search view below
   /// [albumPath] and returns there (issue #227): [name] is then the
   /// photograph's path below that folder, see [SearchRoute].
@@ -216,7 +233,10 @@ class ImageRoute extends VAlbumRoute {
   final String? news;
 
   const ImageRoute(this.albumPath, this.name,
-      {this.fromDuplicates = false, this.fromSearch = false, this.news});
+      {this.fromDuplicates = false,
+      this.fromSimilar = false,
+      this.fromSearch = false,
+      this.news});
 
   @override
   String? get newsKey => news;
@@ -224,12 +244,17 @@ class ImageRoute extends VAlbumRoute {
   /// Another image of the same album, seen from where this one is: paging in
   /// a viewer opened from the overview keeps its way back to the overview.
   ImageRoute withName(String other) => ImageRoute(albumPath, other,
-      fromDuplicates: fromDuplicates, fromSearch: fromSearch, news: news);
+      fromDuplicates: fromDuplicates,
+      fromSimilar: fromSimilar,
+      fromSearch: fromSearch,
+      news: news);
 
   @override
   VAlbumRoute? get up => fromDuplicates
       ? const DuplicatesRoute()
-      : fromSearch
+      : fromSimilar
+          ? const SimilarRoute()
+          : fromSearch
           ? SearchRoute(albumPath)
           : news != null
               ? NewsRoute(albumPath, news!)
@@ -238,6 +263,7 @@ class ImageRoute extends VAlbumRoute {
   @override
   List<String> get segments => [
         if (fromDuplicates) duplicatesSegment,
+        if (fromSimilar) similarSegment,
         ...albumPath,
         if (fromSearch) searchSegment,
         if (news != null) ...[newsSegment, news!],
@@ -246,20 +272,24 @@ class ImageRoute extends VAlbumRoute {
 
   @override
   VAlbumRoute withAlbumPath(List<String> path) => ImageRoute(path, name,
-      fromDuplicates: fromDuplicates, fromSearch: fromSearch, news: news);
+      fromDuplicates: fromDuplicates,
+      fromSimilar: fromSimilar,
+      fromSearch: fromSearch,
+      news: news);
 
   @override
   bool operator ==(Object other) =>
       other is ImageRoute &&
       name == other.name &&
       fromDuplicates == other.fromDuplicates &&
+      fromSimilar == other.fromSimilar &&
       fromSearch == other.fromSearch &&
       news == other.news &&
       listEquals(albumPath, other.albumPath);
 
   @override
-  int get hashCode => Object.hash(
-      Object.hashAll(albumPath), name, fromDuplicates, fromSearch, news);
+  int get hashCode => Object.hash(Object.hashAll(albumPath), name,
+      fromDuplicates, fromSimilar, fromSearch, news);
 
   @override
   String toString() => "ImageRoute($path)";
@@ -280,12 +310,15 @@ class AlternativesRoute extends VAlbumRoute {
   @override
   final bool fromDuplicates;
 
+  @override
+  final bool fromSimilar;
+
   const AlternativesRoute(this.albumPath, this.name,
-      {this.fromDuplicates = false});
+      {this.fromDuplicates = false, this.fromSimilar = false});
 
   /// One member of this group, seen from where the group is.
-  MemberRoute member(String member) =>
-      MemberRoute(albumPath, name, member, fromDuplicates: fromDuplicates);
+  MemberRoute member(String member) => MemberRoute(albumPath, name, member,
+      fromDuplicates: fromDuplicates, fromSimilar: fromSimilar);
 
   /// The album, not the image the group is shown for (issue #79) — or the
   /// overview it was reached from (issue #231).
@@ -293,12 +326,16 @@ class AlternativesRoute extends VAlbumRoute {
   /// The group overview is still reached from the album's tile; it is only no
   /// longer on the way *out*, where it used to add a stop nobody asked for.
   @override
-  VAlbumRoute? get up =>
-      fromDuplicates ? const DuplicatesRoute() : ListingOrAlbumRoute(albumPath);
+  VAlbumRoute? get up => fromDuplicates
+      ? const DuplicatesRoute()
+      : fromSimilar
+          ? const SimilarRoute()
+          : ListingOrAlbumRoute(albumPath);
 
   @override
   List<String> get segments => [
         if (fromDuplicates) duplicatesSegment,
+        if (fromSimilar) similarSegment,
         ...albumPath,
         name,
         alternativesSegment,
@@ -306,19 +343,20 @@ class AlternativesRoute extends VAlbumRoute {
       ];
 
   @override
-  VAlbumRoute withAlbumPath(List<String> path) =>
-      AlternativesRoute(path, name, fromDuplicates: fromDuplicates);
+  VAlbumRoute withAlbumPath(List<String> path) => AlternativesRoute(path, name,
+      fromDuplicates: fromDuplicates, fromSimilar: fromSimilar);
 
   @override
   bool operator ==(Object other) =>
       other is AlternativesRoute &&
       name == other.name &&
       fromDuplicates == other.fromDuplicates &&
+      fromSimilar == other.fromSimilar &&
       listEquals(albumPath, other.albumPath);
 
   @override
-  int get hashCode =>
-      Object.hash(Object.hashAll(albumPath), name, fromDuplicates);
+  int get hashCode => Object.hash(
+      Object.hashAll(albumPath), name, fromDuplicates, fromSimilar);
 
   @override
   String toString() => "AlternativesRoute($path)";
@@ -342,16 +380,19 @@ class MemberRoute extends VAlbumRoute {
   @override
   final bool fromDuplicates;
 
+  @override
+  final bool fromSimilar;
+
   const MemberRoute(this.albumPath, this.name, this.member,
-      {this.fromDuplicates = false});
+      {this.fromDuplicates = false, this.fromSimilar = false});
 
   /// Another member of the same group, seen from where this one is.
-  MemberRoute withMember(String other) =>
-      MemberRoute(albumPath, name, other, fromDuplicates: fromDuplicates);
+  MemberRoute withMember(String other) => MemberRoute(albumPath, name, other,
+      fromDuplicates: fromDuplicates, fromSimilar: fromSimilar);
 
   /// The alternatives view of the group this member belongs to.
-  AlternativesRoute get alternatives =>
-      AlternativesRoute(albumPath, name, fromDuplicates: fromDuplicates);
+  AlternativesRoute get alternatives => AlternativesRoute(albumPath, name,
+      fromDuplicates: fromDuplicates, fromSimilar: fromSimilar);
 
   /// The album, in one step (issue #79) — or the overview it was reached
   /// from (issue #231).
@@ -360,12 +401,16 @@ class MemberRoute extends VAlbumRoute {
   /// the way out used to lead through the alternatives view and the
   /// representative's own viewer before the album appeared.
   @override
-  VAlbumRoute? get up =>
-      fromDuplicates ? const DuplicatesRoute() : ListingOrAlbumRoute(albumPath);
+  VAlbumRoute? get up => fromDuplicates
+      ? const DuplicatesRoute()
+      : fromSimilar
+          ? const SimilarRoute()
+          : ListingOrAlbumRoute(albumPath);
 
   @override
   List<String> get segments => [
         if (fromDuplicates) duplicatesSegment,
+        if (fromSimilar) similarSegment,
         ...albumPath,
         name,
         alternativesSegment,
@@ -373,8 +418,8 @@ class MemberRoute extends VAlbumRoute {
       ];
 
   @override
-  VAlbumRoute withAlbumPath(List<String> path) =>
-      MemberRoute(path, name, member, fromDuplicates: fromDuplicates);
+  VAlbumRoute withAlbumPath(List<String> path) => MemberRoute(path, name, member,
+      fromDuplicates: fromDuplicates, fromSimilar: fromSimilar);
 
   @override
   bool operator ==(Object other) =>
@@ -382,11 +427,12 @@ class MemberRoute extends VAlbumRoute {
       name == other.name &&
       member == other.member &&
       fromDuplicates == other.fromDuplicates &&
+      fromSimilar == other.fromSimilar &&
       listEquals(albumPath, other.albumPath);
 
   @override
-  int get hashCode =>
-      Object.hash(Object.hashAll(albumPath), name, member, fromDuplicates);
+  int get hashCode => Object.hash(
+      Object.hashAll(albumPath), name, member, fromDuplicates, fromSimilar);
 
   @override
   String toString() => "MemberRoute($path)";
@@ -488,6 +534,38 @@ class DuplicatesRoute extends VAlbumRoute {
 
   @override
   String toString() => "DuplicatesRoute($path)";
+}
+
+/// The overview of the shots of the same scenery in several albums, see
+/// issue #257: beside [DuplicatesRoute], a level on the root listing like it,
+/// read-only, with no leave guard. A photograph opened from it is an
+/// [ImageRoute] with [ImageRoute.fromSimilar], addressed
+/// `/.similar/<album>/<name>`, which pages through its album and returns here.
+class SimilarRoute extends VAlbumRoute {
+  const SimilarRoute();
+
+  /// It lives at the root of the space.
+  @override
+  List<String> get albumPath => const [];
+
+  @override
+  VAlbumRoute? get up => ListingOrAlbumRoute.root;
+
+  @override
+  List<String> get segments => const [similarSegment, ""];
+
+  /// The overview belongs to the space, not to a folder.
+  @override
+  VAlbumRoute withAlbumPath(List<String> path) => this;
+
+  @override
+  bool operator ==(Object other) => other is SimilarRoute;
+
+  @override
+  int get hashCode => similarSegment.hashCode;
+
+  @override
+  String toString() => "SimilarRoute($path)";
 }
 
 /// The search view below a folder, see issue #227: the photographs of the
@@ -607,14 +685,21 @@ VAlbumRoute parseRoute(Uri uri, {String basePath = "/"}) {
   // image reached from the overview of the photographs in several albums,
   // see issues #228 and #231. No folder of a library carries a leading dot,
   // so this shadows no image.
-  if (segments.length >= 2 && segments.first == duplicatesSegment) {
+  // The same below `/.similar/`, the overview of the shots of the same
+  // scenery (issue #257).
+  if (segments.length >= 2 &&
+      (segments.first == duplicatesSegment ||
+          segments.first == similarSegment)) {
+    var duplicates = segments.first == duplicatesSegment;
+    var similar = !duplicates;
     var rest = segments.sublist(1);
     if (folder) {
       if (rest.length >= 2 && rest.last == alternativesSegment) {
         return AlternativesRoute(
           rest.sublist(0, rest.length - 2),
           rest[rest.length - 2],
-          fromDuplicates: true,
+          fromDuplicates: duplicates,
+          fromSimilar: similar,
         );
       }
     } else if (rest.length >= 3 &&
@@ -623,13 +708,15 @@ VAlbumRoute parseRoute(Uri uri, {String basePath = "/"}) {
         rest.sublist(0, rest.length - 3),
         rest[rest.length - 3],
         rest.last,
-        fromDuplicates: true,
+        fromDuplicates: duplicates,
+        fromSimilar: similar,
       );
     } else {
       return ImageRoute(
         rest.sublist(0, rest.length - 1),
         rest.last,
-        fromDuplicates: true,
+        fromDuplicates: duplicates,
+        fromSimilar: similar,
       );
     }
   }
@@ -677,6 +764,10 @@ VAlbumRoute parseRoute(Uri uri, {String basePath = "/"}) {
     // `/.duplicates/`, at the root only.
     if (segments.length == 1 && segments.single == duplicatesSegment) {
       return const DuplicatesRoute();
+    }
+    // `/.similar/`, at the root only (issue #257).
+    if (segments.length == 1 && segments.single == similarSegment) {
+      return const SimilarRoute();
     }
     // `.../<album>/persons/`
     if (segments.isNotEmpty && segments.last == personsSegment) {

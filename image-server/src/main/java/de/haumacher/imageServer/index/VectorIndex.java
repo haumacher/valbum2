@@ -60,8 +60,10 @@ import org.apache.lucene.store.ByteBuffersDirectory;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.store.LockObtainFailedException;
+import org.apache.lucene.util.BitSetIterator;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.FixedBitSet;
 
 /**
  * The vectors of the content search of a space (issue #257) in a Lucene HNSW index, in
@@ -193,6 +195,9 @@ public final class VectorIndex {
 
 	private long _lastCommit;
 
+	/** Counts every change of what this index holds, see {@link #version()}. */
+	private long _version;
+
 	private VectorIndex(Path folder, String label) {
 		_folder = folder;
 		_label = label;
@@ -256,6 +261,7 @@ public final class VectorIndex {
 			_writer.deleteAll();
 			_generation = generation;
 			_stamp = "";
+			_version++;
 			commit();
 			_searchers.maybeRefreshBlocking();
 		} catch (IOException | RuntimeException ex) {
@@ -283,6 +289,7 @@ public final class VectorIndex {
 		try {
 			_writer.deleteAll();
 			_stamp = stamp;
+			_version++;
 			commit();
 			_searchers.maybeRefreshBlocking();
 		} catch (IOException | RuntimeException ex) {
@@ -444,6 +451,7 @@ public final class VectorIndex {
 
 	private void changed() throws IOException {
 		_dirty = true;
+		_version++;
 		_searchers.maybeRefreshBlocking();
 		if (System.currentTimeMillis() - _lastCommit >= COMMIT_MILLIS) {
 			commit();
@@ -463,6 +471,211 @@ public final class VectorIndex {
 	}
 
 	// --- Asking. ---
+
+	/**
+	 * A number that changes whenever what this index holds changes: the key of what is derived from
+	 * all of it, see {@link #neighbours}. Only ever compared for equality, and only within this
+	 * process.
+	 */
+	public synchronized long version() {
+		return _version;
+	}
+
+	/** Two photographs whose pictures are alike, see {@link #neighbours}: their ids and their cosine. */
+	public record Link(long from, long to, float score) {
+		// A triple.
+	}
+
+	/**
+	 * What {@link #neighbours} found.
+	 *
+	 * @param described
+	 *        How many of the photographs allowed have a picture's vector.
+	 * @param links
+	 *        Every pair found, once, the smaller id first.
+	 */
+	public record Neighbours(int described, List<Link> links) {
+		// A pair.
+	}
+
+	/**
+	 * The pairs of photographs among those of the given ids whose pictures are alike: each
+	 * photograph's <code>k</code> nearest by {@link #IMAGE}, among the allowed alone (the ids are the
+	 * filter inside each vector query, see {@link #nearest}), whose cosine to it is at least the
+	 * given threshold. One query of the graph per photograph, never every pair: what keeps the
+	 * overview of the same scenery (issue #257) bounded.
+	 */
+	public Neighbours neighbours(BitSet allowed, int k, float threshold) throws IOException {
+		if (allowed.isEmpty() || k <= 0) {
+			return new Neighbours(0, new ArrayList<>());
+		}
+		return search(searcher -> {
+			List<LeafReaderContext> leaves = searcher.getIndexReader().leaves();
+			FixedBitSet[] accepted = new FixedBitSet[leaves.size()];
+			Map<Integer, Long> ids = new HashMap<>();
+			List<Integer> docs = new ArrayList<>();
+			List<float[]> vectors = new ArrayList<>();
+			for (LeafReaderContext leaf : leaves) {
+				FixedBitSet bits = new FixedBitSet(Math.max(1, leaf.reader().maxDoc()));
+				accepted[leaf.ord] = bits;
+				FloatVectorValues values = leaf.reader().getFloatVectorValues(IMAGE);
+				NumericDocValues photos = leaf.reader().getNumericDocValues(PHOTO);
+				if (values == null || photos == null) {
+					continue;
+				}
+				Bits live = leaf.reader().getLiveDocs();
+				KnnVectorValues.DocIndexIterator iterator = values.iterator();
+				for (int doc = iterator.nextDoc(); doc != DocIdSetIterator.NO_MORE_DOCS; doc = iterator.nextDoc()) {
+					if ((live != null && !live.get(doc)) || !photos.advanceExact(doc)) {
+						continue;
+					}
+					long id = photos.longValue();
+					if (id < 0 || id > Integer.MAX_VALUE || !allowed.get((int) id)) {
+						continue;
+					}
+					bits.set(doc);
+					int global = leaf.docBase + doc;
+					ids.put(Integer.valueOf(global), Long.valueOf(id));
+					docs.add(Integer.valueOf(global));
+					vectors.add(values.vectorValue(iterator.index()).clone());
+				}
+			}
+			Query filter = new Accepted(accepted);
+			// The queries are independent, and a searcher answers them from several threads: half the
+			// processors share them, the other half stay with the requests and the background.
+			int threads = Math.max(1, Math.min(docs.size() / 256, Runtime.getRuntime().availableProcessors() / 2));
+			List<List<Link>> found = new ArrayList<>();
+			if (threads <= 1) {
+				found.add(neighboursOf(searcher, filter, docs, ids, vectors, 0, 1, k, threshold));
+			} else {
+				java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(threads,
+					runnable -> {
+						Thread thread = new Thread(runnable, "vector-neighbours " + _label);
+						thread.setDaemon(true);
+						return thread;
+					});
+				try {
+					List<java.util.concurrent.Future<List<Link>>> parts = new ArrayList<>();
+					for (int part = 0; part < threads; part++) {
+						int first = part;
+						parts.add(pool.submit(
+							() -> neighboursOf(searcher, filter, docs, ids, vectors, first, threads, k, threshold)));
+					}
+					for (java.util.concurrent.Future<List<Link>> part : parts) {
+						found.add(part.get());
+					}
+				} catch (InterruptedException ex) {
+					Thread.currentThread().interrupt();
+					throw new IOException("Interrupted while comparing the pictures.", ex);
+				} catch (java.util.concurrent.ExecutionException ex) {
+					throw ex.getCause() instanceof IOException ? (IOException) ex.getCause() : new IOException(ex.getCause());
+				} finally {
+					pool.shutdownNow();
+				}
+			}
+			List<Link> links = new ArrayList<>();
+			for (List<Link> part : found) {
+				links.addAll(part);
+			}
+			return new Neighbours(docs.size(), dedupe(links));
+		});
+	}
+
+	/**
+	 * The links of every <code>step</code>-th of the given documents from the given one on, see
+	 * {@link #neighbours}.
+	 */
+	private static List<Link> neighboursOf(IndexSearcher searcher, Query filter, List<Integer> docs,
+			Map<Integer, Long> ids, List<float[]> vectors, int first, int step, int k, float threshold)
+			throws IOException {
+		List<Link> links = new ArrayList<>();
+		for (int n = first; n < docs.size(); n += step) {
+			long from = ids.get(docs.get(n)).longValue();
+			TopDocs found = searcher.search(new KnnFloatVectorQuery(IMAGE, vectors.get(n), k + 1, filter), k + 1);
+			for (ScoreDoc hit : found.scoreDocs) {
+				Long to = ids.get(Integer.valueOf(hit.doc));
+				if (to == null || to.longValue() == from) {
+					continue;
+				}
+				// The score of a dot product is (1 + cos) / 2.
+				float cosine = 2 * hit.score - 1;
+				if (cosine < threshold) {
+					continue;
+				}
+				// Each pair once, the smaller id first, whichever of the two found the other.
+				long other = to.longValue();
+				links.add(from < other ? new Link(from, other, cosine) : new Link(other, from, cosine));
+			}
+		}
+		return links;
+	}
+
+	/** The given links, each pair once (the higher cosine where the two found each other alike). */
+	private static List<Link> dedupe(List<Link> links) {
+		Map<String, Link> result = new LinkedHashMap<>();
+		for (Link link : links) {
+			result.merge(link.from() + ":" + link.to(), link, (a, b) -> a.score() >= b.score() ? a : b);
+		}
+		return new ArrayList<>(result.values());
+	}
+
+	/**
+	 * The documents of the given sets, one per leaf: the filter of {@link #neighbours}, made once
+	 * for all its queries. Answered as the sets themselves, so that a vector query takes them as
+	 * they are instead of collecting a filter of its own for every photograph.
+	 */
+	private static final class Accepted extends Query {
+
+		private final FixedBitSet[] _leaves;
+
+		Accepted(FixedBitSet[] leaves) {
+			_leaves = leaves;
+		}
+
+		@Override
+		public Weight createWeight(IndexSearcher searcher, ScoreMode scoreMode, float boost) {
+			return new ConstantScoreWeight(this, boost) {
+				@Override
+				public ScorerSupplier scorerSupplier(LeafReaderContext context) throws IOException {
+					FixedBitSet bits = context.ord < _leaves.length ? _leaves[context.ord] : null;
+					if (bits == null) {
+						return null;
+					}
+					int cardinality = bits.cardinality();
+					if (cardinality == 0) {
+						return null;
+					}
+					return new DefaultScorerSupplier(
+						new ConstantScoreScorer(score(), scoreMode, new BitSetIterator(bits, cardinality)));
+				}
+
+				@Override
+				public boolean isCacheable(LeafReaderContext context) {
+					return false;
+				}
+			};
+		}
+
+		@Override
+		public String toString(String field) {
+			return "accepted";
+		}
+
+		@Override
+		public void visit(QueryVisitor visitor) {
+			visitor.visitLeaf(this);
+		}
+
+		@Override
+		public boolean equals(Object other) {
+			return this == other;
+		}
+
+		@Override
+		public int hashCode() {
+			return System.identityHashCode(this);
+		}
+	}
 
 	/** How many photographs this index holds vectors of. */
 	public int size() {

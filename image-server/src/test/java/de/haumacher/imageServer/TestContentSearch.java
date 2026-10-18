@@ -390,6 +390,36 @@ public class TestContentSearch extends TestCase {
 	}
 
 	/**
+	 * The quality that picks the best shot of a burst (issue #257, package 6) is measured from the
+	 * preview right where the picture is described, a photograph's alone; a cache written before it
+	 * existed has it added from the previews, without a single picture sent again.
+	 */
+	public void testTheQualityIsMeasuredAndAddedToAnOlderCache() throws Exception {
+		library(true);
+		start();
+		awaitDescribed();
+		ContentCache cache = ContentCache.read(folder(NEW));
+		ContentCache.ImageKey n1 = cache.photos().get("n1.jpg").image();
+		assertTrue("Measured: " + cache.quality(n1), cache.quality(n1) >= 0);
+		assertTrue("A video joins no burst, it needs no quality.",
+			Float.isNaN(cache.quality(cache.photos().get("clip.mp4").image())));
+
+		int images = _embedder._images.size();
+		File file = ContentCache.file(folder(NEW));
+		Files.write(file.toPath(), TestSimilarShots.version1(Files.readAllBytes(file.toPath())));
+		assertTrue("The older cache has none.", Float.isNaN(ContentCache.read(folder(NEW)).quality(n1)));
+		walk();
+		long end = System.currentTimeMillis() + TIMEOUT;
+		while (Float.isNaN(ContentCache.read(folder(NEW)).quality(n1))) {
+			assertTrue("Measured again in time.", System.currentTimeMillis() < end);
+			Thread.sleep(50);
+		}
+		awaitCatchUp();
+		assertEquals("Not one picture sent again.", images, _embedder._images.size());
+		assertEquals(cache.quality(n1), ContentCache.read(folder(NEW)).quality(n1));
+	}
+
+	/**
 	 * A photo renamed by hand and one moved into another album by the server keep their vectors:
 	 * nothing is sent again, and the old album forgets them.
 	 */

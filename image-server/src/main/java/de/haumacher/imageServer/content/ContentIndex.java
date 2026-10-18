@@ -659,11 +659,32 @@ public final class ContentIndex {
 		return new String[] { stamp, ContentText.stamp(stamp) };
 	}
 
-	/** Whether the given cache describes the given photo completely. */
+	/**
+	 * Whether the given cache describes the given photo completely: both its vectors, and the
+	 * {@link Quality} of a photograph's picture (a video joins no burst, so it needs none).
+	 */
 	private static boolean complete(ContentCache cache, Item item) {
 		ContentCache.Photo photo = cache.photos().get(item.part().getName());
 		return photo != null && photo.image().equals(item.image()) && photo.text().equals(item.textHash())
-			&& cache.image(item.image()) != null && cache.text(item.textHash()) != null;
+			&& cache.image(item.image()) != null && cache.text(item.textHash()) != null && measured(cache, item);
+	}
+
+	/** Whether the given photo needs no {@link Quality} measured, or has it, see {@link ContentCache#quality}. */
+	private static boolean measured(ContentCache cache, Item item) {
+		return !needsQuality(item) || !Float.isNaN(cache.quality(item.image()));
+	}
+
+	/** Whether the given photo is one a {@link Quality} is measured of: a photograph, not a video. */
+	private static boolean needsQuality(Item item) {
+		return !PreviewCache.isVideoName(item.part().getName());
+	}
+
+	/** The {@link Quality} to store for the given photo, {@link Float#NaN} for none to store. */
+	private static float qualityOf(ContentCache cache, Item item) {
+		if (measured(cache, item)) {
+			return Float.NaN;
+		}
+		return Quality.measure(item.preview());
 	}
 
 	/**
@@ -745,9 +766,12 @@ public final class ContentIndex {
 			return Outcome.DONE;
 		}
 		if (cache.image(item.image()) != null && cache.text(item.textHash()) != null) {
-			// A photo renamed, or a copy: both vectors are there, it is only named.
+			// A photo renamed, or a copy: both vectors are there, it is only named. Or a cache of the
+			// build before the quality of a picture: it is measured from the preview, without asking
+			// the embedder.
+			float quality = qualityOf(cache, item);
 			ContentCache.update(folder, stamps[0], stamps[1],
-				each -> mapIfThere(each, item));
+				each -> mapIfThere(each, item, quality));
 			_onWritten.accept(folder);
 			return Outcome.DONE;
 		}
@@ -783,8 +807,12 @@ public final class ContentIndex {
 			}
 			float[] imageVector = image;
 			float[] textVector = text;
+			float quality = qualityOf(cache, item);
 			ContentCache.update(folder, stamp, textStamp, each -> {
 				each.putImage(item.image(), imageVector);
+				if (!Float.isNaN(quality)) {
+					each.putQuality(item.image(), quality);
+				}
 				each.putText(item.textHash(), textVector);
 				each.putPhoto(name, new ContentCache.Photo(item.image(), item.textHash()));
 			});
@@ -800,8 +828,11 @@ public final class ContentIndex {
 		}
 	}
 
-	private static void mapIfThere(ContentCache cache, Item item) {
+	private static void mapIfThere(ContentCache cache, Item item, float quality) {
 		if (cache.image(item.image()) != null && cache.text(item.textHash()) != null) {
+			if (!Float.isNaN(quality)) {
+				cache.putQuality(item.image(), quality);
+			}
 			cache.putPhoto(item.part().getName(), new ContentCache.Photo(item.image(), item.textHash()));
 		}
 	}

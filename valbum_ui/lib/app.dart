@@ -25,6 +25,7 @@ import 'deep_link.dart';
 import 'device_code_scanner.dart';
 import 'diagnostics.dart';
 import 'duplicates_view.dart';
+import 'similar_view.dart';
 import 'first_screen.dart';
 import 'group_view.dart';
 import 'hash_cache.dart';
@@ -2610,6 +2611,12 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
             const DuplicatesRoute(),
             route,
           ],
+        // The same for the overview of the shots of the same scenery (#257).
+        ImageRoute(fromSimilar: true) => [
+            ListingOrAlbumRoute.root,
+            const SimilarRoute(),
+            route,
+          ],
         // A viewer opened from the search view sits on it, and the search
         // view on its folder, see issue #227.
         ImageRoute(fromSearch: true, albumPath: var folder) => [
@@ -2638,6 +2645,17 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
         MemberRoute(fromDuplicates: true) => [
             ListingOrAlbumRoute.root,
             const DuplicatesRoute(),
+            route.alternatives,
+            route,
+          ],
+        AlternativesRoute(fromSimilar: true) => [
+            ListingOrAlbumRoute.root,
+            const SimilarRoute(),
+            route,
+          ],
+        MemberRoute(fromSimilar: true) => [
+            ListingOrAlbumRoute.root,
+            const SimilarRoute(),
             route.alternatives,
             route,
           ],
@@ -2674,6 +2692,11 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
         // The overview of the photographs in several albums sits on the start
         // page, see issue #220.
         DuplicatesRoute() => [
+            ListingOrAlbumRoute.root,
+            route,
+          ],
+        // So does the overview of the shots of the same scenery (#257).
+        SimilarRoute() => [
             ListingOrAlbumRoute.root,
             route,
           ],
@@ -2743,17 +2766,22 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
     return switch (level) {
       ListingOrAlbumRoute() => "valbum:album:$album",
       ImageRoute(fromDuplicates: true) => "valbum:duplicates-image:$album",
+      ImageRoute(fromSimilar: true) => "valbum:similar-image:$album",
       ImageRoute(fromSearch: true) => "valbum:search-image:$album",
       ImageRoute(news: var key?) => "valbum:news-image:$album:$key",
       ImageRoute() => "valbum:image:$album",
       AlternativesRoute(fromDuplicates: true) =>
         "valbum:duplicates-alternatives:$album",
+      AlternativesRoute(fromSimilar: true) =>
+        "valbum:similar-alternatives:$album",
       AlternativesRoute() => "valbum:alternatives:$album",
       MemberRoute(fromDuplicates: true) => "valbum:duplicates-member:$album",
+      MemberRoute(fromSimilar: true) => "valbum:similar-member:$album",
       MemberRoute() => "valbum:member:$album",
       PersonsRoute() => "valbum:persons:$album",
       TrashRoute() => "valbum:trash:$album",
       DuplicatesRoute() => "valbum:duplicates",
+      SimilarRoute() => "valbum:similar",
       SearchRoute() => "valbum:search:$album",
       NewsRoute(:var key) => "valbum:news:$album:$key",
     };
@@ -2924,7 +2952,9 @@ class VAlbumState extends State<VAlbumView>
   }
 
   void doLoad() {
-    if (route is DuplicatesRoute || route is SearchRoute) {
+    if (route is DuplicatesRoute ||
+        route is SimilarRoute ||
+        route is SearchRoute) {
       // A page of the space that asks the server itself, see issues #220 and
       // #227: the listing it stands on is loaded by the level beneath it.
       return;
@@ -2963,6 +2993,9 @@ class VAlbumState extends State<VAlbumView>
   Widget build(BuildContext context) {
     if (route is DuplicatesRoute) {
       return DuplicatesView(this);
+    }
+    if (route is SimilarRoute) {
+      return SimilarView(this);
     }
     if (route is SearchRoute) {
       return SearchView(this);
@@ -3281,6 +3314,7 @@ class VAlbumState extends State<VAlbumView>
         PersonsRoute() => "",
         TrashRoute() => "",
         DuplicatesRoute() => "",
+        SimilarRoute() => "",
         SearchRoute() => "",
         NewsRoute() => "",
       };
@@ -3385,7 +3419,9 @@ class VAlbumState extends State<VAlbumView>
   /// `null` where it leads to the album.
   String? get duplicatesUpTooltip => route.fromDuplicates
       ? AppLocalizations.of(context)!.duplicatesBack
-      : route.fromSearch
+      : route.fromSimilar
+          ? AppLocalizations.of(context)!.similarBack
+          : route.fromSearch
           ? AppLocalizations.of(context)!.searchBack
           : null;
 
@@ -3397,6 +3433,7 @@ class VAlbumState extends State<VAlbumView>
         path,
         group.thumbnailName,
         fromDuplicates: route.fromDuplicates,
+        fromSimilar: route.fromSimilar,
       ));
 
   /// An [ErrorInfo] answered with a success status: the server's message is

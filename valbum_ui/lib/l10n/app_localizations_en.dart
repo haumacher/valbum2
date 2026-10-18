@@ -4535,4 +4535,58 @@ class AppLocalizationsEn extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get similarMenuEntry => 'Similar photos in several albums';
+
+  @override
+  String similarPageTitle(int count) {
+    return 'Similar photos ($count)';
+  }
+
+  @override
+  String get similarEmpty => 'No photos of different albums look alike.';
+
+  @override
+  String get similarOff =>
+      'The AI search is switched off in this space, so photos that look alike cannot be found.';
+
+  @override
+  String similarDescribing(int total, int done) {
+    return 'So far $done of $total photos have been described for the AI search; photos not described yet are missing here.';
+  }
+
+  @override
+  String similarPhotos(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count photos',
+      one: '1 photo',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get similarBack => 'Back to the similar photos';
+
+  @override
+  String stackCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count similar shots',
+      one: '1 similar shot',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get stackCollapse => 'Show the similar shots as one tile again';
+
+  @override
+  String get stackShotsAction => 'Stack similar shots';
+
+  @override
+  String get unstackShotsAction => 'Show every shot singly';
 }

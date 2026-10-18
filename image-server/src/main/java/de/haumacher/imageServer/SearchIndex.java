@@ -1292,6 +1292,117 @@ public final class SearchIndex implements FolderPipeline.Step {
 		return rank(scope, vector, 1, 0, k, visibility, album -> true, null, null, id.longValue());
 	}
 
+	/**
+	 * What the overview of the same scenery (issue #257) is built from, see {@link #scenery}.
+	 *
+	 * @param total
+	 *        How many still pictures the caller may see.
+	 * @param described
+	 *        How many of them have a picture's vector.
+	 * @param links
+	 *        The pairs of them whose pictures are alike, see
+	 *        {@link de.haumacher.imageServer.index.VectorIndex#neighbours}.
+	 * @param matches
+	 *        Where each photograph of a link lies, by its id.
+	 */
+	public record Scenery(int total, int described, List<de.haumacher.imageServer.index.VectorIndex.Link> links,
+			Map<Long, Match> matches) {
+		// The parts of the overview.
+	}
+
+	/** The key of a {@link Scenery} kept: the versions it was computed at, and whom it was for. */
+	private record SceneryKey(long rows, long vectors, BitSet allowed, int k, float threshold) {
+		// The parameters of a scenery.
+	}
+
+	/** The last sceneries computed, see {@link #scenery}; a handful of callers each. */
+	private final Map<SceneryKey, Scenery> _sceneries = new java.util.LinkedHashMap<>(16, 0.75f, true) {
+		private static final long serialVersionUID = 1L;
+
+		@Override
+		protected boolean removeEldestEntry(Map.Entry<SceneryKey, Scenery> eldest) {
+			return size() > 8;
+		}
+	};
+
+	/** How many sceneries were computed rather than taken from {@link #_sceneries}, for the tests. */
+	private final AtomicInteger _sceneryComputations = new AtomicInteger();
+
+	/** How many times {@link #scenery} computed its answer rather than reusing one, for the tests. */
+	public int sceneryComputations() {
+		return _sceneryComputations.get();
+	}
+
+	/**
+	 * The pairs of still pictures of the space whose pictures look alike, among those the given
+	 * visibility shows and the albums the given test passes (the trash and the videos left out):
+	 * each one's <code>k</code> nearest above the given cosine, see
+	 * {@link de.haumacher.imageServer.index.VectorIndex#neighbours}. What the caller may not see is
+	 * not looked for, inside the vector queries, exactly as for {@link #nearest}.
+	 *
+	 * <p>
+	 * Kept while neither the rows nor the vectors change, per set of photographs allowed: asked again
+	 * by the same caller (or another one shown the same), it costs no vector query.
+	 * </p>
+	 */
+	public Scenery scenery(Visibility visibility, java.util.function.Predicate<String> folders, int k, float threshold) {
+		Scenery none = new Scenery(0, 0, new ArrayList<>(), new HashMap<>());
+		de.haumacher.imageServer.index.VectorIndex vectors = _store.vectors();
+		if (vectors == null) {
+			return none;
+		}
+		writeThrough();
+		if (syncsOnRequest()) {
+			sync("", false);
+		}
+		long version = _store.version();
+		long vectorVersion = vectors.version();
+		BitSet allowed = _store.read(connection -> {
+			Evaluation evaluation = new Evaluation(connection, null, -1, version);
+			BitSet scoped = scope(evaluation, "", visibility);
+			BitSet result = (BitSet) withoutFolders(connection, scoped, "", folders).clone();
+			result.and(evaluation.eval(SearchMedia.create().setVideo(false), scoped));
+			return result;
+		}, null);
+		if (allowed == null) {
+			return none;
+		}
+		SceneryKey key = new SceneryKey(version, vectorVersion, allowed, k, threshold);
+		synchronized (_sceneries) {
+			Scenery known = _sceneries.get(key);
+			if (known != null) {
+				return known;
+			}
+		}
+		_sceneryComputations.incrementAndGet();
+		de.haumacher.imageServer.index.VectorIndex.Neighbours neighbours;
+		try {
+			neighbours = vectors.neighbours(allowed, k, threshold);
+		} catch (IOException ex) {
+			LOG.warning("Cannot read the vector index of '" + _root + "': " + ex.getMessage());
+			return none;
+		}
+		BitSet involved = new BitSet();
+		for (de.haumacher.imageServer.index.VectorIndex.Link link : neighbours.links()) {
+			involved.set((int) link.from());
+			involved.set((int) link.to());
+		}
+		Map<Long, Match> matches = _store.read(connection -> {
+			Evaluation evaluation = new Evaluation(connection, null, -1, version);
+			Map<Long, Match> result = new HashMap<>();
+			for (Match match : evaluation.matches(involved, "")) {
+				result.put(Long.valueOf(match.getId()), match);
+			}
+			return result;
+		}, new HashMap<>());
+		_store.trimCache();
+		Scenery result = new Scenery(allowed.cardinality(), neighbours.described(), neighbours.links(), matches);
+		synchronized (_sceneries) {
+			_sceneries.put(key, result);
+		}
+		return result;
+	}
+
 	private List<Scored> rank(PathInfo scope, float[] vector, float imageWeight, float textWeight, int k,
 			Visibility visibility, java.util.function.Predicate<String> folders, SearchQuery filter, PeopleStore people,
 			long without) {

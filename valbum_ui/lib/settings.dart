@@ -128,6 +128,16 @@ abstract class SettingsStore {
   /// Stores the camera filters of the inboxes.
   Future<void> saveInboxCameraFilters(String json);
 
+  /// Whether the albums seen on this device show their bursts as one tile each
+  /// (issue #257), `null` where it was never chosen — which means yes.
+  ///
+  /// A view of this device, never of the space, like the camera filters of
+  /// the inboxes. Not abstract: a store that keeps none answers the default.
+  Future<bool?> loadAlbumStacking() async => null;
+
+  /// Stores whether the albums show their bursts as one tile each.
+  Future<void> saveAlbumStacking(bool stacking) async {}
+
   /// Reads again what another isolate of this process may have written since
   /// (issue #300).
   ///
@@ -164,6 +174,10 @@ class InMemorySettingsStore extends SettingsStore {
   /// The stored inbox camera filters, see
   /// [SettingsStore.loadInboxCameraFilters].
   String? inboxCameraFilters;
+
+  /// Whether the albums stack their bursts, see
+  /// [SettingsStore.loadAlbumStacking].
+  bool? albumStacking;
 
   InMemorySettingsStore([
     this.value,
@@ -229,6 +243,13 @@ class InMemorySettingsStore extends SettingsStore {
   @override
   Future<void> saveInboxCameraFilters(String json) async =>
       inboxCameraFilters = json;
+
+  @override
+  Future<bool?> loadAlbumStacking() async => albumStacking;
+
+  @override
+  Future<void> saveAlbumStacking(bool stacking) async =>
+      albumStacking = stacking;
 }
 
 /// The [SettingsStore] of the app, backed by `shared_preferences`.
@@ -262,6 +283,10 @@ class PreferencesSettingsStore extends SettingsStore {
   /// The preferences key the inbox camera filters are stored under, see
   /// [SettingsStore.loadInboxCameraFilters].
   static const String inboxCameraFiltersKey = "inboxCameraFilters";
+
+  /// The preferences key of whether the albums stack their bursts, see
+  /// [SettingsStore.loadAlbumStacking].
+  static const String albumStackingKey = "albumStacking";
 
   const PreferencesSettingsStore();
 
@@ -348,6 +373,15 @@ class PreferencesSettingsStore extends SettingsStore {
   Future<void> saveInboxCameraFilters(String json) async =>
       (await SharedPreferences.getInstance())
           .setString(inboxCameraFiltersKey, json);
+
+  @override
+  Future<bool?> loadAlbumStacking() async =>
+      (await SharedPreferences.getInstance()).getBool(albumStackingKey);
+
+  @override
+  Future<void> saveAlbumStacking(bool stacking) async =>
+      (await SharedPreferences.getInstance())
+          .setBool(albumStackingKey, stacking);
 }
 
 /// The server URL the app uses, and the way it is changed.

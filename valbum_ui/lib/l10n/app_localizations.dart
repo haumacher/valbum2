@@ -7028,6 +7028,72 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count, plural, =1{Restore 1 photo} other{Restore {count} photos}}'**
   String trashRestoreSelection(int count);
+
+  /// Menu entry of the start page, beside 'Photos in several albums', opening the read-only overview of photos of several albums that look alike (issue #257: the same scenery, not the same file); also the page's title while it loads.
+  ///
+  /// In en, this message translates to:
+  /// **'Similar photos in several albums'**
+  String get similarMenuEntry;
+
+  /// Title of the overview of photos of several albums that look alike (issue #257); the count is how many groups of such photos there are.
+  ///
+  /// In en, this message translates to:
+  /// **'Similar photos ({count})'**
+  String similarPageTitle(int count);
+
+  /// Said on the overview of similar photos in several albums (issue #257) when there are none.
+  ///
+  /// In en, this message translates to:
+  /// **'No photos of different albums look alike.'**
+  String get similarEmpty;
+
+  /// Said on the overview of similar photos (issue #257) when the space has the content search ('AI search', German 'KI-Suche') switched off: the overview compares what the photos show, which needs it.
+  ///
+  /// In en, this message translates to:
+  /// **'The AI search is switched off in this space, so photos that look alike cannot be found.'**
+  String get similarOff;
+
+  /// Notice above the overview of similar photos (issue #257) while the server is still describing the photos for the content search ('AI search', German 'KI-Suche'); done and total count photos. Address the reader formally (German: 'Sie', never 'du').
+  ///
+  /// In en, this message translates to:
+  /// **'So far {done} of {total} photos have been described for the AI search; photos not described yet are missing here.'**
+  String similarDescribing(int total, int done);
+
+  /// How many photos one group of the overview of similar photos holds (issue #257).
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 photo} other{{count} photos}}'**
+  String similarPhotos(int count);
+
+  /// Tooltip of the way out of the viewer when it was opened from the overview of similar photos in several albums (issue #257); it returns to that overview.
+  ///
+  /// In en, this message translates to:
+  /// **'Back to the similar photos'**
+  String get similarBack;
+
+  /// Tooltip of the badge on a tile of an album that stands for a burst: several photos taken a few minutes apart that look alike, shown as one tile with the best shot on top (issue #257). Tapping the tile shows them all.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 similar shot} other{{count} similar shots}}'**
+  String stackCount(int count);
+
+  /// Tooltip of the badge on the first tile of a burst that was opened in the album (issue #257): folds the similar shots back into one tile.
+  ///
+  /// In en, this message translates to:
+  /// **'Show the similar shots as one tile again'**
+  String get stackCollapse;
+
+  /// Entry of an album's menu (issue #257) switching on that bursts of photos that look alike are shown as one tile each; remembered on this device. German: 'Ähnliche Aufnahmen stapeln'.
+  ///
+  /// In en, this message translates to:
+  /// **'Stack similar shots'**
+  String get stackShotsAction;
+
+  /// Entry of an album's menu (issue #257) switching off that bursts of photos that look alike are shown as one tile each, so every photo gets a tile of its own again; remembered on this device.
+  ///
+  /// In en, this message translates to:
+  /// **'Show every shot singly'**
+  String get unstackShotsAction;
 }
 
 class _AppLocalizationsDelegate

@@ -4594,4 +4594,59 @@ class AppLocalizationsDe extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get similarMenuEntry => 'Ähnliche Fotos in mehreren Alben';
+
+  @override
+  String similarPageTitle(int count) {
+    return 'Ähnliche Fotos ($count)';
+  }
+
+  @override
+  String get similarEmpty => 'Keine Fotos verschiedener Alben ähneln einander.';
+
+  @override
+  String get similarOff =>
+      'Die KI-Suche ist in diesem Bereich ausgeschaltet; ähnliche Fotos können daher nicht gefunden werden.';
+
+  @override
+  String similarDescribing(int total, int done) {
+    return 'Bisher wurden $done von $total Fotos für die KI-Suche beschrieben; noch nicht beschriebene Fotos fehlen hier.';
+  }
+
+  @override
+  String similarPhotos(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Fotos',
+      one: '1 Foto',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get similarBack => 'Zurück zu den ähnlichen Fotos';
+
+  @override
+  String stackCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count ähnliche Aufnahmen',
+      one: '1 ähnliche Aufnahme',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get stackCollapse =>
+      'Ähnliche Aufnahmen wieder als eine Kachel anzeigen';
+
+  @override
+  String get stackShotsAction => 'Ähnliche Aufnahmen stapeln';
+
+  @override
+  String get unstackShotsAction => 'Jedes Foto einzeln anzeigen';
 }

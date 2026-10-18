@@ -52,6 +52,41 @@ public final class ContentSearch {
 	 */
 	public static final float SIMILAR_THRESHOLD = 0.3f;
 
+	/**
+	 * The cosine of their pictures' vectors at or above which two photographs taken one after the
+	 * other belong to one burst of their album (a {@link de.haumacher.imageServer.shared.model.PhotoStack}),
+	 * if they were also taken at most {@link #BURST_GAP} apart. High on purpose: a stack hides
+	 * photographs behind one tile, so a cut too low stacks what the author wants to see side by
+	 * side, while one too high merely shows a burst as single tiles, as before. <b>Not calibrated</b>:
+	 * a first guess, set before stacks were tried on a real library.
+	 */
+	public static final float BURST_THRESHOLD = 0.9f;
+
+	/**
+	 * How far apart in time two photographs taken one after the other may be and still belong to
+	 * one burst, in milliseconds, see {@link #BURST_THRESHOLD}. <b>Not calibrated</b>: a first guess
+	 * of "a few minutes".
+	 */
+	public static final long BURST_GAP = 3 * 60_000L;
+
+	/**
+	 * The cosine of their pictures' vectors at or above which two photographs of the space are
+	 * shots of the same scenery (a {@link de.haumacher.imageServer.shared.model.SimilarGroup}),
+	 * whenever they were taken: lower than {@link #BURST_THRESHOLD}, for the same place seen on
+	 * another day is less alike than two shots of one moment; far above {@link #SIMILAR_THRESHOLD},
+	 * for the overview links what it finds into groups, and a cut too low would chain the whole
+	 * library into one. <b>Not calibrated</b>: a first guess.
+	 */
+	public static final float SCENERY_THRESHOLD = 0.8f;
+
+	/**
+	 * How many of its nearest neighbours each photograph is compared with for the overview of the
+	 * same scenery: what keeps the overview bounded (one query of the vector index per photograph,
+	 * never every pair), at the price of a scenery shot more than this many times missing some of
+	 * its links, which the links of the others usually make up for.
+	 */
+	public static final int SCENERY_NEIGHBOURS = 12;
+
 	/** How many photographs the search view is answered, the nearest first, where it asks for no other number. */
 	public static final int PAGE = 100;
 

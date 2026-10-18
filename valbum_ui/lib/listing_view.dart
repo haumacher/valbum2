@@ -31,7 +31,7 @@ import 'offline.dart';
 import 'oriented_thumbnail.dart';
 import 'persons_view.dart' show BrowserMenuHold;
 import 'rights.dart';
-import 'routes.dart' show DuplicatesRoute, SearchRoute;
+import 'routes.dart' show DuplicatesRoute, SearchRoute, SimilarRoute;
 import 'selectable.dart';
 import 'settings.dart';
 import 'share_session.dart';
@@ -331,6 +331,15 @@ class ListingView extends StatelessWidget {
                 Icons.photo_library_outlined,
                 l10n.duplicatesMenuEntry,
                 (_) => albumState.navigator.go(const DuplicatesRoute()),
+              ),
+            // The shots of the same scenery in several albums, beside the
+            // duplicates and asked by whoever may ask those (issue #257).
+            if (mayAskDuplicates)
+              keyedMenuItem(
+                const Key("open-similar"),
+                Icons.burst_mode_outlined,
+                l10n.similarMenuEntry,
+                (_) => albumState.navigator.go(const SimilarRoute()),
               ),
             if (mayShare(context, albumState.path))
               menuItem(

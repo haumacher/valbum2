@@ -271,6 +271,12 @@ public final class AlbumDate {
 				album.setSearchProblem(de.haumacher.imageServer.shared.model.SearchProblem.NONE);
 				changed = true;
 			}
+			if (!album.getStacks().isEmpty()) {
+				// The bursts of an album are a presentation of this read, derived from the vectors of
+				// the content search, never a statement of the album, see issue #257.
+				album.setStacks(java.util.Collections.emptyList());
+				changed = true;
+			}
 			if (album.isPreparing()) {
 				// Whether the background has recorded the folder is a property of this read, see
 				// issue #253.

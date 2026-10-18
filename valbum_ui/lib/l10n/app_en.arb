@@ -7505,5 +7505,83 @@
       }
     },
     "x-translated": "32fe2481"
+  },
+  "similarMenuEntry": "Similar photos in several albums",
+  "@similarMenuEntry": {
+    "description": "Menu entry of the start page, beside 'Photos in several albums', opening the read-only overview of photos of several albums that look alike (issue #257: the same scenery, not the same file); also the page's title while it loads.",
+    "x-translated": "45e76ccf"
+  },
+  "similarPageTitle": "Similar photos ({count})",
+  "@similarPageTitle": {
+    "description": "Title of the overview of photos of several albums that look alike (issue #257); the count is how many groups of such photos there are.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "9fa5e7c9"
+  },
+  "similarEmpty": "No photos of different albums look alike.",
+  "@similarEmpty": {
+    "description": "Said on the overview of similar photos in several albums (issue #257) when there are none.",
+    "x-translated": "a1d5dcc9"
+  },
+  "similarOff": "The AI search is switched off in this space, so photos that look alike cannot be found.",
+  "@similarOff": {
+    "description": "Said on the overview of similar photos (issue #257) when the space has the content search ('AI search', German 'KI-Suche') switched off: the overview compares what the photos show, which needs it.",
+    "x-translated": "eef242da"
+  },
+  "similarDescribing": "So far {done} of {total} photos have been described for the AI search; photos not described yet are missing here.",
+  "@similarDescribing": {
+    "description": "Notice above the overview of similar photos (issue #257) while the server is still describing the photos for the content search ('AI search', German 'KI-Suche'); done and total count photos. Address the reader formally (German: 'Sie', never 'du').",
+    "placeholders": {
+      "total": {
+        "type": "int"
+      },
+      "done": {
+        "type": "int"
+      }
+    },
+    "x-translated": "6d14e068"
+  },
+  "similarPhotos": "{count, plural, =1{1 photo} other{{count} photos}}",
+  "@similarPhotos": {
+    "description": "How many photos one group of the overview of similar photos holds (issue #257).",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "85cbe1ac"
+  },
+  "similarBack": "Back to the similar photos",
+  "@similarBack": {
+    "description": "Tooltip of the way out of the viewer when it was opened from the overview of similar photos in several albums (issue #257); it returns to that overview.",
+    "x-translated": "e07c2624"
+  },
+  "stackCount": "{count, plural, =1{1 similar shot} other{{count} similar shots}}",
+  "@stackCount": {
+    "description": "Tooltip of the badge on a tile of an album that stands for a burst: several photos taken a few minutes apart that look alike, shown as one tile with the best shot on top (issue #257). Tapping the tile shows them all.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "23b04357"
+  },
+  "stackCollapse": "Show the similar shots as one tile again",
+  "@stackCollapse": {
+    "description": "Tooltip of the badge on the first tile of a burst that was opened in the album (issue #257): folds the similar shots back into one tile.",
+    "x-translated": "1b186c06"
+  },
+  "stackShotsAction": "Stack similar shots",
+  "@stackShotsAction": {
+    "description": "Entry of an album's menu (issue #257) switching on that bursts of photos that look alike are shown as one tile each; remembered on this device. German: 'Ähnliche Aufnahmen stapeln'.",
+    "x-translated": "fbe143a"
+  },
+  "unstackShotsAction": "Show every shot singly",
+  "@unstackShotsAction": {
+    "description": "Entry of an album's menu (issue #257) switching off that bursts of photos that look alike are shown as one tile each, so every photo gets a tile of its own again; remembered on this device.",
+    "x-translated": "72a30463"
   }
 }

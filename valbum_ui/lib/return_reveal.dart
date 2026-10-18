@@ -118,6 +118,7 @@ mixin ReturnReveal<T extends StatefulWidget> on State<T> {
   /// shows none of this page's photos.
   List<String>? _photoAbove(VAlbumRoute route) {
     if (route.fromDuplicates ||
+        route.fromSimilar ||
         !listEquals(
           VAlbumRouterDelegate.statePathOf(route),
           revealView.statePath,
@@ -189,10 +190,16 @@ mixin ReturnReveal<T extends StatefulWidget> on State<T> {
     });
   }
 
+  /// The names to look for the tile of the photo named [names] by: [names]
+  /// themselves, and whatever tile a page shows such a photo under — the
+  /// tile of a burst its shots are stacked under, see `album_stacks.dart`.
+  List<String> revealNames(List<String> names) => names;
+
   /// Scrolls to the tile of the photo named [names]; whether the layout was
   /// there to do so, and the position scrolled where it was — none where the
   /// album does not show the photo, which is no reason to wait either.
-  ({bool laidOut, ScrollPosition? position}) _reveal(List<String> names) {
+  ({bool laidOut, ScrollPosition? position}) _reveal(List<String> shown) {
+    var names = revealNames(shown);
     for (var block in _blocks) {
       var row = block.rowOf(names);
       if (row < 0) {

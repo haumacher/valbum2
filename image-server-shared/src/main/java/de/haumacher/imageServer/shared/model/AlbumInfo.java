@@ -48,6 +48,9 @@ public class AlbumInfo extends FolderResource {
 	/** @see #getSearchProblem() */
 	private static final String SEARCH_PROBLEM__PROP = "searchProblem";
 
+	/** @see #getStacks() */
+	private static final String STACKS__PROP = "stacks";
+
 	/** @see #getPlaceCaption() */
 	private static final String PLACE_CAPTION__PROP = "placeCaption";
 
@@ -75,6 +78,8 @@ public class AlbumInfo extends FolderResource {
 	private de.haumacher.imageServer.shared.model.SearchQuery _query = null;
 
 	private de.haumacher.imageServer.shared.model.SearchProblem _searchProblem = de.haumacher.imageServer.shared.model.SearchProblem.NONE;
+
+	private final java.util.List<de.haumacher.imageServer.shared.model.PhotoStack> _stacks = new java.util.ArrayList<>();
 
 	private de.haumacher.imageServer.shared.model.PlaceCaption _placeCaption = de.haumacher.imageServer.shared.model.PlaceCaption.UNSET;
 
@@ -413,6 +418,67 @@ public class AlbumInfo extends FolderResource {
 	}
 
 	/**
+	 * The bursts of this album, see issue #257: photographs that look alike and were taken within a
+	 * few minutes of each other, which the app shows as one tile, the best shot on top.
+	 *
+	 * <p>
+	 * <b>Derived on every read and never stored</b>, exactly like {@link #getEffectiveDate()}: the
+	 * server chains the photographs of each section of the album (the parts between two
+		 * {@link Heading}s) in the order they were taken, and two neighbours belong to one stack where
+	 * the cosine of their pictures' vectors is at least the burst threshold and they were taken at
+	 * most the burst gap apart (<code>ContentSearch#BURST_THRESHOLD</code>,
+	 * <code>ContentSearch#BURST_GAP</code>). Only where the space has the content search on and the
+	 * photographs have their vectors; a video, a photograph without a vector or without a date, a
+	 * group's member and the trash never join a stack. Built from what the caller is answered: a
+	 * stack never names a photograph the caller is not shown, and holds at least two.
+	 * </p>
+	 *
+	 * <p>
+	 * Presentation only: a stack hides nothing from the viewer, the downloads, the counts or the
+	 * index picture, and an ordinary or a saved search, a collection and the inbox carry none. A
+	 * client that writes the album back has the field cleared before the sidecar is written.
+	 * </p>
+	 */
+	public final java.util.List<de.haumacher.imageServer.shared.model.PhotoStack> getStacks() {
+		return _stacks;
+	}
+
+	/**
+	 * @see #getStacks()
+	 */
+	public de.haumacher.imageServer.shared.model.AlbumInfo setStacks(java.util.List<? extends de.haumacher.imageServer.shared.model.PhotoStack> value) {
+		internalSetStacks(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getStacks()} without chain call utility. */
+	protected final void internalSetStacks(java.util.List<? extends de.haumacher.imageServer.shared.model.PhotoStack> value) {
+		if (value == null) throw new IllegalArgumentException("Property 'stacks' cannot be null.");
+		_stacks.clear();
+		_stacks.addAll(value);
+	}
+
+	/**
+	 * Adds a value to the {@link #getStacks()} list.
+	 */
+	public de.haumacher.imageServer.shared.model.AlbumInfo addStack(de.haumacher.imageServer.shared.model.PhotoStack value) {
+		internalAddStack(value);
+		return this;
+	}
+
+	/** Implementation of {@link #addStack(de.haumacher.imageServer.shared.model.PhotoStack)} without chain call utility. */
+	protected final void internalAddStack(de.haumacher.imageServer.shared.model.PhotoStack value) {
+		_stacks.add(value);
+	}
+
+	/**
+	 * Removes a value from the {@link #getStacks()} list.
+	 */
+	public final void removeStack(de.haumacher.imageServer.shared.model.PhotoStack value) {
+		_stacks.remove(value);
+	}
+
+	/**
 	 * Whether the photographs of this album show the place they were taken in as their caption
 	 * where they have no description.
 	 *
@@ -610,6 +676,12 @@ public class AlbumInfo extends FolderResource {
 		}
 		out.name(SEARCH_PROBLEM__PROP);
 		getSearchProblem().writeTo(out);
+		out.name(STACKS__PROP);
+		out.beginArray();
+		for (de.haumacher.imageServer.shared.model.PhotoStack x : getStacks()) {
+			x.writeTo(out);
+		}
+		out.endArray();
 		out.name(PLACE_CAPTION__PROP);
 		getPlaceCaption().writeTo(out);
 		out.name(PARTS__PROP);
@@ -634,6 +706,14 @@ public class AlbumInfo extends FolderResource {
 			case STARRED__PROP: setStarred(in.nextBoolean()); break;
 			case QUERY__PROP: setQuery(de.haumacher.imageServer.shared.model.SearchQuery.readSearchQuery(in)); break;
 			case SEARCH_PROBLEM__PROP: setSearchProblem(de.haumacher.imageServer.shared.model.SearchProblem.readSearchProblem(in)); break;
+			case STACKS__PROP: {
+				in.beginArray();
+				while (in.hasNext()) {
+					addStack(de.haumacher.imageServer.shared.model.PhotoStack.readPhotoStack(in));
+				}
+				in.endArray();
+			}
+			break;
 			case PLACE_CAPTION__PROP: setPlaceCaption(de.haumacher.imageServer.shared.model.PlaceCaption.readPlaceCaption(in)); break;
 			case PARTS__PROP: {
 				in.beginArray();

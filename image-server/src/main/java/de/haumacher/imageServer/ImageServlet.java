@@ -34,6 +34,7 @@ import de.haumacher.imageServer.content.ContentIndex;
 import de.haumacher.imageServer.content.ContentSearch;
 import de.haumacher.imageServer.content.ContentVectors;
 import de.haumacher.imageServer.content.Embedder;
+import de.haumacher.imageServer.content.Stacks;
 import de.haumacher.imageServer.faces.FaceCache;
 import de.haumacher.imageServer.faces.FaceImport;
 import de.haumacher.imageServer.faces.FaceIndex;
@@ -85,6 +86,7 @@ import de.haumacher.imageServer.shared.model.ImageCount;
 import de.haumacher.imageServer.shared.model.ImageGroup;
 import de.haumacher.imageServer.shared.model.ImageKind;
 import de.haumacher.imageServer.shared.model.ImagePart;
+import de.haumacher.imageServer.shared.model.IndexProgress;
 import de.haumacher.imageServer.shared.model.Invitation;
 import de.haumacher.imageServer.shared.model.InvitationCreated;
 import de.haumacher.imageServer.shared.model.InvitationList;
@@ -121,6 +123,7 @@ import de.haumacher.imageServer.shared.model.ShareLink;
 import de.haumacher.imageServer.shared.model.ShareLinkCreated;
 import de.haumacher.imageServer.shared.model.ShareLinkList;
 import de.haumacher.imageServer.shared.model.ShareResend;
+import de.haumacher.imageServer.shared.model.SimilarList;
 import de.haumacher.imageServer.shared.model.TagFaces;
 import de.haumacher.imageServer.shared.model.ThumbnailInfo;
 import de.haumacher.imageServer.shared.model.UploadCheck;
@@ -363,6 +366,16 @@ public class ImageServlet extends HttpServlet {
 
 	/** The type of the space-level overview of the photographs in several albums, see issue #220. */
 	public static final String DUPLICATES_TYPE = "duplicates";
+
+	/**
+	 * What <code>?type=similar</code> is refused with to a share link and to an anonymous caller, see
+	 * issue #257: like {@link #DUPLICATES_REFUSED}, an overview of the whole space is no album.
+	 */
+	public static final String SIMILAR_REFUSED =
+		"Which photos of several albums look alike is shown to the members of this space only.";
+
+	/** The type of the space-level overview of the shots of the same scenery, see issue #257. */
+	public static final String SIMILAR_TYPE = "similar";
 
 	/** The type of the list of every share link of the space, see issue #269. */
 	public static final String SPACE_SHARES_TYPE = "space-shares";
@@ -1519,6 +1532,10 @@ public class ImageServlet extends HttpServlet {
 		}
 		if (DUPLICATES_TYPE.equals(type)) {
 			serveDuplicates(context, caller);
+			return;
+		}
+		if (SIMILAR_TYPE.equals(type)) {
+			serveSimilar(context, caller);
 			return;
 		}
 		if (CATCH_UP_TYPE.equals(type)) {
@@ -6663,7 +6680,7 @@ public class ImageServlet extends HttpServlet {
 			return null;
 		}
 		Resource answer = folderAnswer(shown, path, caller, clearance, viewAs);
-		return PhotoSearch.partial(localized(withRights(answer, _auth.rights(caller, path)), context));
+		return stacked(PhotoSearch.partial(localized(withRights(answer, _auth.rights(caller, path)), context)), path);
 	}
 
 	/** The message a folder sidecar written on a collection is refused with. */
@@ -7416,14 +7433,34 @@ public class ImageServlet extends HttpServlet {
 			}
 			Resource answer = folderAnswer(resource, pathInfo, caller, clearance, viewAs);
 			// A saved search answers its photographs slim, see ImagePart#isPartial().
-			serveJson(context.response(),
-				PhotoSearch.partial(localized(withRights(answer, _auth.rights(caller, pathInfo)), context)));
+			serveJson(context.response(), stacked(
+				PhotoSearch.partial(localized(withRights(answer, _auth.rights(caller, pathInfo)), context)), pathInfo));
 		} else {
 			error404(context);
 		}
 	}
 
 
+
+	/**
+	 * The given album answer with its bursts, see issue #257 and {@link Stacks}: derived from the
+	 * album's vectors where the space has the content search on, and from what the answer shows the
+	 * caller, so that a stack names no photograph the caller is not shown.
+	 *
+	 * @param answer
+	 *        The caller's own copy of an album (what {@link #withRights(Resource, Set)} answers);
+	 *        never the cached album, which is never changed here.
+	 */
+	private Resource stacked(Resource answer, PathInfo path) {
+		if (!(answer instanceof AlbumInfo) || !_content.isEnabled()) {
+			return answer;
+		}
+		AlbumInfo album = (AlbumInfo) answer;
+		if (Stacks.applies(album)) {
+			album.setStacks(Stacks.of(album, path.toFile()));
+		}
+		return answer;
+	}
 
 	/**
 	 * The given answer with its place names in the language the caller asked for
@@ -8047,8 +8084,66 @@ public class ImageServlet extends HttpServlet {
 			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, VIEW_AS_REFUSED);
 			return;
 		}
+		serveJsonObject(context.response(),
+			Duplicates.compute(_index.shared(), _index.progress(), overviewView(caller, viewAs)));
+	}
+
+	/**
+	 * Answers the shots of the same scenery in several albums of this space at
+	 * <code>&lt;data&gt;/?type=similar</code>, see issue #257 and {@link SimilarShots}.
+	 *
+	 * <p>
+	 * Asked and refused exactly as {@link #serveDuplicates the duplicates} are: of every member, a
+	 * share link and an anonymous caller refused ({@link #SIMILAR_REFUSED}); every photograph is
+	 * answered only where its album answers it to this caller. What the caller may not see is left
+	 * out of the vector queries already ({@link SearchIndex#scenery}), with the very rules of the
+	 * content search ({@link #nearestAnswers}). Where the space has the content search off, the list
+	 * is empty and says so.
+	 * </p>
+	 */
+	private void serveSimilar(Context context, Caller caller) throws IOException {
+		if (caller.isShareLink() || (!caller.isPaired() && _auth.getMode() != AuthMode.OFF)) {
+			LOG.warning("Refusing the similar shots to " + (caller.isShareLink()
+				? "the share link '" + caller.getShareLabel() + "'" : "an anonymous caller") + ".");
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, SIMILAR_REFUSED);
+			return;
+		}
+		int viewAs;
+		try {
+			viewAs = Privacy.viewAs(context.getParameter(Privacy.VIEW_AS_PARAMETER));
+		} catch (IllegalArgumentException ex) {
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, VIEW_AS_REFUSED);
+			return;
+		}
+		if (!_content.isEnabled()) {
+			serveJsonObject(context.response(), SimilarList.create().setContent(false)
+				.setDescribed(IndexProgress.create()));
+			return;
+		}
+		PathInfo scope = new PathInfo(_basePath);
+		SearchIndex.Visibility visibility = new SearchIndex.Visibility(Math.min(_auth.clearance(caller, scope), viewAs),
+			Ratings.MIN, _auth.photoLabel(caller));
+		java.util.function.Predicate<String> folders = path -> {
+			PathInfo folder = path.isEmpty() ? new PathInfo(_basePath) : new PathInfo(_basePath, Paths.get(path));
+			return _auth.mayView(caller, folder) && (!Inboxes.isInbox(folder.toFile())
+				|| Inboxes.visibility(_auth, caller, folder, viewAs) != Inboxes.Visibility.NONE);
+		};
+		SearchIndex.Scenery scenery =
+			_searchIndex.scenery(visibility, folders, ContentSearch.SCENERY_NEIGHBOURS, ContentSearch.SCENERY_THRESHOLD);
 		Path root = _basePath;
-		Duplicates.View view = new Duplicates.View() {
+		java.util.function.Function<String, Map<String, String>> hashes = folder -> new de.haumacher.imageServer.upload.HashCache(
+			folder.isEmpty() ? root.toFile() : root.resolve(folder).toFile()).storedHashByName();
+		serveJsonObject(context.response(),
+			SimilarShots.compute(scenery, overviewView(caller, viewAs), hashes, true));
+	}
+
+	/**
+	 * What the given caller is shown of each album and photograph by an overview of the space (the
+	 * duplicates of #220, the similar shots of #257): what the album itself would answer them.
+	 */
+	private Duplicates.View overviewView(Caller caller, int viewAs) {
+		Path root = _basePath;
+		return new Duplicates.View() {
 			@Override
 			public AlbumInfo album(String folder) {
 				PathInfo path = folder.isEmpty() ? new PathInfo(root) : new PathInfo(root, Paths.get(folder));
@@ -8077,8 +8172,28 @@ public class ImageServlet extends HttpServlet {
 				int clearance = Math.min(_auth.clearance(caller, path), viewAs);
 				return Duplicates.shows(image, clearance, _auth.minRating(caller, path, viewAs)) ? image : null;
 			}
+
+			@Override
+			public Map<String, ImagePart> photos(String folder) {
+				Map<String, ImagePart> result = new HashMap<>();
+				AlbumInfo album = album(folder);
+				if (album == null) {
+					return result;
+				}
+				PathInfo path = folder.isEmpty() ? new PathInfo(root) : new PathInfo(root, Paths.get(folder));
+				Inboxes.Visibility inbox =
+					Inboxes.isInbox(path.toFile()) ? Inboxes.visibility(_auth, caller, path, viewAs) : null;
+				int clearance = Math.min(_auth.clearance(caller, path), viewAs);
+				int minRating = _auth.minRating(caller, path, viewAs);
+				for (ImagePart image : PhotoSearch.images(album)) {
+					if ((inbox == null || Inboxes.shows(inbox, image, caller.subject()))
+						&& Duplicates.shows(image, clearance, minRating)) {
+						result.put(image.getName(), image);
+					}
+				}
+				return result;
+			}
 		};
-		serveJsonObject(context.response(), Duplicates.compute(_index.shared(), _index.progress(), view));
 	}
 
 	/**
@@ -10411,8 +10526,8 @@ public class ImageServlet extends HttpServlet {
 		int viewAs = Privacy.PRIVATE;
 		int clearance = Math.min(_auth.clearance(caller, folderPath), viewAs);
 		Resource answer = folderAnswer(stored, folderPath, caller, clearance, viewAs);
-		serveJson(context.response(),
-			PhotoSearch.partial(localized(withRights(answer, _auth.rights(caller, folderPath)), context)));
+		serveJson(context.response(), stacked(
+			PhotoSearch.partial(localized(withRights(answer, _auth.rights(caller, folderPath)), context)), folderPath));
 	}
 
 	/**

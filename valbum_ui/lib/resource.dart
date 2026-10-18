@@ -542,6 +542,28 @@ class AlbumInfo extends FolderResource {
 	///  </p>
 	SearchProblem searchProblem;
 
+	///  The bursts of this album, see issue #257: photographs that look alike and were taken within a
+	///  few minutes of each other, which the app shows as one tile, the best shot on top.
+	/// 
+	///  <p>
+	///  <b>Derived on every read and never stored</b>, exactly like {@link #effectiveDate}: the
+	///  server chains the photographs of each section of the album (the parts between two
+		///  {@link Heading}s) in the order they were taken, and two neighbours belong to one stack where
+	///  the cosine of their pictures' vectors is at least the burst threshold and they were taken at
+	///  most the burst gap apart (<code>ContentSearch#BURST_THRESHOLD</code>,
+	///  <code>ContentSearch#BURST_GAP</code>). Only where the space has the content search on and the
+	///  photographs have their vectors; a video, a photograph without a vector or without a date, a
+	///  group's member and the trash never join a stack. Built from what the caller is answered: a
+	///  stack never names a photograph the caller is not shown, and holds at least two.
+	///  </p>
+	/// 
+	///  <p>
+	///  Presentation only: a stack hides nothing from the viewer, the downloads, the counts or the
+	///  index picture, and an ordinary or a saved search, a collection and the inbox carry none. A
+	///  client that writes the album back has the field cleared before the sidecar is written.
+	///  </p>
+	List<PhotoStack> stacks;
+
 	///  Whether the photographs of this album show the place they were taken in as their caption
 	///  where they have no description.
 	/// 
@@ -580,6 +602,7 @@ class AlbumInfo extends FolderResource {
 			this.starred = false, 
 			this.query, 
 			this.searchProblem = SearchProblem.none, 
+			this.stacks = const [], 
 			this.placeCaption = PlaceCaption.unset, 
 			this.parts = const [], 
 			this.imageByName = const {}, 
@@ -648,6 +671,19 @@ class AlbumInfo extends FolderResource {
 				searchProblem = readSearchProblem(json);
 				break;
 			}
+			case "stacks": {
+				json.expectArray();
+				stacks = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = PhotoStack.read(json);
+						if (value != null) {
+							stacks.add(value);
+						}
+					}
+				}
+				break;
+			}
 			case "placeCaption": {
 				placeCaption = readPlaceCaption(json);
 				break;
@@ -711,6 +747,13 @@ class AlbumInfo extends FolderResource {
 
 		json.addKey("searchProblem");
 		writeSearchProblem(json, searchProblem);
+
+		json.addKey("stacks");
+		json.startArray();
+		for (var _element in stacks) {
+			_element.writeContent(json);
+		}
+		json.endArray();
 
 		json.addKey("placeCaption");
 		writePlaceCaption(json, placeCaption);
@@ -794,6 +837,119 @@ abstract class AlbumPart extends Resource {
 
 	@override
 	R visitResource<R, A>(ResourceVisitor<R, A> v, A arg) => visitAlbumPart(v, arg);
+
+}
+
+///  One burst of an album, see {@link AlbumInfo#stacks}: derived, never stored.
+class PhotoStack extends _JsonObject {
+	///  The photographs of the stack by their {@link ImagePart#name names}, at least two, the best shot
+	///  first: the highest {@link ImagePart#rating} where a member is rated, else the sharpest and best
+	///  exposed by the measure the server keeps beside the vectors, else the first taken; the others in
+	///  the order they were taken.
+	/// 
+	///  <p>
+	///  A list of messages, not a list of plain strings: the Dart backend of the model generator
+	///  mis-types a <code>repeated string</code> field, see {@link UploadCheck#hashes}.
+	///  </p>
+	List<StackMember> members;
+
+	/// Creates a PhotoStack.
+	PhotoStack({
+			this.members = const [], 
+	});
+
+	/// Parses a PhotoStack from a string source.
+	static PhotoStack? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a PhotoStack instance from the given reader.
+	static PhotoStack read(JsonReader json) {
+		PhotoStack result = PhotoStack();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "PhotoStack";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "members": {
+				json.expectArray();
+				members = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = StackMember.read(json);
+						if (value != null) {
+							members.add(value);
+						}
+					}
+				}
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("members");
+		json.startArray();
+		for (var _element in members) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+	}
+
+}
+
+///  A photograph of a {@link PhotoStack}.
+class StackMember extends _JsonObject {
+	///  The {@link ImagePart#name} of the photograph in its album.
+	String name;
+
+	/// Creates a StackMember.
+	StackMember({
+			this.name = "", 
+	});
+
+	/// Parses a StackMember from a string source.
+	static StackMember? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a StackMember instance from the given reader.
+	static StackMember read(JsonReader json) {
+		StackMember result = StackMember();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "StackMember";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "name": {
+				name = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("name");
+		json.addString(name);
+	}
 
 }
 
@@ -5580,6 +5736,271 @@ class DuplicateCopy extends _JsonObject {
 
 		json.addKey("name");
 		json.addString(name);
+	}
+
+}
+
+///  Photographs of the same scenery in several albums of a space, see issue #257 and
+///  <code>&lt;data&gt;/?type=similar</code>: the overview beside the {@link DuplicateList} of #220.
+/// 
+///  <p>
+///  Three levels of "the same" are kept apart: the same content (a {@link DuplicateList}), the same
+///  recording with other metadata (<code>SameRecording</code>, #167) and a similar picture, which
+///  this is. Read-only and derived from the vectors of the content search: two photographs are
+///  linked where the cosine of their pictures' vectors is at least the scenery threshold
+///  (<code>ContentSearch#SCENERY_THRESHOLD</code>), among the nearest each has in the space, and a
+///  group is what is linked. Two copies of one content are never linked to each other: they are a
+///  duplicate, not a similar shot. Every photograph is one the caller may see, exactly as its album
+///  would show it to them; a group of which the caller sees fewer than two contents, or photographs
+///  in fewer than two albums, is no group for them.
+///  </p>
+class SimilarList extends _JsonObject {
+	///  The groups, the most photographs first, then the newest, then by the path of the first.
+	List<SimilarGroup> groups;
+
+	///  How many of the photographs the caller may see have been described for the content search
+	///  ({@link IndexProgress#done}) of how many there are ({@link IndexProgress#total}): while some
+	///  are not, a photograph not described yet is in no group, and the list is what is known so far.
+	IndexProgress? described;
+
+	///  Whether the space has the content search switched on; where it is off there are no vectors to
+	///  compare, and the list is empty.
+	bool content;
+
+	/// Creates a SimilarList.
+	SimilarList({
+			this.groups = const [], 
+			this.described, 
+			this.content = false, 
+	});
+
+	/// Parses a SimilarList from a string source.
+	static SimilarList? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a SimilarList instance from the given reader.
+	static SimilarList read(JsonReader json) {
+		SimilarList result = SimilarList();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "SimilarList";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "groups": {
+				json.expectArray();
+				groups = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = SimilarGroup.read(json);
+						if (value != null) {
+							groups.add(value);
+						}
+					}
+				}
+				break;
+			}
+			case "described": {
+				described = json.tryNull() ? null : IndexProgress.read(json);
+				break;
+			}
+			case "content": {
+				content = json.expectBool();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("groups");
+		json.startArray();
+		for (var _element in groups) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+
+		var _described = described;
+		if (_described != null) {
+			json.addKey("described");
+			_described.writeContent(json);
+		}
+
+		json.addKey("content");
+		json.addBool(content);
+	}
+
+}
+
+///  Photographs of a {@link SimilarList} that look alike, in at least two albums.
+class SimilarGroup extends _JsonObject {
+	///  The date of the first photograph, milliseconds since the epoch, 0 if unknown.
+	int date;
+
+	///  The photographs, at least two, by their album's date, then its path, then their name.
+	List<SimilarPhoto> photos;
+
+	/// Creates a SimilarGroup.
+	SimilarGroup({
+			this.date = 0, 
+			this.photos = const [], 
+	});
+
+	/// Parses a SimilarGroup from a string source.
+	static SimilarGroup? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a SimilarGroup instance from the given reader.
+	static SimilarGroup read(JsonReader json) {
+		SimilarGroup result = SimilarGroup();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "SimilarGroup";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "date": {
+				date = json.expectInt();
+				break;
+			}
+			case "photos": {
+				json.expectArray();
+				photos = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = SimilarPhoto.read(json);
+						if (value != null) {
+							photos.add(value);
+						}
+					}
+				}
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("date");
+		json.addNumber(date);
+
+		json.addKey("photos");
+		json.startArray();
+		for (var _element in photos) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+	}
+
+}
+
+///  One photograph of a {@link SimilarGroup}.
+class SimilarPhoto extends _JsonObject {
+	///  The album's path relative to the root of the caller's space, segments separated by
+	///  <code>/</code>; the empty string for the root itself.
+	String album;
+
+	///  The album's title, empty where it has none (the app then shows the folder name).
+	String title;
+
+	///  The album's {@link AlbumInfo#effectiveDate}, 0 where it has none.
+	int albumDate;
+
+	///  The name of the photograph in the album, the name it is addressed and opened by.
+	String name;
+
+	///  The photograph, as much as its thumbnail needs: name, kind, date, size, orientation, crop and
+	///  poster &mdash; nothing else of the album's description.
+	ImagePart? image;
+
+	/// Creates a SimilarPhoto.
+	SimilarPhoto({
+			this.album = "", 
+			this.title = "", 
+			this.albumDate = 0, 
+			this.name = "", 
+			this.image, 
+	});
+
+	/// Parses a SimilarPhoto from a string source.
+	static SimilarPhoto? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a SimilarPhoto instance from the given reader.
+	static SimilarPhoto read(JsonReader json) {
+		SimilarPhoto result = SimilarPhoto();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "SimilarPhoto";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "album": {
+				album = json.expectString();
+				break;
+			}
+			case "title": {
+				title = json.expectString();
+				break;
+			}
+			case "albumDate": {
+				albumDate = json.expectInt();
+				break;
+			}
+			case "name": {
+				name = json.expectString();
+				break;
+			}
+			case "image": {
+				image = json.tryNull() ? null : ImagePart.read(json);
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("album");
+		json.addString(album);
+
+		json.addKey("title");
+		json.addString(title);
+
+		json.addKey("albumDate");
+		json.addNumber(albumDate);
+
+		json.addKey("name");
+		json.addString(name);
+
+		var _image = image;
+		if (_image != null) {
+			json.addKey("image");
+			_image.writeContent(json);
+		}
 	}
 
 }

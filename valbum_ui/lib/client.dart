@@ -3078,6 +3078,26 @@ class VAlbumClient {
     return DuplicateList.read(JsonReader.fromString(response.body));
   }
 
+  /// The shots of the same scenery in several albums of this space (#257),
+  /// the overview beside [duplicates].
+  ///
+  /// Space-level, asked of the data root, read-only: every photograph one the
+  /// caller may see, a group seen in fewer than two albums being none. A
+  /// share link and an anonymous caller are refused with a 403 carrying the
+  /// server's own sentence, exactly as for the duplicates.
+  Future<SimilarList> similar() async {
+    var url = "${folderUrl(const [])}?type=similar";
+    var response = await _http.get(Uri.parse(url), headers: authHeaders);
+    if (response.statusCode >= 300) {
+      throw failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingAsking("'$url'"),
+      );
+    }
+    return SimilarList.read(JsonReader.fromString(response.body));
+  }
+
   /// How far the server has got preparing the albums of this space in the
   /// background (#236): albums done of all, the step and folder it is at, the
   /// videos still waiting and the last failure.
