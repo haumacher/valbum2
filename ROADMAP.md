@@ -239,6 +239,10 @@ in a separate service, and abuse and law (the DSA, GDPR) come first. Open questi
 
 ## Decisions log
 
+- **2026-10-18** — 2.15.1 released (tag `valbum-2.15.1` on the commit recording it), a patch for 2.15.0.
+  - **Camera-roll sync works again (#303):** since #300 every run goes to the WorkManager engine, where photo_manager's `getPermissionState` needs an Activity (`context!!`, an NPE after R8); the background now asks the platform through the app's own `media_location` plugin. Every sync failure writes a diagnostics entry, and the log is a file shared by all engines, so failures of a background run show in the app.
+  - **Content search progress (#304):** the catch-up view shows described of total, the embedder's reason and the next retry while it waits, and says "nothing to do" only when nothing waits.
+
 - **2026-10-18** — 2.15.0 released (tag `valbum-2.15.0` on the commit recording it).
   - **Content search (#257):** photos found by what they show, in any language — an AI switch in the search view ranks by similarity, the other chips narrow inside the vector query, saved searches store the text; "More like this" takes a photo as the query (`SearchSimilar`, hash-anchored); bursts in an album stack into one tile, best shot on top; similar photos across albums get an overview beside the duplicates. Vectors live in the space's Lucene index (#264 slice 4), embeddings in each album's `.vacache`. Opt-in per space; the embedder is a package of its own (`valbum-embedder`, `.deb` and image) or the server's child. All thresholds uncalibrated (#302).
   - **Space settings in the app:** an administrator switches faces, content search and the other space options on a settings page instead of editing `space.json`.
