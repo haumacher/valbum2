@@ -8045,5 +8045,91 @@
       }
     },
     "x-translated": "8e1377f9"
+  },
+  "keptTitle": "Shown in other albums",
+  "@keptTitle": {
+    "description": "Issue #307: a photo that other albums still show (as a reference) is never thrown away: instead of going to the trash it moves into the album that shows it, in the place of that reference. Title of the question asked before such photos are deleted.",
+    "x-translated": "760ea0cb"
+  },
+  "keptAlbumName": "‘{title}’",
+  "@keptAlbumName": {
+    "description": "How an album is named in the sentences about kept photos (issue #307): its title in quotation marks; German uses ‚…‘.",
+    "placeholders": {
+      "title": {
+        "type": "String",
+        "example": "Best of 2025"
+      }
+    },
+    "x-translated": "19402857"
+  },
+  "keptQuestion": "{count, plural, =1{1 photo is still shown in {albums} – it stays there, all others go to the trash.} other{{count} photos are still shown in {albums} – they stay there, all others go to the trash.}}",
+  "@keptQuestion": {
+    "description": "Issue #307: a photo that other albums still show (as a reference) is never thrown away: instead of going to the trash it moves into the album that shows it, in the place of that reference. Said before a delete. {albums} is one or more quoted album names. German: 'Verweis' for reference, 'Papierkorb' for trash, formal 'Sie'.",
+    "placeholders": {
+      "albums": {
+        "type": "String",
+        "example": "‘Best of 2025’, ‘Trip’"
+      },
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "6b56c586"
+  },
+  "keptQuestionAll": "{count, plural, =1{1 photo is still shown in {albums} – it stays there instead of going to the trash.} other{{count} photos are still shown in {albums} – they stay there instead of going to the trash.}}",
+  "@keptQuestionAll": {
+    "description": "Issue #307: a photo that other albums still show (as a reference) is never thrown away: instead of going to the trash it moves into the album that shows it, in the place of that reference. Said before a delete where every photo to delete is kept that way.",
+    "placeholders": {
+      "albums": {
+        "type": "String",
+        "example": "‘Best of 2025’, ‘Trip’"
+      },
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "d42f8ffc"
+  },
+  "keptReport": "{count, plural, =1{1 photo is still shown in {albums} and was moved there instead of into the trash.} other{{count} photos are still shown in {albums} and were moved there instead of into the trash.}}",
+  "@keptReport": {
+    "description": "Issue #307: a photo that other albums still show (as a reference) is never thrown away: instead of going to the trash it moves into the album that shows it, in the place of that reference. Said after a delete.",
+    "placeholders": {
+      "albums": {
+        "type": "String",
+        "example": "‘Best of 2025’, ‘Trip’"
+      },
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "cfa4037f"
+  },
+  "keptPurgeQuestion": "{count, plural, =1{1 photo is still shown in {albums} – it moves there instead of being deleted from disk.} other{{count} photos are still shown in {albums} – they move there instead of being deleted from disk.}}",
+  "@keptPurgeQuestion": {
+    "description": "Issue #307: a photo that other albums still show (as a reference) is never thrown away: instead of going to the trash it moves into the album that shows it, in the place of that reference. Said before the trash is purged (deleted from disk).",
+    "placeholders": {
+      "albums": {
+        "type": "String",
+        "example": "‘Best of 2025’, ‘Trip’"
+      },
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "f92bb292"
+  },
+  "keptPurgeReport": "{count, plural, =1{1 photo is still shown in {albums} and was moved there instead of being deleted.} other{{count} photos are still shown in {albums} and were moved there instead of being deleted.}}",
+  "@keptPurgeReport": {
+    "description": "Issue #307: a photo that other albums still show (as a reference) is never thrown away: instead of going to the trash it moves into the album that shows it, in the place of that reference. Said after the trash was purged.",
+    "placeholders": {
+      "albums": {
+        "type": "String",
+        "example": "‘Best of 2025’, ‘Trip’"
+      },
+      "count": {
+        "type": "int"
+      }
+    },
+    "x-translated": "75880bb2"
   }
 }

@@ -16,6 +16,7 @@ import 'package:valbum_ui/main.dart';
 import 'album_menu_actions_test.dart' hide main;
 import 'move_test.dart' hide main;
 import 'share_link_test.dart' as share;
+import 'util/questions.dart';
 import 'util/fake_image_http.dart';
 import 'util/l10n.dart';
 
@@ -73,7 +74,8 @@ void main() {
         await confirmDelete(tester);
       });
 
-      var post = requests.singleWhere((r) => r.method == "POST");
+      var post =
+          requests.singleWhere((r) => r.method == "POST" && !isQuestion(r));
       // Posted to the folder the entry lives in, as a move out of it is.
       expect(Uri.decodeFull(post.url.toString()), "$dataUrl/?action=delete");
       expect(post.body, '{"target":"","names":[{"name":"2020 Trip"}]}');
@@ -126,7 +128,8 @@ void main() {
         await tester.pumpAndSettle();
       });
 
-      expect(requests.where((r) => r.method != "GET"), isEmpty);
+      expect(
+          requests.where((r) => r.method != "GET" && !isQuestion(r)), isEmpty);
     });
 
     testWidgets('shows the server\'s reason when the delete is refused',
@@ -178,7 +181,8 @@ void main() {
 
       expect(find.text(testL10n.offlineRefusal), findsOneWidget);
       expect(find.byKey(const Key("delete-dialog")), findsNothing);
-      expect(requests.where((r) => r.method != "GET"), isEmpty);
+      expect(
+          requests.where((r) => r.method != "GET" && !isQuestion(r)), isEmpty);
     });
   });
 
@@ -205,7 +209,8 @@ void main() {
         await confirmDelete(tester);
       });
 
-      var post = requests.singleWhere((r) => r.method == "POST");
+      var post =
+          requests.singleWhere((r) => r.method == "POST" && !isQuestion(r));
       // The delete is posted to the folder the album lives in, naming it.
       expect(Uri.decodeFull(post.url.toString()), "$dataUrl/?action=delete");
       expect(post.body, '{"target":"","names":[{"name":"Inbox"}]}');

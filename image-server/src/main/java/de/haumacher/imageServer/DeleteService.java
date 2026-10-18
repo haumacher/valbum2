@@ -183,9 +183,24 @@ public class DeleteService {
 	 *        The cache that must forget what was deleted.
 	 */
 	public DeleteService(Path spaceRoot, ResourceCache cache) {
+		this(spaceRoot, cache, null);
+	}
+
+	/**
+	 * Creates a {@link DeleteService} that never deletes a photograph other albums reference, see
+	 * {@link ReferencedOriginals} and issue #307.
+	 *
+	 * @param collections
+	 *        The references of the space, <code>null</code> to delete as if there were none.
+	 */
+	public DeleteService(Path spaceRoot, ResourceCache cache, PhotoCollections collections) {
 		_spaceRoot = spaceRoot;
 		_cache = cache;
+		_originals = collections == null ? null : new ReferencedOriginals(spaceRoot, cache, collections);
 	}
+
+	/** What keeps a referenced photograph out of the trash, <code>null</code> for nothing. */
+	private final ReferencedOriginals _originals;
 
 	/**
 	 * Deletes the named entries of the given folder.
@@ -206,6 +221,25 @@ public class DeleteService {
 	 *         If the request as a whole is impossible.
 	 */
 	public MoveResult delete(PathInfo folder, List<String> names) throws MoveRefused, IOException {
+		return delete(folder, names, false);
+	}
+
+	/**
+	 * {@link #delete(PathInfo, List)}, or what it would do, see issue #307.
+	 *
+	 * <p>
+	 * A photograph another album references is never deleted into nothing: it moves into the album
+	 * of its oldest reference instead, see {@link ReferencedOriginals}, and its outcome names where
+	 * it went ({@link MoveOutcome#getKept()}), as does the outcome of an album that held such
+	 * photographs. A dry run changes nothing and answers, per name, exactly those
+	 * {@link MoveOutcome#getKept() kept} photographs and the refusals the delete would answer; its
+	 * {@link MoveOutcome#getNewName()} and the message of an entry that would be deleted stay empty.
+	 * </p>
+	 *
+	 * @param dryRun
+	 *        Whether to answer what would happen and do nothing.
+	 */
+	public MoveResult delete(PathInfo folder, List<String> names, boolean dryRun) throws MoveRefused, IOException {
 		File dir = folder.toFile();
 		if (!dir.isDirectory()) {
 			throw new MoveRefused(HttpServletResponse.SC_NOT_FOUND, FOLDER_MISSING);
@@ -217,21 +251,99 @@ public class DeleteService {
 		MoveOutcome[] outcomes = new MoveOutcome[names.size()];
 		List<String> images = new ArrayList<>();
 		Set<String> seen = new HashSet<>();
+
+		// What would leave the library, and which of it other albums still show, before anything
+		// moves, see issue #307.
+		List<ReferencedOriginals.Doomed> doomed = new ArrayList<>();
+		List<PathInfo> goingAway = new ArrayList<>();
+		Map<String, Integer> slots = new HashMap<>();
+		for (int n = 0, size = names.size(); n < size; n++) {
+			String name = names.get(n);
+			if (!seen.add(name)) {
+				outcomes[n] = outcome(name, "", namedTwice(name));
+				continue;
+			}
+			String refusal = refuse(dir, name);
+			if (refusal != null) {
+				outcomes[n] = outcome(name, "", refusal);
+				continue;
+			}
+			slots.put(name, Integer.valueOf(n));
+			if (_originals == null) {
+				continue;
+			}
+			File entry = new File(dir, name);
+			if (entry.isDirectory()) {
+				goingAway.add(folder.child(name));
+				ReferencedOriginals.photosBelow(folder.child(name), name + "/", doomed);
+			} else {
+				ReferencedOriginals.Doomed photo = ReferencedOriginals.photo(folder, name, name);
+				if (photo != null) {
+					doomed.add(photo);
+				}
+			}
+		}
+		List<ReferencedOriginals.Receiver> plan =
+			_originals == null ? new ArrayList<>() : _originals.plan(doomed, goingAway);
+
+		// The kept photographs by the name of the request they belong to.
+		Map<String, List<de.haumacher.imageServer.shared.model.KeptPhoto>> kept = new HashMap<>();
+		Map<String, String> keptTitles = new HashMap<>();
+		if (dryRun) {
+			for (ReferencedOriginals.Receiver receiver : plan) {
+				de.haumacher.imageServer.shared.model.KeptPhoto expected = receiver.expected();
+				kept.computeIfAbsent(entryOf(expected.getPhoto()), x -> new ArrayList<>()).add(expected);
+			}
+			MoveResult result = MoveResult.create();
+			for (int n = 0, size = names.size(); n < size; n++) {
+				MoveOutcome planned = outcomes[n] != null ? outcomes[n] : outcome(names.get(n), "", "");
+				if (outcomes[n] == null) {
+					List<de.haumacher.imageServer.shared.model.KeptPhoto> photos = kept.get(names.get(n));
+					if (photos != null) {
+						planned.setKept(photos);
+					}
+				}
+				result.addOutcome(planned);
+			}
+			return result;
+		}
+
 		boolean changed = false;
 		try {
+			if (!plan.isEmpty()) {
+				changed = true;
+				try {
+					for (de.haumacher.imageServer.shared.model.KeptPhoto photo : _originals.rescue(plan, null)) {
+						String entry = entryOf(photo.getPhoto());
+						kept.computeIfAbsent(entry, x -> new ArrayList<>()).add(photo);
+						keptTitles.putIfAbsent(entry, photo.getTitle());
+					}
+				} catch (IOException ex) {
+					// Nothing that is still referenced goes into the trash: the names it belongs to are
+					// not deleted, and what moved before the failure is where its album says.
+					LOG.log(Level.WARNING, "Cannot keep the referenced photos of '" + dir + "': " + ex.getMessage(), ex);
+					for (ReferencedOriginals.Receiver receiver : plan) {
+						Integer slot = slots.get(entryOf(receiver.doomed().label()));
+						if (slot != null && outcomes[slot.intValue()] == null) {
+							outcomes[slot.intValue()] = outcome(names.get(slot.intValue()), "", failed(ex.getMessage()));
+						}
+					}
+				}
+			}
 			for (int n = 0, size = names.size(); n < size; n++) {
 				String name = names.get(n);
-				if (!seen.add(name)) {
-					outcomes[n] = outcome(name, "", namedTwice(name));
+				if (outcomes[n] != null || !Integer.valueOf(n).equals(slots.get(name))) {
 					continue;
 				}
-				String refusal = refuse(dir, name);
-				if (refusal != null) {
-					outcomes[n] = outcome(name, "", refusal);
-					continue;
-				}
+				List<de.haumacher.imageServer.shared.model.KeptPhoto> photos = kept.get(name);
 
 				File entry = new File(dir, name);
+				if (photos != null && !entry.isDirectory()) {
+					// Moved into the album that references it, see issue #307.
+					outcomes[n] = outcome(name, photos.get(0).getName(), ReferencedOriginals.kept(keptTitles.get(name)))
+						.setKept(photos);
+					continue;
+				}
 				if (!entry.isDirectory()) {
 					// A single image: it is moved into the album this one has in the trash, by the
 					// move of issue #47, all of them in one go below.
@@ -240,6 +352,9 @@ public class DeleteService {
 				}
 				try {
 					outcomes[n] = delete(entry);
+					if (photos != null) {
+						outcomes[n].setKept(photos);
+					}
 					changed = true;
 				} catch (IOException ex) {
 					LOG.log(Level.WARNING, "Cannot delete '" + entry.getAbsolutePath() + "': " + ex.getMessage(), ex);
@@ -306,6 +421,28 @@ public class DeleteService {
 	 *         it.
 	 */
 	public MoveResult purge(PathInfo folder) throws MoveRefused, IOException {
+		return purge(folder, false);
+	}
+
+	/**
+	 * {@link #purge(PathInfo)}, or what it would do, see issue #307.
+	 *
+	 * <p>
+	 * A photograph rated as trash that another album still references is never deleted from disk:
+	 * no reference ever points into the trash, and one that does was left by a build before issue
+	 * #307 (or written behind the server's back). The purge heals it before any file is destroyed:
+	 * the photograph moves into the album of its oldest reference, in that reference's place, and
+	 * is unrated there &mdash; the trash rating was a delete in the album it left, and a delete of a
+	 * referenced photograph is exactly this move, see {@link ReferencedOriginals}. Its outcome says
+	 * so and names the album
+	 * ({@link MoveOutcome#getKept()}). A dry run changes nothing and answers one outcome per
+	 * photograph that would be purged or kept, the kept ones naming their album.
+	 * </p>
+	 *
+	 * @param dryRun
+	 *        Whether to answer what would happen and do nothing.
+	 */
+	public MoveResult purge(PathInfo folder, boolean dryRun) throws MoveRefused, IOException {
 		File dir = folder.toFile();
 		if (!dir.isDirectory()) {
 			throw new MoveRefused(HttpServletResponse.SC_NOT_FOUND, FOLDER_MISSING);
@@ -349,6 +486,60 @@ public class DeleteService {
 				derived.addAll(generatedOf(dir, raw));
 			}
 			generated.add(derived);
+		}
+
+		// What other albums still show is kept there, see issue #307: after everything was checked,
+		// before anything is deleted.
+		if (_originals != null) {
+			List<ReferencedOriginals.Doomed> doomed = new ArrayList<>();
+			for (ImagePart image : trashed) {
+				ReferencedOriginals.Doomed photo = ReferencedOriginals.photo(folder, image.getName(), image.getName());
+				if (photo != null) {
+					doomed.add(photo);
+				}
+			}
+			List<ReferencedOriginals.Receiver> plan = _originals.plan(doomed, new ArrayList<>());
+			if (dryRun) {
+				Map<String, ReferencedOriginals.Receiver> byName = new HashMap<>();
+				for (ReferencedOriginals.Receiver receiver : plan) {
+					byName.put(receiver.doomed().label(), receiver);
+				}
+				for (ImagePart image : trashed) {
+					MoveOutcome planned = outcome(image.getName(), "", "");
+					ReferencedOriginals.Receiver receiver = byName.get(image.getName());
+					if (receiver != null) {
+						planned.addKept(receiver.expected());
+					}
+					result.addOutcome(planned);
+				}
+				return result;
+			}
+			if (!plan.isEmpty()) {
+				// Unrated where it arrives: it was shown there, and stays shown.
+				Map<PathInfo, Integer> unrated = new HashMap<>();
+				for (ReferencedOriginals.Receiver receiver : plan) {
+					unrated.put(receiver.doomed().photo(), Integer.valueOf(0));
+				}
+				try {
+					for (de.haumacher.imageServer.shared.model.KeptPhoto photo : _originals.rescue(plan, unrated)) {
+						result.addOutcome(outcome(photo.getPhoto(), photo.getName(), ReferencedOriginals.keptInTrash(photo.getTitle()))
+							.addKept(photo));
+					}
+				} finally {
+					_cache.invalidateTree(folder);
+				}
+				// The rest as it stands now: nothing of it is referenced any more.
+				DeleteService rest = new DeleteService(_spaceRoot, _cache);
+				for (MoveOutcome outcome : rest.purge(folder, false).getOutcomes()) {
+					result.addOutcome(outcome);
+				}
+				return result;
+			}
+		} else if (dryRun) {
+			for (ImagePart image : trashed) {
+				result.addOutcome(outcome(image.getName(), "", ""));
+			}
+			return result;
 		}
 
 		// Read before the files go, so that the refresh below sees them vanish.
@@ -543,6 +734,12 @@ public class DeleteService {
 			}
 			return result;
 		}
+	}
+
+	/** The name of the request a kept photograph's label belongs to: its first segment. */
+	private static String entryOf(String label) {
+		int slash = label.indexOf('/');
+		return slash < 0 ? label : label.substring(0, slash);
 	}
 
 	/** Puts the outcomes of the image move back into the slots of the names that asked for them. */

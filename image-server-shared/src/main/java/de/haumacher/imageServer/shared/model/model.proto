@@ -1005,6 +1005,19 @@ message PhotoRef {
 
 	/** The photograph's path relative to the space root, <code>/</code>-separated, as last seen. */
 	string path;
+
+	/**
+	 * When the reference was made, in milliseconds since the epoch, see issue #307; <code>0</code>
+	 * for one made before that was recorded.
+	 *
+	 * <p>
+	 * What decides which album a referenced original goes to when it is deleted where it lies: the
+	 * album of the oldest reference, see <code>ReferencedOriginals</code> on the server. Stored with
+	 * the reference and never answered to a client, whose answer carries <code>0</code>; a build
+	 * that does not know it reads the reference without it.
+	 * </p>
+	 */
+	long created;
 }
 
 /** One face found in an {@link ImagePart}, see issue #124. */
@@ -2910,6 +2923,39 @@ message MoveOutcome {
 	 * </p>
 	 */
 	string `message`;
+
+	/**
+	 * The photographs of this entry a delete moved into an album that references them instead of
+	 * into the trash, see issue #307; empty for every other outcome.
+	 *
+	 * <p>
+	 * A photograph shown in other albums is never deleted into nothing: it goes to the album of its
+	 * oldest reference and takes that reference's place there. For a photograph named by the
+	 * request, at most one entry; for an album, one per such photograph below it.
+	 * </p>
+	 */
+	repeated KeptPhoto kept;
+}
+
+/**
+ * A photograph that a delete moved into an album referencing it instead of into the trash, see
+ * issue #307 and {@link MoveOutcome#kept}.
+ */
+message KeptPhoto {
+	/**
+	 * The photograph as it was named in the folder deleted from: its name, or its path below the
+	 * deleted album (<code>2020 Trip/b.jpg</code>).
+	 */
+	string photo;
+
+	/** The album it lies in now, in the coordinates of the request, like {@link CreateResult#path}. */
+	string album;
+
+	/** The title of that album, its folder name where it has none. */
+	string title;
+
+	/** The name the photograph has in that album now: the name of the reference it replaced. */
+	string name;
 }
 
 /**
@@ -2940,6 +2986,12 @@ message CreateResult {
 	 * </p>
 	 */
 	string `message`;
+
+	/**
+	 * The photographs this write rated as trash that are shown in other albums, and were moved into
+	 * one of those instead, see issue #307 and {@link MoveOutcome#kept}.
+	 */
+	repeated KeptPhoto kept;
 }
 
 /**

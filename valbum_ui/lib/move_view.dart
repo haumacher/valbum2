@@ -16,6 +16,7 @@ import 'client.dart';
 import 'dialog_style.dart';
 import 'filter_list.dart';
 import 'form_dialog.dart';
+import 'kept_photos.dart';
 import 'l10n/app_localizations.dart';
 import 'listing_view.dart';
 import 'loadable.dart';
@@ -394,12 +395,21 @@ Future<bool> deleteWithConfirmation({
   }
   var l10n = AppLocalizations.of(context)!;
   var messenger = ScaffoldMessenger.of(context);
+  // What other albums still show stays there, and the question says where
+  // (issue #307).
+  var question = keptQuestion(
+      l10n, await keptOnDelete(context, client, parent, names), null);
+  if (!context.mounted) {
+    return false;
+  }
   var confirmed = await showAppDialog<bool>(
     context: context,
     builder: (context) => AppAlertDialog(
       key: const Key("delete-dialog"),
       title: Text(l10n.deleteQuestion(what)),
-      content: Text(l10n.deleteExplanation),
+      content: Text(question == null
+          ? l10n.deleteExplanation
+          : "${l10n.deleteExplanation}\n\n$question"),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(false),
@@ -434,10 +444,7 @@ Future<bool> deleteWithConfirmation({
   // Verbatim, and every name of them: the server says which of the two things
   // it did — removed, or set aside as this name — and the app paraphrases
   // neither.
-  var said = [
-    for (var outcome in result.outcomes)
-      if (outcome.message.isNotEmpty) outcome.message,
-  ];
+  var said = deleteOutcomes(l10n, result);
   messenger.showSnackBar(
     SnackBar(
       content: Text(said.isEmpty ? l10n.deletedWhat(what) : said.join(" ")),
@@ -445,6 +452,18 @@ Future<bool> deleteWithConfirmation({
     ),
   );
   return true;
+}
+
+/// What the server said about a delete, verbatim, and where it kept photos
+/// that other albums show (issue #307), in the app's words: a photo kept
+/// that way is said once, by [keptReport], not by the server's sentence.
+List<String> deleteOutcomes(AppLocalizations l10n, MoveResult result) {
+  var report = keptReport(l10n, keptOf(result));
+  return [
+    for (var outcome in result.outcomes)
+      if (outcome.message.isNotEmpty && !isKeptPhoto(outcome)) outcome.message,
+    if (report != null) report,
+  ];
 }
 
 /// The entries the server did not move: a [MoveOutcome] carrying a message is

@@ -15,6 +15,7 @@ import 'package:valbum_ui/main.dart';
 import 'package:valbum_ui/resource.dart';
 import 'package:valbum_ui/trash_view.dart';
 
+import 'util/questions.dart';
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
 import 'util/l10n.dart';
@@ -143,7 +144,7 @@ Finder restoreOf(String name) => find.descendant(
 
 List<http.Request> writesIn(List<http.Request> requests) => [
       for (var request in requests)
-        if (request.method != "GET") request
+        if (request.method != "GET" && !isQuestion(request)) request
     ];
 
 void main() {

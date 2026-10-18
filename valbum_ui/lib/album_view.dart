@@ -35,6 +35,7 @@ import 'form_dialog.dart';
 import 'group_by_dialog.dart';
 import 'image_properties.dart';
 import 'key_guard.dart';
+import 'kept_photos.dart';
 import 'keyboard_scroll.dart';
 import 'label_dialog.dart';
 import 'l10n/app_localizations.dart';
@@ -739,8 +740,7 @@ class AlbumContentState extends State<AlbumContent>
       for (var target in ratingTargets<AlbumPart>(part, selection))
         if (target is AbstractImage) target,
     ];
-    if (rating == trashRating &&
-        !await confirmTrashing(context, targets.length)) {
+    if (rating == trashRating && !await confirmTrashingOwn(targets)) {
       return;
     }
     if (!mounted) {
@@ -757,6 +757,33 @@ class AlbumContentState extends State<AlbumContent>
         }
       }
     });
+  }
+
+  /// Asks before [targets] are rated as trash: rating as trash is deleting,
+  /// and a photo other albums still show moves there instead (issue #307) —
+  /// the question names those albums, asked of the server; where it keeps
+  /// nothing (or cannot be asked) it is [confirmTrashing], unchanged. A
+  /// reference rated as trash is taken out of the album and asked nothing
+  /// more than before.
+  Future<bool> confirmTrashingOwn(List<AbstractImage> targets) async {
+    var names = [
+      for (var target in targets)
+        if (layouter.ToImage.toImage(target) case var image
+            when !isReference(image) && !image.missing)
+          image.name,
+    ];
+    var question = keptQuestion(
+      _l10n,
+      await keptOnDelete(context, client, widget.albumState.path, names),
+      names.length,
+    );
+    if (!mounted) {
+      return false;
+    }
+    return question == null
+        ? confirmTrashing(context, targets.length)
+        : confirmKeeping(context,
+            question: question, confirm: _l10n.moveToTrash);
   }
 
   /// Remembers that the album differs from what the server holds.
@@ -1144,6 +1171,8 @@ class AlbumContentState extends State<AlbumContent>
   /// album really is, and the app follows it instead of reloading nothing.
   /// Where nothing was renamed this is the ordinary reload.
   void followStored(CreateResult stored, ScaffoldMessengerState messenger) {
+    // A photo rated as trash that other albums show went there (issue #307).
+    showKeptReport(messenger, keptReport(_l10n, stored.kept));
     if (stored.message.isEmpty) {
       widget.albumState.reload();
       return;

@@ -4928,4 +4928,77 @@ class AppLocalizationsDe extends AppLocalizations {
   String statusAppVersion(String version) {
     return 'Diese App: Version $version';
   }
+
+  @override
+  String get keptTitle => 'In anderen Alben gezeigt';
+
+  @override
+  String keptAlbumName(String title) {
+    return '‚$title‘';
+  }
+
+  @override
+  String keptQuestion(String albums, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count Fotos werden noch in $albums gezeigt – sie bleiben dort, alle anderen kommen in den Papierkorb.',
+      one:
+          '1 Foto wird noch in $albums gezeigt – es bleibt dort, alle anderen kommen in den Papierkorb.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String keptQuestionAll(String albums, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count Fotos werden noch in $albums gezeigt – sie bleiben dort, statt in den Papierkorb zu kommen.',
+      one:
+          '1 Foto wird noch in $albums gezeigt – es bleibt dort, statt in den Papierkorb zu kommen.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String keptReport(String albums, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count Fotos werden noch in $albums gezeigt und wurden dorthin verschoben statt in den Papierkorb.',
+      one:
+          '1 Foto wird noch in $albums gezeigt und wurde dorthin verschoben statt in den Papierkorb.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String keptPurgeQuestion(String albums, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count Fotos werden noch in $albums gezeigt – sie werden dorthin verschoben, statt von der Festplatte gelöscht zu werden.',
+      one:
+          '1 Foto wird noch in $albums gezeigt – es wird dorthin verschoben, statt von der Festplatte gelöscht zu werden.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String keptPurgeReport(String albums, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count Fotos werden noch in $albums gezeigt und wurden dorthin verschoben, statt gelöscht zu werden.',
+      one:
+          '1 Foto wird noch in $albums gezeigt und wurde dorthin verschoben, statt gelöscht zu werden.',
+    );
+    return '$_temp0';
+  }
 }

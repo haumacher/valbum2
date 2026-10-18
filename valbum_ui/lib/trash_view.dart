@@ -37,7 +37,9 @@ import 'client.dart';
 import 'collections.dart' show isReference;
 import 'crop.dart';
 import 'dialog_style.dart';
+import 'kept_photos.dart';
 import 'key_guard.dart';
+import 'listing_view.dart' show splitPath;
 import 'l10n/app_localizations.dart';
 import 'offline.dart';
 import 'oriented_thumbnail.dart';
@@ -238,12 +240,21 @@ class TrashContentState extends State<TrashContent> {
     if (refuseWhileOffline(context)) {
       return;
     }
+    // A photo other albums still show is never deleted: it moves there, and
+    // the question says where (issue #307).
+    var question =
+        keptPurgeQuestion(_l10n, await keptOnPurge(context, client, path));
+    if (!mounted) {
+      return;
+    }
     var confirmed = await showAppDialog<bool>(
       context: context,
       builder: (context) => AppAlertDialog(
         key: const Key("trash-purge-dialog"),
         title: Text(_l10n.trashPurgeTitle),
-        content: Text(_l10n.trashPurgeMessage),
+        content: Text(question == null
+            ? _l10n.trashPurgeMessage
+            : "${_l10n.trashPurgeMessage}\n\n$question"),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -281,12 +292,23 @@ class TrashContentState extends State<TrashContent> {
     }
     var answer = done.value;
     setState(() => _purging = false);
+    var kept = keptOf(answer);
+    var purged = answer.outcomes.where((outcome) => !isKeptPhoto(outcome));
+    var report = keptPurgeReport(_l10n, kept);
     messenger.showSnackBar(
       SnackBar(
         key: const Key("trash-purged"),
-        content: Text(_l10n.trashPurged(answer.outcomes.length)),
+        content: Text(report == null
+            ? _l10n.trashPurged(purged.length)
+            : "${_l10n.trashPurged(purged.length)} $report"),
       ),
     );
+    if (kept.isNotEmpty) {
+      // The albums the photos went to are not what was loaded.
+      for (var photo in kept) {
+        widget.albumState.navigator.delegate.forget(splitPath(photo.album));
+      }
+    }
     // What is gone from the disk is gone from the album: it is fetched anew,
     // and this page and the album beneath it show what the server has.
     widget.albumState.navigator.delegate.forget(path);

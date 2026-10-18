@@ -2681,6 +2681,11 @@ public class ImageServlet extends HttpServlet {
 				outcome.setMessage(notInAlbum(name));
 				continue;
 			}
+			if (part.getRating() <= Ratings.TRASH) {
+				// Nothing is referenced in the trash, see ReferencedOriginals.
+				outcome.setMessage(PhotoCollections.TRASHED_REFUSED);
+				continue;
+			}
 			String hash;
 			String path;
 			ImagePart reference = byPath ? null : PhotoCollections.referenceNamed(origin, name);
@@ -2724,8 +2729,10 @@ public class ImageServlet extends HttpServlet {
 				}
 				path = _collections.relative(source.child(name));
 			}
-			ImagePart added = PhotoCollections.stored(name, PhotoRef.create().setHash(hash).setPath(path),
-				new ArrayList<>());
+			// When it was made decides where the photograph goes once its original is deleted, see
+			// ReferencedOriginals.
+			ImagePart added = PhotoCollections.stored(name,
+				PhotoRef.create().setHash(hash).setPath(path).setCreated(PhotoCollections.created()), new ArrayList<>());
 			if (reference != null) {
 				added.setComment(reference.getComment());
 			}
@@ -3039,8 +3046,15 @@ public class ImageServlet extends HttpServlet {
 	 * reaches a whole album. A share link is refused in its own words, since a link may well allow
 	 * adding photos.
 	 * </p>
+	 *
+	 * <p>
+	 * A photograph other albums reference never goes into the trash, see {@link ReferencedOriginals}
+	 * (issue #307); its outcome names the album it went to. With <code>dryRun</code> (the action
+	 * {@link #DELETE_CHECK_ACTION}) the same rights are asked and the same outcomes answered, and
+	 * nothing is done.
+	 * </p>
 	 */
-	private void deleteEntries(Context context) throws IOException {
+	private void deleteEntries(Context context, boolean dryRun) throws IOException {
 		Caller caller = _auth.caller(context.request());
 		Location location = resolve(context, caller);
 		if (location == null) {
@@ -3092,7 +3106,8 @@ public class ImageServlet extends HttpServlet {
 			(PhotoCollections.referenceNamed(collection, name) != null ? references : others).add(name);
 		}
 		if (!references.isEmpty() && others.isEmpty()) {
-			serveJsonObject(context.response(), removeReferences(folder, (AlbumInfo) collection, references));
+			serveJsonObject(context.response(),
+				dryRun ? referencesRemoved(references) : removeReferences(folder, (AlbumInfo) collection, references));
 			return;
 		}
 		if (PhotoSearch.isSearch(collection)) {
@@ -3108,8 +3123,10 @@ public class ImageServlet extends HttpServlet {
 			// The trash lives below the caller's own space, exactly as the duplicates do: nothing
 			// crosses a space boundary, see issue #82.
 			MoveResult removed = references.isEmpty() ? null
-				: removeReferences(folder, (AlbumInfo) collection, references);
-			result = new DeleteService(folder.getBasePath(), _cache).delete(folder, others);
+				: dryRun ? referencesRemoved(references) : removeReferences(folder, (AlbumInfo) collection, references);
+			// A photograph other albums show is kept there, see ReferencedOriginals: whether or not
+			// this caller may add to them, the photograph was shown there already.
+			result = new DeleteService(folder.getBasePath(), _cache, _collections).delete(folder, others, dryRun);
 			if (removed != null) {
 				result = inRequestOrder(names, result, removed);
 			}
@@ -3119,11 +3136,60 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 
-		// What went into the trash is gone from the album; the index reads the folder again, see
-		// issue #118.
-		treeChanged(folder.toFile());
+		if (!dryRun) {
+			// What went into the trash is gone from the album; the index reads the folder again, see
+			// issue #118. And what was kept arrived in its album.
+			treeChanged(folder.toFile());
+			for (MoveOutcome outcome : result.getOutcomes()) {
+				keptChanged(folder, outcome.getKept());
+			}
+		}
+		for (MoveOutcome outcome : result.getOutcomes()) {
+			spellKept(location, outcome.getKept());
+		}
 
 		serveJsonObject(context.response(), result);
+	}
+
+	/**
+	 * The question what a delete would do, see issue #307: <code>?action=delete-check</code> with
+	 * the body of a delete, answered by the very code that deletes, with nothing done. The
+	 * confirmation the app asks before a delete names from it the albums that keep a photograph.
+	 *
+	 * <p>
+	 * An action of its own rather than a parameter of the delete: a server that does not know it
+	 * refuses it, where it would ignore a parameter and delete.
+	 * </p>
+	 */
+	public static final String DELETE_CHECK_ACTION = "delete-check";
+
+	/** The question what a purge would do, see {@link #DELETE_CHECK_ACTION}. */
+	public static final String PURGE_CHECK_ACTION = "purge-check";
+
+	/** What taking the named references out of an album answers, without doing it. */
+	private static MoveResult referencesRemoved(List<String> names) {
+		MoveResult result = MoveResult.create();
+		for (String name : names) {
+			result.addOutcome(MoveOutcome.create().setName(name).setNewName("").setMessage(PhotoCollections.REMOVED));
+		}
+		return result;
+	}
+
+	/** Tells the indexes that the albums the given photographs were kept in changed, see issue #307. */
+	private void keptChanged(PathInfo anyInSpace, List<de.haumacher.imageServer.shared.model.KeptPhoto> kept) {
+		for (de.haumacher.imageServer.shared.model.KeptPhoto photo : kept) {
+			String album = photo.getAlbum();
+			PathInfo path = album.isEmpty() ? new PathInfo(anyInSpace.getBasePath())
+				: new PathInfo(anyInSpace.getBasePath(), java.nio.file.Paths.get(album));
+			treeChanged(path.toFile());
+		}
+	}
+
+	/** Spells the albums of the given kept photographs in the coordinates of the request. */
+	private static void spellKept(Location location, List<de.haumacher.imageServer.shared.model.KeptPhoto> kept) {
+		for (de.haumacher.imageServer.shared.model.KeptPhoto photo : kept) {
+			photo.setAlbum(location.spell(photo.getAlbum()));
+		}
 	}
 
 	/**
@@ -3630,7 +3696,7 @@ public class ImageServlet extends HttpServlet {
 	 * allows, an anonymous caller is told how to sign in.
 	 * </p>
 	 */
-	private void purgeTrash(Context context) throws IOException {
+	private void purgeTrash(Context context, boolean dryRun) throws IOException {
 		// Who the caller is, before where they are pointing, like every management request.
 		Caller caller = _auth.caller(context.request());
 		if (!_auth.mayAdminister(caller)) {
@@ -3651,16 +3717,23 @@ public class ImageServlet extends HttpServlet {
 
 		MoveResult result;
 		try {
-			result = new DeleteService(folder.getBasePath(), _cache).purge(folder);
+			// A photograph other albums still reference is kept there, see ReferencedOriginals.
+			result = new DeleteService(folder.getBasePath(), _cache, _collections).purge(folder, dryRun);
 		} catch (MoveRefused ex) {
 			LOG.warning("Refusing to purge '" + context.request().getPathInfo() + "': " + ex.getMessage());
 			errorInfo(context, ex.getStatus(), ex.getMessage());
 			return;
 		}
 
-		if (!result.getOutcomes().isEmpty()) {
+		if (!dryRun && !result.getOutcomes().isEmpty()) {
 			// What was purged is gone from the album; the index reads the folder again, see #118.
 			treeChanged(folder.toFile());
+			for (MoveOutcome outcome : result.getOutcomes()) {
+				keptChanged(folder, outcome.getKept());
+			}
+		}
+		for (MoveOutcome outcome : result.getOutcomes()) {
+			spellKept(location, outcome.getKept());
 		}
 
 		serveJsonObject(context.response(), result);
@@ -4089,8 +4162,23 @@ public class ImageServlet extends HttpServlet {
 	}
 
 	static File freeName(File folder, String fileName) {
+		return freeName(folder, fileName, null);
+	}
+
+	/**
+	 * {@link #freeName(File, String)} with the reference of the given name counted as free: the one
+	 * a rescued original takes the place of, see {@link ReferencedOriginals}.
+	 *
+	 * @param freed
+	 *        The name of a reference of the folder that is about to be replaced, <code>null</code> for
+	 *        none.
+	 */
+	static File freeName(File folder, String fileName, String freed) {
 		// The name of a reference is taken as a file's is, see issue #307.
 		Set<String> references = PhotoCollections.referenceNames(folder);
+		if (freed != null) {
+			references.remove(freed);
+		}
 		File targetFile = new File(folder, fileName);
 		if (!targetFile.exists() && !references.contains(fileName)) {
 			return targetFile;
@@ -6305,7 +6393,11 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 		if ("delete".equals(action)) {
-			deleteEntries(context);
+			deleteEntries(context, false);
+			return;
+		}
+		if (DELETE_CHECK_ACTION.equals(action)) {
+			deleteEntries(context, true);
 			return;
 		}
 		if (ZIP_ACTION.equals(action)) {
@@ -6317,7 +6409,11 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 		if ("purge".equals(action)) {
-			purgeTrash(context);
+			purgeTrash(context, false);
+			return;
+		}
+		if (PURGE_CHECK_ACTION.equals(action)) {
+			purgeTrash(context, true);
 			return;
 		}
 		if ("place".equals(action)) {
@@ -6949,12 +7045,83 @@ public class ImageServlet extends HttpServlet {
 			// And the old path holds nothing any more: its rows go in the same step, see #264.
 			treeChanged(resourcePath.toFile());
 		}
+		// The photographs this write rated as trash, by the rating they had, see ReferencedOriginals.
+		Map<PathInfo, Integer> trashed = newlyTrashed(target, existing, resource);
 		if (sourceEdits != null) {
-			writeSources(sourceEdits, caller);
+			writeSources(sourceEdits, caller, trashed);
 		}
+		List<de.haumacher.imageServer.shared.model.KeptPhoto> kept = keepReferenced(trashed);
+		spellKept(location, kept);
 
 		serveJsonObject(context.response(),
-			CreateResult.create().setPath(location.spell(target.relativePath())).setMessage(message));
+			CreateResult.create().setPath(location.spell(target.relativePath())).setMessage(message).setKept(kept));
+	}
+
+	/**
+	 * The photographs of the given album that the written resource rates as trash and the stored one
+	 * did not, by the rating they had, see issue #307: rating a photograph as trash is deleting it.
+	 */
+	private static Map<PathInfo, Integer> newlyTrashed(PathInfo folder, Resource existing, FolderResource written) {
+		Map<PathInfo, Integer> result = new LinkedHashMap<>();
+		if (!(existing instanceof AlbumInfo) || !(written instanceof AlbumInfo) || PhotoSearch.isSearch(existing)) {
+			return result;
+		}
+		Map<String, Integer> before = new HashMap<>();
+		for (ImagePart image : PhotoCollections.ownImages((AlbumInfo) existing)) {
+			before.putIfAbsent(image.getName(), Integer.valueOf(image.getRating()));
+		}
+		for (ImagePart image : PhotoCollections.ownImages((AlbumInfo) written)) {
+			Integer rating = before.get(image.getName());
+			if (rating != null && rating.intValue() > Ratings.TRASH && image.getRating() <= Ratings.TRASH) {
+				result.put(folder.child(image.getName()), rating);
+			}
+		}
+		return result;
+	}
+
+	/**
+	 * Treats a rating as trash like the delete it is, see issue #307 and {@link ReferencedOriginals}:
+	 * a photograph that other albums still reference moves into the album of its oldest reference,
+	 * with the rating it had before, and only the others stay in their album's trash.
+	 *
+	 * <p>
+	 * No right is asked of the receiving album: the move is a consequence of the writer's act, and
+	 * the photograph was shown there already; its privacy travels with it.
+	 * </p>
+	 *
+	 * @return What was kept, the albums relative to the space root.
+	 */
+	private List<de.haumacher.imageServer.shared.model.KeptPhoto> keepReferenced(Map<PathInfo, Integer> trashed) {
+		List<de.haumacher.imageServer.shared.model.KeptPhoto> result = new ArrayList<>();
+		if (trashed.isEmpty()) {
+			return result;
+		}
+		Map<Path, List<ReferencedOriginals.Doomed>> bySpace = new LinkedHashMap<>();
+		for (PathInfo photo : trashed.keySet()) {
+			ReferencedOriginals.Doomed doomed = ReferencedOriginals.photo(photo.parent(), photo.getName(), photo.getName());
+			if (doomed != null) {
+				bySpace.computeIfAbsent(photo.getBasePath(), x -> new ArrayList<>()).add(doomed);
+			}
+		}
+		for (Map.Entry<Path, List<ReferencedOriginals.Doomed>> entry : bySpace.entrySet()) {
+			ReferencedOriginals originals = new ReferencedOriginals(entry.getKey(), _cache, _collections);
+			try {
+				List<de.haumacher.imageServer.shared.model.KeptPhoto> kept =
+					originals.rescue(originals.plan(entry.getValue(), new ArrayList<>()), trashed);
+				for (de.haumacher.imageServer.shared.model.KeptPhoto photo : kept) {
+					treeChanged(entry.getKey().resolve(photo.getAlbum()).toFile());
+				}
+				result.addAll(kept);
+			} catch (IOException ex) {
+				// The write itself has happened: the photographs stay rated as trash in their album,
+				// where the trash page restores them, and their references are hidden as before.
+				LOG.log(Level.WARNING, "Cannot keep the referenced photos rated as trash: " + ex.getMessage(), ex);
+			}
+		}
+		for (PathInfo photo : trashed.keySet()) {
+			treeChanged(photo.parent().toFile());
+		}
+		return result;
 	}
 
 	/**
@@ -7224,6 +7391,11 @@ public class ImageServlet extends HttpServlet {
 			}
 		}
 		merged.setParts(parts);
+		ThumbnailInfo cover = merged.getIndexPicture();
+		if (cover != null && stubs.containsKey(cover.getImage()) && Crops.findImage(merged, cover.getImage()) == null) {
+			// The picture was a reference taken out of the album, see #referenceWritten.
+			merged.setIndexPicture(null);
+		}
 		return merged;
 	}
 
@@ -7263,6 +7435,14 @@ public class ImageServlet extends HttpServlet {
 			result.setDate(answer.getDate());
 		}
 		ImagePart body = sent.get(image.getName());
+		if (body != null && body.getRating() <= Ratings.TRASH && answer.getRating() > Ratings.TRASH) {
+			// A reference rated as trash is taken out of the album, as its delete takes it out, and
+			// the photograph stays as it is where it lies, see issue #307: a trash rating written
+			// through to the original would delete it there and bring it straight back here, the
+			// album of a reference to it.
+			LOG.info("Taking the reference '" + image.getName() + "' rated as trash out of its album.");
+			return null;
+		}
 		if (body != null) {
 			edits.add(new SourceEdit(source, body, false, false));
 		}
@@ -7284,7 +7464,8 @@ public class ImageServlet extends HttpServlet {
 	 * see issue #221: the turn, the crop, the description, the rating, the privacy and the time.
 	 * An album is written only where something changed, through the one sidecar writer.
 	 */
-	private void writeSources(List<SourceEdit> edits, Caller caller) throws IOException {
+	private void writeSources(List<SourceEdit> edits, Caller caller, Map<PathInfo, Integer> trashed)
+			throws IOException {
 		Map<PathInfo, List<SourceEdit>> byFolder = new LinkedHashMap<>();
 		for (SourceEdit edit : edits) {
 			byFolder.computeIfAbsent(edit._image.parent(), x -> new ArrayList<>()).add(edit);
@@ -7305,7 +7486,13 @@ public class ImageServlet extends HttpServlet {
 			for (SourceEdit edit : entry.getValue()) {
 				ImagePart image = Crops.findImage(album, edit._image.getName());
 				if (image != null) {
+					int before = image.getRating();
 					changed |= applyEdit(album, image, edit._received, edit._comment);
+					if (before > Ratings.TRASH && image.getRating() <= Ratings.TRASH
+						&& !PhotoCollections.isReference(image)) {
+						// Rated as trash through a saved search: a delete, see ReferencedOriginals.
+						trashed.put(edit._image, Integer.valueOf(before));
+					}
 					if (edit._labels) {
 						changed |= applyLabels(image, edit._received);
 					}

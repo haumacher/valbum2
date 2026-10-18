@@ -7436,6 +7436,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'This app: version {version}'**
   String statusAppVersion(String version);
+
+  /// Issue #307: a photo that other albums still show (as a reference) is never thrown away: instead of going to the trash it moves into the album that shows it, in the place of that reference. Title of the question asked before such photos are deleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Shown in other albums'**
+  String get keptTitle;
+
+  /// How an album is named in the sentences about kept photos (issue #307): its title in quotation marks; German uses ‚…‘.
+  ///
+  /// In en, this message translates to:
+  /// **'‘{title}’'**
+  String keptAlbumName(String title);
+
+  /// Issue #307: a photo that other albums still show (as a reference) is never thrown away: instead of going to the trash it moves into the album that shows it, in the place of that reference. Said before a delete. {albums} is one or more quoted album names. German: 'Verweis' for reference, 'Papierkorb' for trash, formal 'Sie'.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 photo is still shown in {albums} – it stays there, all others go to the trash.} other{{count} photos are still shown in {albums} – they stay there, all others go to the trash.}}'**
+  String keptQuestion(String albums, int count);
+
+  /// Issue #307: a photo that other albums still show (as a reference) is never thrown away: instead of going to the trash it moves into the album that shows it, in the place of that reference. Said before a delete where every photo to delete is kept that way.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 photo is still shown in {albums} – it stays there instead of going to the trash.} other{{count} photos are still shown in {albums} – they stay there instead of going to the trash.}}'**
+  String keptQuestionAll(String albums, int count);
+
+  /// Issue #307: a photo that other albums still show (as a reference) is never thrown away: instead of going to the trash it moves into the album that shows it, in the place of that reference. Said after a delete.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 photo is still shown in {albums} and was moved there instead of into the trash.} other{{count} photos are still shown in {albums} and were moved there instead of into the trash.}}'**
+  String keptReport(String albums, int count);
+
+  /// Issue #307: a photo that other albums still show (as a reference) is never thrown away: instead of going to the trash it moves into the album that shows it, in the place of that reference. Said before the trash is purged (deleted from disk).
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 photo is still shown in {albums} – it moves there instead of being deleted from disk.} other{{count} photos are still shown in {albums} – they move there instead of being deleted from disk.}}'**
+  String keptPurgeQuestion(String albums, int count);
+
+  /// Issue #307: a photo that other albums still show (as a reference) is never thrown away: instead of going to the trash it moves into the album that shows it, in the place of that reference. Said after the trash was purged.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 photo is still shown in {albums} and was moved there instead of being deleted.} other{{count} photos are still shown in {albums} and were moved there instead of being deleted.}}'**
+  String keptPurgeReport(String albums, int count);
 }
 
 class _AppLocalizationsDelegate

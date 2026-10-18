@@ -28,9 +28,14 @@ public class PhotoRef extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getPath() */
 	private static final String PATH__PROP = "path";
 
+	/** @see #getCreated() */
+	private static final String CREATED__PROP = "created";
+
 	private String _hash = "";
 
 	private String _path = "";
+
+	private long _created = 0L;
 
 	/**
 	 * Creates a {@link PhotoRef} instance.
@@ -81,6 +86,34 @@ public class PhotoRef extends de.haumacher.msgbuf.data.AbstractDataObject {
 		_path = value;
 	}
 
+	/**
+	 * When the reference was made, in milliseconds since the epoch, see issue #307; <code>0</code>
+	 * for one made before that was recorded.
+	 *
+	 * <p>
+	 * What decides which album a referenced original goes to when it is deleted where it lies: the
+	 * album of the oldest reference, see <code>ReferencedOriginals</code> on the server. Stored with
+	 * the reference and never answered to a client, whose answer carries <code>0</code>; a build
+	 * that does not know it reads the reference without it.
+	 * </p>
+	 */
+	public final long getCreated() {
+		return _created;
+	}
+
+	/**
+	 * @see #getCreated()
+	 */
+	public de.haumacher.imageServer.shared.model.PhotoRef setCreated(long value) {
+		internalSetCreated(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getCreated()} without chain call utility. */
+	protected final void internalSetCreated(long value) {
+		_created = value;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.PhotoRef readPhotoRef(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.PhotoRef result = new de.haumacher.imageServer.shared.model.PhotoRef();
@@ -100,6 +133,8 @@ public class PhotoRef extends de.haumacher.msgbuf.data.AbstractDataObject {
 		out.value(getHash());
 		out.name(PATH__PROP);
 		out.value(getPath());
+		out.name(CREATED__PROP);
+		out.value(getCreated());
 	}
 
 	@Override
@@ -107,6 +142,7 @@ public class PhotoRef extends de.haumacher.msgbuf.data.AbstractDataObject {
 		switch (field) {
 			case HASH__PROP: setHash(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case PATH__PROP: setPath(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case CREATED__PROP: setCreated(in.nextLong()); break;
 			default: super.readField(in, field);
 		}
 	}

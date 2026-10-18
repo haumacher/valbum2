@@ -2349,10 +2349,22 @@ class PhotoRef extends _JsonObject {
 	///  The photograph's path relative to the space root, <code>/</code>-separated, as last seen.
 	String path;
 
+	///  When the reference was made, in milliseconds since the epoch, see issue #307; <code>0</code>
+	///  for one made before that was recorded.
+	/// 
+	///  <p>
+	///  What decides which album a referenced original goes to when it is deleted where it lies: the
+	///  album of the oldest reference, see <code>ReferencedOriginals</code> on the server. Stored with
+	///  the reference and never answered to a client, whose answer carries <code>0</code>; a build
+	///  that does not know it reads the reference without it.
+	///  </p>
+	int created;
+
 	/// Creates a PhotoRef.
 	PhotoRef({
 			this.hash = "", 
 			this.path = "", 
+			this.created = 0, 
 	});
 
 	/// Parses a PhotoRef from a string source.
@@ -2381,6 +2393,10 @@ class PhotoRef extends _JsonObject {
 				path = json.expectString();
 				break;
 			}
+			case "created": {
+				created = json.expectInt();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -2394,6 +2410,9 @@ class PhotoRef extends _JsonObject {
 
 		json.addKey("path");
 		json.addString(path);
+
+		json.addKey("created");
+		json.addNumber(created);
 	}
 
 }
@@ -7441,11 +7460,22 @@ class MoveOutcome extends _JsonObject {
 	///  </p>
 	String message;
 
+	///  The photographs of this entry a delete moved into an album that references them instead of
+	///  into the trash, see issue #307; empty for every other outcome.
+	/// 
+	///  <p>
+	///  A photograph shown in other albums is never deleted into nothing: it goes to the album of its
+	///  oldest reference and takes that reference's place there. For a photograph named by the
+	///  request, at most one entry; for an album, one per such photograph below it.
+	///  </p>
+	List<KeptPhoto> kept;
+
 	/// Creates a MoveOutcome.
 	MoveOutcome({
 			this.name = "", 
 			this.newName = "", 
 			this.message = "", 
+			this.kept = const [], 
 	});
 
 	/// Parses a MoveOutcome from a string source.
@@ -7478,6 +7508,19 @@ class MoveOutcome extends _JsonObject {
 				message = json.expectString();
 				break;
 			}
+			case "kept": {
+				json.expectArray();
+				kept = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = KeptPhoto.read(json);
+						if (value != null) {
+							kept.add(value);
+						}
+					}
+				}
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -7494,6 +7537,94 @@ class MoveOutcome extends _JsonObject {
 
 		json.addKey("message");
 		json.addString(message);
+
+		json.addKey("kept");
+		json.startArray();
+		for (var _element in kept) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+	}
+
+}
+
+///  A photograph that a delete moved into an album referencing it instead of into the trash, see
+///  issue #307 and {@link MoveOutcome#kept}.
+class KeptPhoto extends _JsonObject {
+	///  The photograph as it was named in the folder deleted from: its name, or its path below the
+	///  deleted album (<code>2020 Trip/b.jpg</code>).
+	String photo;
+
+	///  The album it lies in now, in the coordinates of the request, like {@link CreateResult#path}.
+	String album;
+
+	///  The title of that album, its folder name where it has none.
+	String title;
+
+	///  The name the photograph has in that album now: the name of the reference it replaced.
+	String name;
+
+	/// Creates a KeptPhoto.
+	KeptPhoto({
+			this.photo = "", 
+			this.album = "", 
+			this.title = "", 
+			this.name = "", 
+	});
+
+	/// Parses a KeptPhoto from a string source.
+	static KeptPhoto? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a KeptPhoto instance from the given reader.
+	static KeptPhoto read(JsonReader json) {
+		KeptPhoto result = KeptPhoto();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "KeptPhoto";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "photo": {
+				photo = json.expectString();
+				break;
+			}
+			case "album": {
+				album = json.expectString();
+				break;
+			}
+			case "title": {
+				title = json.expectString();
+				break;
+			}
+			case "name": {
+				name = json.expectString();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("photo");
+		json.addString(photo);
+
+		json.addKey("album");
+		json.addString(album);
+
+		json.addKey("title");
+		json.addString(title);
+
+		json.addKey("name");
+		json.addString(name);
 	}
 
 }
@@ -7521,10 +7652,15 @@ class CreateResult extends _JsonObject {
 	///  </p>
 	String message;
 
+	///  The photographs this write rated as trash that are shown in other albums, and were moved into
+	///  one of those instead, see issue #307 and {@link MoveOutcome#kept}.
+	List<KeptPhoto> kept;
+
 	/// Creates a CreateResult.
 	CreateResult({
 			this.path = "", 
 			this.message = "", 
+			this.kept = const [], 
 	});
 
 	/// Parses a CreateResult from a string source.
@@ -7553,6 +7689,19 @@ class CreateResult extends _JsonObject {
 				message = json.expectString();
 				break;
 			}
+			case "kept": {
+				json.expectArray();
+				kept = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = KeptPhoto.read(json);
+						if (value != null) {
+							kept.add(value);
+						}
+					}
+				}
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -7566,6 +7715,13 @@ class CreateResult extends _JsonObject {
 
 		json.addKey("message");
 		json.addString(message);
+
+		json.addKey("kept");
+		json.startArray();
+		for (var _element in kept) {
+			_element.writeContent(json);
+		}
+		json.endArray();
 	}
 
 }

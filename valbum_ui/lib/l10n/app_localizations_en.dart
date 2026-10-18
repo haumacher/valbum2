@@ -4859,4 +4859,77 @@ class AppLocalizationsEn extends AppLocalizations {
   String statusAppVersion(String version) {
     return 'This app: version $version';
   }
+
+  @override
+  String get keptTitle => 'Shown in other albums';
+
+  @override
+  String keptAlbumName(String title) {
+    return '‘$title’';
+  }
+
+  @override
+  String keptQuestion(String albums, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count photos are still shown in $albums – they stay there, all others go to the trash.',
+      one:
+          '1 photo is still shown in $albums – it stays there, all others go to the trash.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String keptQuestionAll(String albums, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count photos are still shown in $albums – they stay there instead of going to the trash.',
+      one:
+          '1 photo is still shown in $albums – it stays there instead of going to the trash.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String keptReport(String albums, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count photos are still shown in $albums and were moved there instead of into the trash.',
+      one:
+          '1 photo is still shown in $albums and was moved there instead of into the trash.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String keptPurgeQuestion(String albums, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count photos are still shown in $albums – they move there instead of being deleted from disk.',
+      one:
+          '1 photo is still shown in $albums – it moves there instead of being deleted from disk.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String keptPurgeReport(String albums, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count photos are still shown in $albums and were moved there instead of being deleted.',
+      one:
+          '1 photo is still shown in $albums and was moved there instead of being deleted.',
+    );
+    return '$_temp0';
+  }
 }

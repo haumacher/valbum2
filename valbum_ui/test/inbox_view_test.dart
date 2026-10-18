@@ -17,6 +17,7 @@ import 'package:valbum_ui/resource.dart';
 import 'package:valbum_ui/trash_view.dart';
 
 import 'move_test.dart' hide main;
+import 'util/questions.dart';
 import 'util/fake_image_http.dart';
 import 'util/l10n.dart';
 
@@ -317,7 +318,8 @@ void main() {
       await tester.tap(find.byKey(const Key("inbox-delete-confirm")));
       await tester.pumpAndSettle();
 
-      var post = requests.singleWhere((r) => r.method == "POST");
+      var post =
+          requests.singleWhere((r) => r.method == "POST" && !isQuestion(r));
       expect(
         Uri.decodeFull(post.url.toString()),
         "$dataUrl/Inbox/?action=delete",
@@ -349,7 +351,8 @@ void main() {
 
       expect(find.text(testL10n.offlineRefusal), findsOneWidget);
       expect(find.byKey(const Key("inbox-delete-dialog")), findsNothing);
-      expect(requests.where((r) => r.method != "GET"), isEmpty);
+      expect(
+          requests.where((r) => r.method != "GET" && !isQuestion(r)), isEmpty);
     });
   });
 
@@ -572,7 +575,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text(testL10n.offlineRefusal), findsOneWidget);
-      expect(requests.where((r) => r.method != "GET"), isEmpty);
+      expect(
+          requests.where((r) => r.method != "GET" && !isQuestion(r)), isEmpty);
       var shown =
           inboxState(tester).images.singleWhere((i) => i.name == "a.jpg");
       expect(shown.rating, 0);
@@ -644,7 +648,8 @@ void main() {
       await tester.tap(find.byKey(const Key("trash-confirm")));
       await tester.pumpAndSettle();
 
-      expect(requests.where((r) => r.method == "POST"), isEmpty);
+      expect(
+          requests.where((r) => r.method == "POST" && !isQuestion(r)), isEmpty);
       var put = requests.singleWhere((r) => r.method == "PUT");
       var sent = Resource.fromString(put.body) as AlbumInfo;
       var ratings = {
@@ -678,7 +683,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text(testL10n.offlineRefusal), findsOneWidget);
-      expect(requests.where((r) => r.method != "GET"), isEmpty);
+      expect(
+          requests.where((r) => r.method != "GET" && !isQuestion(r)), isEmpty);
       expect(selectedNames(tester), ["a.jpg", "b.jpg"]);
     });
   });

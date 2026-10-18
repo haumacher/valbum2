@@ -2102,8 +2102,24 @@ class VAlbumClient {
   /// unpaired device, a share link, a caller who may not change this folder —
   /// is thrown as a [VAlbumException] carrying its message, like every other
   /// refused write.
-  Future<MoveResult> delete(List<String> path, List<String> names) async {
-    var url = "${folderUrl(path)}?action=delete";
+  Future<MoveResult> delete(List<String> path, List<String> names) =>
+      _delete(path, names, "delete");
+
+  /// What [delete] would do with the named entries of the folder at [path],
+  /// with nothing done, see issue #307: the outcome of every name, carrying
+  /// the photographs that other albums still show and that would move there
+  /// instead of into the trash ([MoveOutcome.kept]). The question the app asks
+  /// before a delete, answered by the code that deletes. A server that does
+  /// not know it refuses it, which throws.
+  Future<MoveResult> deleteCheck(List<String> path, List<String> names) =>
+      _delete(path, names, "delete-check");
+
+  Future<MoveResult> _delete(
+    List<String> path,
+    List<String> names,
+    String action,
+  ) async {
+    var url = "${folderUrl(path)}?action=$action";
     var request = MoveRequest(
       target: "",
       names: [for (var name in names) MoveName(name: name)],
@@ -2452,8 +2468,16 @@ class VAlbumClient {
   /// An administrator's act: every photograph rated −2, group members one by
   /// one, is unlinked and leaves the album's sidecar. The answer has one
   /// outcome per photograph, and none where there was nothing to purge.
-  Future<MoveResult> purge(List<String> path) async {
-    var url = "${folderUrl(path)}?action=purge";
+  Future<MoveResult> purge(List<String> path) => _purge(path, "purge");
+
+  /// What [purge] would do with the album at [path], with nothing done, see
+  /// [deleteCheck]: a photograph other albums still show is moved there
+  /// instead of being deleted ([MoveOutcome.kept]).
+  Future<MoveResult> purgeCheck(List<String> path) =>
+      _purge(path, "purge-check");
+
+  Future<MoveResult> _purge(List<String> path, String action) async {
+    var url = "${folderUrl(path)}?action=$action";
     var response = await _http.post(
       Uri.parse(url),
       encoding: Encoding.getByName("utf-8"),

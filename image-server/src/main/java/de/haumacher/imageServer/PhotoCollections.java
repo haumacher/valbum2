@@ -94,6 +94,13 @@ public final class PhotoCollections {
 	/** The message an unreadable addition is refused with. */
 	public static final String COLLECT_UNREADABLE = "The photos to add to the album cannot be read.";
 
+	/**
+	 * The message a photograph rated as trash is refused with where it is to be added as a reference,
+	 * see issue #307: throwing a photograph into the trash is deleting it, and no reference points
+	 * into the trash.
+	 */
+	public static final String TRASHED_REFUSED = "This photo is in the trash; restore it before adding it to an album.";
+
 	/** The message the face editing of a reference is refused with. */
 	public static final String FACES_REFUSED = "Faces are named in the photo's own album, not where it is referenced.";
 
@@ -655,13 +662,27 @@ public final class PhotoCollections {
 		}
 	}
 
+	/** The last moment {@link #created()} answered. */
+	private static final java.util.concurrent.atomic.AtomicLong LAST_CREATED = new java.util.concurrent.atomic.AtomicLong();
+
 	/**
-	 * The stored form of a reference: its name, its reference, its labels, its own description and
-	 * the recording time of its photograph as last seen, nothing else.
+	 * The moment a reference made now is stamped with, see {@link PhotoRef#getCreated()}: the clock,
+	 * and later than every moment answered before by this server, so that of two references made
+	 * one after the other the later one is the younger, even within one millisecond.
+	 */
+	public static long created() {
+		long now = System.currentTimeMillis();
+		return LAST_CREATED.updateAndGet(last -> Math.max(now, last + 1));
+	}
+
+	/**
+	 * The stored form of a reference: its name, its reference (with the moment it was made), its
+	 * labels, its own description and the recording time of its photograph as last seen, nothing
+	 * else.
 	 */
 	public static ImagePart stored(String name, PhotoRef ref, List<LabelName> labels) {
 		ImagePart result = ImagePart.create().setName(name)
-			.setRef(PhotoRef.create().setHash(ref.getHash()).setPath(ref.getPath()));
+			.setRef(PhotoRef.create().setHash(ref.getHash()).setPath(ref.getPath()).setCreated(ref.getCreated()));
 		List<LabelName> copy = new ArrayList<>();
 		Set<String> seen = new HashSet<>();
 		for (LabelName label : labels) {

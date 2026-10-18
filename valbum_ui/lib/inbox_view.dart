@@ -85,6 +85,7 @@ import 'downloads.dart';
 import 'form_dialog.dart';
 import 'image_properties.dart';
 import 'key_guard.dart';
+import 'kept_photos.dart';
 import 'keyboard_scroll.dart';
 import 'l10n/app_localizations.dart';
 import 'listing_view.dart';
@@ -875,10 +876,11 @@ class InboxContentState extends State<InboxContent>
   /// edited part substituted: the server keeps its own order and its own
   /// grouping for an inbox (`Inboxes.restoreArrangement`), so a round trip
   /// carries the edit and nothing else.
-  Future<void> writeNow(VoidCallback edit, VoidCallback undo) async {
+  Future<Written<CreateResult>?> writeNow(
+      VoidCallback edit, VoidCallback undo) async {
     // Applied only once [writeAction] lets the write go out: offline nothing
     // changes on the screen either.
-    await writeAction(
+    return await writeAction(
       context,
       () {
         setState(edit);
@@ -932,18 +934,43 @@ class InboxContentState extends State<InboxContent>
     if (refuseWhileOffline(context)) {
       return;
     }
-    if (rating == trashRating &&
-        !await confirmTrashing(context, chosen.length)) {
-      return;
+    if (rating == trashRating) {
+      // Rating as trash is deleting: what other albums still show moves there
+      // instead, and the question says where (issue #307).
+      var question = keptQuestion(
+        _l10n,
+        await keptOnDelete(context, client, path,
+            [for (var image in chosen) image.thumbnailName]),
+        chosen.length,
+      );
+      if (!mounted) {
+        return;
+      }
+      var go = question == null
+          ? await confirmTrashing(context, chosen.length)
+          : await confirmKeeping(context,
+              question: question, confirm: _l10n.moveToTrash);
+      if (!go) {
+        return;
+      }
     }
     if (!mounted) {
       return;
     }
-    await rateAll(chosen, rating);
+    var messenger = ScaffoldMessenger.of(context);
+    var written = await rateAll(chosen, rating);
+    var report = written == null ? null : keptReport(_l10n, written.value.kept);
+    if (report != null) {
+      // The kept photos left the inbox: it is read anew.
+      showKeptReport(messenger, report);
+      if (mounted) {
+        widget.albumState.reload();
+      }
+    }
   }
 
   /// Gives every one of [chosen] the rating [rating] in one write.
-  Future<void> rateAll(List<ImagePart> chosen, int rating) {
+  Future<Written<CreateResult>?> rateAll(List<ImagePart> chosen, int rating) {
     var before = {for (var image in chosen) image: image.rating};
     var selected = {for (var image in chosen) image: isSelected(image)};
     return writeNow(
@@ -1151,12 +1178,25 @@ class InboxContentState extends State<InboxContent>
       return;
     }
     var messenger = ScaffoldMessenger.of(context);
+    // What other albums still show stays there, and the question says where
+    // (issue #307).
+    var question = keptQuestion(
+      _l10n,
+      await keptOnDelete(context, client, path,
+          [for (var image in chosen) image.thumbnailName]),
+      chosen.length,
+    );
+    if (!mounted) {
+      return;
+    }
     var confirmed = await showAppDialog<bool>(
       context: context,
       builder: (context) => AppAlertDialog(
         key: const Key("inbox-delete-dialog"),
         title: Text(inboxDeleteTitle(_l10n, chosen.length)),
-        content: Text(inboxDeleteExplanation(_l10n)),
+        content: Text(question == null
+            ? inboxDeleteExplanation(_l10n)
+            : "${inboxDeleteExplanation(_l10n)}\n\n$question"),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -1195,10 +1235,7 @@ class InboxContentState extends State<InboxContent>
 
     // Verbatim, every name of them: the server says what it did with each
     // photograph and the app paraphrases none of it.
-    var said = [
-      for (var outcome in result.outcomes)
-        if (outcome.message.isNotEmpty) outcome.message,
-    ];
+    var said = deleteOutcomes(_l10n, result);
     messenger.showSnackBar(
       SnackBar(
         content: Text(said.isEmpty

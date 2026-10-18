@@ -20,6 +20,7 @@ import 'inbox_view_test.dart'
     show inboxJson, inboxTree, pumpInbox, reveal, selectedNames, tapHeading;
 import 'move_test.dart' show json, movedAll, pathOf, tile;
 import 'persons_not_a_face_test.dart' show RecordingBrowserMenu;
+import 'util/questions.dart';
 import 'util/fake_image_http.dart';
 import 'util/l10n.dart';
 
@@ -202,7 +203,8 @@ void main() {
         "a.jpg": 0,
         "b.jpg": 0
       });
-      expect(requests.where((r) => r.method == "POST"), isEmpty);
+      expect(
+          requests.where((r) => r.method == "POST" && !isQuestion(r)), isEmpty);
     });
 
     testWidgets('a contributor\'s delete asks and posts the selection',
@@ -221,7 +223,8 @@ void main() {
         await tester.pumpAndSettle();
       });
 
-      var post = requests.singleWhere((r) => r.method == "POST");
+      var post =
+          requests.singleWhere((r) => r.method == "POST" && !isQuestion(r));
       expect(post.url.queryParameters["action"], "delete");
       expect(post.body,
           '{"target":"","names":[{"name":"a.jpg"},{"name":"b.jpg"}]}');
@@ -282,7 +285,8 @@ void main() {
         await tester.pumpAndSettle();
         expect(selectedNames(tester), ["d.jpg", "c.jpg"]);
       });
-      expect(requests.where((r) => r.method != "GET"), isEmpty);
+      expect(
+          requests.where((r) => r.method != "GET" && !isQuestion(r)), isEmpty);
     });
   });
 

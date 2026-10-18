@@ -242,12 +242,11 @@ public class TestCollections extends ShareTestCase {
 	public void testAPurgedPhotoIsMissingAndRemovable() throws Exception {
 		createCollection("Best of");
 		collect(ZOO, "/Best of", SharingFixture.ALICE, "public.jpg", "members.jpg");
-		AlbumInfo zoo = album(get(ZOO, "json", SharingFixture.ALICE));
-		image(zoo, "public.jpg").setRating(Ratings.TRASH);
-		assertEquals(HttpServletResponse.SC_OK, put(ZOO, write(zoo), SharingFixture.ALICE).status());
-		Map<String, String> purge = new HashMap<>();
-		purge.put("action", "purge");
-		assertEquals(HttpServletResponse.SC_OK, post(ZOO, "", SharingFixture.ALICE, purge).status());
+		// Trashed and purged through the server, it would be kept in the collection, see
+		// TestReferencedOriginalDelete; gone behind the server's back, it is missing.
+		Files.delete(_base.resolve(SharingFixture.ZOO).resolve("public.jpg"));
+		restartServer();
+		servlet().index().indexNow();
 
 		AlbumInfo answer = album(get(BEST, "json", SharingFixture.ALICE));
 		assertTrue(image(answer, "public.jpg").isMissing());

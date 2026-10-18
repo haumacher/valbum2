@@ -154,12 +154,11 @@ public class TestAlbumReferences extends ShareTestCase {
 
 	public void testAGoneOriginalIsShownAsMissing() throws Exception {
 		collect(OTHER, "Trip", SharingFixture.ALICE, "b.jpg");
-		AlbumInfo other = album(get(OTHER, "json", SharingFixture.ALICE));
-		image(other, "b.jpg").setRating(Ratings.TRASH);
-		assertEquals(HttpServletResponse.SC_OK, put(OTHER, write(other), SharingFixture.ALICE).status());
-		Map<String, String> purge = new HashMap<>();
-		purge.put("action", "purge");
-		assertEquals(HttpServletResponse.SC_OK, post(OTHER, "", SharingFixture.ALICE, purge).status());
+		// Deleting it through the server keeps it in Trip, see TestReferencedOriginalDelete; gone
+		// behind the server's back, it is missing.
+		Files.delete(_base.resolve("Other/b.jpg"));
+		restartServer();
+		servlet().index().indexNow();
 
 		FakeResponse album = get(TRIP, "json", SharingFixture.ALICE);
 		assertEquals("The album opens, never an error page.", HttpServletResponse.SC_OK, album.status());

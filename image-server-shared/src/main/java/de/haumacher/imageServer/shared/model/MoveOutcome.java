@@ -24,11 +24,16 @@ public class MoveOutcome extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getMessage() */
 	private static final String MESSAGE__PROP = "message";
 
+	/** @see #getKept() */
+	private static final String KEPT__PROP = "kept";
+
 	private String _name = "";
 
 	private String _newName = "";
 
 	private String _message = "";
+
+	private final java.util.List<de.haumacher.imageServer.shared.model.KeptPhoto> _kept = new java.util.ArrayList<>();
 
 	/**
 	 * Creates a {@link MoveOutcome} instance.
@@ -115,6 +120,55 @@ public class MoveOutcome extends de.haumacher.msgbuf.data.AbstractDataObject {
 		_message = value;
 	}
 
+	/**
+	 * The photographs of this entry a delete moved into an album that references them instead of
+	 * into the trash, see issue #307; empty for every other outcome.
+	 *
+	 * <p>
+	 * A photograph shown in other albums is never deleted into nothing: it goes to the album of its
+	 * oldest reference and takes that reference's place there. For a photograph named by the
+	 * request, at most one entry; for an album, one per such photograph below it.
+	 * </p>
+	 */
+	public final java.util.List<de.haumacher.imageServer.shared.model.KeptPhoto> getKept() {
+		return _kept;
+	}
+
+	/**
+	 * @see #getKept()
+	 */
+	public de.haumacher.imageServer.shared.model.MoveOutcome setKept(java.util.List<? extends de.haumacher.imageServer.shared.model.KeptPhoto> value) {
+		internalSetKept(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getKept()} without chain call utility. */
+	protected final void internalSetKept(java.util.List<? extends de.haumacher.imageServer.shared.model.KeptPhoto> value) {
+		if (value == null) throw new IllegalArgumentException("Property 'kept' cannot be null.");
+		_kept.clear();
+		_kept.addAll(value);
+	}
+
+	/**
+	 * Adds a value to the {@link #getKept()} list.
+	 */
+	public de.haumacher.imageServer.shared.model.MoveOutcome addKept(de.haumacher.imageServer.shared.model.KeptPhoto value) {
+		internalAddKept(value);
+		return this;
+	}
+
+	/** Implementation of {@link #addKept(de.haumacher.imageServer.shared.model.KeptPhoto)} without chain call utility. */
+	protected final void internalAddKept(de.haumacher.imageServer.shared.model.KeptPhoto value) {
+		_kept.add(value);
+	}
+
+	/**
+	 * Removes a value from the {@link #getKept()} list.
+	 */
+	public final void removeKept(de.haumacher.imageServer.shared.model.KeptPhoto value) {
+		_kept.remove(value);
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.MoveOutcome readMoveOutcome(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.MoveOutcome result = new de.haumacher.imageServer.shared.model.MoveOutcome();
@@ -136,6 +190,12 @@ public class MoveOutcome extends de.haumacher.msgbuf.data.AbstractDataObject {
 		out.value(getNewName());
 		out.name(MESSAGE__PROP);
 		out.value(getMessage());
+		out.name(KEPT__PROP);
+		out.beginArray();
+		for (de.haumacher.imageServer.shared.model.KeptPhoto x : getKept()) {
+			x.writeTo(out);
+		}
+		out.endArray();
 	}
 
 	@Override
@@ -144,6 +204,14 @@ public class MoveOutcome extends de.haumacher.msgbuf.data.AbstractDataObject {
 			case NAME__PROP: setName(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case NEW_NAME__PROP: setNewName(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case MESSAGE__PROP: setMessage(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case KEPT__PROP: {
+				in.beginArray();
+				while (in.hasNext()) {
+					addKept(de.haumacher.imageServer.shared.model.KeptPhoto.readKeptPhoto(in));
+				}
+				in.endArray();
+			}
+			break;
 			default: super.readField(in, field);
 		}
 	}
