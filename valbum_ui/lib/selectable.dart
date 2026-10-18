@@ -62,6 +62,11 @@ import 'key_guard.dart';
 ///    through that holder anyway, so the focus stays where it is and the
 ///    arrows keep scrolling and paging. Only a text field is left: its own
 ///    copy would otherwise answer `Ctrl+C`.
+///  * **A text field inside it keeps its up and down arrows.** The area
+///    and every text field each bind the vertical caret keys as an
+///    overridable action; the field's, typed more widely, cannot be handed
+///    to the area's, and `ArrowUp`/`ArrowDown` in any field of the app threw
+///    instead of moving the caret, see [_FieldCaretKeys].
 ///
 /// An area inside another one adds nothing: the outer one already covers its
 /// text, and one region per page lets a selection run across the whole page.
@@ -120,18 +125,86 @@ class _SelectableAreaState extends State<SelectableArea> {
         child: SelectionArea(
           key: _area,
           focusNode: _focus,
-          child: _AreaContent(
-            key: _inner,
-            // Selected text shows on the black pages and on the light ones
-            // alike, see [selectionHighlight].
-            child: DefaultSelectionStyle.merge(
-              selectionColor: selectionHighlight,
-              child: _OffstageGuard(child: widget.child),
+          child: _FieldCaretKeys(
+            child: _AreaContent(
+              key: _inner,
+              // Selected text shows on the black pages and on the light ones
+              // alike, see [selectionHighlight].
+              child: DefaultSelectionStyle.merge(
+                selectionColor: selectionHighlight,
+                child: _OffstageGuard(child: widget.child),
+              ),
             ),
           ),
         ),
       ),
     );
+  }
+}
+
+/// Stands between the [SelectionArea] and its content for the one caret
+/// intent both bind, [ExtendSelectionVerticallyToAdjacentLineIntent]
+/// (`ArrowUp`, `ArrowDown`, with `Shift` too).
+///
+/// An [EditableText] binds it as an overridable action typed for every
+/// [DirectionalCaretMovementIntent]; the area's action, found as the
+/// override, is typed for this intent alone and fails casting the field's
+/// action it is to call back (Flutter 3.47). Found first instead, the action
+/// here, typed for every intent, hands a key from a field straight back to
+/// the field, and a key from the rest of the page on to the area.
+class _FieldCaretKeys extends StatelessWidget {
+  final Widget child;
+
+  const _FieldCaretKeys({required this.child});
+
+  @override
+  Widget build(BuildContext context) => Actions(
+        actions: <Type, Action<Intent>>{
+          ExtendSelectionVerticallyToAdjacentLineIntent:
+              _DeferringAction(context),
+        },
+        child: child,
+      );
+}
+
+/// The action of [_FieldCaretKeys]: the field's own where a field calls it
+/// as its override ([callingAction]), otherwise the area's, looked up from
+/// [area], which lies between the two.
+class _DeferringAction extends ContextAction<Intent> {
+  final BuildContext area;
+
+  _DeferringAction(this.area);
+
+  /// The area's action, the only one of its intent above this one.
+  Action<Intent>? get _areaAction =>
+      Actions.maybeFind<ExtendSelectionVerticallyToAdjacentLineIntent>(area);
+
+  @override
+  bool isEnabled(Intent intent, [BuildContext? context]) {
+    var action = callingAction ?? _areaAction;
+    if (action == null) {
+      return false;
+    }
+    return action is ContextAction<Intent>
+        ? action.isEnabled(intent, context)
+        : action.isEnabled(intent);
+  }
+
+  @override
+  bool get isActionEnabled =>
+      (callingAction ?? _areaAction)?.isActionEnabled ?? false;
+
+  @override
+  bool consumesKey(Intent intent) =>
+      (callingAction ?? _areaAction)?.consumesKey(intent) ?? false;
+
+  @override
+  Object? invoke(Intent intent, [BuildContext? context]) {
+    var caller = callingAction;
+    if (caller != null) {
+      return caller.invoke(intent);
+    }
+    return Actions.maybeInvoke<Intent>(area, intent);
   }
 }
 
@@ -342,8 +415,7 @@ class _AroundKey extends LocalKey {
   const _AroundKey(this.inner);
 
   @override
-  bool operator ==(Object other) =>
-      other is _AroundKey && other.inner == inner;
+  bool operator ==(Object other) => other is _AroundKey && other.inner == inner;
 
   @override
   int get hashCode => Object.hash(_AroundKey, inner);
