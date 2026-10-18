@@ -5301,8 +5301,8 @@ class CatchUpStatus extends _JsonObject {
 	///  How many videos still wait for their teaser or playback rendition.
 	int videosRemaining;
 
-	///  How many photos and videos still wait to be described for the content search of issue #257;
-	///  <code>0</code> where the space has it off.
+	///  How many photos and videos still wait to be described for the content search of issue #257,
+	///  queued or waiting for the embedder; <code>0</code> where the space has it off.
 	int contentRemaining;
 
 	///  What failed last, as the server words it ("previews: IMG_1.jpg: &lt;reason&gt;"); empty while
@@ -5315,6 +5315,28 @@ class CatchUpStatus extends _JsonObject {
 	///  Whether the background waits because requests are being served (they always go first).
 	bool yielding;
 
+	///  Whether the space has the content search of issue #257 on; every <code>content*</code> field
+	///  below is empty where it is off.
+	bool contentEnabled;
+
+	///  How many photos and videos of the space are described for the content search, of
+	///  {@link #contentTotal}: what the step found in the cache of every album it looked at, kept up as
+	///  it describes. Whether their work happens to be queued plays no part.
+	int contentDescribed;
+
+	///  How many photos and videos of the space are to be described for the content search: every one
+	///  with a preview in an album the background looked at since the start.
+	int contentTotal;
+
+	///  Why the content search cannot describe photos now, as the server words it (no embedder, the
+	///  embedder unreachable, still preparing or downloading its model, refusing the key...); empty while
+	///  it can. The albums whose photos wait for it are counted in {@link #contentRemaining}.
+	String contentWaiting;
+
+	///  When the embedder is asked again, in milliseconds since the epoch; <code>0</code> while
+	///  {@link #contentWaiting} is empty.
+	int contentRetryAt;
+
 	/// Creates a CatchUpStatus.
 	CatchUpStatus({
 			this.albumsDone = 0, 
@@ -5326,6 +5348,11 @@ class CatchUpStatus extends _JsonObject {
 			this.failure = "", 
 			this.failureFolder = "", 
 			this.yielding = false, 
+			this.contentEnabled = false, 
+			this.contentDescribed = 0, 
+			this.contentTotal = 0, 
+			this.contentWaiting = "", 
+			this.contentRetryAt = 0, 
 	});
 
 	/// Parses a CatchUpStatus from a string source.
@@ -5382,6 +5409,26 @@ class CatchUpStatus extends _JsonObject {
 				yielding = json.expectBool();
 				break;
 			}
+			case "contentEnabled": {
+				contentEnabled = json.expectBool();
+				break;
+			}
+			case "contentDescribed": {
+				contentDescribed = json.expectInt();
+				break;
+			}
+			case "contentTotal": {
+				contentTotal = json.expectInt();
+				break;
+			}
+			case "contentWaiting": {
+				contentWaiting = json.expectString();
+				break;
+			}
+			case "contentRetryAt": {
+				contentRetryAt = json.expectInt();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -5416,6 +5463,21 @@ class CatchUpStatus extends _JsonObject {
 
 		json.addKey("yielding");
 		json.addBool(yielding);
+
+		json.addKey("contentEnabled");
+		json.addBool(contentEnabled);
+
+		json.addKey("contentDescribed");
+		json.addNumber(contentDescribed);
+
+		json.addKey("contentTotal");
+		json.addNumber(contentTotal);
+
+		json.addKey("contentWaiting");
+		json.addString(contentWaiting);
+
+		json.addKey("contentRetryAt");
+		json.addNumber(contentRetryAt);
 	}
 
 }

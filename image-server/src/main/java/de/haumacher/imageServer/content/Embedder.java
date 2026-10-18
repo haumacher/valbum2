@@ -109,6 +109,17 @@ public interface Embedder extends Closeable {
 	}
 
 	/**
+	 * How far this embedder has got preparing itself, as {@link #unavailability()} would say it, but
+	 * known without asking anybody and without setting anything in motion: what the progress of the
+	 * background shows between two questions of the content search (the download of a model goes on
+	 * while the step backs off). <code>null</code> where it cannot tell without asking; by default
+	 * always.
+	 */
+	default String progress() {
+		return null;
+	}
+
+	/**
 	 * Waits until this embedder can answer, setting in motion what is needed.
 	 *
 	 * @return Whether it can, <code>false</code> when the time ran out or it never will (then

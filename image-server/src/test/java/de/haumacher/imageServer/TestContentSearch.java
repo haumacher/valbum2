@@ -538,6 +538,139 @@ public class TestContentSearch extends TestCase {
 		}
 	}
 
+	/**
+	 * The report of 2.15.0: switched on with an embedder that cannot answer, the catch-up must not say
+	 * "nothing to do". Every photo counts as waiting, though no unit is queued, with the reason as the
+	 * server words it and when it is asked again; once it answers, every photo counts as described.
+	 */
+	public void testTheProgressSaysWhyTheContentSearchWaits() throws Exception {
+		_embedder._problem = "the embedder service at http://pi:8091/ is downloading the model (12 MB of 190 MB)";
+		library(true);
+		start();
+		awaitCatchUp();
+		CatchUpStatus status = status();
+		assertEquals(CatchUpStep.IDLE, status.getStep());
+		assertEquals("No unit is queued: they wait for the embedder.", 0,
+			pipeline().status().getRemaining(ContentIndex.STEP));
+		assertTrue(status.isContentEnabled());
+		assertEquals("Every photo and video to describe.", MEDIA.length, status.getContentTotal());
+		assertEquals(0, status.getContentDescribed());
+		assertEquals("Not idle: every photo waits.", MEDIA.length, status.getContentRemaining());
+		assertEquals(_embedder._problem, status.getContentWaiting());
+		assertTrue("When it is asked again: " + status.getContentRetryAt(),
+			status.getContentRetryAt() > System.currentTimeMillis() - 60_000);
+
+		_embedder._problem = null;
+		awaitDescribed();
+		status = status();
+		assertEquals(MEDIA.length, status.getContentDescribed());
+		assertEquals(MEDIA.length, status.getContentTotal());
+		assertEquals(0, status.getContentRemaining());
+		assertEquals("", status.getContentWaiting());
+		assertEquals(0, status.getContentRetryAt());
+	}
+
+	/**
+	 * Probe of #304: the way of the report — the server runs, everything prepared, and the
+	 * administrator switches the content search on while the embedder cannot answer; switched off
+	 * and on again meanwhile, nothing is counted twice.
+	 */
+	public void testSwitchedOnAtRunTimeTheWaitIsShownAndCountedOnce() throws Exception {
+		_embedder._problem = "the embedder service at http://pi:8091/ cannot be reached";
+		library(false);
+		start();
+		awaitCatchUp();
+		FakeResponse on = saveSettings(settings(get("space-settings")).setContent(ContentSwitch.ON));
+		FakeResponse off = saveSettings(settings(on).setContent(ContentSwitch.OFF));
+		saveSettings(settings(off).setContent(ContentSwitch.ON));
+		awaitCatchUp();
+		long end = System.currentTimeMillis() + TIMEOUT;
+		CatchUpStatus status = status();
+		while (status.getContentTotal() < MEDIA.length) {
+			assertTrue("Counted: " + status.getContentTotal(), System.currentTimeMillis() < end);
+			Thread.sleep(50);
+			status = status();
+		}
+		assertEquals("Once, though switched twice.", MEDIA.length, status.getContentTotal());
+		assertEquals(0, status.getContentDescribed());
+		assertEquals("Never nothing to do.", MEDIA.length, status.getContentRemaining());
+		assertEquals(_embedder._problem, status.getContentWaiting());
+		assertTrue(status.getContentRetryAt() > 0);
+	}
+
+	/** Described of the total: a photo added while the embedder cannot answer is one more to describe. */
+	public void testTheProgressCountsWhatIsDescribed() throws Exception {
+		library(true);
+		start();
+		awaitDescribed();
+		_embedder._problem = "the embedder service at http://pi:8091/ cannot be reached";
+		photo(NEW, "n3.jpg", Color.ORANGE);
+		pipeline().notice(folder(NEW), false);
+		long end = System.currentTimeMillis() + TIMEOUT;
+		CatchUpStatus status = status();
+		while (status.getContentTotal() != MEDIA.length + 1) {
+			assertTrue("The new photo is counted: " + status.getContentTotal(), System.currentTimeMillis() < end);
+			Thread.sleep(50);
+			status = status();
+		}
+		awaitCatchUp();
+		status = status();
+		assertEquals(MEDIA.length, status.getContentDescribed());
+		assertEquals(MEDIA.length + 1, status.getContentTotal());
+		assertEquals(1, status.getContentRemaining());
+		assertEquals(_embedder._problem, status.getContentWaiting());
+
+		_embedder._problem = null;
+		end = System.currentTimeMillis() + TIMEOUT;
+		while (status().getContentDescribed() != MEDIA.length + 1) {
+			assertTrue("The new photo is described.", System.currentTimeMillis() < end);
+			Thread.sleep(50);
+		}
+		assertEquals(0, status().getContentRemaining());
+	}
+
+	/** Switched off, the status says nothing of the content search. */
+	public void testSwitchedOffTheProgressSaysNothingOfIt() throws Exception {
+		library(false);
+		start();
+		awaitCatchUp();
+		CatchUpStatus status = status();
+		assertFalse(status.isContentEnabled());
+		assertEquals(0, status.getContentTotal());
+		assertEquals(0, status.getContentDescribed());
+		assertEquals(0, status.getContentRemaining());
+		assertEquals("", status.getContentWaiting());
+		assertEquals(0, status.getContentRetryAt());
+	}
+
+	/** The videos waiting are the units of the videos alone, never those of the content search. */
+	public void testTheUnitsOfTheContentSearchAreNoVideos() throws Exception {
+		photo(OLD, "a1.jpg", Color.RED);
+		photo(OLD, "a2.jpg", Color.GREEN);
+		FolderPipeline pipeline = new FolderPipeline(_base, "test");
+		pipeline.addStep(new FolderPipeline.UnitStep() {
+			@Override
+			public String name() {
+				return ContentIndex.STEP;
+			}
+
+			@Override
+			public List<String> units(File folder) {
+				return List.of("a1.jpg", "a2.jpg");
+			}
+
+			@Override
+			public FolderPipeline.Outcome runUnit(File folder, String unit) {
+				return FolderPipeline.Outcome.WAITING;
+			}
+		});
+		pipeline.process(folder(OLD));
+		CatchUpStatus status = CatchUp.status(pipeline);
+		assertEquals(2, status.getContentRemaining());
+		assertEquals("No video waits.", 0, status.getVideosRemaining());
+		assertFalse(status.isContentEnabled());
+	}
+
 	/** The status says what the content search does while it describes a photo. */
 	public void testTheStatusCountsWhatWaitsForADescription() throws Exception {
 		library(true);

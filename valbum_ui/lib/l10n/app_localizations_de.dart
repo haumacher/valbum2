@@ -4575,6 +4575,32 @@ class AppLocalizationsDe extends AppLocalizations {
   }
 
   @override
+  String catchUpContentProgress(int described, int total) {
+    return 'Inhaltssuche: $described von $total Fotos und Videos beschrieben';
+  }
+
+  @override
+  String catchUpContentWaiting(String reason) {
+    return 'Die Inhaltssuche wartet: $reason';
+  }
+
+  @override
+  String catchUpContentRetry(int minutes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: 'Der Einbettungsdienst wird in $minutes Minuten erneut gefragt.',
+      one: 'Der Einbettungsdienst wird in einer Minute erneut gefragt.',
+      zero: 'Der Einbettungsdienst wird gleich erneut gefragt.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get catchUpWaiting =>
+      'Derzeit läuft nichts, aber es wartet noch Arbeit.';
+
+  @override
   String get downloadAlbumAction => 'Album herunterladen';
 
   @override

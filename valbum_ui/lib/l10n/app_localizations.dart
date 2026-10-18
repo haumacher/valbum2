@@ -7005,6 +7005,30 @@ abstract class AppLocalizations {
   /// **'{count, plural, =0{No photo waiting for the content search} =1{1 photo waiting for the content search} other{{count} photos waiting for the content search}}'**
   String catchUpContent(int count);
 
+  /// Detail of the preparation progress, and its line once every album is prepared: how many photos and videos of the space are described for the content search, of how many there are (issue #257)
+  ///
+  /// In en, this message translates to:
+  /// **'Content search: {described} of {total} photos and videos described'**
+  String catchUpContentProgress(int described, int total);
+
+  /// Detail of the preparation progress: the embedder that describes the photos for the content search cannot answer now; the reason is the server's own sentence, shown verbatim, e.g. that it is still downloading its model (issue #257)
+  ///
+  /// In en, this message translates to:
+  /// **'The content search waits: {reason}'**
+  String catchUpContentWaiting(String reason);
+
+  /// Detail of the preparation progress: when the server asks the embedder of the content search again, which could not answer (issue #257)
+  ///
+  /// In en, this message translates to:
+  /// **'{minutes, plural, =0{The embedder is asked again in a moment.} =1{The embedder is asked again in a minute.} other{The embedder is asked again in {minutes} minutes.}}'**
+  String catchUpContentRetry(int minutes);
+
+  /// Detail of the preparation progress: no step runs at the moment, but photos or videos still wait, for instance for the embedder of the content search (issue #257); said instead of 'Nothing to do right now.'
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing runs right now; work is waiting.'**
+  String get catchUpWaiting;
+
   /// Entry of the menu of an album's tile in a folder listing: downloads the originals of every photo the album shows, as one archive (issue #295)
   ///
   /// In en, this message translates to:

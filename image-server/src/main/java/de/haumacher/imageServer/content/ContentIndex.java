@@ -25,6 +25,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -81,6 +82,18 @@ import java.util.logging.Logger;
  * {@link #MAX_RETRY_MILLIS}); until then every unit waits without asking. Once it answers, the
  * albums that waited are noticed again. Why it cannot answer is {@link #unavailability()}, for the
  * settings of the space and the log (said once per reason).
+ * </p>
+ *
+ * <h2>The progress</h2>
+ *
+ * <p>
+ * What the catch-up view shows ({@link #progress()}) is counted by the step itself: whenever it lists
+ * the units of an album it knows how many of its photos there are to describe and which of them its
+ * cache does not describe yet; it keeps that per album and in two sums, and takes a photo off as its
+ * unit is done. A question is answered from the sums, whatever the queue of the pipeline holds: the
+ * units of an album that waits for the embedder are not queued, but its photos are still counted as
+ * waiting. The sums cover the albums the background looked at since the start, which is every album
+ * once the catch-up has looked at each.
  * </p>
  *
  * <p>
@@ -170,6 +183,15 @@ public final class ContentIndex {
 	 */
 	private final Set<File> _guessed = new LinkedHashSet<>();
 
+	/** What the step found of every album it listed the units of, by its path; guarded by this. */
+	private final Map<String, Tally> _tallies = new HashMap<>();
+
+	/** The sum of {@link Tally#_total} over {@link #_tallies}. */
+	private int _total;
+
+	/** The sum of the sizes of {@link Tally#_pending} over {@link #_tallies}. */
+	private int _pending;
+
 	private ScheduledExecutorService _timer;
 
 	private ScheduledFuture<?> _retry;
@@ -185,6 +207,44 @@ public final class ContentIndex {
 
 	private record Inflight(String key, Future<float[]> future) {
 		// A pair.
+	}
+
+	/** What the step found of one album, see {@link ContentIndex#progress()}. */
+	private static final class Tally {
+
+		/** How many photos the album has to describe. */
+		final int _total;
+
+		/** The names of those its cache does not describe yet. */
+		final Set<String> _pending;
+
+		Tally(int total, Set<String> pending) {
+			_total = total;
+			_pending = pending;
+		}
+	}
+
+	/**
+	 * How far the content search of the space has got, for the catch-up view, see
+	 * {@link ContentIndex#progress()}.
+	 *
+	 * @param enabled
+	 *        Whether the space has it on; every other value is empty where it is off.
+	 * @param described
+	 *        How many photos are described, of the given total.
+	 * @param total
+	 *        How many photos there are to describe in the albums the step looked at.
+	 * @param remaining
+	 *        How many photos of these are not described yet, queued or not.
+	 * @param waiting
+	 *        Why the embedder cannot describe photos now, <code>null</code> while it can.
+	 * @param retryAt
+	 *        When it is asked again, <code>0</code> while it can describe.
+	 */
+	public record Progress(boolean enabled, int described, int total, int remaining, String waiting, long retryAt) {
+
+		/** What a space with the content search off says. */
+		public static final Progress OFF = new Progress(false, 0, 0, 0, null, 0);
 	}
 
 	/**
@@ -221,6 +281,10 @@ public final class ContentIndex {
 			synchronized (this) {
 				_waiting.clear();
 				_guessed.clear();
+				// Counted again from the albums when it is on again.
+				_tallies.clear();
+				_total = 0;
+				_pending = 0;
 				if (_retry != null) {
 					_retry.cancel(false);
 					_retry = null;
@@ -334,6 +398,99 @@ public final class ContentIndex {
 	/** The albums whose units wait for the embedder, for the tests. */
 	public synchronized List<File> waiting() {
 		return new ArrayList<>(_waiting);
+	}
+
+	/**
+	 * How far the content search of the space has got, for the catch-up view: answered from what the
+	 * step counted (see {@link ContentIndex}), in constant time, and asking nobody. Why it waits is
+	 * what the step found when it last asked the embedder, or what the embedder says of its
+	 * preparation now where it can tell without being asked ({@link Embedder#progress()}).
+	 */
+	public Progress progress() {
+		if (!_enabled) {
+			return Progress.OFF;
+		}
+		Embedder embedder = _embedder;
+		int total;
+		int pending;
+		String problem;
+		long retryAt;
+		synchronized (this) {
+			total = _total;
+			pending = _pending;
+			problem = embedder == null ? NO_EMBEDDER : _asked ? _problem : null;
+			retryAt = problem == null ? 0 : _retryAt;
+		}
+		if (problem != null && embedder != null) {
+			String now = embedder.progress();
+			if (now != null) {
+				problem = now;
+			}
+		}
+		return new Progress(true, total - pending, total, pending, problem, retryAt);
+	}
+
+	// --- The tally of the progress. ---
+
+	/** The path of the given folder below the root, <code>null</code> for one outside it. */
+	private String pathOf(File folder) {
+		Path path = folder.toPath().toAbsolutePath().normalize();
+		if (!path.startsWith(_root)) {
+			return null;
+		}
+		return _root.relativize(path).toString().replace(File.separatorChar, '/');
+	}
+
+	/** Records what the step found of the given album: its photos to describe, those not described. */
+	private synchronized void tally(File folder, int total, Set<String> pending) {
+		String path = pathOf(folder);
+		if (path == null || !_enabled) {
+			return;
+		}
+		Tally before = total == 0 ? _tallies.remove(path) : _tallies.put(path, new Tally(total, pending));
+		if (before != null) {
+			_total -= before._total;
+			_pending -= before._pending.size();
+		}
+		if (total > 0) {
+			_total += total;
+			_pending += pending.size();
+		}
+	}
+
+	/**
+	 * The photo of the given name in the given album is described, or, where <code>gone</code>, no
+	 * more to describe.
+	 */
+	private synchronized void counted(File folder, String name, boolean gone) {
+		String path = pathOf(folder);
+		Tally tally = path == null ? null : _tallies.get(path);
+		if (tally == null || !tally._pending.remove(name)) {
+			return;
+		}
+		_pending--;
+		if (gone) {
+			if (tally._total <= 1) {
+				_tallies.remove(path);
+				_total -= tally._total;
+				_pending -= tally._pending.size();
+			} else {
+				_tallies.put(path, new Tally(tally._total - 1, tally._pending));
+				_total--;
+			}
+		}
+	}
+
+	/** Forgets the tallies of the albums the given test picks. */
+	private synchronized void untally(java.util.function.Predicate<String> drop) {
+		for (java.util.Iterator<Map.Entry<String, Tally>> it = _tallies.entrySet().iterator(); it.hasNext();) {
+			Map.Entry<String, Tally> entry = it.next();
+			if (drop.test(entry.getKey())) {
+				_total -= entry.getValue()._total;
+				_pending -= entry.getValue()._pending.size();
+				it.remove();
+			}
+		}
 	}
 
 	// --- The availability. ---
@@ -530,6 +687,16 @@ public final class ContentIndex {
 		}
 
 		@Override
+		public void gone(String path) {
+			untally(known -> path.isEmpty() || known.equals(path) || known.startsWith(path + "/"));
+		}
+
+		@Override
+		public void retain(Set<String> paths) {
+			untally(known -> !paths.contains(known));
+		}
+
+		@Override
 		public Outcome runUnit(File folder, String unit) throws IOException {
 			return ContentIndex.this.runUnit(folder, itemOf(unit));
 		}
@@ -707,6 +874,7 @@ public final class ContentIndex {
 		Album album = items(folder, null);
 		File file = ContentCache.file(folder);
 		if (album == null || (album.items().isEmpty() && !file.isFile())) {
+			tally(folder, 0, Set.of());
 			return List.of();
 		}
 		Map<String, Item> items = album.items();
@@ -735,11 +903,14 @@ public final class ContentIndex {
 			}
 		}
 		List<String> result = new ArrayList<>();
+		Set<String> pending = new HashSet<>();
 		for (Item item : items.values()) {
 			if (!complete(cache, item)) {
 				result.add(item.unit(stamps[0]));
+				pending.add(item.part().getName());
 			}
 		}
+		tally(folder, items.size(), pending);
 		return result;
 	}
 
@@ -753,6 +924,7 @@ public final class ContentIndex {
 		Item item = album == null ? null : album.items().get(name);
 		if (item == null) {
 			// Gone, or no more to describe.
+			counted(folder, name, true);
 			return Outcome.DONE;
 		}
 		if (!ReadOnlyFolders.writable(CacheRefresh.cacheDir(folder).isDirectory() ? CacheRefresh.cacheDir(folder)
@@ -763,6 +935,7 @@ public final class ContentIndex {
 		String[] stamps = stamps(onDisk);
 		ContentCache cache = ContentCache.read(folder, stamps[0], stamps[1]);
 		if (complete(cache, item)) {
+			counted(folder, name, false);
 			return Outcome.DONE;
 		}
 		if (cache.image(item.image()) != null && cache.text(item.textHash()) != null) {
@@ -773,6 +946,7 @@ public final class ContentIndex {
 			ContentCache.update(folder, stamps[0], stamps[1],
 				each -> mapIfThere(each, item, quality));
 			_onWritten.accept(folder);
+			counted(folder, name, false);
 			return Outcome.DONE;
 		}
 		_aside = false;
@@ -817,6 +991,7 @@ public final class ContentIndex {
 				each.putPhoto(name, new ContentCache.Photo(item.image(), item.textHash()));
 			});
 			_onWritten.accept(folder);
+			counted(folder, name, false);
 			return Outcome.DONE;
 		} catch (EmbedderUnavailableException ex) {
 			refused(ex.getMessage());

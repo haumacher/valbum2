@@ -3,7 +3,8 @@
 /// places and videos, made newest album first.
 ///
 /// One line with the progress in the server settings, expandable to what the
-/// server is doing right now, how many videos still wait and what failed last.
+/// server is doing right now, how many videos still wait, how far the content
+/// search has got and why it waits (issue #257), and what failed last.
 /// It asks the server again every few seconds while it is on screen, and never
 /// otherwise.
 library;
@@ -101,6 +102,12 @@ class CatchUpSectionState extends State<CatchUpSection> {
           : l10n.catchUpUnavailable(_problem!);
     } else if (_finished(status)) {
       line = l10n.catchUpComplete(status.albumsTotal);
+    } else if (status.contentEnabled &&
+        status.albumsDone >= status.albumsTotal &&
+        status.contentRemaining > 0) {
+      // Every album is prepared, but its photos still wait to be described.
+      line = l10n.catchUpContentProgress(
+          status.contentDescribed, status.contentTotal);
     } else {
       line = l10n.catchUpProgress(status.albumsDone, status.albumsTotal);
     }
@@ -133,10 +140,16 @@ class CatchUpSectionState extends State<CatchUpSection> {
 
   /// Whether nothing is left to do.
   static bool _finished(CatchUpStatus status) =>
-      status.step == CatchUpStep.idle &&
-      status.albumsDone >= status.albumsTotal &&
-      status.videosRemaining == 0 &&
-      status.contentRemaining == 0;
+      status.step == CatchUpStep.idle && !_waits(status);
+
+  /// Whether work waits, running or not: photos waiting for the content
+  /// search count even where the embedder cannot answer and nothing of them
+  /// is queued.
+  static bool _waits(CatchUpStatus status) =>
+      status.albumsDone < status.albumsTotal ||
+      status.videosRemaining > 0 ||
+      status.contentRemaining > 0 ||
+      (status.contentEnabled && status.contentDescribed < status.contentTotal);
 
   List<String> _details(AppLocalizations l10n, CatchUpStatus? status) {
     var problem = _problem;
@@ -147,15 +160,22 @@ class CatchUpSectionState extends State<CatchUpSection> {
     }
     return [
       if (status.step == CatchUpStep.idle)
-        l10n.catchUpIdle
+        _waits(status) ? l10n.catchUpWaiting : l10n.catchUpIdle
       else
         l10n.catchUpNow(
             _stepName(l10n, status.step), _folder(l10n, status.folder)),
       if (status.yielding) l10n.catchUpYielding,
       l10n.catchUpVideos(status.videosRemaining),
       // Only where the space has the content search on (issue #257).
+      if (status.contentEnabled)
+        l10n.catchUpContentProgress(
+            status.contentDescribed, status.contentTotal),
       if (status.contentRemaining > 0)
         l10n.catchUpContent(status.contentRemaining),
+      if (status.contentWaiting.isNotEmpty)
+        l10n.catchUpContentWaiting(status.contentWaiting),
+      if (status.contentWaiting.isNotEmpty && status.contentRetryAt > 0)
+        l10n.catchUpContentRetry(_minutesUntil(status.contentRetryAt)),
       if (status.failure.isEmpty)
         l10n.catchUpNoFailure
       else
@@ -165,6 +185,13 @@ class CatchUpSectionState extends State<CatchUpSection> {
       // says why it is not fresh.
       if (problem != null) l10n.catchUpUnavailable(problem),
     ];
+  }
+
+  /// The whole minutes from now to the given moment (milliseconds since the
+  /// epoch), rounded up; `0` for one that has passed.
+  static int _minutesUntil(int millis) {
+    var left = millis - DateTime.now().millisecondsSinceEpoch;
+    return left <= 0 ? 0 : (left + 59999) ~/ 60000;
   }
 
   static String _folder(AppLocalizations l10n, String folder) =>

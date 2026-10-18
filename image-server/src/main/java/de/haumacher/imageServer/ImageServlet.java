@@ -7961,7 +7961,7 @@ public class ImageServlet extends HttpServlet {
 			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, CATCH_UP_REFUSED);
 			return;
 		}
-		serveJsonObject(context.response(), CatchUp.status(_index.pipeline()));
+		serveJsonObject(context.response(), CatchUp.status(_index.pipeline(), _content));
 	}
 
 	/**
