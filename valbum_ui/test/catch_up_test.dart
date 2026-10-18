@@ -44,6 +44,30 @@ String statusOf({
     '"failure": "$failure", "failureFolder": "$failureFolder", '
     '"yielding": $yielding}';
 
+/// The given status with the content search of issue #257 on.
+String withContent(
+  String status, {
+  required int described,
+  required int total,
+  required int remaining,
+  String waiting = "",
+  int retryAt = 0,
+}) =>
+    status.replaceFirst(
+        RegExp(r'\}$'),
+        ', "contentEnabled": true, "contentDescribed": $described, '
+        '"contentTotal": $total, "contentRemaining": $remaining, '
+        '"contentWaiting": "$waiting", "contentRetryAt": $retryAt}');
+
+/// A status of a space whose albums are all prepared, and nothing runs.
+String idleStatus() => statusOf(
+    done: 40,
+    step: "IDLE",
+    folder: "",
+    videos: 0,
+    failure: "",
+    failureFolder: "");
+
 /// Pumps the section alone, asking the given transport.
 Future<void> pumpSection(WidgetTester tester, http.Client transport,
     {Duration interval = const Duration(seconds: 5)}) async {
@@ -165,6 +189,76 @@ void main() {
         find.text("7 photos waiting for the content search"), findsOneWidget);
     expect(find.text("All 40 albums are prepared"), findsNothing,
         reason: "Photos still wait to be described.");
+  });
+
+  testWidgets(
+      'never says there is nothing to do while the content search waits for '
+      'its embedder, and says why (issue #257)', (tester) async {
+    var retryAt = DateTime.now()
+        .add(const Duration(minutes: 3, seconds: 30))
+        .millisecondsSinceEpoch;
+    const reason = "the embedder service is being prepared: the model (190 MB) "
+        "is being downloaded: 12 MB so far";
+    await pumpSection(
+        tester,
+        MockClient((request) async => json(withContent(idleStatus(),
+            described: 0,
+            total: 18000,
+            remaining: 18000,
+            waiting: reason,
+            retryAt: retryAt))));
+    expect(find.text("All 40 albums are prepared"), findsNothing);
+    expect(find.text("Content search: 0 of 18000 photos and videos described"),
+        findsOneWidget);
+    await tester.tap(find.byKey(catchUpLineKey));
+    await tester.pumpAndSettle();
+    expect(find.text("Nothing to do right now."), findsNothing);
+    expect(
+        find.text("Nothing runs right now; work is waiting."), findsOneWidget);
+    expect(find.text("Content search: 0 of 18000 photos and videos described"),
+        findsNWidgets(2));
+    expect(find.text("18000 photos waiting for the content search"),
+        findsOneWidget);
+    expect(find.text("The content search waits: $reason"), findsOneWidget);
+    expect(
+        find.text("The embedder is asked again in 4 minutes."), findsOneWidget);
+  });
+
+  testWidgets('shows how far the content search has got while it runs',
+      (tester) async {
+    await pumpSection(
+        tester,
+        MockClient((request) async => json(withContent(
+            statusOf(done: 40, step: "CONTENT", videos: 0, failure: ""),
+            described: 1234,
+            total: 18000,
+            remaining: 16766))));
+    await tester.tap(find.byKey(catchUpLineKey));
+    await tester.pumpAndSettle();
+    expect(find.text("Now: Content search in 2024/2024-05-01 Zoo"),
+        findsOneWidget);
+    expect(
+        find.text("Content search: 1234 of 18000 photos and videos described"),
+        findsWidgets);
+    expect(find.text("16766 photos waiting for the content search"),
+        findsOneWidget);
+    expect(find.textContaining("The content search waits"), findsNothing);
+    expect(find.textContaining("asked again"), findsNothing);
+  });
+
+  testWidgets('says everything is prepared once every photo is described',
+      (tester) async {
+    await pumpSection(
+        tester,
+        MockClient((request) async => json(
+            withContent(idleStatus(), described: 5, total: 5, remaining: 0))));
+    expect(find.text("All 40 albums are prepared"), findsOneWidget);
+    await tester.tap(find.byKey(catchUpLineKey));
+    await tester.pumpAndSettle();
+    expect(find.text("Nothing to do right now."), findsOneWidget);
+    expect(find.text("Content search: 5 of 5 photos and videos described"),
+        findsOneWidget);
+    expect(find.textContaining("waiting for the content search"), findsNothing);
   });
 
   testWidgets('asks again while it is on screen, and stops when it is gone',

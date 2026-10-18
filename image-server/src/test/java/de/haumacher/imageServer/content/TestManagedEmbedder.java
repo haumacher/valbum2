@@ -93,6 +93,8 @@ public class TestManagedEmbedder extends TestCase {
 			Thread.sleep(100);
 			assertEquals(0, launcher._prepared.get());
 			assertNull(embedder.getProcess());
+			assertNull("Nothing to tell, and nothing started by the question.", embedder.progress());
+			assertEquals(0, launcher._prepared.get());
 		}
 		assertTrue(launcher._closed);
 	}
@@ -113,7 +115,15 @@ public class TestManagedEmbedder extends TestCase {
 			}
 			String reason = embedder.unavailability();
 			assertTrue(reason, reason.contains("being prepared"));
+			// What the catch-up view shows between two questions of the content search.
+			for (int n = 0; n < 50 && !String.valueOf(embedder.progress()).contains("12 MB"); n++) {
+				Thread.sleep(10);
+			}
+			String progress = embedder.progress();
+			assertTrue("The preparation as it goes: " + progress,
+				progress == null || progress.contains("being prepared: downloading the model: 12 MB so far"));
 			assertTrue(embedder.awaitAvailable(Duration.ofSeconds(10)));
+			assertNull("Running: whether it answers is asked over HTTP.", embedder.progress());
 			assertEquals(1, launcher._prepared.get());
 			float[] vector = embedder.embedText("flowers", Embedder.TextKind.QUERY);
 			assertEquals(Embedder.DIMENSION, vector.length);
@@ -157,6 +167,7 @@ public class TestManagedEmbedder extends TestCase {
 			String reason = embedder.unavailability();
 			assertTrue(reason, reason.contains("Python 3.11.2 is too old"));
 			assertTrue(reason, reason.contains("next attempt after"));
+			assertEquals(reason, embedder.progress());
 			try {
 				embedder.embedImage(new byte[] { 1 });
 				fail("Cannot run.");

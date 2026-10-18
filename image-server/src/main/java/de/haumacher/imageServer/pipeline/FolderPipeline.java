@@ -378,7 +378,7 @@ public class FolderPipeline {
 		 */
 		Outcome runUnit(File folder, String unit) throws IOException;
 
-		/** What the given unit is the work for, which the status counts, see {@link Status#getVideos()}. */
+		/** What the given unit is the work for, which the status counts, see {@link Status#getRemaining(String)}. */
 		default String itemOf(String unit) {
 			return unit;
 		}
@@ -464,7 +464,10 @@ public class FolderPipeline {
 			return _folder;
 		}
 
-		/** How many videos still wait for a unit of a {@link UnitStep}. */
+		/**
+		 * How many items still wait for a unit of any {@link UnitStep}: the videos and the photos of
+		 * every such step together. What waits for one step is {@link #getRemaining(String)}.
+		 */
 		public int getVideos() {
 			return _videos;
 		}

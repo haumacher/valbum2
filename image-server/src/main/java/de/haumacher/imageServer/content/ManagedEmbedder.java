@@ -222,6 +222,20 @@ public final class ManagedEmbedder implements Embedder {
 		return unavailability();
 	}
 
+	/**
+	 * While it is prepared (its environment installed, its model downloaded) or failed, what it does
+	 * or why it failed; else nothing: whether a running service answers is asked over HTTP.
+	 */
+	@Override
+	public String progress() {
+		synchronized (_lock) {
+			if (_state == State.PREPARING || _state == State.FAILED) {
+				return describe();
+			}
+			return null;
+		}
+	}
+
 	@Override
 	public boolean awaitAvailable(Duration timeout) throws InterruptedException {
 		long end = System.nanoTime() + timeout.toNanos();

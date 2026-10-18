@@ -218,16 +218,37 @@ public final class CatchUp {
 		}
 	}
 
-	/** The status of the given pipeline as the protocol says it. */
+	/** The status of the given pipeline as the protocol says it, without the content search. */
 	public static CatchUpStatus status(FolderPipeline pipeline) {
+		return status(pipeline, null);
+	}
+
+	/**
+	 * The status of the given pipeline as the protocol says it, with the progress of the given
+	 * content search (if any) where the space has it on.
+	 *
+	 * <p>
+	 * The videos are the units of the {@link Videos} step alone. What waits for the content search is
+	 * what its step counted ({@link ContentIndex#progress()}): the units of an album that waits for the
+	 * embedder are not queued, and its photos wait all the same.
+	 * </p>
+	 */
+	public static CatchUpStatus status(FolderPipeline pipeline, ContentIndex content) {
 		FolderPipeline.Status status = pipeline.status();
+		ContentIndex.Progress progress = content == null ? ContentIndex.Progress.OFF : content.progress();
+		int queued = status.getRemaining(ContentIndex.STEP);
 		return CatchUpStatus.create()
 			.setAlbumsDone(status.getDone())
 			.setAlbumsTotal(status.getTotal())
 			.setStep(step(status.getStep()))
 			.setFolder(status.getFolder() == null ? "" : status.getFolder())
 			.setVideosRemaining(status.getRemaining(VIDEOS))
-			.setContentRemaining(status.getRemaining(ContentIndex.STEP))
+			.setContentRemaining(progress.enabled() ? Math.max(queued, progress.remaining()) : queued)
+			.setContentEnabled(progress.enabled())
+			.setContentDescribed(progress.described())
+			.setContentTotal(progress.total())
+			.setContentWaiting(progress.waiting() == null ? "" : progress.waiting())
+			.setContentRetryAt(progress.retryAt())
 			.setFailure(status.getFailure() == null ? "" : status.getFailure())
 			.setFailureFolder(status.getFailureFolder() == null ? "" : status.getFailureFolder())
 			.setYielding(status.getStep() != null && Background.busy());

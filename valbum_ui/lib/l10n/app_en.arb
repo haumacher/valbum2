@@ -7490,6 +7490,48 @@
     },
     "x-translated": "99e3064"
   },
+  "catchUpContentProgress": "Content search: {described} of {total} photos and videos described",
+  "@catchUpContentProgress": {
+    "description": "Detail of the preparation progress, and its line once every album is prepared: how many photos and videos of the space are described for the content search, of how many there are (issue #257)",
+    "placeholders": {
+      "described": {
+        "type": "int",
+        "example": "1234"
+      },
+      "total": {
+        "type": "int",
+        "example": "18000"
+      }
+    },
+    "x-translated": "636e8990"
+  },
+  "catchUpContentWaiting": "The content search waits: {reason}",
+  "@catchUpContentWaiting": {
+    "description": "Detail of the preparation progress: the embedder that describes the photos for the content search cannot answer now; the reason is the server's own sentence, shown verbatim, e.g. that it is still downloading its model (issue #257)",
+    "placeholders": {
+      "reason": {
+        "type": "String",
+        "example": "the embedder service is being prepared: the model (190 MB) is being downloaded: 12 MB so far"
+      }
+    },
+    "x-translated": "9c1b7c30"
+  },
+  "catchUpContentRetry": "{minutes, plural, =0{The embedder is asked again in a moment.} =1{The embedder is asked again in a minute.} other{The embedder is asked again in {minutes} minutes.}}",
+  "@catchUpContentRetry": {
+    "description": "Detail of the preparation progress: when the server asks the embedder of the content search again, which could not answer (issue #257)",
+    "placeholders": {
+      "minutes": {
+        "type": "int",
+        "example": "4"
+      }
+    },
+    "x-translated": "a3facecb"
+  },
+  "catchUpWaiting": "Nothing runs right now; work is waiting.",
+  "@catchUpWaiting": {
+    "description": "Detail of the preparation progress: no step runs at the moment, but photos or videos still wait, for instance for the embedder of the content search (issue #257); said instead of 'Nothing to do right now.'",
+    "x-translated": "471856a5"
+  },
   "downloadAlbumAction": "Download album",
   "@downloadAlbumAction": {
     "description": "Entry of the menu of an album's tile in a folder listing: downloads the originals of every photo the album shows, as one archive (issue #295)",

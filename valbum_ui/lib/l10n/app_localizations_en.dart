@@ -4521,6 +4521,31 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String catchUpContentProgress(int described, int total) {
+    return 'Content search: $described of $total photos and videos described';
+  }
+
+  @override
+  String catchUpContentWaiting(String reason) {
+    return 'The content search waits: $reason';
+  }
+
+  @override
+  String catchUpContentRetry(int minutes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: 'The embedder is asked again in $minutes minutes.',
+      one: 'The embedder is asked again in a minute.',
+      zero: 'The embedder is asked again in a moment.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get catchUpWaiting => 'Nothing runs right now; work is waiting.';
+
+  @override
   String get downloadAlbumAction => 'Download album';
 
   @override
