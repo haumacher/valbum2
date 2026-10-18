@@ -36,6 +36,7 @@ import 'caller.dart';
 import 'client.dart';
 import 'crop.dart';
 import 'dialog_style.dart';
+import 'key_guard.dart';
 import 'l10n/app_localizations.dart';
 import 'offline.dart';
 import 'oriented_thumbnail.dart';
@@ -370,7 +371,7 @@ class TrashContentState extends State<TrashContent> {
     var shown = trashed;
     var chosen = selecting ? selected : const <ImagePart>[];
     // `Escape` leaves the select mode, as in the album (issue #209).
-    return CallbackShortcuts(
+    return PageShortcuts(
       bindings: {
         if (selecting)
           const SingleActivator(LogicalKeyboardKey.escape): leaveSelectMode,

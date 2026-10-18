@@ -466,6 +466,30 @@ void main() {
     });
   });
 
+  group('the page\'s selection by the keyboard', () {
+    testWidgets('Shift+ArrowDown still extends a selected text (issue #306)',
+        (tester) async {
+      var copied = recordClipboard(tester);
+      await withFakeImageHttp(() async {
+        await pumpMember(tester);
+        await dragAndCopy(tester, find.text("Morning"));
+        expect(copied.last, "Morning");
+
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+        await tester.pump();
+        expect(tester.takeException(), isNull);
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+        await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+        await tester.pumpAndSettle();
+      });
+      expect(copied.last, isNot("Morning"),
+          reason: "the selection reached beyond the heading");
+    });
+  });
+
   group('the viewer', () {
     testWidgets('the picture is a gesture surface, and still pages',
         (tester) async {

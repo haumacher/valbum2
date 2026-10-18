@@ -60,6 +60,7 @@ import 'dialog_style.dart';
 import 'drag_scroll.dart';
 import 'filter_list.dart';
 import 'form_dialog.dart';
+import 'key_guard.dart';
 import 'l10n/app_localizations.dart';
 import 'loadable.dart';
 import 'not_ready.dart';
@@ -1560,14 +1561,14 @@ class PersonsContentState extends State<PersonsContent>
 
     return Focus(
       autofocus: true,
-      onKeyEvent: (node, event) {
+      onKeyEvent: guardKeys((node, event) {
         if (event is KeyDownEvent &&
             event.logicalKey == LogicalKeyboardKey.escape) {
           cancel();
           return KeyEventResult.handled;
         }
         return KeyEventResult.ignored;
-      },
+      }),
       child: Scaffold(
         appBar: PageAppBar(
           leading: IconButton(

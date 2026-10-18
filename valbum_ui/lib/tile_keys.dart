@@ -32,7 +32,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'filter_list.dart' show PickHighlight, PickKeys;
-import 'keyboard_scroll.dart';
+import 'key_guard.dart';
 
 /// A step of the highlight, see [TileHighlight.move].
 enum TileStep { left, right, up, down }

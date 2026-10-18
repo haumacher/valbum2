@@ -19,6 +19,7 @@ import 'client.dart';
 import 'crop.dart';
 import 'downloads.dart';
 import 'form_dialog.dart';
+import 'key_guard.dart';
 import 'keyboard_scroll.dart';
 import 'l10n/app_localizations.dart';
 import 'news.dart';
@@ -398,7 +399,7 @@ class ListingView extends StatelessWidget {
                 idOf: (folder) => folder.name,
                 builder: (context, highlight) => KeyboardScroll(
                   // A scrollbar and the paging keys, issue #168.
-                  onKeyEvent: (node, event) => tileKeyEvent(
+                  onKeyEvent: guardKeys((node, event) => tileKeyEvent(
                     highlight,
                     node,
                     event,
@@ -407,7 +408,7 @@ class ListingView extends StatelessWidget {
                       onMenu: (folder, position) =>
                           showTileMenu(context, folder, position),
                     ),
-                  ),
+                  )),
                   child: LayoutBuilder(
                     builder:
                         (BuildContext context, BoxConstraints constraints) {
