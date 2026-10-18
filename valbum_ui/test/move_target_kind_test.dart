@@ -8,7 +8,9 @@ import 'package:flutter/material.dart' hide Orientation;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:jsontool/jsontool.dart';
 import 'package:valbum_ui/main.dart';
+import 'package:valbum_ui/resource.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
@@ -449,6 +451,118 @@ void main() {
         await openPicker(tester);
         expect(find.byKey(const Key("picker-create-album")), findsNothing);
       });
+    });
+  });
+
+  group('the search field proposes the album to create', () {
+    http.Response answer(http.Request request) {
+      if (request.method == "PUT") {
+        var name = pathOf(request).split("/").where((s) => s.isNotEmpty).last;
+        return json('{"path":"$name","message":""}');
+      }
+      if (request.url.queryParameters["action"] == "move") {
+        return json('{"outcomes":['
+            '{"name":"a.jpg","newName":"a.jpg","message":""},'
+            '{"name":"b.jpg","newName":"b.jpg","message":""}]}');
+      }
+      if (request.url.queryParameters["type"] == "folders") {
+        return json('{}');
+      }
+      return treeAnswer(request);
+    }
+
+    /// Types [text] into the picker's search field and lets the typing rest.
+    Future<void> typeSearch(WidgetTester tester, String text) async {
+      await tester.enterText(find.byKey(const Key("picker-search")), text);
+      await tester.pump(FolderPickerState.searchDelay);
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> openCreate(WidgetTester tester) async {
+      await tester.tap(find.byKey(const Key("picker-create-album")));
+      await tester.pumpAndSettle();
+    }
+
+    String titleField(WidgetTester tester) => tester
+        .widget<EditableText>(find.descendant(
+            of: find.byType(TextFormField).first,
+            matching: find.byType(EditableText)))
+        .controller
+        .text;
+
+    testWidgets('what was looked for is the title, beside the proposed day',
+        (tester) async {
+      var requests = <http.Request>[];
+      var client = recordingClient(answer, requests);
+
+      await withFakeImageHttp(() async {
+        await pumpSelection(tester, client);
+        await openPicker(tester);
+        await typeSearch(tester, "  Ausflug ins Grüne ");
+        await openCreate(tester);
+
+        expect(titleField(tester), "Ausflug ins Grüne");
+        // The earliest photo still proposes the day.
+        expect(find.text("2002-03-03"), findsOneWidget);
+
+        // The proposal is edited before it is confirmed.
+        await tester.enterText(find.byType(TextFormField).first, "Ausflug");
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(testL10n.create));
+        await tester.pumpAndSettle();
+      });
+
+      var put = requests.singleWhere((r) => r.method == "PUT");
+      expect(
+          Uri.decodeFull(put.url.toString()), "$dataUrl/2002-03-03 Ausflug/");
+      expect(
+          (Resource.read(JsonReader.fromString(put.body)) as AlbumInfo).title,
+          "Ausflug");
+    });
+
+    testWidgets('a text that begins with a date proposes that date',
+        (tester) async {
+      var requests = <http.Request>[];
+      var client = recordingClient(answer, requests);
+
+      await withFakeImageHttp(() async {
+        await pumpSelection(tester, client);
+        await openPicker(tester);
+        await typeSearch(tester, "2025-11-26 Trip to Bangalore");
+        await openCreate(tester);
+
+        expect(titleField(tester), "Trip to Bangalore");
+        expect(find.text("2025-11-26"), findsOneWidget);
+        expect(find.text("2002-03-03"), findsNothing);
+
+        await tester.tap(find.text(testL10n.create));
+        await tester.pumpAndSettle();
+      });
+
+      var put = requests.singleWhere((r) => r.method == "PUT");
+      expect(Uri.decodeFull(put.url.toString()),
+          "$dataUrl/2025-11-26 Trip to Bangalore/");
+    });
+
+    testWidgets('an empty field proposes no title', (tester) async {
+      var requests = <http.Request>[];
+      var client = recordingClient(answer, requests);
+
+      await withFakeImageHttp(() async {
+        await pumpSelection(tester, client);
+        await openPicker(tester);
+        await typeSearch(tester, "   ");
+        await openCreate(tester);
+
+        expect(titleField(tester), "");
+        expect(find.text("2002-03-03"), findsOneWidget);
+        // Nothing is created without a title.
+        await tester.tap(find.text(testL10n.create));
+        await tester.pumpAndSettle();
+        expect(find.text(testL10n.mustNotBeEmpty), findsOneWidget);
+      });
+
+      expect(requests.where((r) => r.method == "PUT"), isEmpty);
     });
   });
 }

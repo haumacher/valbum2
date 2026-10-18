@@ -214,9 +214,8 @@ Future<void> moveWithPicker({
       created: created,
       cover: cover,
     ),
-    refusal: created
-        ? (error) => albumKept(l10n, target, reasonOf(error))
-        : null,
+    refusal:
+        created ? (error) => albumKept(l10n, target, reasonOf(error)) : null,
   );
   if (moved == null) {
     if (created) {
@@ -1482,10 +1481,20 @@ class FolderPickerState extends State<FolderPicker> {
   /// Nothing is created here: the album travels on the [PickedTarget], and the
   /// move creates it in the folder shown and then moves into the path the
   /// server answers, see [moveWithPicker] and issue #114.
+  ///
+  /// What stands in the search field proposes the album: the album looked for
+  /// and not found is the one to create. A text that begins with a date
+  /// (`2025-11-26 Trip`) proposes that date and the rest as the title; any
+  /// other proposes itself as the title beside [FolderPicker.newAlbumDate].
   Future<void> _createAlbum() async {
+    var typed = _query.text.trim();
+    var proposed = splitAlbumName(typed);
     var album = await showFormDialog<AlbumInfo>(
       context: context,
-      builder: (context) => CreateAlbumDialog(initialDate: widget.newAlbumDate),
+      builder: (context) => CreateAlbumDialog(
+        initialDate: proposed.date ?? widget.newAlbumDate,
+        initialTitle: typed.isEmpty ? null : proposed.title,
+      ),
     );
     if (album == null || !mounted) {
       return;
@@ -1495,10 +1504,16 @@ class FolderPickerState extends State<FolderPicker> {
 
   /// Asks what the new collection is called and leaves the picker with it;
   /// [collectWithPicker] creates it and adds into it, see issue #221.
+  ///
+  /// What stands in the search field is the name proposed: a collection is
+  /// made without a date, so the whole text is its name.
   Future<void> _createCollection() async {
+    var typed = _query.text.trim();
     var collection = await showFormDialog<AlbumInfo>(
       context: context,
-      builder: (context) => const CreateCollectionDialog(),
+      builder: (context) => CreateCollectionDialog(
+        initialTitle: typed.isEmpty ? null : typed,
+      ),
     );
     if (collection == null || !mounted) {
       return;

@@ -260,6 +260,28 @@ String albumFolderName(DateTime? date, String title) {
   return name.isEmpty ? day : "$day $name";
 }
 
+/// What a text typed to look for a folder proposes for an album created from
+/// it: the date it begins with, if any, and the title that follows.
+///
+/// The folder picker hands what was typed in its search field to the dialog
+/// that creates an album or a collection, so that what was looked for and not
+/// found need not be typed twice. A text that begins with a date the naming
+/// convention knows ([folderNameDate]: `2025-11-26`, `2025-11`, `2025`) is
+/// read as `date title` — the very spelling of an album folder; any other is
+/// a title alone, and the date is `null`. A date is a word of its own:
+/// `2025er Urlaub` is a title. Both are trimmed.
+({DateTime? date, String title}) splitAlbumName(String text) {
+  var trimmed = text.trim();
+  var match = _leadingDate.matchAsPrefix(trimmed);
+  var rest = match == null ? null : trimmed.substring(match.end);
+  // A date is a word of its own: `2025er Urlaub` is a title.
+  if (rest == null || !(rest.isEmpty || rest.startsWith(RegExp(_sep)))) {
+    return (date: null, title: trimmed);
+  }
+  rest = rest.replaceFirst(RegExp("^$_sep+"), "");
+  return (date: folderNameDate(trimmed), title: rest.trim());
+}
+
 /// The name of the folder a folder of folders with [title] carries, see
 /// issue #130.
 ///
