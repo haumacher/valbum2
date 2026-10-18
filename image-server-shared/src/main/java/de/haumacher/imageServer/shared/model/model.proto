@@ -2880,6 +2880,32 @@ message MoveName {
 }
 
 /**
+ * Request to keep copies of a photograph as references to one of them, sent to the root of the
+ * space as <code>?action=keep-as-references</code> (or <code>?action=keep-as-references-check</code>
+ * for what it would do, with nothing done), see issue #307.
+ *
+ * <p>
+ * For a photograph that lies as identical files in several albums ({@link DuplicateGroup}): the
+ * {@link #original} stays where it is, and every one of the {@link #copies} is replaced in its album
+ * by a reference to the original, in the copy's place, with the copy's labels and, where it
+ * differs from the original's, the copy's description as the reference's own. The copy's file goes
+ * into the trash of its album (it is rated as trash there), from where the purge deletes it. The
+ * answer is a {@link MoveResult} with one {@link MoveOutcome} per copy, named as asked: the name of
+ * the reference in the copy's album, or why that copy was refused.
+ * </p>
+ */
+message KeepAsReferencesRequest {
+	/**
+	 * The photograph to keep as the original: the path of its file relative to the caller's space,
+	 * <code>&lt;album&gt;/&lt;name&gt;</code> as a {@link DuplicateCopy} names it.
+	 */
+	string original;
+
+	/** The copies to replace by references, each the path of its file like {@link #original}. */
+	repeated MoveName copies;
+}
+
+/**
  * Answer to a {@link MoveRequest}: what happened to every name it asked for.
  *
  * <p>

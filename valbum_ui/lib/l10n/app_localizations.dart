@@ -4869,6 +4869,72 @@ abstract class AppLocalizations {
   /// **'Moved the photo \'{name}\' to the trash of \'{album}\'.'**
   String duplicatesDeleted(String album, String name);
 
+  /// Tooltip of the marker of the copy chosen as the original of a photo on the overview of photos in several albums (issue #307): the other copies can be kept as references to it. German: 'Verweis' for reference, 'Papierkorb' for trash.
+  ///
+  /// In en, this message translates to:
+  /// **'The original: it stays where it is'**
+  String get duplicatesOriginal;
+
+  /// Tooltip of the button choosing one copy of a photo as its original on the overview of photos in several albums (issue #307); the other copies can then be kept as references to it. German: 'Verweis' for reference, 'Papierkorb' for trash.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep this copy as the original'**
+  String get duplicatesChooseOriginal;
+
+  /// Tooltip of the button beside one copy of a photo on the overview of photos in several albums (issue #307): the copy's file is replaced by a reference to the original, so the album keeps showing the photo, and the file goes into the album's trash. German: 'Verweis' for reference, 'Papierkorb' for trash.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep here as reference'**
+  String get duplicatesKeepAsReference;
+
+  /// Button of one photo on the overview of photos in several albums (issue #307): every copy but the original is replaced by a reference to the original, and their files go into the trash of their albums. German: 'Verweis' for reference, 'Papierkorb' for trash.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep all others as references'**
+  String get duplicatesKeepAllAsReferences;
+
+  /// Title of the question before copies of a photo are replaced by references to its original (issue #307). German: 'Verweis' for reference, 'Papierkorb' for trash.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep as references?'**
+  String get duplicatesKeepTitle;
+
+  /// The question before copies of a photo are replaced by references to its original (issue #307); count is how many copies (and so how many files go into the trash), albums the quoted titles of their albums, original the title of the original's album. Address the reader formally (German: 'Sie', never 'du'). German: 'Verweis' for reference, 'Papierkorb' for trash.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{The copy in {albums} becomes a reference to the original in \'{original}\', in the same place and with its own description and labels. Its file goes into the trash of that album, from where it can be restored until the trash is purged.} other{The {count} copies in {albums} become references to the original in \'{original}\', each in the same place and with its own description and labels. Their {count} files go into the trash of those albums, from where they can be restored until the trash is purged.}}'**
+  String duplicatesKeepQuestion(String albums, String original, int count);
+
+  /// Heads the list of copies that cannot be kept as references, in the question before copies of a photo are replaced by references to its original (issue #307); each line below names the album and the server's reason. German: 'Verweis' for reference, 'Papierkorb' for trash.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{This copy stays as it is:} other{These {count} copies stay as they are:}}'**
+  String duplicatesKeepRefused(int count);
+
+  /// One line of the list of copies that cannot be kept as references (issue #307): album is the title of the copy's album, reason the server's own sentence why.
+  ///
+  /// In en, this message translates to:
+  /// **'In \'{album}\': {reason}'**
+  String duplicatesKeepReason(String reason, String album);
+
+  /// Confirming button of the question before copies of a photo are replaced by references to its original (issue #307). German: 'Verweis' for reference, 'Papierkorb' for trash.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep as references'**
+  String get duplicatesKeepConfirm;
+
+  /// Said after copies of a photo were replaced by references to its original from the overview of photos in several albums (issue #307). German: 'Verweis' for reference, 'Papierkorb' for trash.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 copy is now a reference to the original; its file is in the trash of its album.} other{{count} copies are now references to the original; their files are in the trash of their albums.}}'**
+  String duplicatesKept(int count);
+
+  /// Said after copies of a photo were to be replaced by references to its original (issue #307) where some could not be; reasons are the server's own sentences, one after the other. German: 'Verweis' for reference, 'Papierkorb' for trash.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 copy stayed as it was: {reasons}} other{{count} copies stayed as they were: {reasons}}}'**
+  String duplicatesKeptRefused(String reasons, int count);
+
   /// The type of an anonymous share link in the list of links (issue #203). German 'Anonym'.
   ///
   /// In en, this message translates to:
@@ -5258,6 +5324,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Remove this passkey of {name}?'**
   String contactPasskeyRemoveTitle(String name);
+
+  /// Names what the app was doing when a request failed: replacing copies of a photo by references to it (issue #307). German: 'Verweis'.
+  ///
+  /// In en, this message translates to:
+  /// **'keeping copies of {photo} as references'**
+  String doingKeepingAsReferences(String photo);
 
   /// Names what the app was doing when a request failed: adding photos to an album as references, i.e. without copying them (issue #307)
   ///

@@ -3112,6 +3112,78 @@ class AppLocalizationsDe extends AppLocalizations {
   }
 
   @override
+  String get duplicatesOriginal => 'Das Original: Es bleibt, wo es ist';
+
+  @override
+  String get duplicatesChooseOriginal => 'Diese Kopie als Original behalten';
+
+  @override
+  String get duplicatesKeepAsReference => 'Hier als Verweis behalten';
+
+  @override
+  String get duplicatesKeepAllAsReferences =>
+      'Alle anderen als Verweise behalten';
+
+  @override
+  String get duplicatesKeepTitle => 'Als Verweise behalten?';
+
+  @override
+  String duplicatesKeepQuestion(String albums, String original, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          'Die $count Kopien in $albums werden zu Verweisen auf das Original in „$original“, jeweils an derselben Stelle und mit ihrer eigenen Beschreibung und ihren Labels. Ihre $count Dateien kommen in den Papierkorb dieser Alben und können von dort wiederhergestellt werden, bis der Papierkorb geleert wird.',
+      one:
+          'Die Kopie in $albums wird zu einem Verweis auf das Original in „$original“, an derselben Stelle und mit ihrer eigenen Beschreibung und ihren Labels. Ihre Datei kommt in den Papierkorb dieses Albums und kann von dort wiederhergestellt werden, bis der Papierkorb geleert wird.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String duplicatesKeepRefused(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Diese $count Kopien bleiben unverändert:',
+      one: 'Diese Kopie bleibt unverändert:',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String duplicatesKeepReason(String reason, String album) {
+    return 'In „$album“: $reason';
+  }
+
+  @override
+  String get duplicatesKeepConfirm => 'Als Verweise behalten';
+
+  @override
+  String duplicatesKept(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count Kopien sind nun Verweise auf das Original; ihre Dateien liegen im Papierkorb ihrer Alben.',
+      one:
+          '1 Kopie ist nun ein Verweis auf das Original; ihre Datei liegt im Papierkorb ihres Albums.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String duplicatesKeptRefused(String reasons, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Kopien blieben unverändert: $reasons',
+      one: '1 Kopie blieb unverändert: $reasons',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get linkAnonymous => 'Anonym';
 
   @override
@@ -3378,6 +3450,11 @@ class AppLocalizationsDe extends AppLocalizations {
   @override
   String contactPasskeyRemoveTitle(String name) {
     return 'Diesen Passkey von $name entfernen?';
+  }
+
+  @override
+  String doingKeepingAsReferences(String photo) {
+    return 'Behalten von Kopien von $photo als Verweise';
   }
 
   @override

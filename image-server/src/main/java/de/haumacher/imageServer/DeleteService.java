@@ -283,14 +283,14 @@ public class DeleteService {
 				}
 			}
 		}
-		List<ReferencedOriginals.Receiver> plan =
-			_originals == null ? new ArrayList<>() : _originals.plan(doomed, goingAway);
+		ReferencedOriginals.Plan plan =
+			_originals == null ? new ReferencedOriginals.Plan() : _originals.plan(doomed, goingAway);
 
 		// The kept photographs by the name of the request they belong to.
 		Map<String, List<de.haumacher.imageServer.shared.model.KeptPhoto>> kept = new HashMap<>();
 		Map<String, String> keptTitles = new HashMap<>();
 		if (dryRun) {
-			for (ReferencedOriginals.Receiver receiver : plan) {
+			for (ReferencedOriginals.Receiver receiver : plan.receivers()) {
 				de.haumacher.imageServer.shared.model.KeptPhoto expected = receiver.expected();
 				kept.computeIfAbsent(entryOf(expected.getPhoto()), x -> new ArrayList<>()).add(expected);
 			}
@@ -322,7 +322,7 @@ public class DeleteService {
 					// Nothing that is still referenced goes into the trash: the names it belongs to are
 					// not deleted, and what moved before the failure is where its album says.
 					LOG.log(Level.WARNING, "Cannot keep the referenced photos of '" + dir + "': " + ex.getMessage(), ex);
-					for (ReferencedOriginals.Receiver receiver : plan) {
+					for (ReferencedOriginals.Receiver receiver : plan.receivers()) {
 						Integer slot = slots.get(entryOf(receiver.doomed().label()));
 						if (slot != null && outcomes[slot.intValue()] == null) {
 							outcomes[slot.intValue()] = outcome(names.get(slot.intValue()), "", failed(ex.getMessage()));
@@ -498,10 +498,10 @@ public class DeleteService {
 					doomed.add(photo);
 				}
 			}
-			List<ReferencedOriginals.Receiver> plan = _originals.plan(doomed, new ArrayList<>());
+			ReferencedOriginals.Plan plan = _originals.plan(doomed, new ArrayList<>());
 			if (dryRun) {
 				Map<String, ReferencedOriginals.Receiver> byName = new HashMap<>();
-				for (ReferencedOriginals.Receiver receiver : plan) {
+				for (ReferencedOriginals.Receiver receiver : plan.receivers()) {
 					byName.put(receiver.doomed().label(), receiver);
 				}
 				for (ImagePart image : trashed) {
@@ -517,7 +517,7 @@ public class DeleteService {
 			if (!plan.isEmpty()) {
 				// Unrated where it arrives: it was shown there, and stays shown.
 				Map<PathInfo, Integer> unrated = new HashMap<>();
-				for (ReferencedOriginals.Receiver receiver : plan) {
+				for (ReferencedOriginals.Receiver receiver : plan.receivers()) {
 					unrated.put(receiver.doomed().photo(), Integer.valueOf(0));
 				}
 				try {

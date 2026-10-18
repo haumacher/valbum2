@@ -996,6 +996,22 @@ public class HashIndex {
 	}
 
 	/**
+	 * Every folder the index records as holding the given hash, relative to the space root (the
+	 * empty string for the root), in the order the folders became known: where the files of the same
+	 * contents are, for the choice between them of issue #307, see
+	 * {@link de.haumacher.imageServer.PhotoCollections#locate(de.haumacher.imageServer.shared.model.PhotoRef)}.
+	 * A folder may hold the contents under more than one name; its <code>.hashes.json</code> says
+	 * which. Whether the files are there is not checked here.
+	 */
+	public List<String> foldersOf(String hash) {
+		List<String> result = new ArrayList<>();
+		for (String[] candidate : candidates(hash)) {
+			result.add(candidate[0]);
+		}
+		return result;
+	}
+
+	/**
 	 * Every path the index records for the given hash, whether its file is there or not, in the
 	 * order the folders became known; for the tests, which ask what the index holds rather than
 	 * what it answers.

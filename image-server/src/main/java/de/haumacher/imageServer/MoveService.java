@@ -182,6 +182,13 @@ public class MoveService {
 			+ DUPLICATES_PATH + "'.";
 	}
 
+	/**
+	 * The message of a photograph that took the place of the target album's reference to it, see
+	 * issue #307: an album never shows one photograph twice.
+	 */
+	public static final String TOOK_REFERENCE_PLACE =
+		"The album showed this photo as a reference; the file took its place there, with the album's labels and description.";
+
 	/** The message of a group some of whose images the target folder already held. */
 	public static String membersSetAside(int count) {
 		return count + " image(s) of this group were already in the target folder; those files were set aside in '"
@@ -452,6 +459,7 @@ public class MoveService {
 		boolean sourceChanged = false;
 		boolean targetChanged = false;
 		boolean stopped = false;
+		_landingAlbum = targetAlbum;
 		try {
 			for (Entry entry : entries) {
 				if (entry._refusal != null) {
@@ -508,6 +516,7 @@ public class MoveService {
 					targetHashes.flush();
 				}
 			} finally {
+				_landingAlbum = null;
 				// Both folders changed, and so did the listings above them. Whatever a preview
 				// cache holds for an old path is derived data and is simply abandoned.
 				_cache.invalidateTree(source);
@@ -848,6 +857,12 @@ public class MoveService {
 
 
 	/**
+	 * The album files land in right now, see {@link #liveNameOf(HashCache, String)}: a file of it
+	 * rated as trash holds no contents a file arriving would duplicate.
+	 */
+	private AlbumInfo _landingAlbum;
+
+	/**
 	 * The name of the reference of the target album a rescue is replacing right now, see
 	 * {@link #rescue(PathInfo, PathInfo, List)}: free for the file that takes its place.
 	 */
@@ -918,6 +933,7 @@ public class MoveService {
 		HashCache sourceHashes = new HashCache(sourceFolder);
 		HashCache targetHashes = new HashCache(targetFolder);
 		boolean changed = false;
+		_landingAlbum = targetAlbum;
 		try {
 			for (Rescue rescue : rescues) {
 				UpdateTransient.updateTransient(sourceAlbum);
@@ -939,29 +955,22 @@ public class MoveService {
 					_freed = null;
 				}
 				changed = true;
-				int at = removeReference(targetAlbum, reference);
 				detach(sourceAlbum, image);
 				carryRaw(image, raw, landing, targetAlbum, targetFolder, targetHashes, sourceHashes, space);
-				ThumbnailInfo cover = targetAlbum.getIndexPicture();
 				if (landing._existing != null) {
+					int at = removeReference(targetAlbum, reference);
+					ThumbnailInfo cover = targetAlbum.getIndexPicture();
 					if (cover != null && rescue._reference.equals(cover.getImage())) {
 						cover.setImage(landing._existing);
+					}
+					if (at < 0) {
+						LOG.warning("The reference '" + rescue._reference + "' of '" + targetFolder + "' was gone.");
 					}
 					result.put(rescue._name, landing._existing);
 					continue;
 				}
 				image.setName(landing._newName);
 				image.setGroup(null);
-				if (!reference.getComment().isEmpty()) {
-					// The album's own description of the photograph is the file's there now; without
-					// one, the original's travels with it.
-					image.setComment(reference.getComment());
-				}
-				List<de.haumacher.imageServer.shared.model.LabelName> labels = new ArrayList<>();
-				for (de.haumacher.imageServer.shared.model.LabelName label : reference.getLabels()) {
-					labels.add(de.haumacher.imageServer.shared.model.LabelName.create().setName(label.getName()));
-				}
-				image.setLabels(labels);
 				if (rescue._rating != null) {
 					image.setRating(rescue._rating.intValue());
 				}
@@ -970,13 +979,11 @@ public class MoveService {
 					// it never arrives in the trash of the album that keeps it.
 					image.setRating(0);
 				}
-				targetAlbum.getParts().add(Math.min(at, targetAlbum.getParts().size()), image);
-				if (cover != null && rescue._reference.equals(cover.getImage())) {
-					cover.setImage(landing._newName);
-				}
+				takePlace(targetAlbum, image, reference);
 				result.put(rescue._name, landing._newName);
 			}
 		} finally {
+			_landingAlbum = null;
 			try {
 				if (changed) {
 					repairIndexPicture(sourceAlbum);
@@ -997,9 +1004,90 @@ public class MoveService {
 	}
 
 	/**
+	 * Puts the given photograph, just arrived in the given album under its new name, in the place of
+	 * the album's reference to it, see issue #307: in the reference's place in the album's order,
+	 * with the reference's labels and, where the reference has a description of its own, that
+	 * description (the photograph's own stays otherwise); the album's cover follows. Every other
+	 * reference of the album to the same contents goes too: an album never shows one photograph
+	 * twice.
+	 */
+	static void takePlace(AlbumInfo album, ImagePart image, ImagePart reference) {
+		String hash = reference.getRef().getHash();
+		int at = removeReference(album, reference);
+		if (!reference.getComment().isEmpty()) {
+			// The album's own description of the photograph is the file's there now; without one, the
+			// photograph's own stays.
+			image.setComment(reference.getComment());
+		}
+		List<de.haumacher.imageServer.shared.model.LabelName> labels = new ArrayList<>();
+		for (de.haumacher.imageServer.shared.model.LabelName label : reference.getLabels()) {
+			labels.add(de.haumacher.imageServer.shared.model.LabelName.create().setName(label.getName()));
+		}
+		image.setLabels(labels);
+		List<AlbumPart> parts = album.getParts();
+		parts.add(at < 0 ? parts.size() : Math.min(at, parts.size()), image);
+		ThumbnailInfo cover = album.getIndexPicture();
+		if (cover != null && reference.getName().equals(cover.getImage())) {
+			cover.setImage(image.getName());
+		}
+		for (ImagePart other : PhotoCollections.references(album)) {
+			if (hash.equals(other.getRef().getHash())) {
+				removeReference(album, other);
+				if (cover != null && other.getName().equals(cover.getImage())) {
+					cover.setImage(image.getName());
+				}
+			}
+		}
+	}
+
+	/** The first reference of the given album to the given contents, <code>null</code> for none. */
+	static ImagePart referenceTo(AlbumInfo album, String hash) {
+		if (hash == null) {
+			return null;
+		}
+		for (ImagePart reference : PhotoCollections.references(album)) {
+			if (hash.equals(reference.getRef().getHash())) {
+				return reference;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * The name of a file of the given folder holding the given contents that is not rated as trash in
+	 * the album files land in, <code>null</code> for none.
+	 *
+	 * <p>
+	 * A file in the trash is on its way out, see issue #307: a photograph arriving beside it is no
+	 * duplicate of it, and setting it aside would throw it into the trash with that file.
+	 * </p>
+	 */
+	private String liveNameOf(HashCache hashes, String hash) throws IOException {
+		for (Map.Entry<String, String> entry : hashes.hashByName().entrySet()) {
+			if (!hash.equals(entry.getValue())) {
+				continue;
+			}
+			ImagePart part = _landingAlbum == null ? null : Crops.findImage(_landingAlbum, entry.getKey());
+			if (part != null && !PhotoCollections.isReference(part)
+				&& part.getRating() <= de.haumacher.imageServer.auth.Ratings.TRASH) {
+				continue;
+			}
+			return entry.getKey();
+		}
+		return null;
+	}
+
+	/** The hash of the named file of the given folder, as its sidecar knows it or hashed now. */
+	private static String hashOf(HashCache hashes, File folder, String name) throws IOException {
+		String hash = hashes.hashByName().get(name);
+		return hash != null ? hash : HashCache.sha256(new File(folder, name));
+	}
+
+	/**
 	 * Takes the given reference out of the given album.
 	 *
-	 * @return The index in the album's parts where it stood, or where the group it stood in ends.
+	 * @return The index in the album's parts where it stood, or where the group it stood in ends;
+	 *         <code>-1</code> where the album does not hold it.
 	 */
 	private static int removeReference(AlbumInfo album, ImagePart reference) {
 		List<AlbumPart> parts = album.getParts();
@@ -1031,7 +1119,7 @@ public class MoveService {
 				return n + 1;
 			}
 		}
-		return parts.size();
+		return -1;
 	}
 
 	/**
@@ -1043,7 +1131,11 @@ public class MoveService {
 			Map<String, String> landedAs) throws IOException {
 		ImagePart image = entry._image;
 		File raw = RawPairs.companion(sourceFolder, image);
-		Landing landing = landFile(image.getName(), sourceFolder, targetFolder, targetHashes, sourceHashes, space);
+		// A photograph the target shows as a reference takes that reference's place, under its name,
+		// see issue #307.
+		ImagePart reference = referenceTo(targetAlbum, hashOf(sourceHashes, sourceFolder, image.getName()));
+		Landing landing = landInPlaceOf(reference, image.getName(), sourceFolder, targetFolder, targetHashes,
+			sourceHashes, space);
 		landedAs.put(image.getName(), landing.name());
 
 		detach(sourceAlbum, image);
@@ -1054,8 +1146,57 @@ public class MoveService {
 
 		image.setName(landing._newName);
 		image.setGroup(null);
+		if (reference != null) {
+			takePlace(targetAlbum, image, reference);
+			return outcome(entry._name, landing._newName, TOOK_REFERENCE_PLACE);
+		}
 		insertByDate(targetAlbum, image);
 		return outcome(entry._name, landing._newName, "");
+	}
+
+	/**
+	 * Lands the named file in the target folder, under the name of the given reference of the target
+	 * album where there is one (see {@link ImageServlet#freeName(File, String, String)}), else under
+	 * its own name.
+	 */
+	private Landing landInPlaceOf(ImagePart reference, String name, File sourceFolder, File targetFolder,
+			HashCache targetHashes, HashCache sourceHashes, Path space) throws IOException {
+		if (reference == null) {
+			return landFile(name, sourceFolder, targetFolder, targetHashes, sourceHashes, space);
+		}
+		_freed = reference.getName();
+		try {
+			return landFile(name, reference.getName(), sourceFolder, targetFolder, targetHashes, sourceHashes, space);
+		} finally {
+			_freed = null;
+		}
+	}
+
+	/**
+	 * The member of a group arriving in the given album replaces the album's reference to it, see
+	 * {@link #takePlace(AlbumInfo, ImagePart, ImagePart)}: it keeps its place in its group, and takes
+	 * the reference's labels and description, while the reference (and every other reference to the
+	 * same contents) goes.
+	 */
+	private static void replaceReference(AlbumInfo album, ImagePart member, ImagePart reference) {
+		String hash = reference.getRef().getHash();
+		if (!reference.getComment().isEmpty()) {
+			member.setComment(reference.getComment());
+		}
+		List<de.haumacher.imageServer.shared.model.LabelName> labels = new ArrayList<>();
+		for (de.haumacher.imageServer.shared.model.LabelName label : reference.getLabels()) {
+			labels.add(de.haumacher.imageServer.shared.model.LabelName.create().setName(label.getName()));
+		}
+		member.setLabels(labels);
+		ThumbnailInfo cover = album.getIndexPicture();
+		for (ImagePart other : PhotoCollections.references(album)) {
+			if (hash.equals(other.getRef().getHash())) {
+				removeReference(album, other);
+				if (cover != null && other.getName().equals(cover.getImage())) {
+					cover.setImage(member.getName());
+				}
+			}
+		}
 	}
 
 	/**
@@ -1108,12 +1249,21 @@ public class MoveService {
 		List<ImagePart> moved = new ArrayList<>(members.size());
 		String headName = null;
 		int setAside = 0;
+		int replaced = 0;
 		for (ImagePart member : members) {
 			String asked = member.getName();
 			File raw = RawPairs.companion(sourceFolder, member);
-			Landing landing = landFile(asked, sourceFolder, targetFolder, targetHashes, sourceHashes, space);
+			// A member the target shows as a reference replaces it, see issue #307.
+			ImagePart reference = referenceTo(targetAlbum, hashOf(sourceHashes, sourceFolder, asked));
+			Landing landing =
+				landInPlaceOf(reference, asked, sourceFolder, targetFolder, targetHashes, sourceHashes, space);
 			landedAs.put(asked, landing.name());
 			carryRaw(member, raw, landing, targetAlbum, targetFolder, targetHashes, sourceHashes, space);
+			if (landing._existing == null && reference != null) {
+				member.setName(landing._newName);
+				replaceReference(targetAlbum, member, reference);
+				replaced++;
+			}
 			if (landing._existing != null) {
 				setAside++;
 				group.removeImage(member);
@@ -1156,6 +1306,9 @@ public class MoveService {
 		}
 
 		String message = setAside == 0 ? "" : membersSetAside(setAside);
+		if (replaced > 0) {
+			message = message.isEmpty() ? TOOK_REFERENCE_PLACE : message + " " + TOOK_REFERENCE_PLACE;
+		}
 		return outcome(entry._name, headName == null ? "" : headName, message);
 	}
 
@@ -1306,7 +1459,7 @@ public class MoveService {
 			attribution = attribution.movedOutOfInbox(_mover, _moverLabel, _outOfInbox);
 		}
 
-		String existing = targetHashes.nameOf(hash);
+		String existing = liveNameOf(targetHashes, hash);
 		if (existing != null) {
 			File aside = setAside(space, hash, name);
 			Files.move(file.toPath(), aside.toPath());

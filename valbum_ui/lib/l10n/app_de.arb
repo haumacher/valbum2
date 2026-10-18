@@ -1229,5 +1229,17 @@
   "keptQuestionAll": "{count, plural, =1{1 Foto wird noch in {albums} gezeigt – es bleibt dort, statt in den Papierkorb zu kommen.} other{{count} Fotos werden noch in {albums} gezeigt – sie bleiben dort, statt in den Papierkorb zu kommen.}}",
   "keptReport": "{count, plural, =1{1 Foto wird noch in {albums} gezeigt und wurde dorthin verschoben statt in den Papierkorb.} other{{count} Fotos werden noch in {albums} gezeigt und wurden dorthin verschoben statt in den Papierkorb.}}",
   "keptPurgeQuestion": "{count, plural, =1{1 Foto wird noch in {albums} gezeigt – es wird dorthin verschoben, statt von der Festplatte gelöscht zu werden.} other{{count} Fotos werden noch in {albums} gezeigt – sie werden dorthin verschoben, statt von der Festplatte gelöscht zu werden.}}",
-  "keptPurgeReport": "{count, plural, =1{1 Foto wird noch in {albums} gezeigt und wurde dorthin verschoben, statt gelöscht zu werden.} other{{count} Fotos werden noch in {albums} gezeigt und wurden dorthin verschoben, statt gelöscht zu werden.}}"
+  "keptPurgeReport": "{count, plural, =1{1 Foto wird noch in {albums} gezeigt und wurde dorthin verschoben, statt gelöscht zu werden.} other{{count} Fotos werden noch in {albums} gezeigt und wurden dorthin verschoben, statt gelöscht zu werden.}}",
+  "duplicatesOriginal": "Das Original: Es bleibt, wo es ist",
+  "duplicatesChooseOriginal": "Diese Kopie als Original behalten",
+  "duplicatesKeepAsReference": "Hier als Verweis behalten",
+  "duplicatesKeepAllAsReferences": "Alle anderen als Verweise behalten",
+  "duplicatesKeepTitle": "Als Verweise behalten?",
+  "duplicatesKeepQuestion": "{count, plural, =1{Die Kopie in {albums} wird zu einem Verweis auf das Original in „{original}“, an derselben Stelle und mit ihrer eigenen Beschreibung und ihren Labels. Ihre Datei kommt in den Papierkorb dieses Albums und kann von dort wiederhergestellt werden, bis der Papierkorb geleert wird.} other{Die {count} Kopien in {albums} werden zu Verweisen auf das Original in „{original}“, jeweils an derselben Stelle und mit ihrer eigenen Beschreibung und ihren Labels. Ihre {count} Dateien kommen in den Papierkorb dieser Alben und können von dort wiederhergestellt werden, bis der Papierkorb geleert wird.}}",
+  "duplicatesKeepRefused": "{count, plural, =1{Diese Kopie bleibt unverändert:} other{Diese {count} Kopien bleiben unverändert:}}",
+  "duplicatesKeepReason": "In „{album}“: {reason}",
+  "duplicatesKeepConfirm": "Als Verweise behalten",
+  "duplicatesKept": "{count, plural, =1{1 Kopie ist nun ein Verweis auf das Original; ihre Datei liegt im Papierkorb ihres Albums.} other{{count} Kopien sind nun Verweise auf das Original; ihre Dateien liegen im Papierkorb ihrer Alben.}}",
+  "duplicatesKeptRefused": "{count, plural, =1{1 Kopie blieb unverändert: {reasons}} other{{count} Kopien blieben unverändert: {reasons}}}",
+  "doingKeepingAsReferences": "Behalten von Kopien von {photo} als Verweise"
 }

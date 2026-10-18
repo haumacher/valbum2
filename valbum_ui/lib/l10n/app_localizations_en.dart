@@ -3068,6 +3068,77 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get duplicatesOriginal => 'The original: it stays where it is';
+
+  @override
+  String get duplicatesChooseOriginal => 'Keep this copy as the original';
+
+  @override
+  String get duplicatesKeepAsReference => 'Keep here as reference';
+
+  @override
+  String get duplicatesKeepAllAsReferences => 'Keep all others as references';
+
+  @override
+  String get duplicatesKeepTitle => 'Keep as references?';
+
+  @override
+  String duplicatesKeepQuestion(String albums, String original, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          'The $count copies in $albums become references to the original in \'$original\', each in the same place and with its own description and labels. Their $count files go into the trash of those albums, from where they can be restored until the trash is purged.',
+      one:
+          'The copy in $albums becomes a reference to the original in \'$original\', in the same place and with its own description and labels. Its file goes into the trash of that album, from where it can be restored until the trash is purged.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String duplicatesKeepRefused(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'These $count copies stay as they are:',
+      one: 'This copy stays as it is:',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String duplicatesKeepReason(String reason, String album) {
+    return 'In \'$album\': $reason';
+  }
+
+  @override
+  String get duplicatesKeepConfirm => 'Keep as references';
+
+  @override
+  String duplicatesKept(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count copies are now references to the original; their files are in the trash of their albums.',
+      one:
+          '1 copy is now a reference to the original; its file is in the trash of its album.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String duplicatesKeptRefused(String reasons, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count copies stayed as they were: $reasons',
+      one: '1 copy stayed as it was: $reasons',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get linkAnonymous => 'Anonymous';
 
   @override
@@ -3330,6 +3401,11 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String contactPasskeyRemoveTitle(String name) {
     return 'Remove this passkey of $name?';
+  }
+
+  @override
+  String doingKeepingAsReferences(String photo) {
+    return 'keeping copies of $photo as references';
   }
 
   @override

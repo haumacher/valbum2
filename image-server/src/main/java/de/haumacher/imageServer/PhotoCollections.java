@@ -3,6 +3,8 @@
  */
 package de.haumacher.imageServer;
 
+import de.haumacher.imageServer.auth.Privacy;
+import de.haumacher.imageServer.auth.Ratings;
 import de.haumacher.imageServer.cache.ResourceCache;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
 import de.haumacher.imageServer.shared.model.AlbumKind;
@@ -29,6 +31,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -62,7 +65,9 @@ import java.util.function.Function;
  * <li><b>Resolution.</b> A reference is found by its content hash: first at the path it was last
  * seen at (one look into that folder's <code>.hashes.json</code>), then through the space's
  * {@link HashIndex} (issue #118), so it survives a move of the photograph, a rename of its album
- * and a rename of the file. A hash the space no longer holds is a <em>missing</em> part.</li>
+ * and a rename of the file. A hash the space no longer holds is a <em>missing</em> part. Where the
+ * same contents lie as several files, the choice is deterministic and never falls on a file in the
+ * trash while another is there, see {@link #locate(PhotoRef)}.</li>
  * <li><b>Visibility.</b> A reference is answered exactly as the photograph would be answered in its
  * own album to the same caller &mdash; privacy, the rating floor and the trash, the inbox rule, faces
  * &mdash; see {@link #resolve(AlbumInfo, Function, boolean, boolean)}; the album's own filters (a
@@ -123,6 +128,9 @@ public final class PhotoCollections {
 	private final Path _root;
 
 	private final HashIndex _index;
+
+	/** How the part of a file is found, see {@link #withParts(Function)}. */
+	private Function<PathInfo, ImagePart> _parts = PhotoCollections::storedPart;
 
 	/**
 	 * Creates the references of the space at the given root.
@@ -408,6 +416,22 @@ public final class PhotoCollections {
 	 * Reading never writes: the hint stored with the reference is refreshed by the album's next
 	 * write, not here.
 	 * </p>
+	 *
+	 * <p>
+	 * <b>Identical files</b> (issue #307). A reference names contents, and the same contents may lie
+	 * as files in several albums. It resolves deterministically, and never into the trash while the
+	 * contents lie anywhere else:
+	 * </p>
+	 * <ol>
+	 * <li>the file at its hint (or renamed in the hinted folder), unless that file is rated as
+	 * trash;</li>
+	 * <li>else the first file of the contents, in the order the hash index knows the folders and each
+	 * folder's <code>.hashes.json</code> its names, that is not rated as trash &mdash; and, where the
+	 * hint named a file in the trash, that is at least as private as that file, so that a reference
+	 * never shows more than it showed (see {@link #twin(String, PathInfo, Set, Map)});</li>
+	 * <li>else the file at its hint, in the trash (and hidden as the trash is);</li>
+	 * <li>else the first file of the contents the index knows.</li>
+	 * </ol>
 	 */
 	public PathInfo locate(PhotoRef ref) {
 		return locate(ref, new HashMap<>());
@@ -422,32 +446,144 @@ public final class PhotoCollections {
 			return null;
 		}
 		String hash = ref.getHash();
-		String hint = ref.getPath();
-		if (!hint.isEmpty() && LibraryFiles.isLibraryPath(hint)) {
-			PathInfo hinted = pathOf(hint);
-			if (hinted != null) {
-				File folder = hinted.toFile().getParentFile();
-				Map<String, String> hashes =
-					sidecars.computeIfAbsent(folder, f -> new HashCache(f).storedHashByName());
-				if (hash.equals(hashes.get(hinted.getName())) && hinted.toFile().isFile()) {
-					return hinted;
-				}
-				// Renamed in its own folder.
-				for (Map.Entry<String, String> entry : hashes.entrySet()) {
-					if (hash.equals(entry.getValue())) {
-						PathInfo renamed = hinted.parent().child(entry.getKey());
-						if (renamed.toFile().isFile()) {
-							return renamed;
-						}
-					}
-				}
-			}
+		PathInfo hinted = hinted(ref, sidecars);
+		if (hinted != null && !isTrashed(hinted)) {
+			return hinted;
+		}
+		PathInfo twin = twin(hash, hinted, Collections.emptySet(), sidecars);
+		if (twin != null) {
+			return twin;
+		}
+		if (hinted != null) {
+			return hinted;
 		}
 		String found = _index.pathOf(hash);
 		if (found == null || !LibraryFiles.isLibraryPath(found)) {
 			return null;
 		}
 		return pathOf(found);
+	}
+
+	/**
+	 * The file the hint of the given reference names, or the file of its contents in the hinted
+	 * folder where it was renamed there; <code>null</code> for neither.
+	 */
+	public PathInfo hinted(PhotoRef ref, Map<File, Map<String, String>> sidecars) {
+		String hash = ref.getHash();
+		String hint = ref.getPath();
+		if (hint.isEmpty() || !LibraryFiles.isLibraryPath(hint)) {
+			return null;
+		}
+		PathInfo hinted = pathOf(hint);
+		if (hinted == null) {
+			return null;
+		}
+		File folder = hinted.toFile().getParentFile();
+		Map<String, String> hashes = sidecars.computeIfAbsent(folder, f -> new HashCache(f).storedHashByName());
+		if (hash.equals(hashes.get(hinted.getName())) && hinted.toFile().isFile()) {
+			return hinted;
+		}
+		// Renamed in its own folder.
+		for (Map.Entry<String, String> entry : hashes.entrySet()) {
+			if (hash.equals(entry.getValue())) {
+				PathInfo renamed = hinted.parent().child(entry.getKey());
+				if (renamed.toFile().isFile()) {
+					return renamed;
+				}
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Another file of the given contents than the given one that a reference may resolve to instead
+	 * of it, see issue #307 and {@link #locate(PhotoRef)}: the first in the order the hash index
+	 * knows the folders (and each folder's <code>.hashes.json</code> its names) that is there, is not
+	 * rated as trash, is none of the excluded files and &mdash; where a file is given &mdash; is at
+	 * least as private as that file. <code>null</code> where there is none.
+	 *
+	 * @param except
+	 *        The file the reference resolved to so far, <code>null</code> for none.
+	 * @param excluded
+	 *        Files that do not count (absolute, normalized): those about to leave the library.
+	 */
+	public PathInfo twin(String hash, PathInfo except, Set<Path> excluded, Map<File, Map<String, String>> sidecars) {
+		Path skip = except == null ? null : normalized(except);
+		int floor = except == null ? Privacy.PUBLIC : privacyOf(except);
+		for (String folder : _index.foldersOf(hash)) {
+			if (!LibraryFiles.isLibraryPath(folder)) {
+				continue;
+			}
+			PathInfo dir = folder.isEmpty() ? new PathInfo(_root) : pathOf(folder);
+			if (dir == null) {
+				continue;
+			}
+			Map<String, String> hashes =
+				sidecars.computeIfAbsent(dir.toFile(), f -> new HashCache(f).storedHashByName());
+			for (Map.Entry<String, String> entry : hashes.entrySet()) {
+				if (!hash.equals(entry.getValue())) {
+					continue;
+				}
+				PathInfo candidate = dir.child(entry.getKey());
+				Path path = normalized(candidate);
+				if (path.equals(skip) || excluded.contains(path) || !candidate.toFile().isFile()) {
+					continue;
+				}
+				if (isTrashed(candidate) || privacyOf(candidate) < floor) {
+					continue;
+				}
+				return candidate;
+			}
+		}
+		return null;
+	}
+
+	/** The given file as an absolute, normalized path, for comparisons. */
+	public static Path normalized(PathInfo file) {
+		return file.toFile().getAbsoluteFile().toPath().normalize();
+	}
+
+	/**
+	 * Tells how the part of a file of the library is found, see {@link #isTrashed(PathInfo)}: the
+	 * server asks its cache, which holds the album already.
+	 *
+	 * @return This instance.
+	 */
+	public PhotoCollections withParts(Function<PathInfo, ImagePart> parts) {
+		_parts = parts;
+		return this;
+	}
+
+	/** Whether the photograph of the given file is rated as trash in its album. */
+	public boolean isTrashed(PathInfo file) {
+		ImagePart part = partOf(file);
+		return part != null && part.getRating() <= Ratings.TRASH;
+	}
+
+	/** The privacy of the photograph of the given file in its album, {@link Privacy#PUBLIC} where it has no part. */
+	private int privacyOf(PathInfo file) {
+		ImagePart part = partOf(file);
+		return part == null ? Privacy.PUBLIC : part.getPrivacy();
+	}
+
+	private ImagePart partOf(PathInfo file) {
+		ImagePart part;
+		try {
+			part = _parts.apply(file);
+		} catch (RuntimeException ex) {
+			return null;
+		}
+		return part == null || isReference(part) ? null : part;
+	}
+
+	/** The part of the given file as its folder's sidecar stores it, see {@link #withParts(Function)}. */
+	private static ImagePart storedPart(PathInfo file) {
+		File folder = file.toFile().getParentFile();
+		if (folder == null || !new File(folder, "index.json").isFile()) {
+			return null;
+		}
+		Resource sidecar = ResourceCache.sidecar(folder);
+		return sidecar instanceof AlbumInfo ? Crops.findImage((AlbumInfo) sidecar, file.getName()) : null;
 	}
 
 	/** The given path relative to the space root, <code>null</code> where it leaves the space. */

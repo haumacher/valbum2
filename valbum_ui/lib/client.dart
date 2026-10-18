@@ -1951,6 +1951,47 @@ class VAlbumClient {
     return MoveResult.read(JsonReader.fromString(response.body));
   }
 
+  /// Keeps the [copies] of the photograph [original] as references to it, see
+  /// issue #307: every copy is replaced in its album by a reference to the
+  /// original, in the copy's place, and the copy's file goes into the trash of
+  /// that album. All paths are those of a [DuplicateCopy], `album/name`
+  /// relative to the space root.
+  ///
+  /// The answer carries one [MoveOutcome] per copy, named as asked: the name
+  /// of the reference that replaced it, or the server's reason why that copy
+  /// stays. With [dryRun] nothing is done, and a copy that would be replaced
+  /// answers an empty message. A refusal of the whole request is thrown as a
+  /// [VAlbumException] carrying the server's message.
+  Future<MoveResult> keepAsReferences(
+    String original,
+    List<String> copies, {
+    bool dryRun = false,
+  }) async {
+    var action = dryRun ? "keep-as-references-check" : "keep-as-references";
+    var url = "${folderUrl(const [])}?action=$action";
+    var request = KeepAsReferencesRequest(
+      original: original,
+      copies: [for (var copy in copies) MoveName(name: copy)],
+    );
+    var body = StringBuffer();
+    request.writeContent(jsonStringWriter(body));
+
+    var response = await _http.post(
+      Uri.parse(url),
+      encoding: Encoding.getByName("utf-8"),
+      body: body.toString(),
+      headers: {"Content-Type": "application/json", ...authHeaders},
+    );
+    if (response.statusCode >= 300) {
+      throw failure(
+        response.statusCode,
+        response.body,
+        platformMessages.doingKeepingAsReferences("'$original'"),
+      );
+    }
+    return MoveResult.read(JsonReader.fromString(response.body));
+  }
+
   /// The photographs below the folder at [path] that match [query], see issue
   /// #227: the search view, never stored.
   ///

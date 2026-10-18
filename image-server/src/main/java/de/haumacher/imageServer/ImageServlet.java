@@ -639,6 +639,15 @@ public class ImageServlet extends HttpServlet {
 	/** The <code>action</code> that adds photographs to a collection, see issue #221. */
 	public static final String COLLECT_ACTION = "collect";
 
+	/**
+	 * The <code>action</code> that keeps identical copies of a photograph as references to one of
+	 * them, see issue #307 and {@link KeepAsReferences}.
+	 */
+	public static final String KEEP_AS_REFERENCES_ACTION = "keep-as-references";
+
+	/** The question what {@link #KEEP_AS_REFERENCES_ACTION} would do, with nothing done. */
+	public static final String KEEP_AS_REFERENCES_CHECK_ACTION = "keep-as-references-check";
+
 	/** The message a download request is refused with whose body cannot be read, see issue #164. */
 	public static final String ZIP_UNREADABLE = "The download request could not be read.";
 
@@ -1118,7 +1127,12 @@ public class ImageServlet extends HttpServlet {
 		_index.pipeline().addStep(new AnalysisStep(_cache, _index.pipeline()));
 		_cache.setRefusals((folder, name, reason) -> _index.pipeline()
 			.reportFailure(folder, de.haumacher.imageServer.cache.AnalysisStep.NAME, name, reason, false));
-		_collections = new PhotoCollections(_basePath, _index);
+		// Whether a file is in the trash is asked of the cache, which holds its album already, see
+		// PhotoCollections#locate and issue #307.
+		_collections = new PhotoCollections(_basePath, _index).withParts(file -> {
+			Resource part = _cache.lookup(file);
+			return part instanceof ImagePart ? (ImagePart) part : null;
+		});
 		_faces = new FaceIndex(_basePath, facesEnabled, _spaceIndex);
 		_reanalysis = new Reanalysis(_cache, _space.isEmpty() ? basePath.getName() : _space);
 		_searchIndex = new SearchIndex(_basePath, _spaceIndex, this::lookupOrSkip, () -> {
@@ -2250,8 +2264,66 @@ public class ImageServlet extends HttpServlet {
 
 		// The next read must see the new photo, and with it who contributed it.
 		_cache.invalidate(folderPath);
+		takeReferencePlaces(folderPath, result);
 
 		serveJsonObject(context.response(), result);
+	}
+
+	/**
+	 * A photograph just uploaded into an album that shows its contents as a reference takes that
+	 * reference's place, see issue #307: the upload lands as a file of the album, in the reference's
+	 * place in its order, with the reference's labels and its own description where it has one, and
+	 * the reference goes. An album never shows one photograph twice. Only what was
+	 * {@link #STORED} counts; nothing else of the album changes.
+	 */
+	private void takeReferencePlaces(PathInfo folderPath, UploadResult uploads) {
+		File dir = folderPath.toFile();
+		Map<String, String> stored = new LinkedHashMap<>();
+		for (UploadedFile file : uploads.getFiles()) {
+			if (STORED.equals(file.getStatus())) {
+				stored.put(file.getStoredAs(), file.getHash());
+			}
+		}
+		if (stored.isEmpty() || !PhotoCollections.holdsReferences(dir)) {
+			return;
+		}
+		try {
+			Resource resource = _cache.lookup(folderPath);
+			if (!(resource instanceof AlbumInfo) || PhotoSearch.isSearch(resource)) {
+				return;
+			}
+			AlbumInfo album = (AlbumInfo) resource;
+			boolean changed = false;
+			for (Map.Entry<String, String> entry : stored.entrySet()) {
+				ImagePart reference = MoveService.referenceTo(album, entry.getValue());
+				if (reference == null) {
+					continue;
+				}
+				ImagePart part = Crops.findImage(album, entry.getKey());
+				if (part == null) {
+					// Not analysed yet: the next read completes the part from the analysis, see
+					// BrokenParts#adopt, and it is described as the link it came through shows it.
+					part = ImagePart.create().setName(entry.getKey()).setDate(reference.getDate());
+					Contributors.applyLinkLimits(Collections.singletonList(part), dir);
+				} else {
+					MoveService.detach(album, part);
+				}
+				MoveService.takePlace(album, part, reference);
+				changed = true;
+				LOG.info("The upload '" + new File(dir, entry.getKey()) + "' took the place of the reference '"
+					+ reference.getName() + "'.");
+			}
+			if (changed) {
+				de.haumacher.imageServer.shared.util.UpdateTransient.updateTransient(album);
+				storeSidecar(dir, MoveService.json(album));
+			}
+		} catch (IOException | RuntimeException ex) {
+			// The file is stored; the album shows it beside its reference until the reference is removed.
+			LOG.log(Level.WARNING, "Cannot put the uploads of '" + dir + "' in the place of their references: "
+				+ ex.getMessage(), ex);
+		} finally {
+			_cache.invalidate(folderPath);
+		}
 	}
 
 	/**
@@ -2433,6 +2505,7 @@ public class ImageServlet extends HttpServlet {
 
 		// The next read must see the new photos, and with them who contributed them.
 		_cache.invalidate(folderPath);
+		takeReferencePlaces(folderPath, result);
 
 		serveJsonObject(context.response(), result);
 	}
@@ -2740,6 +2813,200 @@ public class ImageServlet extends HttpServlet {
 		}
 		landing.store(request.getCreated());
 		serveJsonObject(context.response(), result);
+	}
+
+	/**
+	 * Keeps identical copies of a photograph as references to one of them, see issue #307 and
+	 * {@link KeepAsReferences}.
+	 *
+	 * <p>
+	 * <code>POST ?action=keep-as-references</code> with a
+	 * {@link de.haumacher.imageServer.shared.model.KeepAsReferencesRequest}, whose paths are given in
+	 * the coordinates of a move target, wherever the request is addressed. The caller must be shown
+	 * the original in its album, which must not be in the trash; anything else refuses the request as
+	 * a whole. Every copy is then judged by itself, and one that cannot be replaced refuses only
+	 * itself, with its reason as the {@link MoveOutcome#getMessage() message} of its outcome: a copy
+	 * the caller is not shown, one whose album they may not edit (replacing a copy is changing its
+	 * album and rating its file as trash), one that is no identical copy, one in the inbox, a saved
+	 * search or the original's own album, one in the trash already, and one more private than the
+	 * original. A replaced copy's outcome names the reference that took its place
+	 * ({@link MoveOutcome#getNewName()}). With <code>dryRun</code>
+	 * ({@link #KEEP_AS_REFERENCES_CHECK_ACTION}) the same checks are made and the same refusals
+	 * answered, and nothing changes; the outcome of a copy that would be replaced is empty.
+	 * </p>
+	 */
+	private void keepAsReferences(Context context, boolean dryRun) throws IOException {
+		Caller caller = _auth.caller(context.request());
+		if (caller.isShareLink()) {
+			LOG.warning("Refusing to keep copies as references through a share link at '"
+				+ context.request().getPathInfo() + "'.");
+			errorInfo(context, HttpServletResponse.SC_FORBIDDEN, KeepAsReferences.SHARE_REFUSED);
+			return;
+		}
+		if (!_auth.writeAllowed(caller)) {
+			unauthorized(context, caller, true);
+			return;
+		}
+		de.haumacher.imageServer.shared.model.KeepAsReferencesRequest request;
+		try {
+			request = de.haumacher.imageServer.shared.model.KeepAsReferencesRequest
+				.readKeepAsReferencesRequest(json(readBody(context.request())));
+		} catch (IOException | RuntimeException ex) {
+			LOG.warning("Rejecting unparsable keep-as-references request: " + ex.getMessage());
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, KeepAsReferences.UNREADABLE);
+			return;
+		}
+		if (request.getCopies().isEmpty()) {
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, KeepAsReferences.NO_COPY);
+			return;
+		}
+
+		// The original: shown to the caller in its album, and not in the trash.
+		String originalName = request.getOriginal() == null ? "" : request.getOriginal();
+		PathInfo original;
+		try {
+			original = _auth.resolve(caller, _basePath, originalName).getPath();
+		} catch (PathRefused ex) {
+			LOG.warning("Refusing the original '" + originalName + "': " + ex.getMessage());
+			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, notInAlbum(originalName));
+			return;
+		}
+		PathInfo originalFolder = original.isRoot() ? null : original.parent();
+		AlbumInfo originalShown = originalFolder == null ? null : sourceAlbum(originalFolder, caller, Privacy.PRIVATE);
+		ImagePart originalSeen = originalShown == null ? null : Crops.findImage(originalShown, original.getName());
+		Resource originalStored = originalFolder == null ? null : lookupOrSkip(originalFolder);
+		ImagePart originalPart = originalStored instanceof AlbumInfo
+			? Crops.findImage((AlbumInfo) originalStored, original.getName()) : null;
+		if (originalSeen == null || originalPart == null || PhotoCollections.isReference(originalPart)
+			|| PhotoSearch.isSearch(originalStored) || !original.toFile().isFile()) {
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, notInAlbum(originalName));
+			return;
+		}
+		if (originalPart.getRating() <= Ratings.TRASH) {
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, PhotoCollections.TRASHED_REFUSED);
+			return;
+		}
+		HashCache originalHashes = new HashCache(originalFolder.toFile());
+		String hash = originalHashes.hashByName().get(original.getName());
+		// The index hears of what was hashed only now, see issue #118.
+		originalHashes.flush();
+		if (hash == null) {
+			errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, notInAlbum(originalName));
+			return;
+		}
+		String originalTitle = albumTitle((AlbumInfo) originalStored, originalFolder);
+
+		MoveResult result = MoveResult.create();
+		List<KeepAsReferences.Copy> accepted = new ArrayList<>();
+		Map<String, MoveOutcome> outcomes = new HashMap<>();
+		Set<java.nio.file.Path> seen = new HashSet<>();
+		java.nio.file.Path originalPath = PhotoCollections.normalized(original);
+		for (MoveName entry : request.getCopies()) {
+			String name = entry.getName() == null ? "" : entry.getName();
+			MoveOutcome outcome = MoveOutcome.create().setName(name);
+			result.addOutcome(outcome);
+			String refusal;
+			PathInfo copy = null;
+			try {
+				copy = _auth.resolve(caller, _basePath, name).getPath();
+				refusal = copyRefusal(caller, copy, name, original, originalPath, originalPart, originalTitle, hash, seen);
+			} catch (PathRefused ex) {
+				refusal = notInAlbum(name);
+			}
+			if (refusal != null) {
+				outcome.setMessage(refusal);
+				continue;
+			}
+			accepted.add(new KeepAsReferences.Copy(copy, name));
+			outcomes.put(name, outcome);
+		}
+		if (dryRun || accepted.isEmpty()) {
+			serveJsonObject(context.response(), result);
+			return;
+		}
+
+		Map<String, String> failures = new HashMap<>();
+		Map<String, String> kept = new KeepAsReferences(original.getBasePath(), _cache, _collections).keep(original,
+			originalPart, hash, accepted, failures);
+		for (KeepAsReferences.Copy copy : accepted) {
+			MoveOutcome outcome = outcomes.get(copy._label);
+			String reference = kept.get(copy._label);
+			if (reference != null) {
+				Resource album = lookupOrSkip(copy._file.parent());
+				String title = album instanceof AlbumInfo ? albumTitle((AlbumInfo) album, copy._file.parent())
+					: copy._file.parent().getName();
+				outcome.setNewName(reference).setMessage(KeepAsReferences.kept(title, originalTitle));
+			} else {
+				outcome.setMessage(failures.getOrDefault(copy._label, MoveService.failed("not handled")));
+			}
+			treeChanged(copy._file.parent().toFile());
+		}
+		serveJsonObject(context.response(), result);
+	}
+
+	/**
+	 * Why the given copy is not kept as a reference to the given original, <code>null</code> where
+	 * it is, see {@link #keepAsReferences(Context, boolean)}.
+	 */
+	private String copyRefusal(Caller caller, PathInfo copy, String name, PathInfo original,
+			java.nio.file.Path originalPath, ImagePart originalPart, String originalTitle, String hash,
+			Set<java.nio.file.Path> seen) throws IOException {
+		if (copy.isRoot() || !copy.getBasePath().toAbsolutePath().normalize()
+			.equals(original.getBasePath().toAbsolutePath().normalize())) {
+			return KeepAsReferences.OTHER_SPACE;
+		}
+		java.nio.file.Path path = PhotoCollections.normalized(copy);
+		if (path.equals(originalPath)) {
+			return KeepAsReferences.IS_ORIGINAL;
+		}
+		if (!seen.add(path)) {
+			return KeepAsReferences.NAMED_TWICE;
+		}
+		PathInfo folder = copy.parent();
+		if (!folder.toFile().isDirectory() || !copy.toFile().isFile()) {
+			return notInAlbum(name);
+		}
+		if (PhotoCollections.normalized(folder).equals(PhotoCollections.normalized(original.parent()))) {
+			return KeepAsReferences.SAME_ALBUM;
+		}
+		Resource stored = lookupOrSkip(folder);
+		if (!referenceTarget(stored, folder)) {
+			return KeepAsReferences.NOT_AN_ALBUM;
+		}
+		AlbumInfo shown = sourceAlbum(folder, caller, Privacy.PRIVATE);
+		ImagePart seenPart = shown == null ? null : Crops.findImage(shown, copy.getName());
+		ImagePart part = Crops.findImage((AlbumInfo) stored, copy.getName());
+		if (part == null || PhotoCollections.isReference(part)) {
+			return notInAlbum(name);
+		}
+		if (part.getRating() <= Ratings.TRASH) {
+			return KeepAsReferences.TRASHED;
+		}
+		if (seenPart == null) {
+			// Hidden from the caller: not there for them.
+			return notInAlbum(name);
+		}
+		if (!_auth.mayEdit(caller, folder)) {
+			return KeepAsReferences.editRefused(albumTitle((AlbumInfo) stored, folder));
+		}
+		HashCache hashes = new HashCache(folder.toFile());
+		String copyHash = hashes.hashByName().get(copy.getName());
+		// The index hears of what was hashed only now, see issue #118.
+		hashes.flush();
+		if (!hash.equals(copyHash)) {
+			return KeepAsReferences.NOT_A_COPY;
+		}
+		if (part.getPrivacy() > originalPart.getPrivacy()) {
+			// Never shown to more people than before, see KeepAsReferences.
+			return KeepAsReferences.morePrivate(originalTitle);
+		}
+		return null;
+	}
+
+	/** The title the given album is spoken of by: its own, else its folder's name. */
+	private static String albumTitle(AlbumInfo album, PathInfo folder) {
+		String title = album == null ? null : album.getTitle();
+		return title == null || title.isEmpty() ? folder.getName() : title;
 	}
 
 	/**
@@ -6390,6 +6657,14 @@ public class ImageServlet extends HttpServlet {
 		}
 		if (COLLECT_ACTION.equals(action)) {
 			collect(context);
+			return;
+		}
+		if (KEEP_AS_REFERENCES_ACTION.equals(action)) {
+			keepAsReferences(context, false);
+			return;
+		}
+		if (KEEP_AS_REFERENCES_CHECK_ACTION.equals(action)) {
+			keepAsReferences(context, true);
 			return;
 		}
 		if ("delete".equals(action)) {

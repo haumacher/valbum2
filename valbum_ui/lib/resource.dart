@@ -7368,6 +7368,89 @@ class MoveName extends _JsonObject {
 
 }
 
+///  Request to keep copies of a photograph as references to one of them, sent to the root of the
+///  space as <code>?action=keep-as-references</code> (or <code>?action=keep-as-references-check</code>
+///  for what it would do, with nothing done), see issue #307.
+/// 
+///  <p>
+///  For a photograph that lies as identical files in several albums ({@link DuplicateGroup}): the
+///  {@link #original} stays where it is, and every one of the {@link #copies} is replaced in its album
+///  by a reference to the original, in the copy's place, with the copy's labels and, where it
+///  differs from the original's, the copy's description as the reference's own. The copy's file goes
+///  into the trash of its album (it is rated as trash there), from where the purge deletes it. The
+///  answer is a {@link MoveResult} with one {@link MoveOutcome} per copy, named as asked: the name of
+///  the reference in the copy's album, or why that copy was refused.
+///  </p>
+class KeepAsReferencesRequest extends _JsonObject {
+	///  The photograph to keep as the original: the path of its file relative to the caller's space,
+	///  <code>&lt;album&gt;/&lt;name&gt;</code> as a {@link DuplicateCopy} names it.
+	String original;
+
+	///  The copies to replace by references, each the path of its file like {@link #original}.
+	List<MoveName> copies;
+
+	/// Creates a KeepAsReferencesRequest.
+	KeepAsReferencesRequest({
+			this.original = "", 
+			this.copies = const [], 
+	});
+
+	/// Parses a KeepAsReferencesRequest from a string source.
+	static KeepAsReferencesRequest? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a KeepAsReferencesRequest instance from the given reader.
+	static KeepAsReferencesRequest read(JsonReader json) {
+		KeepAsReferencesRequest result = KeepAsReferencesRequest();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "KeepAsReferencesRequest";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "original": {
+				original = json.expectString();
+				break;
+			}
+			case "copies": {
+				json.expectArray();
+				copies = [];
+				while (json.hasNext()) {
+					if (!json.tryNull()) {
+						var value = MoveName.read(json);
+						if (value != null) {
+							copies.add(value);
+						}
+					}
+				}
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("original");
+		json.addString(original);
+
+		json.addKey("copies");
+		json.startArray();
+		for (var _element in copies) {
+			_element.writeContent(json);
+		}
+		json.endArray();
+	}
+
+}
+
 ///  Answer to a {@link MoveRequest}: what happened to every name it asked for.
 /// 
 ///  <p>
