@@ -298,15 +298,6 @@ class ListingView extends StatelessWidget {
             // never offered and then refused, see issue #49.
             if (mayChange)
               menuItem(Icons.create_new_folder, l10n.createAlbum, createAlbum),
-            // A collection of references to photographs of other albums,
-            // made wherever an album may be made, see issue #221.
-            if (mayChange)
-              keyedMenuItem(
-                const Key("create-collection"),
-                Icons.collections_bookmark_outlined,
-                l10n.createCollection,
-                createCollection,
-              ),
             if (mayChange)
               menuItem(
                 Icons.create_new_folder_outlined,
@@ -400,15 +391,16 @@ class ListingView extends StatelessWidget {
                 builder: (context, highlight) => KeyboardScroll(
                   // A scrollbar and the paging keys, issue #168.
                   onKeyEvent: guardKeys((node, event) => tileKeyEvent(
-                    highlight,
-                    node,
-                    event,
-                    TileKeyActions<FolderInfo>(
-                      onEnter: (folder) => albumState.showElement(folder.name),
-                      onMenu: (folder, position) =>
-                          showTileMenu(context, folder, position),
-                    ),
-                  )),
+                        highlight,
+                        node,
+                        event,
+                        TileKeyActions<FolderInfo>(
+                          onEnter: (folder) =>
+                              albumState.showElement(folder.name),
+                          onMenu: (folder, position) =>
+                              showTileMenu(context, folder, position),
+                        ),
+                      )),
                   child: LayoutBuilder(
                     builder:
                         (BuildContext context, BoxConstraints constraints) {
@@ -742,18 +734,14 @@ class ListingView extends StatelessWidget {
         ),
         child: Center(
           child: Icon(
-            // A collection of references says what it is, see issue #221, and
-            // so does a saved search that finds nothing for this caller, #227.
-            folder.kind == FolderKind.collection
-                ? Icons.collections_bookmark_outlined
-                : folder.kind == FolderKind.search
-                    ? Icons.saved_search
-                    : Icons.folder,
-            key: folder.kind == FolderKind.collection
-                ? const Key("collection-icon")
-                : folder.kind == FolderKind.search
-                    ? const Key("search-icon")
-                    : null,
+            // A saved search that finds nothing for this caller says what it
+            // is, #227; an album holding references is an album (#307).
+            folder.kind == FolderKind.search
+                ? Icons.saved_search
+                : Icons.folder,
+            key: folder.kind == FolderKind.search
+                ? const Key("search-icon")
+                : null,
             size: width / 2,
             color: Colors.blue,
           ),
@@ -782,8 +770,8 @@ class ListingView extends StatelessWidget {
       mayShare(context, [...albumState.path, folder.name]) ||
       isAlbumTile(folder);
 
-  /// Whether [folder] is an album of photographs — an album, a collection,
-  /// a saved search — whose tile offers what the album's own menu does with
+  /// Whether [folder] is an album of photographs — an album (one holding
+  /// references too, issue #307), a saved search — whose tile offers what the album's own menu does with
   /// it: its properties and its download (issue #295). A folder of folders
   /// has its own properties in its own listing.
   static bool isAlbumTile(FolderInfo folder) =>
@@ -1298,39 +1286,6 @@ class ListingView extends StatelessWidget {
     }
   }
 
-  /// Creates a collection in the folder being shown, see issue #221: an
-  /// album of references to photographs that lie in other albums.
-  void createCollection(BuildContext context) async {
-    if (refuseWhileOffline(context)) {
-      return;
-    }
-    var messenger = ScaffoldMessenger.of(context);
-    AlbumInfo? collection = await showFormDialog<AlbumInfo>(
-      context: context,
-      builder: (context) => const CreateCollectionDialog(),
-    );
-    if (collection == null || !context.mounted) {
-      return;
-    }
-    var done = await writeAction(
-        context, () => client.createAlbum(albumState.path, collection));
-    if (done == null) {
-      return;
-    }
-    var result = done.value;
-    albumState.navigator.delegate.forgetTree(albumState.path);
-    albumState.reload();
-    albumState.showPath(splitPath(result.path));
-    if (result.message.isNotEmpty) {
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(result.message),
-          duration: const Duration(seconds: 6),
-        ),
-      );
-    }
-  }
-
   /// Edits the title and the placement rule of the folder being shown.
   ///
   /// The rule is typically set on the root of a space, which is a folder like
@@ -1673,82 +1628,6 @@ class CreateAlbumDialogState extends State<CreateAlbumDialog> {
   }
 }
 
-/// The dialog that names a new collection, see issue #221.
-///
-/// A title and nothing else: a collection has no photographs of its own whose
-/// day it could carry, so it is made without a date and stays in the folder it
-/// is made in (a date may still be given in its properties). It answers the
-/// sidecar to create, of kind [AlbumKind.collection].
-class CreateCollectionDialog extends StatefulWidget {
-  /// The name proposed, `null` for none — the folder picker fills it with what
-  /// was typed in its search field.
-  final String? initialTitle;
-
-  const CreateCollectionDialog({super.key, this.initialTitle});
-
-  @override
-  State<StatefulWidget> createState() => CreateCollectionDialogState();
-}
-
-class CreateCollectionDialogState extends State<CreateCollectionDialog> {
-  var formKey = GlobalKey<FormState>();
-  String? title;
-
-  @override
-  Widget build(BuildContext context) {
-    var l10n = AppLocalizations.of(context)!;
-    return Form(
-      key: formKey,
-      child: FormDialogFrame(
-        key: const Key("create-collection-dialog"),
-        title: Text(l10n.newCollectionTitle),
-        fields: [
-          Text(
-            l10n.newCollectionHint,
-            style: const TextStyle(fontSize: 12),
-          ),
-          TextFormField(
-            key: const Key("collection-title"),
-            autofocus: true,
-            initialValue: widget.initialTitle,
-            decoration: InputDecoration(label: Text(l10n.titleLabel)),
-            onSaved: (value) => title = value,
-            validator: (String? value) => value == null || value.trim().isEmpty
-                ? l10n.mustNotBeEmpty
-                : null,
-          ),
-        ],
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text(l10n.cancel),
-          ),
-          ElevatedButton.icon(
-            key: const Key("create-collection-confirm"),
-            icon: const Icon(Icons.check),
-            label: Text(l10n.create),
-            onPressed: createPressed,
-          ),
-        ],
-      ),
-    );
-  }
-
-  void createPressed() {
-    var formState = formKey.currentState!;
-    if (!formState.validate()) {
-      return;
-    }
-    formState.save();
-    var name = title!.trim();
-    Navigator.of(context).pop(AlbumInfo(
-      title: name,
-      path: albumFolderName(null, name),
-      kind: AlbumKind.collection,
-    ));
-  }
-}
-
 class CreateFolderDialog extends StatefulWidget {
   const CreateFolderDialog({super.key});
 
@@ -1863,9 +1742,10 @@ bool showsImageCount(FolderInfo folder) =>
 /// Whether the tile of [folder] asks the server for its count when the
 /// pointer has rested on it, see [VAlbumClient.imageCount] and issue #286.
 ///
-/// A collection's count is its references resolved for the caller, which a
-/// listing never does: it is asked of the collection itself, and only for
-/// the tile somebody is looking at.
+/// The count of an album holding references (issue #307, a collection among
+/// them) is its references resolved for the caller, which a listing never
+/// does: it is asked of the album itself, and only for the tile somebody is
+/// looking at.
 bool asksImageCount(FolderInfo folder) => folder.kind == FolderKind.collection;
 
 /// The counts the tiles of one listing view asked the server for, see

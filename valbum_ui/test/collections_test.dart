@@ -1,10 +1,14 @@
-/// Tests of collections (issue #221): albums of references to photographs of
-/// other albums — created from the listing and in the picker, shown with a
-/// placeholder for a photograph that is gone, given photographs by "Add to
-/// collection…" from an album's edit mode and from the viewer, emptied by
-/// "Remove from collection", and written through to the albums the
-/// photographs lie in.
+/// Tests of references (issues #221, #307): an album holds references to
+/// photographs of other albums beside its own files, and a collection is an
+/// album without files of its own — shown as one, a placeholder for a
+/// photograph that is gone, given photographs by "Add to album (as
+/// reference)…" from an album's edit mode, a tile's menu and the viewer,
+/// emptied by "Remove from album", its description its own, and every other
+/// edit written through to the albums the photographs lie in.
 library;
+
+import 'package:flutter/gestures.dart'
+    show PointerDeviceKind, kSecondaryMouseButton;
 
 import 'package:flutter/material.dart' hide Orientation;
 import 'package:flutter_test/flutter_test.dart';
@@ -12,8 +16,12 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:jsontool/jsontool.dart';
 import 'package:valbum_ui/album_date.dart' show folderHasDate;
+import 'package:valbum_ui/collections.dart' show referenceMarkKey;
 import 'package:valbum_ui/main.dart';
 import 'package:valbum_ui/resource.dart';
+
+import 'download_test.dart' show installSaver, postedNames, pumpSelection;
+import 'move_test.dart' show openAlbumMenu, tile;
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
@@ -32,7 +40,8 @@ http.Response json(String body) => http.Response(
 String pathOf(http.BaseRequest request) => Uri.decodeFull(request.url.path);
 
 /// The space the tests browse: an album `Inbox`, an album `2020 Trip`, a
-/// folder `2021` and the collection `Best`.
+/// folder `2021`, the collection `Best` and the album `Mixed`, which holds
+/// the files `own.jpg` and `z.jpg` and a reference `a.jpg` to `Inbox/a.jpg`.
 class Space {
   final List<http.Request> requests = [];
 
@@ -52,8 +61,8 @@ class Space {
       }
       if (action == "delete") {
         return json('{"outcomes":[{"name":"a.jpg","newName":"",'
-            '"message":"Removed from the collection; the photo stays in '
-            'its album."}]}');
+            '"message":"Removed from the album; the photo stays in its own '
+            'album."}]}');
       }
     }
     switch (path) {
@@ -66,8 +75,10 @@ class Space {
       case "/valbum/data/Inbox/":
         return json(fixture("album-move.json"));
       case "/valbum/data/Best/":
-      case "/valbum/data/New/":
         return json(fixture("collection-best.json"));
+      case "/valbum/data/Mixed/":
+      case "/valbum/data/New/":
+        return json(fixture("album-references.json"));
     }
     return http.Response("No such resource: $path", 404);
   }
@@ -152,33 +163,45 @@ Future<void> tapKey(WidgetTester tester, String key) async {
   });
 }
 
+/// Clicks the tile [name] with the secondary mouse button: its menu.
+Future<void> rightClick(WidgetTester tester, String name) async {
+  await withFakeImageHttp(() async {
+    await tester.tap(tile(name),
+        buttons: kSecondaryMouseButton, kind: PointerDeviceKind.mouse);
+    await tester.pumpAndSettle();
+  });
+}
+
+/// An album `Inbox` holding a file `a.jpg` and a reference `r.jpg`, for the
+/// download of a selection.
+String albumWithReference(List<String> rights) =>
+    '["AlbumInfo", {"path": "Inbox", "title": "Inbox", "subTitle": "", '
+    '"rights": [${rights.map((r) => '{"name": "$r"}').join(", ")}], '
+    '"parts": ['
+    '["ImagePart", {"kind": "IMAGE", "name": "a.jpg", '
+    '"date": 1015113600000, "width": 2048, "height": 1536, '
+    '"orientation": "IDENTITY", "rating": 0}], '
+    '["ImagePart", {"kind": "IMAGE", "name": "r.jpg", '
+    '"date": 1015113610000, "width": 2048, "height": 1536, '
+    '"orientation": "IDENTITY", "rating": 0, '
+    '"ref": {"hash": "rrrr", "path": "Trip/r.jpg"}}]'
+    ']}]';
+
 void main() {
-  group("creating a collection", () {
-    testWidgets("the listing creates one of kind COLLECTION", (tester) async {
+  group("no collection of its own", () {
+    testWidgets("the listing creates no collection and shows one as an album",
+        (tester) async {
       var space = Space();
       await pumpRoute(tester, space.client, const []);
 
-      // A collection tile without a picture says what it is.
-      expect(find.byKey(const Key("collection-icon")), findsOneWidget);
-
+      // A collection tile without a picture looks like an album's.
+      expect(find.byKey(const Key("collection-icon")), findsNothing);
       await openMenu(tester);
-      await tapKey(tester, "create-collection");
-      expect(find.byKey(const Key("create-collection-dialog")), findsOneWidget);
-      await tester.enterText(
-          find.byKey(const Key("collection-title")), "Best of 2026");
-      await tapKey(tester, "create-collection-confirm");
-
-      var put = space.puts.single;
-      expect(pathOf(put), "/valbum/data/Best of 2026/");
-      var sent = (Resource.read(JsonReader.fromString(put.body)) as AlbumInfo);
-      expect(sent.kind, AlbumKind.collection);
-      expect(sent.title, "Best of 2026");
-      expect(sent.date, 0);
-      // The app follows where the server says it landed.
-      expect(find.text("Highlights"), findsOneWidget);
+      expect(find.byKey(const Key("create-collection")), findsNothing);
+      expect(find.text("New collection"), findsNothing);
     });
 
-    test("a collection has a date only where its author gave it one", () {
+    test("an album of references has a date only where it has one", () {
       expect(
           folderHasDate(FolderInfo(
               name: "Best", kind: FolderKind.collection, effectiveDate: 0)),
@@ -192,8 +215,8 @@ void main() {
     });
   });
 
-  group("the collection page", () {
-    testWidgets("shows its photographs and a placeholder for a gone one",
+  group("a former collection", () {
+    testWidgets("opens as an album, with a placeholder for a gone photo",
         (tester) async {
       var space = Space();
       await pumpRoute(tester, space.client, const ["Best"]);
@@ -212,14 +235,16 @@ void main() {
       expect(find.byKey(const Key("collection-missing")), findsOneWidget);
       expect(
           find.text("This photo is no longer in the library"), findsOneWidget);
-      // Every address stays the collection's; the gone one is never asked.
+      // Every address stays the album's; the gone one is never asked.
       expect(asked.where((url) => url.contains("/valbum/data/Best/a.jpg")),
           isNotEmpty);
       expect(asked.where((url) => url.contains("/valbum/data/Best/x.jpg")),
           isNotEmpty);
       expect(asked.where((url) => url.contains("gone.jpg")), isEmpty);
-      // Nothing is uploaded into a collection.
-      expect(find.byIcon(Icons.cloud_upload), findsNothing);
+      // Every reference is marked as one.
+      expect(find.byKey(referenceMarkKey), findsNWidgets(2));
+      // It is an album: files are uploaded into it.
+      expect(find.byIcon(Icons.cloud_upload), findsOneWidget);
 
       // The placeholder opens no viewer.
       await withFakeImageHttp(() async {
@@ -229,7 +254,7 @@ void main() {
       expect(find.byKey(const Key("collection-missing")), findsOneWidget);
     });
 
-    testWidgets("offers no trash, persons, re-read or move of images",
+    testWidgets("offers the moves of an album and the removal of a reference",
         (tester) async {
       var space = Space();
       await pumpRoute(tester, space.client, const ["Best"]);
@@ -237,14 +262,12 @@ void main() {
       await openMenu(tester);
 
       expect(find.byKey(const Key("show-trash")), findsNothing);
-      expect(find.byKey(const Key("persons")), findsNothing);
-      expect(find.byKey(const Key("reanalyze")), findsNothing);
-      expect(find.text("Move 1 image to…"), findsNothing);
       expect(find.byKey(const Key("remove-from-collection")), findsOneWidget);
       expect(find.byKey(const Key("add-to-collection")), findsOneWidget);
+      expect(find.byKey(const Key("move-to")), findsOneWidget);
     });
 
-    testWidgets("removes the selection without touching the photos",
+    testWidgets("removes the selected references without touching the photos",
         (tester) async {
       var space = Space();
       await pumpRoute(tester, space.client, const ["Best"]);
@@ -252,18 +275,15 @@ void main() {
       await openMenu(tester);
       await tapKey(tester, "remove-from-collection");
 
-      expect(
-          find.text("The photos are removed from this collection. They "
-              "stay in their albums."),
-          findsOneWidget);
+      expect(find.text(testL10n.removeReferencesExplanation), findsOneWidget);
       await tapKey(tester, "remove-from-collection-confirm");
 
       var post = space.posts("delete").single;
       expect(pathOf(post), "/valbum/data/Best/");
       expect(post.body, '{"target":"","names":[{"name":"a.jpg"}]}');
-      // The server's own words, and the collection fetched anew.
+      // The server's own words, and the album fetched anew.
       expect(
-          find.text("Removed from the collection; the photo stays in its "
+          find.text("Removed from the album; the photo stays in its own "
               "album."),
           findsOneWidget);
       expect(
@@ -283,7 +303,7 @@ void main() {
         await tester.pumpAndSettle();
       });
       await openMenu(tester);
-      // A gone photo is offered to nobody's collection.
+      // A gone photo is offered to no other album.
       expect(find.byKey(const Key("add-to-collection")), findsNothing);
       await tapKey(tester, "remove-from-collection");
       await tapKey(tester, "remove-from-collection-confirm");
@@ -293,8 +313,8 @@ void main() {
     });
 
     testWidgets(
-        "an edit is written to the collection and the source album "
-        "is fetched anew", (tester) async {
+        "an edit is written to the album and the source album is fetched "
+        "anew", (tester) async {
       var space = Space();
       await pumpRoute(tester, space.client, const ["Inbox"]);
       await goTo(tester, "/Best/");
@@ -334,111 +354,199 @@ void main() {
     });
   });
 
-  group("adding to a collection", () {
-    testWidgets("from an album's edit mode, chosen in the picker",
+  group("an album holding references", () {
+    testWidgets("shows them among its own photos, marked", (tester) async {
+      var space = Space();
+      await pumpRoute(tester, space.client, const ["Mixed"]);
+
+      expect(tile("own.jpg"), findsOneWidget);
+      expect(tile("a.jpg"), findsOneWidget);
+      expect(tile("z.jpg"), findsOneWidget);
+      expect(
+          find.descendant(
+              of: tile("a.jpg"), matching: find.byKey(referenceMarkKey)),
+          findsOneWidget);
+      expect(find.byKey(referenceMarkKey), findsOneWidget,
+          reason: "a file of the album carries no mark");
+      // In the order the album answers: by date, the reference among them.
+      expect(tester.getTopLeft(tile("own.jpg")).dx,
+          lessThan(tester.getTopLeft(tile("a.jpg")).dx));
+      expect(tester.getTopLeft(tile("a.jpg")).dx,
+          lessThan(tester.getTopLeft(tile("z.jpg")).dx));
+    });
+
+    testWidgets("its description of a reference is written with the album",
+        (tester) async {
+      var space = Space();
+      await pumpRoute(tester, space.client, const ["Mixed"]);
+      await enterEditMode(tester);
+      await withFakeImageHttp(() async {
+        // A tap beside the tile's toolbars selects it alone.
+        var box = tester.getRect(tile("a.jpg"));
+        await tester.tapAt(Offset(box.left + 8, box.center.dy));
+        await tester.pumpAndSettle();
+        await tester.tap(find.descendant(
+            of: tile("a.jpg"), matching: find.byIcon(Icons.notes)));
+        await tester.pumpAndSettle();
+      });
+      // The description shown is the original's, the album having none.
+      expect(find.text("Beach"), findsWidgets);
+      await tester.enterText(find.byType(TextField), "Where we swam");
+      await withFakeImageHttp(() async {
+        await tester.tap(find.text(testL10n.apply));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byIcon(Icons.save));
+        await tester.pumpAndSettle();
+      });
+
+      var put = space.puts.single;
+      expect(pathOf(put), "/valbum/data/Mixed/",
+          reason: "the album's own description, never the original's album");
+      var sent = (Resource.read(JsonReader.fromString(put.body)) as AlbumInfo);
+      var reference = sent.parts
+          .whereType<ImagePart>()
+          .singleWhere((p) => p.name == "a.jpg");
+      expect(reference.comment, "Where we swam");
+      expect(reference.ref?.hash, "aaaa");
+    });
+
+    testWidgets("a reference is removed, never put into the trash",
+        (tester) async {
+      var space = Space();
+      await pumpRoute(tester, space.client, const ["Mixed"]);
+      await enterEditMode(tester);
+      await rightClick(tester, "a.jpg");
+      expect(find.byKey(const Key("tile-context-delete")), findsNothing);
+      expect(find.byKey(const Key("tile-context-remove-from-collection")),
+          findsOneWidget);
+      await tapKey(tester, "tile-context-remove-from-collection");
+      await tapKey(tester, "remove-from-collection-confirm");
+
+      expect(space.posts("delete").single.body,
+          '{"target":"","names":[{"name":"a.jpg"}]}');
+      expect(space.puts, isEmpty, reason: "no rating is written");
+
+      // A file of the album is put into the trash as before.
+      await rightClick(tester, "own.jpg");
+      expect(find.byKey(const Key("tile-context-delete")), findsOneWidget);
+      expect(find.byKey(const Key("tile-context-remove-from-collection")),
+          findsNothing);
+    });
+
+    testWidgets("a selection is downloaded with its references",
+        (tester) async {
+      var saver = installSaver();
+      var requests = <http.Request>[];
+      await withFakeImageHttp(() async {
+        await pumpSelection(tester, requests,
+            rights: const ["view", "download"],
+            album: albumWithReference,
+            select: false);
+        await openAlbumMenu(tester);
+        await tester.tap(find.byKey(const Key("select-mode")));
+        await tester.pumpAndSettle();
+        await tester.tap(tile("a.jpg"));
+        await tester.pumpAndSettle();
+      });
+      // Both selected: the mark of each.
+      await withFakeImageHttp(() async {
+        await tester.tap(find.descendant(
+            of: tile("r.jpg"), matching: find.byKey(const Key("select-mark"))));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key("select-mode-download")));
+        await tester.pumpAndSettle();
+      });
+
+      var post =
+          requests.singleWhere((r) => r.url.queryParameters["action"] == "zip");
+      expect(postedNames(post), ["a.jpg", "r.jpg"],
+          reason: "a reference is downloaded as if it lay in the album");
+      expect(saver.saved.single.name, "Inbox.zip");
+    });
+  });
+
+  group("adding to an album as reference", () {
+    testWidgets("from an album's edit mode into an ordinary album",
         (tester) async {
       var space = Space();
       await pumpRoute(tester, space.client, const ["Inbox"]);
       await enterEditMode(tester);
       await openMenu(tester);
+      expect(find.text(testL10n.addToAlbumAsReference), findsOneWidget);
       await tapKey(tester, "add-to-collection");
 
       // The picker opens above the album; a folder cannot be confirmed.
       expect(find.byKey(const Key("collection-picker")), findsOneWidget);
       // With the search field of every folder picker (issue #261).
       expect(find.byKey(const Key("picker-search")), findsOneWidget);
-      expect(find.byKey(const Key("picker-needs-collection")), findsOneWidget);
-      expect(
-          tester
-              .widget<ElevatedButton>(find.byKey(const Key("picker-confirm")))
-              .onPressed,
-          isNull);
-      // An album is no collection either: its row says so, a tap on it
-      // chooses nothing.
-      expect(find.byKey(const Key("picker-refused-2020 Trip")), findsOneWidget);
-      await tapKey(tester, "picker-folder-2020 Trip");
-      expect(
-          tester
-              .widget<ElevatedButton>(find.byKey(const Key("picker-confirm")))
-              .onPressed,
-          isNull);
-      // A collection is chosen by a tap.
-      await tapKey(tester, "picker-folder-Best");
       expect(find.byKey(const Key("picker-needs-collection")), findsNothing);
+      expect(find.byKey(const Key("picker-create-collection")), findsNothing);
+      expect(
+          tester
+              .widget<ElevatedButton>(find.byKey(const Key("picker-confirm")))
+              .onPressed,
+          isNull);
+      // Every album is a target, an ordinary one as a former collection.
+      expect(find.byKey(const Key("picker-refused-2020 Trip")), findsNothing);
+      expect(find.byKey(const Key("picker-refused-Best")), findsNothing);
+      await tapKey(tester, "picker-folder-2020 Trip");
       await tapKey(tester, "picker-confirm");
 
       var post = space.posts("collect").single;
       expect(pathOf(post), "/valbum/data/Inbox/");
-      expect(post.body, '{"target":"Best","names":[{"name":"a.jpg"}]}');
-      expect(find.text("Added 1 photo to 'Best'."), findsOneWidget);
+      expect(post.body, '{"target":"2020 Trip","names":[{"name":"a.jpg"}]}');
+      expect(find.text("Added 1 photo to '2020 Trip'."), findsOneWidget);
       // Nothing was moved out of the album.
       expect(space.posts("move"), isEmpty);
     });
 
-    testWidgets("into a collection created in the picker", (tester) async {
+    testWidgets("from a tile's menu", (tester) async {
+      var space = Space();
+      await pumpRoute(tester, space.client, const ["Inbox"]);
+      await rightClick(tester, "b.jpg");
+      await tapKey(tester, "tile-context-collect");
+      await tapKey(tester, "picker-folder-Mixed");
+      await tapKey(tester, "picker-confirm");
+
+      expect(space.posts("collect").single.body,
+          '{"target":"Mixed","names":[{"name":"b.jpg"}]}');
+    });
+
+    testWidgets("into an album created in the picker", (tester) async {
       var space = Space()..createdPath = "New";
       await pumpRoute(tester, space.client, const ["Inbox"]);
       await enterEditMode(tester);
       await openMenu(tester);
       await tapKey(tester, "add-to-collection");
-      await tapKey(tester, "picker-create-collection");
-      await tester.enterText(find.byKey(const Key("collection-title")), "New");
-      await tapKey(tester, "create-collection-confirm");
+      await tapKey(tester, "picker-create-album");
+      await tester.enterText(
+          find.widgetWithText(TextFormField, testL10n.titleLabel), "New");
+      await withFakeImageHttp(() async {
+        await tester.tap(find.text(testL10n.create));
+        await tester.pumpAndSettle();
+      });
 
       var put = space.puts.single;
-      expect(pathOf(put), "/valbum/data/New/");
+      expect(pathOf(put).startsWith("/valbum/data/"), isTrue);
       expect((Resource.read(JsonReader.fromString(put.body)) as AlbumInfo).kind,
-          AlbumKind.collection);
+          AlbumKind.album);
       var post = space.posts("collect").single;
       expect(space.requests.indexOf(post),
           greaterThan(space.requests.indexOf(put)));
-      // The collection was created for what is added, see issue #277.
+      // The album was created for what is added, see issue #277.
       expect(post.body,
           '{"target":"New","names":[{"name":"a.jpg"}],"created":{"cover":""}}');
     });
 
-    testWidgets("the search field proposes the name of the new collection",
-        (tester) async {
-      var space = Space()..createdPath = "Best of Rome";
-      await pumpRoute(tester, space.client, const ["Inbox"]);
-      await enterEditMode(tester);
-      await openMenu(tester);
-      await tapKey(tester, "add-to-collection");
-      await tester.enterText(
-          find.byKey(const Key("picker-search")), " Best of Rome ");
-      await tester.pump(FolderPickerState.searchDelay);
-      await tester.pumpAndSettle();
-      await tapKey(tester, "picker-create-collection");
-
-      var field = tester.widget<EditableText>(find.descendant(
-          of: find.byKey(const Key("collection-title")),
-          matching: find.byType(EditableText)));
-      // A collection has no date: the whole text is its name.
-      expect(field.controller.text, "Best of Rome");
-      await tapKey(tester, "create-collection-confirm");
-
-      var put = space.puts.single;
-      expect(pathOf(put), "/valbum/data/Best of Rome/");
-    });
-
-    testWidgets("a move never goes into a collection", (tester) async {
+    testWidgets("a move goes into a former collection", (tester) async {
       var space = Space();
       await pumpRoute(tester, space.client, const ["Inbox"]);
       await enterEditMode(tester);
       await openMenu(tester);
       await tapKey(tester, "move-to");
       await tapKey(tester, "picker-folder-Best");
-      expect(
-          tester
-              .widget<Text>(find.byKey(const Key("picker-refused-Best")))
-              .data,
-          testL10n.collectionTakesNoMove);
-      expect(find.byKey(const Key("picker-selected")), findsNothing);
-      expect(
-          tester
-              .widget<ElevatedButton>(find.byKey(const Key("picker-confirm")))
-              .onPressed,
-          isNull);
+      expect(find.byKey(const Key("picker-refused-Best")), findsNothing);
+      expect(find.byKey(const Key("picker-selected")), findsOneWidget);
     });
 
     testWidgets("from the viewer's menu", (tester) async {
@@ -458,6 +566,7 @@ void main() {
       );
       await tester.tap(find.byKey(const Key("viewer-menu")));
       await tester.pumpAndSettle();
+      expect(find.text(testL10n.addToAlbumAsReference), findsOneWidget);
       await tester.tap(find.byKey(const Key("viewer-add-to-collection")));
       await tester.pumpAndSettle();
       await tapKey(tester, "picker-folder-Best");
@@ -469,15 +578,14 @@ void main() {
     });
 
     testWidgets(
-        "the viewer names the faces of a photo of a collection in the album "
-        "it lies in (issue #294)", (tester) async {
+        "the viewer names the faces of a reference in the album it lies in "
+        "(issue #294)", (tester) async {
       var space = Space();
       withEmptyImageCache();
       var image = viewerImagePart("a.jpg")
-        ..ref = PhotoRef(hash: "", path: "trip/a.jpg");
-      var album = viewerAlbum([image],
+        ..ref = PhotoRef(hash: "aaaa", path: "trip/a.jpg");
+      viewerAlbum([image],
           rights: const ["view", "download", "contribute", "edit"]);
-      album.kind = AlbumKind.collection;
       fakeImageRequests();
       await pumpViewerHarness(
         tester,
@@ -520,10 +628,9 @@ void main() {
     });
   });
 
-  testWidgets("the German words of a collection", (tester) async {
+  testWidgets("the German words of a reference", (tester) async {
     var l10n = l10nOf(const Locale("de"));
-    expect(l10n.createCollection, "Neue Sammlung");
-    expect(l10n.removeFromCollection, "Aus der Sammlung entfernen");
+    expect(l10n.removeReference, "Aus dem Album entfernen");
     expect(l10n.addedToCollection(2, "'Best'"),
         "2 Fotos wurden zu 'Best' hinzugefügt.");
   });

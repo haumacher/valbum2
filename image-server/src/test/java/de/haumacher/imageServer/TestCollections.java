@@ -117,8 +117,9 @@ public class TestCollections extends ShareTestCase {
 		assertEquals("A collection created for them is covered by what arrived (#153, #277).", "public.jpg",
 			stored.getIndexPicture().getImage());
 		for (String file : files(_base.resolve("Best of"))) {
-			assertTrue("Nothing but the sidecar (and its backups) is in the folder: " + file,
-				file.startsWith("index.json"));
+			// The server's own caches (the record of what the folder holds) are hidden folders.
+			assertTrue("Nothing but the sidecar (its backups, the server's caches) is in the folder: " + file,
+				file.startsWith("index.json") || file.startsWith("."));
 		}
 	}
 
@@ -418,7 +419,9 @@ public class TestCollections extends ShareTestCase {
 		ImagePart source = image(album(get(ZOO, "json", SharingFixture.ALICE)), "members.jpg");
 		assertEquals("Seen in the album it lies in.", Orientation.ROT_R, source.getOrientation());
 		assertEquals(2, source.getRating());
-		assertEquals("The lion", source.getComment());
+		assertEquals("The description of a reference is the album's own, see issue #307.", "", source.getComment());
+		assertEquals("The lion", image(album(get(BEST, "json", SharingFixture.CAROL)), "members.jpg").getComment());
+		assertEquals("The lion", ((ImagePart) stored("Best of").getParts().get(1)).getComment());
 		assertEquals(0, source.getPrivacy());
 		assertEquals("The album keeps its own order.", zooOrder,
 			outline(album(get(ZOO, "json", SharingFixture.ALICE))).toString());
@@ -599,41 +602,63 @@ public class TestCollections extends ShareTestCase {
 
 	// --- What a collection refuses. ---
 
-	public void testACollectionTakesNoFiles() throws Exception {
+	/**
+	 * A collection is an album since issue #307: it takes files, a move into it moves the photograph
+	 * and a move out of it moves the reference; only the faces of a reference are named where its
+	 * photograph lies.
+	 */
+	public void testACollectionIsAnAlbum() throws Exception {
 		createCollection("Best of");
-		FakeResponse upload = upload(BEST, SharingFixture.ALICE, "new.jpg", photo("new"));
-		assertEquals(HttpServletResponse.SC_BAD_REQUEST, upload.status());
-		assertEquals(PhotoCollections.UPLOAD_REFUSED, errorMessage(upload));
-
-		FakeResponse into = move(ZOO, "Best of", SharingFixture.ALICE, "public.jpg");
-		assertEquals(HttpServletResponse.SC_BAD_REQUEST, into.status());
-		assertEquals(PhotoCollections.MOVE_REFUSED, errorMessage(into));
-
 		collect(ZOO, "/Best of", SharingFixture.ALICE, "public.jpg");
-		assertEquals(HttpServletResponse.SC_BAD_REQUEST,
-			move(BEST, SharingFixture.PUBLIC, SharingFixture.ALICE, "public.jpg").status());
-		assertTrue(Files.exists(_base.resolve(SharingFixture.ZOO).resolve("public.jpg")));
+		assertEquals(AlbumKind.COLLECTION, stored("Best of").getKind());
+
+		FakeResponse upload = upload(BEST, SharingFixture.ALICE, "new.jpg", photo("new"));
+		assertEquals(upload.body(), HttpServletResponse.SC_OK, upload.status());
+		assertEquals(Arrays.asList("public.jpg", "new.jpg"), outline(album(get(BEST, "json", SharingFixture.ALICE))));
+
+		FakeResponse into = move(PUBLIC, "Best of", SharingFixture.ALICE, "open.jpg");
+		assertEquals(into.body(), HttpServletResponse.SC_OK, into.status());
+		assertTrue(Files.exists(_base.resolve("Best of").resolve("open.jpg")));
+		assertEquals("An album holding files of its own is stored as one.", AlbumKind.ALBUM, stored("Best of").getKind());
+
+		FakeResponse out = move(BEST, SharingFixture.PUBLIC, SharingFixture.ALICE, "public.jpg");
+		assertEquals(out.body(), HttpServletResponse.SC_OK, out.status());
+		assertTrue("The photograph stays where it is.", Files.exists(_base.resolve(SharingFixture.ZOO).resolve("public.jpg")));
+		assertFalse(Files.exists(_base.resolve(SharingFixture.PUBLIC).resolve("public.jpg")));
+		assertEquals(Arrays.asList("public.jpg"), names(PhotoCollections.references(stored(SharingFixture.PUBLIC))));
+		assertTrue(PhotoCollections.references(stored("Best of")).isEmpty());
 
 		FakeResponse folder = put("/Best of/Inner", "[\"AlbumInfo\",{\"title\":\"Inner\"}]", SharingFixture.ALICE);
-		assertEquals(HttpServletResponse.SC_BAD_REQUEST, folder.status());
+		assertEquals(folder.body(), HttpServletResponse.SC_OK, folder.status());
 
 		Map<String, String> tag = new HashMap<>();
 		tag.put("action", "tag-faces");
-		FakeResponse faces = post(BEST, "{\"faces\":[]}", SharingFixture.ALICE, tag);
+		FakeResponse faces = post(PUBLIC, "{\"faces\":[{\"image\":\"public.jpg\",\"face\":0}]}", SharingFixture.ALICE, tag);
 		assertEquals(HttpServletResponse.SC_BAD_REQUEST, faces.status());
 		assertEquals(PhotoCollections.FACES_REFUSED, errorMessage(faces));
 	}
 
-	public void testOnlyACollectionIsCollectedInto() throws Exception {
-		FakeResponse response = collect(ZOO, PUBLIC, SharingFixture.ALICE, "public.jpg");
-		assertEquals(HttpServletResponse.SC_BAD_REQUEST, response.status());
-		assertEquals(PhotoCollections.NOT_A_COLLECTION, errorMessage(response));
+	public void testReferencesGoIntoAlbumsOnly() throws Exception {
+		FakeResponse album = collect(ZOO, PUBLIC, SharingFixture.ALICE, "public.jpg");
+		assertEquals(album.body(), HttpServletResponse.SC_OK, album.status());
+		assertEquals(Arrays.asList("open.jpg", "public.jpg"), outline(album(get(PUBLIC, "json", SharingFixture.ALICE))));
+
+		for (String target : new String[] { "/Inbox", "/" + SharingFixture.YEAR }) {
+			if (target.equals("/Inbox")) {
+				assertEquals(HttpServletResponse.SC_OK,
+					upload("/Inbox/", SharingFixture.ALICE, "waiting.jpg", photo("waiting")).status());
+			}
+			FakeResponse response = collect(ZOO, target, SharingFixture.ALICE, "public.jpg");
+			assertEquals(target, HttpServletResponse.SC_BAD_REQUEST, response.status());
+			assertEquals(PhotoCollections.NOT_A_COLLECTION, errorMessage(response));
+		}
 	}
 
-	public void testCollectingNeedsTheEditRight() throws Exception {
+	public void testCollectingNeedsTheContributeRight() throws Exception {
 		createCollection("Best of");
 		assertEquals(HttpServletResponse.SC_FORBIDDEN, collect(ZOO, "/Best of", SharingFixture.DAVE, "public.jpg").status());
-		assertEquals(HttpServletResponse.SC_FORBIDDEN, collect(ZOO, "/Best of", SharingFixture.BOB, "public.jpg").status());
+		FakeResponse bob = collect(ZOO, "/Best of", SharingFixture.BOB, "public.jpg");
+		assertEquals("Adding a reference is adding a photograph.", HttpServletResponse.SC_OK, bob.status());
 		assertEquals(HttpServletResponse.SC_FORBIDDEN, createCollectionAs("Mine", SharingFixture.DAVE).status());
 	}
 
@@ -735,6 +760,14 @@ public class TestCollections extends ShareTestCase {
 	private static ImagePart image(AlbumInfo album, String name) {
 		ImagePart result = Crops.findImage(album, name);
 		assertNotNull("No part '" + name + "' in " + outline(album), result);
+		return result;
+	}
+
+	private static List<String> names(List<ImagePart> images) {
+		List<String> result = new ArrayList<>();
+		for (ImagePart image : images) {
+			result.add(image.getName());
+		}
 		return result;
 	}
 

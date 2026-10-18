@@ -34,6 +34,7 @@ import 'album_edit.dart' show PlaneTransform;
 import 'app.dart';
 import 'caller.dart';
 import 'client.dart';
+import 'collections.dart' show isReference;
 import 'crop.dart';
 import 'dialog_style.dart';
 import 'key_guard.dart';
@@ -61,7 +62,8 @@ const double trashTileSize = 160;
 ///
 /// A group is not judged by its representative here: the rating belongs to
 /// one photograph, and a trashed member of a group whose representative is
-/// kept is in the trash all the same.
+/// kept is in the trash all the same. A reference (issue #307) is never in
+/// this album's trash: its photograph is in the trash of its own album.
 List<ImagePart> trashedImages(AlbumInfo album) => [
       for (var part in album.parts)
         ...switch (part) {
@@ -69,7 +71,9 @@ List<ImagePart> trashedImages(AlbumInfo album) => [
           ImageGroup() => part.images,
           _ => const <ImagePart>[],
         },
-    ].where((image) => image.rating <= trashRating).toList();
+    ]
+        .where((image) => image.rating <= trashRating && !isReference(image))
+        .toList();
 
 /// Whether [album] holds a photograph rated as trash, see [trashedImages].
 bool hasTrashedImages(AlbumInfo album) => trashedImages(album).isNotEmpty;

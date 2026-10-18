@@ -1,14 +1,14 @@
 /// The one catalogue of what can be done with a photo of a grid (issue
 /// #290): every surface showing tiles — the album in its view, edit and
-/// select modes, a collection, a saved search, the search view, the view of an
+/// select modes, a saved search, the search view, the view of an
 /// entry of the bell, the inbox — and the viewer choose which of these actions
 /// they present and how (a tile's menu, a toolbar, a selection bar), but take
 /// the decision whether an action is there, its words and what it does from
 /// here.
 ///
 /// An action has two predicates: [PhotoAction.appliesTo] asks the photo
-/// (a file that cannot be read has no picture to turn or crop, a photo of a
-/// collection that is gone has nothing to open), [PhotoAction.allowedFor] the
+/// (a file that cannot be read has no picture to turn or crop, a reference
+/// whose photo is gone has nothing to open), [PhotoAction.allowedFor] the
 /// view it is shown in ([PhotoFacts]: which view, which mode, the rights, the
 /// session). What it does is the surface's own operation, reached through
 /// [PhotoActionHost], which every surface implements for the actions it can
@@ -35,12 +35,13 @@ import 'routes.dart';
 import 'search_query.dart';
 
 /// The views a photo of a grid is shown in.
+///
+/// A collection is an album (issue #307): it is shown as one, its references
+/// beside the files of other albums alike.
 enum PhotoView {
-  /// An album of files.
+  /// An album: its files, and its references to photos of other albums
+  /// (#221, #307).
   album,
-
-  /// A collection: references to photos lying in other albums (#221).
-  collection,
 
   /// A saved search (#227).
   savedSearch,
@@ -70,11 +71,12 @@ enum PhotoMode {
   select,
 }
 
-/// Whether "Add to collection…" may be asked of photographs of a folder, the
-/// rule of the server (`ImageServlet.collect`): never through a share link,
-/// and otherwise by a signed-in member of the space or whoever may contribute
-/// to the folder the photographs are taken from. Whether the collection
-/// chosen may be written is the picker's question (`edit` on the target).
+/// Whether "Add to album (as reference)…" may be asked of photographs of a
+/// folder, the rule of the server (`ImageServlet.collect`): never through a
+/// share link, and otherwise by a signed-in member of the space or whoever
+/// may contribute to the folder the photographs are taken from. Whether the
+/// album chosen takes them is the picker's question (`contribute` on the
+/// target).
 bool mayCollectFrom({
   required bool shareLink,
   required bool signedIn,
@@ -110,11 +112,12 @@ class PhotoSource {
 
 /// The album the photo [image] of the view showing [album] at [folder] lies
 /// in, the one rule of where the viewer writes (issue #294) — the rule of the
-/// server, which writes a crop, a poster, a face or a description asked
-/// through a collection or a search into the photo's own album, under the
-/// rights of that album (#292).
+/// server, which writes a crop, a poster or a face asked through a reference
+/// or a search into the photo's own album, under the rights of that album
+/// (#292). A description of a reference is the album's own (#307): it is
+/// written with the album shown, see [isReference].
 ///
-///  * A photo found by a search or held by a collection names its album
+///  * A photo found by a search or referenced by an album names its album
 ///    itself ([ImagePart.ref], answered to a member alone): that album, in
 ///    the space the view stands in, and the file's own name there.
 ///  * Without that name such a photo has no album the app could write to —
@@ -216,11 +219,10 @@ class PhotoFacts {
   /// that has one.
   bool get onSelection => mode != PhotoMode.view;
 
-  /// Whether the photographs shown lie in other albums.
+  /// Whether the photographs shown lie in other albums: a search, saved or
+  /// not. An album's references lie elsewhere one by one, see [isReference].
   bool get showsOtherAlbums =>
-      view == PhotoView.collection ||
-      view == PhotoView.savedSearch ||
-      view == PhotoView.search;
+      view == PhotoView.savedSearch || view == PhotoView.search;
 
   /// Whether the sidecar of the folder may be written: `edit`, no link.
   bool get mayWrite => rights.mayEdit && !shareLink;
@@ -307,7 +309,7 @@ abstract mixin class PhotoActionHost {
 
   Future<void> collectPhotos(PhotoTile? tile) => _unsupported();
 
-  Future<void> removePhotosFromCollection(PhotoTile tile) => _unsupported();
+  Future<void> removeReferences(PhotoTile tile) => _unsupported();
 
   Future<void> downloadPhotos(PhotoTile? tile) => _unsupported();
 
@@ -422,8 +424,9 @@ class PhotoAction {
     run: (host, tile) async => host.editPhoto(tile),
   );
 
-  /// Moves the selection into another album (#47, #121); never out of a
-  /// collection or a search, whose photos lie elsewhere.
+  /// Moves the selection into another album (#47, #121) — a reference moves
+  /// as a reference (#307); never out of a search, whose photos lie
+  /// elsewhere.
   static final PhotoAction move = PhotoAction._(
     id: "move",
     icon: Icons.drive_file_move,
@@ -439,14 +442,16 @@ class PhotoAction {
 
   /// Puts the selection into the trash (#152, #160): rated as trash by an
   /// editor, into the trash folder by a contributor of an inbox. Never in a
-  /// collection or a search, which have no trash of their own (#221).
+  /// search, which has no trash of its own, and never a reference, whose
+  /// photo is put into the trash of its own album: a reference is removed
+  /// from the album ([removeReference], #307).
   static final PhotoAction delete = PhotoAction._(
     id: "delete",
     icon: Icons.delete_outline,
     onSelection: true,
     label: (l10n, _, count) =>
         l10n.deleteSubjectAction(ImageSubject(count).asked(l10n)),
-    applies: (image) => !image.missing,
+    applies: (image) => !image.missing && !isReference(image),
     allowed: (facts) => facts.view == PhotoView.inbox
         ? facts.mayTakeOut
         : facts.view == PhotoView.album && facts.mode == PhotoMode.edit,
@@ -465,15 +470,15 @@ class PhotoAction {
     run: (host, tile) => host.labelPhotos(tile),
   );
 
-  /// Adds the selection, or the photo, to a collection (#221), see
-  /// [mayCollectFrom].
+  /// Adds the selection, or the photo, to another album as a reference (#221,
+  /// #307), see [mayCollectFrom].
   static final PhotoAction collect = PhotoAction._(
     id: "collect",
-    icon: Icons.collections_bookmark_outlined,
+    icon: Icons.add_link,
     onSelection: true,
     label: (l10n, facts, count) => facts.onSelection
-        ? l10n.addCountToCollection(count)
-        : l10n.addToCollection,
+        ? l10n.addCountToAlbumAsReference(count)
+        : l10n.addToAlbumAsReference,
     applies: (image) => image.hasPicture,
     // The viewer collects from the album the photo lies in (#294).
     allowed: (facts) =>
@@ -482,16 +487,18 @@ class PhotoAction {
     run: (host, tile) => host.collectPhotos(tile),
   );
 
-  /// Takes the selection out of the collection (#221).
-  static final PhotoAction removeFromCollection = PhotoAction._(
+  /// Takes the references of the selection out of the album (#221, #307):
+  /// the photos stay in their own albums. Offered on a reference, where
+  /// [delete] is not.
+  static final PhotoAction removeReference = PhotoAction._(
     id: "remove-from-collection",
-    icon: Icons.remove_circle_outline,
+    icon: Icons.link_off,
     onSelection: true,
-    label: (l10n, _, __) => l10n.removeFromCollection,
-    applies: (_) => true,
+    label: (l10n, _, __) => l10n.removeReference,
+    applies: (image) => isReference(image),
     allowed: (facts) =>
-        facts.view == PhotoView.collection && facts.mode == PhotoMode.edit,
-    run: (host, tile) => host.removePhotosFromCollection(tile),
+        facts.view == PhotoView.album && facts.mode == PhotoMode.edit,
+    run: (host, tile) => host.removeReferences(tile),
   );
 
   /// Downloads the originals of the selection, or of the photo (#164, #209).
@@ -507,9 +514,9 @@ class PhotoAction {
   );
 
   /// Opens the album the photo lies in, with the photo in view and marked
-  /// (#289): for a photo of a collection or a search, whose source the
-  /// server names to a member alone ([ImagePart.ref]) — whoever is not told
-  /// where it lies is not offered the way there.
+  /// (#289): for a reference or a photo of a search, whose source the server
+  /// names to a member alone ([ImagePart.ref]) — whoever is not told where it
+  /// lies is not offered the way there.
   static final PhotoAction showInAlbum = PhotoAction._(
     id: "show-in-album",
     icon: Icons.photo_album_outlined,
@@ -518,7 +525,9 @@ class PhotoAction {
     applies: (image) => !image.missing && sourceFolderOf(image) != null,
     allowed: (facts) =>
         !facts.shareLink &&
-        (facts.showsOtherAlbums || facts.view == PhotoView.viewer),
+        (facts.showsOtherAlbums ||
+            facts.view == PhotoView.viewer ||
+            facts.view == PhotoView.album),
     run: (host, tile) async {
       var delegate = host.photoDelegate;
       var source = host.sourceOfPhoto(tile);
@@ -641,7 +650,7 @@ final List<PhotoAction> photoActions = [
   PhotoAction.delete,
   PhotoAction.labels,
   PhotoAction.collect,
-  PhotoAction.removeFromCollection,
+  PhotoAction.removeReference,
   PhotoAction.download,
   PhotoAction.showInAlbum,
   PhotoAction.moreLikeThis,

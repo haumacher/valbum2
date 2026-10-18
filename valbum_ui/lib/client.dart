@@ -1945,7 +1945,7 @@ class VAlbumClient {
       throw failure(
         response.statusCode,
         response.body,
-        platformMessages.doingCollecting("'$target'"),
+        platformMessages.doingAddingReferences("'$target'"),
       );
     }
     return MoveResult.read(JsonReader.fromString(response.body));

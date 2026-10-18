@@ -3381,43 +3381,19 @@ class AppLocalizationsDe extends AppLocalizations {
   }
 
   @override
-  String doingCollecting(String target) {
-    return 'Hinzufügen zur Sammlung $target';
+  String doingAddingReferences(String target) {
+    return 'Hinzufügen von Fotos zum Album $target';
   }
-
-  @override
-  String get createCollection => 'Neue Sammlung';
-
-  @override
-  String get newCollectionTitle => 'Neue Sammlung';
-
-  @override
-  String get newCollectionHint =>
-      'Eine Sammlung zeigt Fotos anderer Alben, ohne sie zu kopieren.';
-
-  @override
-  String get collectionTakesNoMove =>
-      'Eine Sammlung enthält keine Dateien; Fotos kommen mit „Zur Sammlung hinzufügen“ hinein.';
-
-  @override
-  String get pickerNotCollection => 'Keine Sammlung.';
 
   @override
   String get searchTakesNoPhotos =>
       'Eine gespeicherte Suche enthält keine eigenen Fotos.';
 
   @override
-  String get pickerNeedsCollection =>
-      'Fotos werden einer Sammlung hinzugefügt – wählen Sie eine aus oder erstellen Sie eine.';
-
-  @override
-  String get createNewCollection => 'Neue Sammlung erstellen…';
-
-  @override
   String get nothingToCollect => 'Wählen Sie zuerst die Fotos aus.';
 
   @override
-  String get addToCollectionTitle => 'Zur Sammlung hinzufügen';
+  String get addAsReferenceTitle => 'Als Verweis zu einem Album hinzufügen';
 
   @override
   String addToCollectionConfirm(int count) {
@@ -3447,36 +3423,36 @@ class AppLocalizationsDe extends AppLocalizations {
       'Dieses Foto ist nicht mehr in der Bibliothek';
 
   @override
-  String get removeFromCollection => 'Aus der Sammlung entfernen';
+  String get removeReference => 'Aus dem Album entfernen';
 
   @override
-  String removeFromCollectionQuestion(int count) {
+  String removeReferencesQuestion(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count Fotos aus dieser Sammlung entfernen?',
-      one: '1 Foto aus dieser Sammlung entfernen?',
+      other: '$count Fotos aus diesem Album entfernen?',
+      one: '1 Foto aus diesem Album entfernen?',
     );
     return '$_temp0';
   }
 
   @override
-  String get removeFromCollectionExplanation =>
-      'Die Fotos werden aus dieser Sammlung entfernt. Sie verbleiben in ihren Alben.';
+  String get removeReferencesExplanation =>
+      'Es werden nur die Verweise aus diesem Album entfernt. Die Fotos verbleiben in ihren jeweiligen Alben.';
 
   @override
-  String removedFromCollection(int count) {
+  String removedReferences(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count Fotos wurden aus der Sammlung entfernt.',
-      one: '1 Foto wurde aus der Sammlung entfernt.',
+      other: '$count Fotos wurden aus dem Album entfernt.',
+      one: '1 Foto wurde aus dem Album entfernt.',
     );
     return '$_temp0';
   }
 
   @override
-  String get addToCollection => 'Zur Sammlung hinzufügen…';
+  String get addToAlbumAsReference => 'Zum Album hinzufügen (als Verweis)…';
 
   @override
   String propertySource(String album) {
@@ -3995,10 +3971,14 @@ class AppLocalizationsDe extends AppLocalizations {
       'Eine gespeicherte Ansicht zeigt die Fotos unterhalb ihres Ordners, die der Suche entsprechen – auch neue.';
 
   @override
-  String get createCollectionFromThese => 'Sammlung aus diesen erstellen…';
+  String get addAllToAlbumAsReference =>
+      'Alle zu einem Album hinzufügen (als Verweis)…';
 
   @override
   String get showInAlbum => 'Im Album anzeigen';
+
+  @override
+  String get referenceMark => 'Aus einem anderen Album gezeigt';
 
   @override
   String searchRatingAtLeast(String rating) {
@@ -4431,12 +4411,12 @@ class AppLocalizationsDe extends AppLocalizations {
   String get tileEditAction => 'Bearbeiten';
 
   @override
-  String addCountToCollection(int count) {
+  String addCountToAlbumAsReference(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count Fotos zu einer Sammlung hinzufügen…',
-      one: '1 Foto zu einer Sammlung hinzufügen…',
+      other: '$count Fotos zu einem Album hinzufügen (als Verweis)…',
+      one: '1 Foto zu einem Album hinzufügen (als Verweis)…',
     );
     return '$_temp0';
   }

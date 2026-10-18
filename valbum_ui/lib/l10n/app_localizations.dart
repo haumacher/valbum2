@@ -5259,41 +5259,11 @@ abstract class AppLocalizations {
   /// **'Remove this passkey of {name}?'**
   String contactPasskeyRemoveTitle(String name);
 
-  /// Names what the app was doing when a request failed (adding photos to a collection, i.e. a virtual album of references)
+  /// Names what the app was doing when a request failed: adding photos to an album as references, i.e. without copying them (issue #307)
   ///
   /// In en, this message translates to:
-  /// **'adding to the collection {target}'**
-  String doingCollecting(String target);
-
-  /// Menu entry of a folder listing creating a collection: an album that references photos lying in other albums instead of holding files (issue #221)
-  ///
-  /// In en, this message translates to:
-  /// **'New collection'**
-  String get createCollection;
-
-  /// Title of the dialog creating a collection (an album of references to photos of other albums, issue #221)
-  ///
-  /// In en, this message translates to:
-  /// **'New collection'**
-  String get newCollectionTitle;
-
-  /// Hint in the dialog creating a collection (issue #221)
-  ///
-  /// In en, this message translates to:
-  /// **'A collection shows photos of other albums without copying them.'**
-  String get newCollectionHint;
-
-  /// Line of the move picker on a collection, which cannot be the target of a move (issue #221)
-  ///
-  /// In en, this message translates to:
-  /// **'A collection holds no files; photos are added to it with “Add to collection”.'**
-  String get collectionTakesNoMove;
-
-  /// Second line of an album (or other folder that is no collection) in the add-to-collection picker, saying why it cannot be chosen (issue #221)
-  ///
-  /// In en, this message translates to:
-  /// **'Not a collection.'**
-  String get pickerNotCollection;
+  /// **'adding photos to the album {target}'**
+  String doingAddingReferences(String target);
 
   /// Second line of a saved search in the move picker, saying why it cannot be chosen as the target (issue #227)
   ///
@@ -5301,79 +5271,67 @@ abstract class AppLocalizations {
   /// **'A saved search holds no photos of its own.'**
   String get searchTakesNoPhotos;
 
-  /// Line of the add-to-collection picker while no collection is chosen (issue #221)
-  ///
-  /// In en, this message translates to:
-  /// **'Photos are added to a collection — choose one or create one.'**
-  String get pickerNeedsCollection;
-
-  /// Entry of the add-to-collection picker creating a collection in the folder shown (issue #221)
-  ///
-  /// In en, this message translates to:
-  /// **'Create new collection…'**
-  String get createNewCollection;
-
-  /// Said when Add to collection is asked with nothing selected (issue #221)
+  /// Said when Add to album (as reference) is asked with nothing selected (issues #221, #307)
   ///
   /// In en, this message translates to:
   /// **'Select the photos to add first.'**
   String get nothingToCollect;
 
-  /// Title of the dialog choosing the collection photos are added to (a collection references photos of other albums, issue #221)
+  /// Title of the dialog choosing the album photos are added to as references: the album shows them without copying them, they stay in their own albums (issues #221, #307)
   ///
   /// In en, this message translates to:
-  /// **'Add to collection'**
-  String get addToCollectionTitle;
+  /// **'Add to album as reference'**
+  String get addAsReferenceTitle;
 
-  /// Confirm button of the add-to-collection picker (issue #221)
+  /// Confirm button of the picker adding photos to an album as references (issues #221, #307)
   ///
   /// In en, this message translates to:
   /// **'{count, plural, =1{Add 1 photo here} other{Add {count} photos here}}'**
   String addToCollectionConfirm(int count);
 
-  /// Summary after adding photos to a collection; target is the quoted collection path (issue #221)
+  /// Summary after adding photos to an album as references; target is the quoted album path (issues #221, #307)
   ///
   /// In en, this message translates to:
   /// **'{count, plural, =0{Nothing was added to {target}.} =1{Added 1 photo to {target}.} other{Added {count} photos to {target}.}}'**
   String addedToCollection(int count, String target);
 
-  /// Placeholder tile of a collection for a referenced photo that was deleted or purged from the space (issue #221)
+  /// Placeholder tile of a reference whose photo was deleted or purged from the space (issues #221, #307)
   ///
   /// In en, this message translates to:
   /// **'This photo is no longer in the library'**
   String get collectionPhotoMissing;
 
-  /// Menu entry and confirm button taking selected photos out of a collection; the photos stay in their albums (issue #221)
+  /// Menu entry and confirm button taking selected references out of an album; the photos stay in their own albums (issues #221, #307)
   ///
   /// In en, this message translates to:
-  /// **'Remove from collection'**
-  String get removeFromCollection;
+  /// **'Remove from album'**
+  String get removeReference;
 
-  /// Title of the confirmation before photos are taken out of a collection (issue #221)
+  /// Title of the confirmation before references are taken out of an album (issues #221, #307)
   ///
   /// In en, this message translates to:
-  /// **'{count, plural, =1{Remove 1 photo from this collection?} other{Remove {count} photos from this collection?}}'**
-  String removeFromCollectionQuestion(int count);
+  /// **'{count, plural, =1{Remove 1 photo from this album?} other{Remove {count} photos from this album?}}'**
+  String removeReferencesQuestion(int count);
 
-  /// Explanation in the confirmation before photos are taken out of a collection (issue #221)
+  /// Explanation in the confirmation before references are taken out of an album (issues #221, #307)
   ///
   /// In en, this message translates to:
-  /// **'The photos are removed from this collection. They stay in their albums.'**
-  String get removeFromCollectionExplanation;
+  /// **'Only the references are removed from this album. The photos stay in their own albums.'**
+  String get removeReferencesExplanation;
 
-  /// Said after photos were taken out of a collection (issue #221)
+  /// Said after references were taken out of an album (issues #221, #307)
   ///
   /// In en, this message translates to:
-  /// **'{count, plural, =1{Removed 1 photo from the collection.} other{Removed {count} photos from the collection.}}'**
-  String removedFromCollection(int count);
+  /// **'{count, plural, =1{Removed 1 photo from the album.} other{Removed {count} photos from the album.}}'**
+  String removedReferences(int count);
 
-  /// Menu entry adding the selected photo(s) to a collection, i.e. a virtual album referencing photos without copying them (issue #221)
+  /// Menu entry adding the selected photo(s) to another album as references: shown there without being copied, they stay in their own album (issues #221, #307)
   ///
   /// In en, this message translates to:
-  /// **'Add to collection…'**
-  String get addToCollection;
+  /// **'Add to album (as reference)…'**
+  String get addToAlbumAsReference;
 
-  /// The line of the image properties naming the album folder a photo shown in a collection lies in (issue #221)
+  /// The line of the image properties naming the album folder a referenced photo (or one found by a search) lies in (issues #221, #307)
   ///
   /// In en, this message translates to:
   /// **'In album: {album}'**
@@ -6171,17 +6129,23 @@ abstract class AppLocalizations {
   /// **'A saved view shows the photos below the folder it is saved in that match the search, new ones included.'**
   String get saveAsViewHint;
 
-  /// Action of the search view and of a saved search that adds the photos found (or the selection) to a collection, chosen or created
+  /// Action of the search view and of a saved search that adds the photos found to an album as references, chosen or created (issues #227, #307)
   ///
   /// In en, this message translates to:
-  /// **'Create collection from these…'**
-  String get createCollectionFromThese;
+  /// **'Add all to album (as reference)…'**
+  String get addAllToAlbumAsReference;
 
-  /// Menu entry of the photo viewer that opens the photo in the album it lies in, from a collection or a search
+  /// Menu entry that opens the photo in the album it lies in, from an album referencing it or a search
   ///
   /// In en, this message translates to:
   /// **'Show in album'**
   String get showInAlbum;
+
+  /// Spoken label of the small link mark on the tile of a reference: a photo of another album that this album shows without a copy (issue #307)
+  ///
+  /// In en, this message translates to:
+  /// **'Shown from another album'**
+  String get referenceMark;
 
   /// Chip of the search view showing the lowest rating chosen, e.g. At least: Good
   ///
@@ -6807,11 +6771,11 @@ abstract class AppLocalizations {
   /// **'Edit'**
   String get tileEditAction;
 
-  /// Entry of the context menu of a photo tile acting on the selection: adds the selected photos to a collection, chosen or created (issues #221, #290)
+  /// Entry of the context menu of a photo tile acting on the selection: adds the selected photos to another album as references, chosen or created (issues #221, #290, #307)
   ///
   /// In en, this message translates to:
-  /// **'{count, plural, =1{Add 1 photo to a collection…} other{Add {count} photos to a collection…}}'**
-  String addCountToCollection(int count);
+  /// **'{count, plural, =1{Add 1 photo to an album (as reference)…} other{Add {count} photos to an album (as reference)…}}'**
+  String addCountToAlbumAsReference(int count);
 
   /// Heading of the administrator's section of the server settings leading to the settings of the space (issue #297)
   ///

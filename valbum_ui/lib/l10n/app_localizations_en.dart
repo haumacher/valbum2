@@ -3333,43 +3333,19 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String doingCollecting(String target) {
-    return 'adding to the collection $target';
+  String doingAddingReferences(String target) {
+    return 'adding photos to the album $target';
   }
-
-  @override
-  String get createCollection => 'New collection';
-
-  @override
-  String get newCollectionTitle => 'New collection';
-
-  @override
-  String get newCollectionHint =>
-      'A collection shows photos of other albums without copying them.';
-
-  @override
-  String get collectionTakesNoMove =>
-      'A collection holds no files; photos are added to it with “Add to collection”.';
-
-  @override
-  String get pickerNotCollection => 'Not a collection.';
 
   @override
   String get searchTakesNoPhotos =>
       'A saved search holds no photos of its own.';
 
   @override
-  String get pickerNeedsCollection =>
-      'Photos are added to a collection — choose one or create one.';
-
-  @override
-  String get createNewCollection => 'Create new collection…';
-
-  @override
   String get nothingToCollect => 'Select the photos to add first.';
 
   @override
-  String get addToCollectionTitle => 'Add to collection';
+  String get addAsReferenceTitle => 'Add to album as reference';
 
   @override
   String addToCollectionConfirm(int count) {
@@ -3398,36 +3374,36 @@ class AppLocalizationsEn extends AppLocalizations {
   String get collectionPhotoMissing => 'This photo is no longer in the library';
 
   @override
-  String get removeFromCollection => 'Remove from collection';
+  String get removeReference => 'Remove from album';
 
   @override
-  String removeFromCollectionQuestion(int count) {
+  String removeReferencesQuestion(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: 'Remove $count photos from this collection?',
-      one: 'Remove 1 photo from this collection?',
+      other: 'Remove $count photos from this album?',
+      one: 'Remove 1 photo from this album?',
     );
     return '$_temp0';
   }
 
   @override
-  String get removeFromCollectionExplanation =>
-      'The photos are removed from this collection. They stay in their albums.';
+  String get removeReferencesExplanation =>
+      'Only the references are removed from this album. The photos stay in their own albums.';
 
   @override
-  String removedFromCollection(int count) {
+  String removedReferences(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: 'Removed $count photos from the collection.',
-      one: 'Removed 1 photo from the collection.',
+      other: 'Removed $count photos from the album.',
+      one: 'Removed 1 photo from the album.',
     );
     return '$_temp0';
   }
 
   @override
-  String get addToCollection => 'Add to collection…';
+  String get addToAlbumAsReference => 'Add to album (as reference)…';
 
   @override
   String propertySource(String album) {
@@ -3941,10 +3917,13 @@ class AppLocalizationsEn extends AppLocalizations {
       'A saved view shows the photos below the folder it is saved in that match the search, new ones included.';
 
   @override
-  String get createCollectionFromThese => 'Create collection from these…';
+  String get addAllToAlbumAsReference => 'Add all to album (as reference)…';
 
   @override
   String get showInAlbum => 'Show in album';
+
+  @override
+  String get referenceMark => 'Shown from another album';
 
   @override
   String searchRatingAtLeast(String rating) {
@@ -4374,12 +4353,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get tileEditAction => 'Edit';
 
   @override
-  String addCountToCollection(int count) {
+  String addCountToAlbumAsReference(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: 'Add $count photos to a collection…',
-      one: 'Add 1 photo to a collection…',
+      other: 'Add $count photos to an album (as reference)…',
+      one: 'Add 1 photo to an album (as reference)…',
     );
     return '$_temp0';
   }

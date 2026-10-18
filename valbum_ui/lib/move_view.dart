@@ -262,16 +262,18 @@ Future<void> moveWithPicker({
   );
 }
 
-/// Asks for a collection and adds [names] of the folder at [source] to it,
-/// see issue #221.
+/// Asks for an album and adds [names] of the folder at [source] to it as
+/// references, see issues #221 and #307.
 ///
-/// Choose or create: the picker confirms on a collection only and offers
-/// "Create new collection…" where the caller may edit the folder shown; a
-/// collection created there is made first and the photographs are then added
-/// to the path the server answered for it. Nothing is copied — the
-/// collection stores references. The target is forgotten by the router
-/// afterwards, so that it is fetched afresh when it is opened; the source is
-/// unchanged. Refused while offline, like every other write.
+/// Choose or create: the picker confirms on an album the caller may add
+/// photos to — any album, a collection being one, never a saved search (the
+/// inbox is no entry of a listing) — and offers "Create new album…" where the
+/// caller may add to the folder shown; an album created there is made first
+/// and the photographs are then added to the path the server answered for
+/// it. Nothing is copied — the album stores references. The target is
+/// forgotten by the router afterwards, so that it is fetched afresh when it
+/// is opened; the source is unchanged. Refused while offline, like every
+/// other write.
 Future<void> collectWithPicker({
   required BuildContext context,
   required VAlbumClient client,
@@ -293,11 +295,12 @@ Future<void> collectWithPicker({
     builder: (context) => FolderPicker(
       key: const Key("collection-picker"),
       client: client,
-      title: l10n.addToCollectionTitle,
+      title: l10n.addAsReferenceTitle,
       initialPath:
           source.isEmpty ? const [] : source.sublist(0, source.length - 1),
       confirmLabel: (path) => l10n.addToCollectionConfirm(names.length),
-      targetIsCollection: true,
+      mayCreateAlbum: true,
+      requireContribute: true,
     ),
   );
   if (picked == null || !context.mounted) {
@@ -319,8 +322,8 @@ Future<void> collectWithPicker({
       return;
     }
   }
-  // Only a collection made for these photographs is given a cover by them,
-  // see issue #277.
+  // Only an album made for these photographs is given a cover by them, see
+  // issue #277.
   var collected = await writeAction(
     context,
     () => client.collect(
@@ -349,7 +352,7 @@ Future<void> collectWithPicker({
   await reportOutcomes(
     context: context,
     messenger: messenger,
-    title: l10n.addToCollectionTitle,
+    title: l10n.addAsReferenceTitle,
     summary: summary,
     result: result,
   );
@@ -603,7 +606,6 @@ String folderLine(FolderInfo folder) {
 
 /// The icon the picker shows a folder of the given kind with.
 IconData folderIcon(FolderKind? kind) => switch (kind) {
-      FolderKind.collection => Icons.collections_bookmark_outlined,
       FolderKind.search => Icons.saved_search,
       _ => Icons.folder,
     };
@@ -633,14 +635,14 @@ const double _wideCreateButton = 600;
 /// Every level is fetched through the injected [client], so the picker shows
 /// exactly what the server lets this caller see. Every level shown is a
 /// folder of folders: a tap on a folder of folders opens it, a tap on a leaf
-/// — an album, a collection, a saved search, which hold no folders — selects
+/// — an album, a saved search, which hold no folders — selects
 /// it ([FolderPickerState._choose]), and the confirm then acts on the leaf
 /// selected. `Enter` on the keyboard's highlight does what the tap does.
 ///
 /// The kind decides what can be confirmed at all, see issue #113: with
 /// [targetIsAlbum] only an album (images live in albums), without it only the
-/// folder of folders shown (an album holds no folders), with
-/// [targetIsCollection] only a collection. One rule decides for every leaf
+/// folder of folders shown (an album holds no folders). One rule decides for
+/// every leaf
 /// ([FolderPickerState._refusal]): a leaf the purpose cannot take is shown
 /// disabled, its row saying why, instead of being declined by the server
 /// afterwards or silently doing nothing.
@@ -684,12 +686,6 @@ class FolderPicker extends StatefulWidget {
   /// The day such a new album is proposed with, `null` for none.
   final DateTime? newAlbumDate;
 
-  /// Whether the target is a collection, see issue #221: photographs are
-  /// *added* to a collection by reference, never moved into it, so only a
-  /// collection can be confirmed and "Create new collection…" is offered
-  /// where the caller may edit the folder shown.
-  final bool targetIsCollection;
-
   /// The title of the dialog, "Move to…" where none is given.
   final String? title;
 
@@ -723,7 +719,6 @@ class FolderPicker extends StatefulWidget {
     this.targetIsAlbum = true,
     this.mayCreateAlbum = false,
     this.newAlbumDate,
-    this.targetIsCollection = false,
     this.title,
     this.requireContribute = false,
     this.suggestNear,
@@ -1035,9 +1030,9 @@ class FolderPickerState extends State<FolderPicker> {
   /// where it can — and for a folder of folders, which is opened, not taken.
   ///
   /// The one rule for every leaf, browsed to, suggested or found: an image
-  /// goes into an album (issue #113), an album or a folder into no leaf at
-  /// all, an addition into a collection only (issue #221), and nothing into a
-  /// saved search (issue #227). What only the server can answer — whether
+  /// goes into an album (issue #113) — a collection is an album (issue #307)
+  /// —, an album or a folder into no leaf at all, and nothing into a saved
+  /// search (issue #227). What only the server can answer — whether
   /// the caller may add photos to an album (issue #240) — is asked when the
   /// leaf is chosen, and remembered in [_refused].
   String? _refusal(FolderInfo folder) {
@@ -1049,14 +1044,7 @@ class FolderPickerState extends State<FolderPicker> {
       return asked;
     }
     var l10n = AppLocalizations.of(context)!;
-    if (widget.targetIsCollection) {
-      return folder.kind == FolderKind.collection
-          ? null
-          : l10n.pickerNotCollection;
-    }
     return switch (folder.kind) {
-      // A collection holds references and no files.
-      FolderKind.collection => l10n.collectionTakesNoMove,
       FolderKind.search => l10n.searchTakesNoPhotos,
       _ => widget.targetIsAlbum ? null : albumHoldsNoFolders(l10n),
     };
@@ -1184,15 +1172,7 @@ class FolderPickerState extends State<FolderPicker> {
   /// ([_choose]); the folder of folders shown only where a folder of folders
   /// is looked for — an album or a folder moving.
   bool get _mayConfirm =>
-      _known &&
-      (_selected != null ||
-          (!widget.targetIsAlbum && !widget.targetIsCollection));
-
-  /// Whether a collection may be created in the folder shown, see #221.
-  bool _mayCreateCollectionHere(BuildContext context) =>
-      widget.targetIsCollection &&
-      _known &&
-      rightsOf(context, _listing).mayEdit;
+      _known && (_selected != null || !widget.targetIsAlbum);
 
   /// Whether an album may be created in the folder shown, see issue #114.
   ///
@@ -1235,14 +1215,6 @@ class FolderPickerState extends State<FolderPicker> {
                 icon: Icons.create_new_folder,
                 label: l10n.createNewAlbum,
                 onPressed: _createAlbum,
-              ),
-            if (_mayCreateCollectionHere(context))
-              _createButton(
-                context,
-                key: const Key("picker-create-collection"),
-                icon: Icons.collections_bookmark_outlined,
-                label: l10n.createNewCollection,
-                onPressed: _createCollection,
               ),
           ],
         ),
@@ -1416,7 +1388,6 @@ class FolderPickerState extends State<FolderPicker> {
   }
 
   Widget _body(BuildContext context, {required bool scrolls}) {
-    var l10n = AppLocalizations.of(context)!;
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -1432,13 +1403,6 @@ class FolderPickerState extends State<FolderPicker> {
       shrinkWrap: true,
       physics: scrolls ? null : const NeverScrollableScrollPhysics(),
       children: [
-        // What this picker looks for, until one is chosen, see issue #221.
-        if (widget.targetIsCollection && _selected == null)
-          ListTile(
-            key: const Key("picker-needs-collection"),
-            leading: const Icon(Icons.collections_bookmark_outlined),
-            title: Text(l10n.pickerNeedsCollection),
-          ),
         for (var folder in _folders)
           _highlight.row(folder, _folderRow(context, folder)),
       ],
@@ -1500,24 +1464,5 @@ class FolderPickerState extends State<FolderPicker> {
       return;
     }
     Navigator.of(context).pop(PickedTarget(_path, newAlbum: album));
-  }
-
-  /// Asks what the new collection is called and leaves the picker with it;
-  /// [collectWithPicker] creates it and adds into it, see issue #221.
-  ///
-  /// What stands in the search field is the name proposed: a collection is
-  /// made without a date, so the whole text is its name.
-  Future<void> _createCollection() async {
-    var typed = _query.text.trim();
-    var collection = await showFormDialog<AlbumInfo>(
-      context: context,
-      builder: (context) => CreateCollectionDialog(
-        initialTitle: typed.isEmpty ? null : typed,
-      ),
-    );
-    if (collection == null || !mounted) {
-      return;
-    }
-    Navigator.of(context).pop(PickedTarget(_path, newAlbum: collection));
   }
 }

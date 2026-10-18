@@ -73,8 +73,8 @@ PreferredSizeWidget selectModeAppBar({
         if (offerCollect)
           IconButton(
             key: const Key("select-mode-collect"),
-            icon: const Icon(Icons.collections_bookmark_outlined),
-            tooltip: l10n.addToCollection,
+            icon: const Icon(Icons.add_link),
+            tooltip: l10n.addToAlbumAsReference,
             onPressed: onCollect,
           ),
         // A member without `download` selects for a collection alone

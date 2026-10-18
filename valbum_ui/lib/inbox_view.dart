@@ -753,11 +753,12 @@ class InboxContentState extends State<InboxContent>
   int get actedOnCount => _selection.length;
 
   @override
-  VAlbumRouterDelegate? get photoDelegate => widget.albumState.navigator.delegate;
-
+  VAlbumRouterDelegate? get photoDelegate =>
+      widget.albumState.navigator.delegate;
 
   @override
-  void openPhoto(PhotoTile tile) => widget.pushPart(tile.image, tile.image.name);
+  void openPhoto(PhotoTile tile) =>
+      widget.pushPart(tile.image, tile.image.name);
 
   @override
   Future<void> movePhotos(PhotoTile tile) =>
@@ -1411,66 +1412,66 @@ class InboxContentState extends State<InboxContent>
     // What is done with the selection, as the catalogue allows it (#290).
     var facts = photoFacts;
     return [
-        if (count > 0 && PhotoAction.move.allowedFor(facts))
-          keyedMenuItem(
-            const Key("move-to"),
-            Icons.drive_file_move,
-            inboxMoveLabel(_l10n, count),
-            (_) => moveSelection(),
-          ),
-        if (count > 0 && PhotoAction.delete.allowedFor(facts))
-          keyedMenuItem(
-            const Key("delete-selection"),
-            Icons.delete_outline,
-            inboxDeleteLabel(_l10n, count),
-            (_) => deleteSelection(),
-          ),
-        if (count > 0 && PhotoAction.download.allowedFor(facts))
-          keyedMenuItem(
-            const Key("download-selection"),
-            Icons.download,
-            _l10n.downloadSelection(count),
-            (_) => downloadPhotos(null),
-          ),
-        if (selected.any((image) => image.hasPicture) &&
-            PhotoAction.collect.allowedFor(facts))
-          keyedMenuItem(
-            const Key("add-to-collection"),
-            Icons.collections_bookmark_outlined,
-            _l10n.addCountToCollection(count),
-            (_) => collectPhotos(null),
-          ),
-        // What was deleted here, restored or purged where an album's is
-        // (issues #152, #160).
-        if (mayShowTrash)
-          keyedMenuItem(
-            const Key("show-trash"),
-            Icons.delete_sweep_outlined,
-            _l10n.showTrash,
-            (_) => showTrash(),
-          ),
-        if (count > 0)
-          keyedMenuItem(
-            const Key("clear-selection"),
-            Icons.deselect,
-            inboxClearSelection(_l10n),
-            (_) => clearSelection(),
-          ),
-        // The one thing the properties of an inbox are for: saying that it is
-        // one, and saying that it is not one any more, see issue #136.
-        if (mayWrite)
-          keyedMenuItem(
-            const Key("album-properties"),
-            Icons.tune,
-            _l10n.albumProperties,
-            (_) => editProperties(),
-          ),
-        menuItem(Icons.update, _l10n.reload, (_) => widget.albumState.reload()),
-        if (share == null)
-          menuItem(Icons.settings, _l10n.serverMenuEntry, openServerSettings),
-        // What this app is, the last entry of every main menu (#187).
-        aboutMenuItem(_l10n),
-      ];
+      if (count > 0 && PhotoAction.move.allowedFor(facts))
+        keyedMenuItem(
+          const Key("move-to"),
+          Icons.drive_file_move,
+          inboxMoveLabel(_l10n, count),
+          (_) => moveSelection(),
+        ),
+      if (count > 0 && PhotoAction.delete.allowedFor(facts))
+        keyedMenuItem(
+          const Key("delete-selection"),
+          Icons.delete_outline,
+          inboxDeleteLabel(_l10n, count),
+          (_) => deleteSelection(),
+        ),
+      if (count > 0 && PhotoAction.download.allowedFor(facts))
+        keyedMenuItem(
+          const Key("download-selection"),
+          Icons.download,
+          _l10n.downloadSelection(count),
+          (_) => downloadPhotos(null),
+        ),
+      if (selected.any((image) => image.hasPicture) &&
+          PhotoAction.collect.allowedFor(facts))
+        keyedMenuItem(
+          const Key("add-to-collection"),
+          Icons.add_link,
+          _l10n.addCountToAlbumAsReference(count),
+          (_) => collectPhotos(null),
+        ),
+      // What was deleted here, restored or purged where an album's is
+      // (issues #152, #160).
+      if (mayShowTrash)
+        keyedMenuItem(
+          const Key("show-trash"),
+          Icons.delete_sweep_outlined,
+          _l10n.showTrash,
+          (_) => showTrash(),
+        ),
+      if (count > 0)
+        keyedMenuItem(
+          const Key("clear-selection"),
+          Icons.deselect,
+          inboxClearSelection(_l10n),
+          (_) => clearSelection(),
+        ),
+      // The one thing the properties of an inbox are for: saying that it is
+      // one, and saying that it is not one any more, see issue #136.
+      if (mayWrite)
+        keyedMenuItem(
+          const Key("album-properties"),
+          Icons.tune,
+          _l10n.albumProperties,
+          (_) => editProperties(),
+        ),
+      menuItem(Icons.update, _l10n.reload, (_) => widget.albumState.reload()),
+      if (share == null)
+        menuItem(Icons.settings, _l10n.serverMenuEntry, openServerSettings),
+      // What this app is, the last entry of every main menu (#187).
+      aboutMenuItem(_l10n),
+    ];
   }
 
   /// The chips of the camera filter (issue #278), each with the number of

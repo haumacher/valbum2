@@ -1,0 +1,22 @@
+["AlbumInfo", {
+  "path": "Mixed",
+  "kind": "ALBUM",
+  "title": "Mixed",
+  "subTitle": "",
+  "parts": [
+    ["ImagePart", {
+      "kind": "IMAGE", "name": "own.jpg", "date": 1015113600000,
+      "width": 2048, "height": 1536, "orientation": "IDENTITY", "rating": 0
+    }],
+    ["ImagePart", {
+      "kind": "IMAGE", "name": "a.jpg", "date": 1015113605000,
+      "width": 2048, "height": 1536, "orientation": "IDENTITY", "rating": 1,
+      "comment": "Beach",
+      "ref": {"hash": "aaaa", "path": "Inbox/a.jpg"}
+    }],
+    ["ImagePart", {
+      "kind": "IMAGE", "name": "z.jpg", "date": 1015113610000,
+      "width": 2048, "height": 1536, "orientation": "IDENTITY", "rating": 0
+    }]
+  ]
+}]

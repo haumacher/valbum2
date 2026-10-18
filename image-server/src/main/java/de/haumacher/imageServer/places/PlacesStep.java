@@ -91,8 +91,7 @@ public final class PlacesStep implements FolderPipeline.Step {
 			return FolderPipeline.Outcome.DONE;
 		}
 		FolderResource sidecar = ResourceCache.sidecar(folder);
-		if (sidecar instanceof AlbumInfo && (((AlbumInfo) sidecar).getKind() == AlbumKind.COLLECTION
-			|| ((AlbumInfo) sidecar).getKind() == AlbumKind.SEARCH)) {
+		if (sidecar instanceof AlbumInfo && ((AlbumInfo) sidecar).getKind() == AlbumKind.SEARCH) {
 			return FolderPipeline.Outcome.DONE;
 		}
 		Map<String, ImagePart> listed = listed(sidecar);

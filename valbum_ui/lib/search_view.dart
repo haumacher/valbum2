@@ -464,9 +464,9 @@ class SearchViewState extends State<SearchView> {
                   ),
                 IconButton(
                   key: const Key("search-create-collection"),
-                  icon: const Icon(Icons.collections_bookmark_outlined),
-                  tooltip: l10n.createCollectionFromThese,
-                  onPressed: session.result == null ? null : createCollection,
+                  icon: const Icon(Icons.add_link),
+                  tooltip: l10n.addAllToAlbumAsReference,
+                  onPressed: session.result == null ? null : addAllAsReferences,
                 ),
               ],
             ),
@@ -1543,7 +1543,7 @@ class SearchViewState extends State<SearchView> {
   }
 
   /// Adds the photographs found under [names] to a collection, chosen or
-  /// created, see issue #221: what [createCollection] does for all of them.
+  /// created, see issue #221: what [addAllAsReferences] does for all of them.
   Future<void> collectFound(List<String> names) => collectWithPicker(
         context: context,
         client: client,
@@ -1671,9 +1671,9 @@ class SearchViewState extends State<SearchView> {
     delegate.go(ListingOrAlbumRoute(edited));
   }
 
-  /// Turns what was found into a collection, chosen or created, see issue
-  /// #221: references to the photographs, nothing copied.
-  Future<void> createCollection() async {
+  /// Adds what was found to an album as references, chosen or created, see
+  /// issues #221 and #307: nothing copied.
+  Future<void> addAllAsReferences() async {
     var names = await _foundNames();
     if (!mounted) {
       return;

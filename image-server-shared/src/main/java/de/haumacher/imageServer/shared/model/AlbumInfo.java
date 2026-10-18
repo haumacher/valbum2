@@ -104,12 +104,14 @@ public class AlbumInfo extends FolderResource {
 	}
 
 	/**
-	 * Whether this is an ordinary album or the inbox of its space, see issues #131 and #226.
+	 * Whether this is an ordinary album or the inbox of its space, see issues #131 and #226, a
+	 * collection (issues #221 and #307) or a saved search (issue #227).
 	 *
 	 * <p>
-	 * Derived on every read from where the folder lies — the one folder the space's
-	 * <code>space.json</code> names is the inbox, nothing else is — and cleared before any sidecar
-	 * write, like {@link #getEffectiveDate()}. What a client sends here is ignored.
+	 * The inbox is derived on every read from where the folder lies — the one folder the space's
+	 * <code>space.json</code> names is the inbox, nothing else is — and never stored. A collection
+	 * is what the album holds, see {@link AlbumKind#COLLECTION}; a saved search is stated once, when
+	 * it is created. What a client sends here is ignored.
 	 * </p>
 	 */
 	public final de.haumacher.imageServer.shared.model.AlbumKind getKind() {
@@ -436,7 +438,9 @@ public class AlbumInfo extends FolderResource {
 	 * <p>
 	 * Presentation only: a stack hides nothing from the viewer, the downloads, the counts or the
 	 * index picture, and an ordinary or a saved search, a collection and the inbox carry none. A
-	 * client that writes the album back has the field cleared before the sidecar is written.
+	 * reference ({@link ImagePart#getRef()}, issue #307) never joins a stack: a burst is a run of shots
+	 * of the album they lie in, which stacks them there. A client that writes the album back has the
+	 * field cleared before the sidecar is written.
 	 * </p>
 	 */
 	public final java.util.List<de.haumacher.imageServer.shared.model.PhotoStack> getStacks() {

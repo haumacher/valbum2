@@ -5557,69 +5557,34 @@
     },
     "x-translated": "dab86fe0"
   },
-  "doingCollecting": "adding to the collection {target}",
-  "@doingCollecting": {
-    "description": "Names what the app was doing when a request failed (adding photos to a collection, i.e. a virtual album of references)",
+  "doingAddingReferences": "adding photos to the album {target}",
+  "@doingAddingReferences": {
+    "description": "Names what the app was doing when a request failed: adding photos to an album as references, i.e. without copying them (issue #307)",
     "placeholders": {
       "target": {
         "type": "String"
       }
     },
-    "x-translated": "e90da6ce"
-  },
-  "createCollection": "New collection",
-  "@createCollection": {
-    "description": "Menu entry of a folder listing creating a collection: an album that references photos lying in other albums instead of holding files (issue #221)",
-    "x-translated": "81cc5813"
-  },
-  "newCollectionTitle": "New collection",
-  "@newCollectionTitle": {
-    "description": "Title of the dialog creating a collection (an album of references to photos of other albums, issue #221)",
-    "x-translated": "81cc5813"
-  },
-  "newCollectionHint": "A collection shows photos of other albums without copying them.",
-  "@newCollectionHint": {
-    "description": "Hint in the dialog creating a collection (issue #221)",
-    "x-translated": "82a09b4a"
-  },
-  "collectionTakesNoMove": "A collection holds no files; photos are added to it with “Add to collection”.",
-  "@collectionTakesNoMove": {
-    "description": "Line of the move picker on a collection, which cannot be the target of a move (issue #221)",
-    "x-translated": "f56b6a3f"
-  },
-  "pickerNotCollection": "Not a collection.",
-  "@pickerNotCollection": {
-    "description": "Second line of an album (or other folder that is no collection) in the add-to-collection picker, saying why it cannot be chosen (issue #221)",
-    "x-translated": "454ed61d"
+    "x-translated": "a04f32fb"
   },
   "searchTakesNoPhotos": "A saved search holds no photos of its own.",
   "@searchTakesNoPhotos": {
     "description": "Second line of a saved search in the move picker, saying why it cannot be chosen as the target (issue #227)",
     "x-translated": "f9a293d9"
   },
-  "pickerNeedsCollection": "Photos are added to a collection — choose one or create one.",
-  "@pickerNeedsCollection": {
-    "description": "Line of the add-to-collection picker while no collection is chosen (issue #221)",
-    "x-translated": "df881e72"
-  },
-  "createNewCollection": "Create new collection…",
-  "@createNewCollection": {
-    "description": "Entry of the add-to-collection picker creating a collection in the folder shown (issue #221)",
-    "x-translated": "281af76"
-  },
   "nothingToCollect": "Select the photos to add first.",
   "@nothingToCollect": {
-    "description": "Said when Add to collection is asked with nothing selected (issue #221)",
+    "description": "Said when Add to album (as reference) is asked with nothing selected (issues #221, #307)",
     "x-translated": "a58732d3"
   },
-  "addToCollectionTitle": "Add to collection",
-  "@addToCollectionTitle": {
-    "description": "Title of the dialog choosing the collection photos are added to (a collection references photos of other albums, issue #221)",
-    "x-translated": "4289a1aa"
+  "addAsReferenceTitle": "Add to album as reference",
+  "@addAsReferenceTitle": {
+    "description": "Title of the dialog choosing the album photos are added to as references: the album shows them without copying them, they stay in their own albums (issues #221, #307)",
+    "x-translated": "b8654214"
   },
   "addToCollectionConfirm": "{count, plural, =1{Add 1 photo here} other{Add {count} photos here}}",
   "@addToCollectionConfirm": {
-    "description": "Confirm button of the add-to-collection picker (issue #221)",
+    "description": "Confirm button of the picker adding photos to an album as references (issues #221, #307)",
     "placeholders": {
       "count": {
         "type": "int"
@@ -5629,7 +5594,7 @@
   },
   "addedToCollection": "{count, plural, =0{Nothing was added to {target}.} =1{Added 1 photo to {target}.} other{Added {count} photos to {target}.}}",
   "@addedToCollection": {
-    "description": "Summary after adding photos to a collection; target is the quoted collection path (issue #221)",
+    "description": "Summary after adding photos to an album as references; target is the quoted album path (issues #221, #307)",
     "placeholders": {
       "count": {
         "type": "int"
@@ -5642,47 +5607,47 @@
   },
   "collectionPhotoMissing": "This photo is no longer in the library",
   "@collectionPhotoMissing": {
-    "description": "Placeholder tile of a collection for a referenced photo that was deleted or purged from the space (issue #221)",
+    "description": "Placeholder tile of a reference whose photo was deleted or purged from the space (issues #221, #307)",
     "x-translated": "fe0a770e"
   },
-  "removeFromCollection": "Remove from collection",
-  "@removeFromCollection": {
-    "description": "Menu entry and confirm button taking selected photos out of a collection; the photos stay in their albums (issue #221)",
-    "x-translated": "800cea7d"
+  "removeReference": "Remove from album",
+  "@removeReference": {
+    "description": "Menu entry and confirm button taking selected references out of an album; the photos stay in their own albums (issues #221, #307)",
+    "x-translated": "45c96afa"
   },
-  "removeFromCollectionQuestion": "{count, plural, =1{Remove 1 photo from this collection?} other{Remove {count} photos from this collection?}}",
-  "@removeFromCollectionQuestion": {
-    "description": "Title of the confirmation before photos are taken out of a collection (issue #221)",
+  "removeReferencesQuestion": "{count, plural, =1{Remove 1 photo from this album?} other{Remove {count} photos from this album?}}",
+  "@removeReferencesQuestion": {
+    "description": "Title of the confirmation before references are taken out of an album (issues #221, #307)",
     "placeholders": {
       "count": {
         "type": "int"
       }
     },
-    "x-translated": "e1c12c1d"
+    "x-translated": "29995758"
   },
-  "removeFromCollectionExplanation": "The photos are removed from this collection. They stay in their albums.",
-  "@removeFromCollectionExplanation": {
-    "description": "Explanation in the confirmation before photos are taken out of a collection (issue #221)",
-    "x-translated": "9e1d02fa"
+  "removeReferencesExplanation": "Only the references are removed from this album. The photos stay in their own albums.",
+  "@removeReferencesExplanation": {
+    "description": "Explanation in the confirmation before references are taken out of an album (issues #221, #307)",
+    "x-translated": "2eecbca3"
   },
-  "removedFromCollection": "{count, plural, =1{Removed 1 photo from the collection.} other{Removed {count} photos from the collection.}}",
-  "@removedFromCollection": {
-    "description": "Said after photos were taken out of a collection (issue #221)",
+  "removedReferences": "{count, plural, =1{Removed 1 photo from the album.} other{Removed {count} photos from the album.}}",
+  "@removedReferences": {
+    "description": "Said after references were taken out of an album (issues #221, #307)",
     "placeholders": {
       "count": {
         "type": "int"
       }
     },
-    "x-translated": "455722d2"
+    "x-translated": "e175c32f"
   },
-  "addToCollection": "Add to collection…",
-  "@addToCollection": {
-    "description": "Menu entry adding the selected photo(s) to a collection, i.e. a virtual album referencing photos without copying them (issue #221)",
-    "x-translated": "a6862d92"
+  "addToAlbumAsReference": "Add to album (as reference)…",
+  "@addToAlbumAsReference": {
+    "description": "Menu entry adding the selected photo(s) to another album as references: shown there without being copied, they stay in their own album (issues #221, #307)",
+    "x-translated": "e62ebd3d"
   },
   "propertySource": "In album: {album}",
   "@propertySource": {
-    "description": "The line of the image properties naming the album folder a photo shown in a collection lies in (issue #221)",
+    "description": "The line of the image properties naming the album folder a referenced photo (or one found by a search) lies in (issues #221, #307)",
     "placeholders": {
       "album": {
         "type": "String"
@@ -6539,15 +6504,20 @@
     "description": "Explanation in the dialog naming a search that is saved as a view",
     "x-translated": "2289615f"
   },
-  "createCollectionFromThese": "Create collection from these…",
-  "@createCollectionFromThese": {
-    "description": "Action of the search view and of a saved search that adds the photos found (or the selection) to a collection, chosen or created",
-    "x-translated": "41fbddbe"
+  "addAllToAlbumAsReference": "Add all to album (as reference)…",
+  "@addAllToAlbumAsReference": {
+    "description": "Action of the search view and of a saved search that adds the photos found to an album as references, chosen or created (issues #227, #307)",
+    "x-translated": "c98adc8"
   },
   "showInAlbum": "Show in album",
   "@showInAlbum": {
-    "description": "Menu entry of the photo viewer that opens the photo in the album it lies in, from a collection or a search",
+    "description": "Menu entry that opens the photo in the album it lies in, from an album referencing it or a search",
     "x-translated": "2c196937"
+  },
+  "referenceMark": "Shown from another album",
+  "@referenceMark": {
+    "description": "Spoken label of the small link mark on the tile of a reference: a photo of another album that this album shows without a copy (issue #307)",
+    "x-translated": "25fe8c8a"
   },
   "searchRatingAtLeast": "At least: {rating}",
   "@searchRatingAtLeast": {
@@ -7281,15 +7251,15 @@
     "description": "Entry of the context menu of a photo tile in the album's view mode that enters the album's edit mode with this photo selected (issue #290)",
     "x-translated": "21077124"
   },
-  "addCountToCollection": "{count, plural, =1{Add 1 photo to a collection…} other{Add {count} photos to a collection…}}",
-  "@addCountToCollection": {
-    "description": "Entry of the context menu of a photo tile acting on the selection: adds the selected photos to a collection, chosen or created (issues #221, #290)",
+  "addCountToAlbumAsReference": "{count, plural, =1{Add 1 photo to an album (as reference)…} other{Add {count} photos to an album (as reference)…}}",
+  "@addCountToAlbumAsReference": {
+    "description": "Entry of the context menu of a photo tile acting on the selection: adds the selected photos to another album as references, chosen or created (issues #221, #290, #307)",
     "placeholders": {
       "count": {
         "type": "int"
       }
     },
-    "x-translated": "5224914f"
+    "x-translated": "dc970ae9"
   },
   "spaceSettingsHeading": "Space settings",
   "@spaceSettingsHeading": {

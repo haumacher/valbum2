@@ -112,7 +112,8 @@ public class TestSourceWriteRights extends ShareTestCase {
 		FakeResponse put = put("/Best of/",
 			write(edited(album(get("/Best of/", "json", SharingFixture.CAROL)), PHOTO)), SharingFixture.CAROL);
 		assertEquals(put.body(), HttpServletResponse.SC_OK, put.status());
-		assertEdited(lakeImage(PHOTO));
+		// Renamed after its title, "Best", by the write.
+		assertReferenceEdited("Best");
 	}
 
 	public void testAnEditorEditsThroughASavedSearch() throws Exception {
@@ -190,7 +191,7 @@ public class TestSourceWriteRights extends ShareTestCase {
 
 		FakeResponse put = put("/Mine/", write(edited(album(get("/Mine/", "json", token)), PHOTO)), token);
 		assertEquals(put.body(), HttpServletResponse.SC_OK, put.status());
-		assertEdited(lakeImage(PHOTO));
+		assertReferenceEdited("Trips/Best");
 
 		AlbumInfo found = labelled(album(get("/Found/", "json", token)), FOUND_PHOTO);
 		image(found, FOUND_PHOTO).setRating(-1);
@@ -249,10 +250,26 @@ public class TestSourceWriteRights extends ShareTestCase {
 		return answer;
 	}
 
+	/**
+	 * The edits of {@link #edited(AlbumInfo, String)} made through the album of references at the
+	 * given path: the photograph's own in its album, the description the album's own, see issue
+	 * #307.
+	 */
+	private void assertReferenceEdited(String album) throws Exception {
+		ImagePart image = lakeImage(PHOTO);
+		assertSourceEdited(image);
+		assertEquals("The description of a reference is the album's own.", "Shore", image.getComment());
+		assertEquals("The lake", image(stored(album), PHOTO).getComment());
+	}
+
 	private static void assertEdited(ImagePart image) {
+		assertSourceEdited(image);
+		assertEquals("The lake", image.getComment());
+	}
+
+	private static void assertSourceEdited(ImagePart image) {
 		assertEquals(Orientation.ROT_R, image.getOrientation());
 		assertEquals(2, image.getRating());
-		assertEquals("The lake", image.getComment());
 		assertEquals(Privacy.MEMBERS, image.getPrivacy());
 		assertEquals(PlaceCaption.HIDDEN, image.getPlaceCaption());
 		assertNotNull(image.getCrop());

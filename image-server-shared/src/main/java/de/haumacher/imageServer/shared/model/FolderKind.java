@@ -45,8 +45,10 @@ public enum FolderKind implements de.haumacher.msgbuf.data.ProtocolEnum {
 	INBOX("INBOX"),
 
 	/**
-	 * The entry is a collection (see {@link AlbumKind#COLLECTION}, issue #221): an album of
-	 * references to photographs of other albums. It has a date only where its author gave it one.
+	 * The entry is an album holding references to photographs of other albums (see
+		 * {@link ImagePart#ref}, issues #221 and #307), a {@link AlbumKind#COLLECTION collection} among
+	 * them. The app shows it as an album; what sets it apart is that a listing carries no
+	 * {@link FolderInfo#imageCount count} for it, see there.
 	 */
 	COLLECTION("COLLECTION"),
 

@@ -330,6 +330,13 @@ public class ImagePart extends AbstractImage {
 
 	/**
 	 * A comment describing what this image contains.
+	 *
+	 * <p>
+	 * For a {@link #getRef() reference} it is the album's own description of the photograph where the
+	 * album has one, and the photograph's own otherwise, see issue #307; a write of the album stores
+	 * what is written there as the album's own, and the photograph's own description written back
+	 * unchanged as none.
+	 * </p>
 	 */
 	public final String getComment() {
 		return _comment;
@@ -840,16 +847,31 @@ public class ImagePart extends AbstractImage {
 	}
 
 	/**
-	 * The photograph this part of a {@link AlbumKind#COLLECTION collection} stands for, see issue
-	 * #221; <code>null</code> in every ordinary album.
+	 * The photograph of another album this part of an album stands for, see issues #221 and #307;
+	 * <code>null</code> for a file of the album itself.
 	 *
 	 * <p>
-	 * <b>Stored</b> in the collection's <code>index.json</code>, where a part holds nothing but its
-	 * {@link #getName()} (unique in the collection, the source's file name where that is free), this
-	 * reference and the collection's own {@link #getLabels()}. On the wire it is answered to the
-	 * members of the space with the photograph's <em>current</em> path, and left out for a share
-	 * link, an anonymous visitor and the public preview, to whom where a photograph lies is nobody's
-	 * business.
+	 * Any album may hold such <em>references</em> beside its own files (an album holding nothing
+		 * else is a {@link AlbumKind#COLLECTION collection}). <b>Stored</b> in the album's
+	 * <code>index.json</code>, where a reference holds nothing but its {@link #getName()} (unique in the
+	 * album, among its files too: the source's file name where that is free), this reference, the
+	 * album's own {@link #getLabels()}, the album's own {@link #getComment() description} of it (empty for
+	 * none: the photograph's own is shown then) and the photograph's {@link #getDate()} as last seen, a
+	 * hint like {@link PhotoRef#getPath()} that places it among the album's photographs by date. A
+	 * reference is never a member of an {@link ImageGroup}. Everything else is answered from the
+	 * photograph in its own album, as that album shows it to the caller.
+	 * </p>
+	 *
+	 * <p>
+	 * On the wire it is answered to the members of the space with the photograph's <em>current</em>
+	 * path, which the app marks the tile with, and left out for a share link, an anonymous visitor
+	 * and the public preview, to whom where a photograph lies is nobody's business. A search answer
+	 * carries it too, with the path of each match and no hash, see {@link SearchSimilar#getRef()}.
+	 * </p>
+	 *
+	 * <p>
+	 * A reference is no copy: the search finds the photograph once, where it lies; the duplicates,
+	 * the faces, the places, the news and the bursts ({@link AlbumInfo#getStacks()}) know it there.
 	 * </p>
 	 */
 	public final de.haumacher.imageServer.shared.model.PhotoRef getRef() {
@@ -880,10 +902,11 @@ public class ImagePart extends AbstractImage {
 	 * Whether the photograph this reference stands for is gone from the space, see issue #221.
 	 *
 	 * <p>
-	 * Derived on every read and never stored: <code>true</code> for a part of a collection whose
-	 * content hash the space no longer holds anywhere (deleted, purged, replaced). Such a part
-	 * carries nothing but its {@link #getName()} and {@link #getRef()}, is answered to the editors of the
-	 * collection alone, so that they can remove it, and has no thumbnail.
+	 * Derived on every read and never stored: <code>true</code> for a reference (see {@link #getRef()})
+	 * whose content hash the space no longer holds anywhere (deleted, purged, replaced). Such a part
+	 * carries nothing but its {@link #getName()}, its {@link #getRef()} and the album's own description of it,
+	 * is answered to the editors of the album alone, so that they can remove it, and has no
+	 * thumbnail.
 	 * </p>
 	 */
 	public final boolean isMissing() {

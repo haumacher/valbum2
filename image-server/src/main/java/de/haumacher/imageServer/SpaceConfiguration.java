@@ -343,8 +343,8 @@ final class SpaceConfiguration {
 			if (above.isFile()) {
 				return "'" + inbox + "' lies below a file, not a folder.";
 			}
-			if (above.isDirectory() && (PhotoCollections.isCollection(above) || PhotoSearch.isSearch(above))) {
-				return "'" + inbox + "' lies in a collection or a saved search, which holds no folder.";
+			if (above.isDirectory() && PhotoSearch.isSearch(above)) {
+				return "'" + inbox + "' lies in a saved search, which holds no folder.";
 			}
 		}
 		return null;

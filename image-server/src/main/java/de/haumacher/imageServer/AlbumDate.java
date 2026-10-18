@@ -295,11 +295,16 @@ public final class AlbumDate {
 					changed = true;
 				}
 			}
-			if (album.getKind() == de.haumacher.imageServer.shared.model.AlbumKind.INBOX) {
-				// A collection is the one kind that is stored, see issue #221.
-				// Whether a folder is the inbox is decided by where it lies (space.json), never by
-				// what its sidecar says, see issue #226: an older sidecar loses the word here.
-				album.setKind(de.haumacher.imageServer.shared.model.AlbumKind.ALBUM);
+			// What a referenced photograph says is its own, never stored where it is referenced,
+			// see issue #307.
+			changed |= PhotoCollections.clearDerived(album);
+			// Whether a folder is the inbox is decided by where it lies (space.json), never by what
+			// its sidecar says, see issue #226: an older sidecar loses the word here. Whether an
+			// album is stored as a collection is decided by what it holds, see
+			// PhotoCollections#storedKind(AlbumInfo, boolean).
+			de.haumacher.imageServer.shared.model.AlbumKind kind = PhotoCollections.storedKind(album, false);
+			if (album.getKind() != kind) {
+				album.setKind(kind);
 				changed = true;
 			}
 			if (album.getEffectiveDate() != 0L) {

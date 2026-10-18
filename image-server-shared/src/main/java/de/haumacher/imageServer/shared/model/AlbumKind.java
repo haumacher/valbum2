@@ -36,20 +36,28 @@ public enum AlbumKind implements de.haumacher.msgbuf.data.ProtocolEnum {
 	INBOX("INBOX"),
 
 	/**
-	 * A collection, see issue #221: an album whose parts <em>reference</em> photographs lying in
-	 * other albums of the space instead of holding files of its own ("best of 2026").
+	 * A collection, see issues #221 and #307: an album that holds <em>references</em> to photographs
+	 * lying in other albums of the space and no file of its own ("best of 2026").
 	 *
 	 * <p>
-	 * Unlike {@link #INBOX} this kind is <b>stored</b> in <code>index.json</code>: it is written
-	 * once, when the collection is created by a sidecar <code>PUT</code> carrying it, and never
-	 * changed afterwards &mdash; an album never becomes a collection nor the other way round, whatever
-	 * a later <code>PUT</code> says. Every {@link ImagePart} of a collection carries a
-	 * {@link ImagePart#ref reference}, resolved by its content hash through the space's hash index
-	 * (issue #118), so that it survives a move or a rename of the photograph's album. Order,
-	 * headings, the album picture and the labels are the collection's own; everything else a
-	 * photograph says &mdash; its turn, crop, description, rating, privacy, time and faces &mdash;
-	 * is the photograph's own, answered from and written to the album it lies in. Nothing is ever
-	 * copied on disk.
+	 * Since issue #307 every album may hold references beside its own files (see
+		 * {@link ImagePart#ref}), and a collection is simply an album without files of its own: it is
+	 * shown, shared, downloaded and written exactly as any album, and a file uploaded or moved into
+	 * it makes it an ordinary album. The kind is <b>stored</b> in <code>index.json</code> for the
+	 * builds before issue #307, which know references in a collection only: the server writes it
+	 * while the album holds no file of its own and was a collection or holds a reference, and
+	 * {@link #ALBUM} otherwise &mdash; never what a client says. It is answered as stored, and the
+	 * app shows it as an album. A build before issue #307 reads a collection unchanged; an album
+	 * holding files <em>and</em> references it reads without the references, and its next write of
+	 * that album drops them (the sidecar it replaces stays beside it as the timestamped backup every
+	 * write leaves).
+	 * </p>
+	 *
+	 * <p>
+	 * Order, headings, the album picture, the labels and a description of a reference are the
+	 * album's own; everything else a photograph says &mdash; its turn, crop, rating, privacy, time
+	 * and faces &mdash; is the photograph's own, answered from and written to the album it lies in.
+	 * Nothing is ever copied on disk.
 	 * </p>
 	 */
 	COLLECTION("COLLECTION"),

@@ -5,8 +5,6 @@ package de.haumacher.imageServer;
 
 import de.haumacher.imageServer.raw.RawFile;
 import de.haumacher.imageServer.shared.model.AlbumInfo;
-import de.haumacher.imageServer.shared.model.AlbumPart;
-import de.haumacher.imageServer.shared.model.ImageGroup;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.Orientation;
 import de.haumacher.imageServer.shared.model.ThumbnailInfo;
@@ -390,15 +388,8 @@ public final class RawPairs {
 
 	/** Every photograph of the given album, the members of a group one by one, in album order. */
 	static List<ImagePart> images(AlbumInfo album) {
-		List<ImagePart> result = new ArrayList<>();
-		for (AlbumPart part : album.getParts()) {
-			if (part instanceof ImagePart) {
-				result.add((ImagePart) part);
-			} else if (part instanceof ImageGroup) {
-				result.addAll(((ImageGroup) part).getImages());
-			}
-		}
-		return result;
+		// A reference has no file in this folder and never pairs with one, see issue #307.
+		return PhotoCollections.ownImages(album);
 	}
 
 	private static boolean isBlank(String value) {

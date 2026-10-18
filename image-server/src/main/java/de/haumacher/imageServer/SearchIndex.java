@@ -710,7 +710,8 @@ public final class SearchIndex implements FolderPipeline.Step {
 		List<Row> rows = new ArrayList<>();
 		Set<String> names = new HashSet<>();
 		boolean waiting = false;
-		for (ImagePart image : PhotoSearch.images(album)) {
+		// A reference is found where its photograph lies, once, see issue #307.
+		for (ImagePart image : PhotoCollections.ownImages(album)) {
 			// A file that cannot be read is no photograph to find, see issue #253.
 			if (BrokenParts.isBroken(image) || !names.add(image.getName())) {
 				continue;

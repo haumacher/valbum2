@@ -100,7 +100,21 @@ public final class Stacks {
 	 * album's own cache of vectors.
 	 */
 	public static List<PhotoStack> of(AlbumInfo answer, File folder) {
+		return of(answer, folder, java.util.Collections.emptySet());
+	}
+
+	/**
+	 * {@link #of(AlbumInfo, File)} without the photographs of the given names: the references of
+	 * the album, see issue #307. A reference stands for a photograph of another album, whose bursts
+	 * are that album's; it never joins a stack here.
+	 */
+	public static List<PhotoStack> of(AlbumInfo answer, File folder, java.util.Set<String> excluded) {
 		Map<String, Shot> shots = shots(folder);
+		if (!excluded.isEmpty()) {
+			// The cached map is shared; a copy is narrowed.
+			shots = new java.util.HashMap<>(shots);
+			shots.keySet().removeAll(excluded);
+		}
 		if (shots.isEmpty()) {
 			return new ArrayList<>();
 		}
@@ -135,6 +149,7 @@ public final class Stacks {
 	/** Whether the given photograph may join a stack at all, see {@link Stacks}. */
 	private static boolean joins(ImagePart image) {
 		return image.getKind() == ImageKind.IMAGE && image.getDate() != 0 && !image.isMissing()
+			&& image.getRef() == null
 			&& !BrokenParts.isBroken(image) && image.getRating() > Ratings.TRASH;
 	}
 

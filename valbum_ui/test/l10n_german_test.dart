@@ -280,22 +280,13 @@ void sliceThree() {
           isNot(l10nOf(const Locale("en")).headingLevelSubsection));
     });
 
-    testWidgets('the dialog making a collection (issue #221)', (tester) async {
-      speakGerman(tester);
-      await tester.pumpWidget(
-        localizedApp(
-          const CreateCollectionDialog(),
-          locale: const Locale("de"),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.text("Neue Sammlung"), findsOneWidget);
-      expect(find.text(de.newCollectionHint), findsOneWidget);
-      expect(de.newCollectionHint,
-          isNot(l10nOf(const Locale("en")).newCollectionHint));
-      expect(de.removeFromCollectionExplanation,
-          isNot(l10nOf(const Locale("en")).removeFromCollectionExplanation));
+    testWidgets('the words of a reference (issues #221, #307)', (tester) async {
+      var en = l10nOf(const Locale("en"));
+      expect(de.addToAlbumAsReference, "Zum Album hinzufügen (als Verweis)…");
+      expect(de.removeReferencesExplanation,
+          isNot(en.removeReferencesExplanation));
+      expect(de.referenceMark, isNot(en.referenceMark));
+      expect(de.addCountToAlbumAsReference(2), contains("als Verweis"));
     });
 
     testWidgets('the album properties dialog', (tester) async {

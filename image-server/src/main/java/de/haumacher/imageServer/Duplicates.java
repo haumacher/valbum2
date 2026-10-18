@@ -75,7 +75,8 @@ public class Duplicates {
 			if (album == null) {
 				return result;
 			}
-			for (ImagePart image : PhotoSearch.images(album)) {
+			// A reference is no copy, see issue #307.
+			for (ImagePart image : PhotoCollections.ownImages(album)) {
 				ImagePart shown = photo(folder.isEmpty() ? image.getName() : folder + "/" + image.getName());
 				if (shown != null) {
 					result.put(image.getName(), shown);

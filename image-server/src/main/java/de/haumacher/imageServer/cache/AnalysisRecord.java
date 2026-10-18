@@ -510,9 +510,9 @@ public final class AnalysisRecord {
 			// A folder of folders by its owner's word: its files are never shown.
 			return Result.NONE;
 		}
-		if (sidecar instanceof AlbumInfo && (((AlbumInfo) sidecar).getKind() == AlbumKind.COLLECTION
-			|| ((AlbumInfo) sidecar).getKind() == AlbumKind.SEARCH)) {
-			// Its parts are its sidecar's, see issues #221 and #227.
+		if (sidecar instanceof AlbumInfo && ((AlbumInfo) sidecar).getKind() == AlbumKind.SEARCH) {
+			// Its parts are found, see issue #227. A collection is an album since issue #307: a
+			// file in its folder is a photograph of it.
 			return Result.NONE;
 		}
 		File[] files = folder.listFiles(ResourceCache.IMAGES);

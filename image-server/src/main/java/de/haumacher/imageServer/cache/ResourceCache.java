@@ -964,11 +964,11 @@ public class ResourceCache {
 			}
 
 			AlbumInfo album = (AlbumInfo) resource;
-			if (album != null && (album.getKind() == AlbumKind.COLLECTION || album.getKind() == AlbumKind.SEARCH)) {
-				// A collection holds references and no files, see issue #221: its parts are
-				// what its sidecar says, never reconciled with the folder, and a file somebody
-				// put there by hand is no part of it. A saved search (issue #227) holds no
-				// parts at all: they are found whenever it is asked.
+			if (album != null && album.getKind() == AlbumKind.SEARCH) {
+				// A saved search (issue #227) holds no parts at all: they are found whenever it is
+				// asked. A collection (issue #221) is an album like any other since issue #307: its
+				// references are kept where they stand, and a file in its folder is a photograph of
+				// it.
 				UpdateTransient.updateTransient(album);
 				album.setEffectiveDate(AlbumDate.ofAlbum(album, path.getName()).millis());
 				return album;
@@ -986,6 +986,12 @@ public class ResourceCache {
 			}
 
 			loadAlbum(album, dir, record);
+
+			// Whether the album is (still) stored as a collection is what it holds, see
+			// PhotoCollections#storedKind(AlbumInfo, boolean): the next write says so.
+			if (album.getKind() == AlbumKind.COLLECTION || album.getKind() == AlbumKind.ALBUM) {
+				album.setKind(de.haumacher.imageServer.PhotoCollections.storedKind(album, false));
+			}
 
 			// Derived on every read and never stored, see AlbumDate#clearDerived(FolderResource).
 			album.setEffectiveDate(AlbumDate.ofAlbum(album, path.getName()).millis());
@@ -1215,7 +1221,9 @@ public class ResourceCache {
 			AlbumInfo album;
 			if (sidecar instanceof AlbumInfo) {
 				album = (AlbumInfo) sidecar;
-				if (album.getKind() == AlbumKind.COLLECTION || album.getKind() == AlbumKind.SEARCH) {
+				if (album.getKind() == AlbumKind.SEARCH || de.haumacher.imageServer.PhotoCollections.holdsReferences(album)) {
+					// Its count is its references resolved for the caller, which a listing never
+					// does, see issue #286.
 					return null;
 				}
 			} else if (sidecar == null && record != null && !record.isEmpty()) {
@@ -1250,9 +1258,12 @@ public class ResourceCache {
 					// is a kind of album and says so, so that the tile can stand first and show no
 					// date, see issue #131.
 					boolean inbox = Inboxes.isInbox(albumInfo);
+					// An album holding references is counted on demand, see FolderKind#COLLECTION.
+					boolean references = de.haumacher.imageServer.PhotoCollections.holdsReferences(albumInfo);
 					folderInfo.setKind(inbox ? FolderKind.INBOX
-						: albumInfo.getKind() == AlbumKind.COLLECTION ? FolderKind.COLLECTION
-							: albumInfo.getKind() == AlbumKind.SEARCH ? FolderKind.SEARCH : FolderKind.ALBUM);
+						: albumInfo.getKind() == AlbumKind.SEARCH ? FolderKind.SEARCH
+							: references || albumInfo.getKind() == AlbumKind.COLLECTION ? FolderKind.COLLECTION
+								: FolderKind.ALBUM);
 					folderInfo.setTitle(albumInfo.getTitle());
 					folderInfo.setSubTitle(albumInfo.getSubTitle());
 					// Whether the tile stands out, read from the sidecar like the title, see
@@ -1264,7 +1275,7 @@ public class ResourceCache {
 						// ThumbnailInfo#getCrop() and issue #212.
 						folderInfo.setIndexPicture(de.haumacher.imageServer.Crops.withRegion(albumInfo, chosen));
 					}
-					if (albumInfo.getKind() != AlbumKind.COLLECTION && albumInfo.getKind() != AlbumKind.SEARCH) {
+					if (albumInfo.getKind() != AlbumKind.SEARCH) {
 						// An album and the inbox: the sidecar is the truth for the files it lists,
 						// but it need not list every file of the folder -- a file nobody edited is
 						// in the record alone. Completed from the record exactly as the album
@@ -1276,8 +1287,10 @@ public class ResourceCache {
 						// which a listing never does -- the client asks ?type=image-count.
 						AnalysisRecord record = AnalysisRecord.read(folder);
 						AlbumInfo complete = loadAlbum(albumInfo, folder, record);
-						folderInfo.setImageCount(imageCount(complete));
-						if (chosen == null && record != null && complete.getKind() == AlbumKind.ALBUM) {
+						// An album holding references is not counted here: its count is its
+						// references resolved for the caller, see issue #286 and issue #307.
+						folderInfo.setImageCount(references ? 0 : imageCount(complete));
+						if (chosen == null && record != null && complete.getKind() != AlbumKind.INBOX) {
 							// An album that chose no cover is shown by the same rule as one without
 							// a sidecar, never by none: writing a sidecar (a star, a rating, a
 							// title) must not take the picture off its tile, see issue #260. A
@@ -1449,7 +1462,10 @@ public class ResourceCache {
 			// A part whose file is gone, as far as the background knows: left out.
 			boolean dropped = false;
 			for (ImagePart image : images(album)) {
-				if (record.get(image.getName()) == null) {
+				// A reference stands for a photograph of another album and has no file here, see
+				// issue #307.
+				if (!de.haumacher.imageServer.PhotoCollections.isReference(image)
+					&& record.get(image.getName()) == null) {
 					MoveService.detach(album, image);
 					dropped = true;
 				}
@@ -1463,6 +1479,13 @@ public class ResourceCache {
 			for (AnalysisRecord.Entry entry : record.entries()) {
 				String name = entry.getName();
 				ImagePart stored = album.getImageByName().get(name);
+				if (stored != null && de.haumacher.imageServer.PhotoCollections.isReference(stored)) {
+					// A file put by hand under the name of a reference: the reference keeps its
+					// name, and the file is shown once the reference is gone. Neither an upload
+					// nor a move lands under such a name, see ImageServlet#freeName(File, String).
+					LOG.warning("The file '" + new File(dir, name) + "' is hidden by a reference of that name.");
+					continue;
+				}
 				if (stored != null) {
 					if (BrokenParts.hasNoPicture(stored)) {
 						// Stored while its file was broken, see BrokenParts#clear(AlbumInfo).

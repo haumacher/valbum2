@@ -165,6 +165,26 @@ public class TestSimilarShots extends TestCase {
 		assertEquals(List.of(), stacks(Stacks.compute(album, shots)));
 	}
 
+	/**
+	 * A reference of issue #307 never joins a stack, however alike and however near in time: a burst
+	 * is a run of shots of the album they lie in, which stacks them there.
+	 */
+	public void testAReferenceNeverJoins() {
+		AlbumInfo album = AlbumInfo.create();
+		Map<String, Stacks.Shot> shots = new HashMap<>();
+		for (int n = 0; n < 3; n++) {
+			String name = "p" + n + ".jpg";
+			ImagePart image = ImagePart.create().setName(name).setKind(ImageKind.IMAGE).setDate(DATE + n * MINUTE);
+			if (n == 1) {
+				image.setRef(de.haumacher.imageServer.shared.model.PhotoRef.create().setHash("ab").setPath("Other/p1.jpg"));
+			}
+			album.addPart(image);
+			shots.put(name, new Stacks.Shot(normalized(burstVector(n)), Float.NaN));
+		}
+		assertEquals("The photos beside the reference stack, the reference is no member.",
+			List.of(List.of("p0.jpg", "p2.jpg")), stacks(Stacks.compute(album, shots)));
+	}
+
 	/** A heading ends a stack: a stack never pulls a photograph out of its section. */
 	public void testAHeadingSeparatesStacks() {
 		AlbumInfo album = AlbumInfo.create();

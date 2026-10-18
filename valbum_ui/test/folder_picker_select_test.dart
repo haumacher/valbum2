@@ -198,7 +198,8 @@ void main() {
   group('moving images', () {
     testWidgets('a tap on an album chooses it, the level stays',
         (tester) async {
-      var outcome = await openPicker(tester, (api) => imageMove(api, at: ["2002"]));
+      var outcome =
+          await openPicker(tester, (api) => imageMove(api, at: ["2002"]));
       var x = albumName(3);
       expect(confirm(tester).onPressed, isNull);
 
@@ -282,14 +283,14 @@ void main() {
       expect(find.byKey(const Key("picker-up")), findsOneWidget);
     });
 
-    testWidgets('a collection is refused, and says why', (tester) async {
+    testWidgets('a collection is an album and takes the move (issue #307)',
+        (tester) async {
       await openPicker(tester, (api) => imageMove(api));
-      expect(refusal(tester, "Best"), testL10n.collectionTakesNoMove);
-      expect(row(tester, "Best").enabled, isFalse);
+      expect(refusal(tester, "Best"), isNull);
+      expect(row(tester, "Best").enabled, isTrue);
       await tapRow(tester, "Best");
-      expect(find.byKey(const Key("picker-selected")), findsNothing);
-      expect(confirm(tester).onPressed, isNull);
-      expect(refusal(tester, "Loose"), isNull);
+      expect(find.byKey(const Key("picker-selected")), findsOneWidget);
+      expect(confirm(tester).onPressed, isNotNull);
     });
 
     testWidgets('a match without its tile is shown where it lies, chosen',

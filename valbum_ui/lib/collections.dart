@@ -1,18 +1,20 @@
-/// Collections, see issue #221: albums whose parts *reference* photographs
-/// lying in other albums of the space instead of holding files.
+/// References, see issues #221 and #307: parts of an album that stand for
+/// photographs lying in other albums of the space instead of holding files.
 ///
-/// The server answers a collection as an album of kind
-/// [AlbumKind.collection]: every [ImagePart] is the photograph as the caller
-/// would see it in its own album, under a name of the collection's own, and
-/// carries a [PhotoRef] saying where it lies ([ImagePart.ref], members only).
-/// Every address stays `<collection>/<name>` — the server answers it from the
+/// Every album may hold references beside its own files; a collection is an
+/// album without files of its own, and the app shows it as any album. The
+/// server answers a reference as the photograph as the caller would see it
+/// in its own album, under a name of the album's own, and with a [PhotoRef]
+/// saying where it lies ([ImagePart.ref], members only), see [isReference].
+/// Every address stays `<album>/<name>` — the server answers it from the
 /// source. A photograph that is gone from the space is a part with
 /// [ImagePart.missing], answered to editors alone, which has no thumbnail and
 /// is removed here.
 ///
-/// An edit of a photograph shown in a collection is written by the server to
-/// the album the photograph lies in, so after every write through a
-/// collection the router forgets those albums, see [forgetSources].
+/// The labels and the description of a reference are the album's own; every
+/// other edit of the photograph is written by the server to the album it lies
+/// in, so after every write of an album holding references the router
+/// forgets those albums, see [forgetSources].
 library;
 
 import 'package:flutter/material.dart';
@@ -27,11 +29,24 @@ import 'photo_actions.dart' show photoSourceOf;
 import 'resource.dart';
 import 'selectable.dart';
 
-/// Whether [album] is a collection.
-bool isCollection(AlbumInfo album) => album.kind == AlbumKind.collection;
+/// The key of the mark a tile of a reference carries (issue #307).
+const Key referenceMarkKey = Key("reference-mark");
+
+/// Whether [image] is a reference of its album to a photograph of another
+/// album, as the server tells a member (issue #307): a [PhotoRef] with the
+/// photograph's hash. A photograph of a search names where it lies by its
+/// path alone, and is no reference.
+bool isReference(ImagePart image) {
+  var ref = image.ref;
+  return ref != null && ref.hash.isNotEmpty;
+}
+
+/// Whether [album] holds a reference ([isReference]).
+bool holdsReferences(AlbumInfo album) =>
+    _imagesOf(album.parts).any(isReference);
 
 /// The folder (relative to the space root) the photograph [image] of a
-/// collection lies in, `null` where the server named none.
+/// reference or a search lies in, `null` where the server named none.
 List<String>? sourceFolderOf(ImagePart image) {
   var ref = image.ref;
   if (ref == null || ref.path.isEmpty) {
@@ -41,8 +56,8 @@ List<String>? sourceFolderOf(ImagePart image) {
   return segments.sublist(0, segments.length - 1);
 }
 
-/// The folder line the image properties show for a photograph of a
-/// collection, `null` for every other photograph.
+/// The folder line the image properties show for a reference or a
+/// photograph of a search, `null` for every other photograph.
 String? sourceFolderLabel(ImagePart image) {
   var folder = sourceFolderOf(image);
   if (folder == null) {
@@ -62,11 +77,11 @@ Iterable<ImagePart> _imagesOf(Iterable<AlbumPart> parts) sync* {
   }
 }
 
-/// Forgets what the router holds for every album a photograph of the
-/// collection [album], shown at [folder], lies in, after a write through the
-/// collection: the server wrote the change there (issue #221), and the album
-/// must show it when it is opened next. The album is the one [photoSourceOf]
-/// names, in the space the collection stands in (issue #301).
+/// Forgets what the router holds for every album a reference of [album],
+/// shown at [folder], points into, after a write of the album: the server
+/// wrote the change of the photograph there (issues #221, #307), and the
+/// album must show it when it is opened next. The album is the one
+/// [photoSourceOf] names, in the space the album stands in (issue #301).
 void forgetSources(
   VAlbumRouterDelegate? delegate,
   AlbumInfo album, {
@@ -74,8 +89,7 @@ void forgetSources(
 }) {
   // A saved search writes to the albums its photographs lie in as well
   // (issue #227).
-  if (delegate == null ||
-      !(isCollection(album) || album.kind == AlbumKind.search)) {
+  if (delegate == null) {
     return;
   }
   var seen = <String>{};
@@ -124,13 +138,13 @@ Widget missingTile(AppLocalizations l10n, double width, double height) =>
       ),
     );
 
-/// Asks whether [names] are to be taken out of the collection at [path] and
-/// takes them out, see issue #221: nothing on the disk is touched, the
-/// photographs stay in their albums.
+/// Asks whether the references [names] are to be taken out of the album at
+/// [path] and takes them out, see issues #221 and #307: nothing on the disk
+/// is touched, the photographs stay in their own albums.
 ///
 /// Answers whether the request went through; the server's own account is read
 /// out afterwards.
-Future<bool> removeFromCollection({
+Future<bool> removeReferencesFromAlbum({
   required BuildContext context,
   required VAlbumClient client,
   required List<String> path,
@@ -145,8 +159,8 @@ Future<bool> removeFromCollection({
     context: context,
     builder: (context) => AppAlertDialog(
       key: const Key("remove-from-collection-dialog"),
-      title: Text(l10n.removeFromCollectionQuestion(names.length)),
-      content: Text(l10n.removeFromCollectionExplanation),
+      title: Text(l10n.removeReferencesQuestion(names.length)),
+      content: Text(l10n.removeReferencesExplanation),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(false),
@@ -155,7 +169,7 @@ Future<bool> removeFromCollection({
         ElevatedButton(
           key: const Key("remove-from-collection-confirm"),
           onPressed: () => Navigator.of(context).pop(true),
-          child: Text(l10n.removeFromCollection),
+          child: Text(l10n.removeReference),
         ),
       ],
     ),
@@ -175,9 +189,7 @@ Future<bool> removeFromCollection({
   messenger.showSnackBar(
     SnackBar(
       content: Text(
-        said.isEmpty
-            ? l10n.removedFromCollection(names.length)
-            : said.join(" "),
+        said.isEmpty ? l10n.removedReferences(names.length) : said.join(" "),
       ),
       duration: const Duration(seconds: 6),
     ),

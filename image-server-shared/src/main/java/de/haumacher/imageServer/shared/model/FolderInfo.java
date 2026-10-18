@@ -209,9 +209,9 @@ public class FolderInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	 * </p>
 	 *
 	 * <p>
-	 * <b>A collection is not counted in a listing</b>: its count is its references resolved for the
-	 * caller, and resolving them asks every album they point into &mdash; too much for a number on
-	 * every tile of every listing. Nor is a saved search, which would have to be run, nor a folder
+	 * <b>An album holding references is not counted in a listing</b> ({@link FolderKind#COLLECTION}):
+	 * its count is its references resolved for the caller, and resolving them asks every album they
+	 * point into &mdash; too much for a number on every tile of every listing. Nor is a saved search, which would have to be run, nor a folder
 	 * of folders, which would have to be walked. Where a client wants such a number it asks the
 	 * folder itself, <code>?type=image-count</code> (see {@link ImageCount}), when it is about to
 	 * show it.

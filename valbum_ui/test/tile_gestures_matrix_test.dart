@@ -157,7 +157,7 @@ void main() {
         expect(
           find.descendant(
               of: find.byKey(const Key("tile-context-collect")),
-              matching: find.text(testL10n.addCountToCollection(2))),
+              matching: find.text(testL10n.addCountToAlbumAsReference(2))),
           findsOneWidget,
         );
         expect(shownOf(tester).$2, {a, b});

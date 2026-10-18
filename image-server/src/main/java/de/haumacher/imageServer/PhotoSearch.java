@@ -126,9 +126,13 @@ public final class PhotoSearch {
 		return folder != null && folder.isDirectory() && isSearch(ResourceCache.sidecar(folder));
 	}
 
-	/** Whether the given folder resource holds no files of its own: a collection or a saved search. */
+	/**
+	 * Whether the given folder resource holds no files of its own: a saved search. A collection is
+	 * an album since issue #307, whose files are its own and whose references are not, see
+	 * {@link PhotoCollections#ownImages(AlbumInfo)}.
+	 */
 	public static boolean holdsNoFiles(Resource resource) {
-		return isSearch(resource) || PhotoCollections.isCollection(resource);
+		return isSearch(resource);
 	}
 
 	/**
@@ -578,7 +582,8 @@ public final class PhotoSearch {
 		}
 		AlbumInfo album = (AlbumInfo) resource;
 		ImagePart image = Crops.findImage(album, name);
-		if (image == null || image.getRating() == Ratings.TRASH) {
+		if (image == null || PhotoCollections.isReference(image) || image.getRating() == Ratings.TRASH) {
+			// A reference is found where its photograph lies, once, see issue #307.
 			return null;
 		}
 		return index.matches(folder, name, query, people) ? folder : null;

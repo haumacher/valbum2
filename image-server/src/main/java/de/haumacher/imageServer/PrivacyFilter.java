@@ -362,8 +362,10 @@ public class PrivacyFilter {
 		ImagePart best = null;
 		for (AlbumPart part : parts) {
 			ImagePart image = shownImage(part);
-			// A file that cannot be read has no picture to be a cover with, see issue #253.
+			// A file that cannot be read has no picture to be a cover with, see issue #253; nor has a
+			// reference as the album stores it, unresolved, see issue #307.
 			if (image != null && !de.haumacher.imageServer.cache.BrokenParts.isBroken(image)
+				&& !PhotoCollections.isUnresolved(image)
 				&& image.getRating() > Ratings.MIN
 				&& (best == null || image.getRating() > best.getRating())) {
 				best = image;

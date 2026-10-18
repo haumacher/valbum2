@@ -842,7 +842,8 @@ public final class ContentIndex {
 			}
 		}
 		Set<String> broken = AnalysisRecord.broken(folder);
-		List<ImagePart> images = PhotoSearch.images(album);
+		// A reference is described where its photograph lies, see issue #307.
+		List<ImagePart> images = de.haumacher.imageServer.PhotoCollections.ownImages(album);
 		Set<String> pairedBases = new HashSet<>();
 		for (ImagePart image : images) {
 			if (RawPairs.isCompanionType(image.getName())) {
@@ -894,8 +895,11 @@ public final class ContentIndex {
 			LOG.log(Level.FINE, "Cannot read '" + folder + "' for the content search: " + ex.getMessage(), ex);
 			return null;
 		}
-		if (!(resource instanceof AlbumInfo) || PhotoSearch.holdsNoFiles(resource)) {
-			// A collection or a saved search shows photos of other albums, which are described there.
+		if (!(resource instanceof AlbumInfo) || PhotoSearch.holdsNoFiles(resource)
+			|| (de.haumacher.imageServer.PhotoCollections.holdsReferences(resource)
+				&& de.haumacher.imageServer.PhotoCollections.ownImages((AlbumInfo) resource).isEmpty())) {
+			// A saved search and an album of references alone (a collection) show photos of other
+			// albums, which are described there.
 			return null;
 		}
 		return (AlbumInfo) resource;

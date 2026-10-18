@@ -423,7 +423,8 @@ public class DeleteService {
 	}
 
 	private static void addTrashed(List<ImagePart> result, ImagePart image) {
-		if (image.getRating() <= Ratings.TRASH) {
+		// A reference is no file of the album to purge, see issue #307.
+		if (image.getRating() <= Ratings.TRASH && !PhotoCollections.isReference(image)) {
 			result.add(image);
 		}
 	}

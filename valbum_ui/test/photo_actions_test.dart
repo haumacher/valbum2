@@ -132,7 +132,7 @@ void main() {
       expect(
           find.descendant(
               of: find.byKey(const Key("inbox-context-collect")),
-              matching: find.text(testL10n.addCountToCollection(2))),
+              matching: find.text(testL10n.addCountToAlbumAsReference(2))),
           findsOneWidget);
       await tester.tap(find.byKey(const Key("inbox-context-collect")));
       await settle(tester);
@@ -253,7 +253,8 @@ void main() {
       expectShownAndMarked(tester, "img59.jpg");
     });
 
-    testWidgets('is not offered where the collection does not name the album', (tester) async {
+    testWidgets('is not offered where the collection does not name the album',
+        (tester) async {
       await openSpace(
           tester, PhotoSpace(refs: false), const ListingOrAlbumRoute(["Best"]));
       await rightClick(tester, "a.jpg");

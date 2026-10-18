@@ -489,9 +489,9 @@ public class SharePreview implements ResourceServlet.PageDecorator, ResourceServ
 		if (resource == null) {
 			return null;
 		}
-		if (PhotoCollections.isCollection(resource)) {
-			// A collection shows its photographs as the link sees them in their own albums, see
-			// issue #221; the references are kept here so that the card finds the file.
+		if (PhotoCollections.holdsReferences(resource)) {
+			// An album shows its references as the link sees them in their own albums, see issues
+			// #221 and #307; the references are kept here so that the card finds the file.
 			return data.collectionForLink(path, (AlbumInfo) resource, Math.min(Privacy.MEMBERS, link.getMaxPrivacy()),
 				Ratings.withoutTrash(link.getMinRating()), link.getPhotoLabel());
 		}
@@ -600,10 +600,12 @@ public class SharePreview implements ResourceServlet.PageDecorator, ResourceServ
 	private static double[] region(PathInfo path, Resource shown, File image) {
 		if (shown instanceof AlbumInfo) {
 			ImagePart part = Crops.findImage((AlbumInfo) shown, image.getName());
-			if (PhotoCollections.isCollection(shown) || PhotoSearch.isSearch(shown)) {
-				// A part of a collection is named by the collection, not by its file, see #221, and
-				// one of a saved search by its path below the folder searched, see #227.
+			if (part != null && (PhotoCollections.isReference(part) || !path.child(part.getName()).toFile().equals(image))) {
 				part = null;
+			}
+			if (part == null && (PhotoCollections.holdsReferences(shown) || PhotoSearch.isSearch(shown))) {
+				// A reference is named by the album, not by its file, see #221 and #307, and a
+				// photograph of a saved search by its path below the folder searched, see #227.
 				for (AlbumPart candidate : ((AlbumInfo) shown).getParts()) {
 					if (candidate instanceof ImagePart && ((ImagePart) candidate).getRef() != null
 						&& path.getBasePath().resolve(((ImagePart) candidate).getRef().getPath()).toFile().equals(image)) {

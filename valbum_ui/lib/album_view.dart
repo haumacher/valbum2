@@ -1119,8 +1119,8 @@ class AlbumContentState extends State<AlbumContent>
       _layoutOrientation.clear();
     });
 
-    // An edit of a photograph of a collection was written to the album it
-    // lies in (issue #221): that album is fetched anew when it is opened.
+    // An edit of a referenced photograph was written to the album it lies in
+    // (issues #221, #307): that album is fetched anew when it is opened.
     forgetSources(widget.albumState.navigator.delegate, widget.album,
         folder: widget.albumState.path);
 
@@ -1298,8 +1298,8 @@ class AlbumContentState extends State<AlbumContent>
   /// save that buffer with it — and only where the album holds a photograph
   /// rated as trash, group members counted one by one.
   ///
-  /// Never in a collection (issue #221): its photographs lie in other albums,
-  /// whose trash they are restored and purged in.
+  /// Its own photographs alone: a reference (issue #307) is put into the trash
+  /// of the album its photograph lies in, and restored and purged there.
   bool get mayShowTrash =>
       mayEditAlbum &&
       !editMode &&
@@ -1349,9 +1349,9 @@ class AlbumContentState extends State<AlbumContent>
   }
 
   /// Whether the photographs shown lie in other albums, which keep their
-  /// order, groups and headings: a collection or a search, saved or not.
-  bool get showsOtherAlbums =>
-      isCollection(widget.album) || isSearch(widget.album);
+  /// order, groups and headings: a search, saved or not. An album's
+  /// references lie in other albums one by one, see [isReference].
+  bool get showsOtherAlbums => isSearch(widget.album);
 
   /// Whether "Edit search" is offered: a saved search, to whoever may edit
   /// it.
@@ -1373,9 +1373,9 @@ class AlbumContentState extends State<AlbumContent>
     delegate.go(SearchRoute(scope));
   }
 
-  /// Whether "Create collection from these…" is offered: in a saved search
+  /// Whether "Add all to album (as reference)…" is offered: in a saved search
   /// showing photographs, to a member outside the edit mode, which offers
-  /// "Add to collection…" for its selection.
+  /// "Add to album (as reference)…" for its selection.
   bool get mayCollectAll =>
       isSearch(widget.album) &&
       !isSearchView &&
@@ -1384,8 +1384,8 @@ class AlbumContentState extends State<AlbumContent>
       (_permission.named || heldRights.mayEdit) &&
       holdsImages;
 
-  /// Turns every photograph shown into a collection, chosen or created, see
-  /// issues #221 and #227.
+  /// Adds every photograph shown to an album as references, chosen or
+  /// created, see issues #221, #227 and #307.
   Future<void> collectAll() => collectWithPicker(
         context: context,
         client: client,
@@ -1403,14 +1403,14 @@ class AlbumContentState extends State<AlbumContent>
   /// a selection. The edit mode itself already asks for `edit` and refuses a
   /// share link, see [editMode].
   ///
-  /// Never in a collection (issue #221): a collection holds references, and a
-  /// photograph is taken out of it by "Remove from collection".
+  /// A reference moves as a reference (issue #307): its photograph stays where
+  /// it lies.
   bool get mayMoveSelection =>
       selection.isNotEmpty && PhotoAction.move.allowedFor(photoFacts);
 
-  /// The photographs of the selection a collection can be given, see issue
-  /// #221: every selected image (a group by its representative), never a
-  /// photograph that is gone.
+  /// The photographs of the selection another album can reference, see issues
+  /// #221 and #307: every selected image (a group by its representative),
+  /// never a photograph that is gone.
   List<String> get collectableNames => [
         for (var part in widget.album.parts)
           if (isSelected(part) &&
@@ -1419,15 +1419,16 @@ class AlbumContentState extends State<AlbumContent>
             part.thumbnailName,
       ];
 
-  /// Whether "Add to collection…" is offered: a selection of the edit mode
-  /// holding a photograph (issue #221).
+  /// Whether "Add to album (as reference)…" is offered: a selection of the
+  /// edit mode holding a photograph (issues #221, #307).
   bool get mayCollectSelection =>
       editMode &&
       PhotoAction.collect.allowedFor(photoFacts) &&
       collectableNames.isNotEmpty;
 
-  /// Adds the selected photographs to a collection, chosen or created in the
-  /// picker, see issue #221. Nothing changes in this album.
+  /// Adds the selected photographs to another album as references, chosen or
+  /// created in the picker, see issues #221 and #307. Nothing changes in this
+  /// album.
   Future<void> collectSelection() => collectWithPicker(
         context: context,
         client: client,
@@ -1436,26 +1437,35 @@ class AlbumContentState extends State<AlbumContent>
         delegate: widget.albumState.navigator.delegate,
       );
 
-  /// Whether "Remove from collection" is offered: a selection of the edit
-  /// mode of a collection holding a photograph, see issue #221.
-  bool get mayRemoveFromCollection =>
-      PhotoAction.removeFromCollection.allowedFor(photoFacts) &&
-      selection.any((part) => part is AbstractImage);
+  /// The references of the selection, by their names in this album (issue
+  /// #307).
+  List<String> get selectedReferences => [
+        for (var part in widget.album.parts)
+          if (isSelected(part) && part is ImagePart && isReference(part))
+            part.name,
+      ];
 
-  /// Takes the selected photographs out of this collection, see issue #221.
+  /// Whether "Remove from album" is offered: a selection of the edit mode
+  /// holding a reference, see issues #221 and #307.
+  bool get mayRemoveReferences =>
+      PhotoAction.removeReference.allowedFor(photoFacts) &&
+      selectedReferences.isNotEmpty;
+
+  /// Takes the selected references out of this album, see issues #221 and
+  /// #307.
   ///
-  /// Refused with unsaved changes, as a move is: the collection is fetched
-  /// again afterwards. The photographs stay in their albums.
-  Future<void> removeSelectionFromCollection() async {
+  /// Refused with unsaved changes, as a move is: the album is fetched again
+  /// afterwards. The photographs stay in their own albums.
+  Future<void> removeSelectedReferences() async {
     if (dirty) {
       showMessage(_l10n.saveOrDiscardFirst);
       return;
     }
-    var names = [
-      for (var part in widget.album.parts)
-        if (isSelected(part) && part is AbstractImage) part.thumbnailName,
-    ];
-    var removed = await removeFromCollection(
+    var names = selectedReferences;
+    if (names.isEmpty) {
+      return;
+    }
+    var removed = await removeReferencesFromAlbum(
       context: context,
       client: client,
       path: widget.albumState.path,
@@ -1714,7 +1724,7 @@ class AlbumContentState extends State<AlbumContent>
     if (!rights.mayDownload || isSearchView) {
       return const [];
     }
-    // A photograph of a collection that is gone has no original (#221).
+    // A reference whose photograph is gone has no original (#221, #307).
     if (editMode && selection.isNotEmpty) {
       return [
         for (var image in downloadedImages(widget.album, selection))
@@ -1890,10 +1900,7 @@ class AlbumContentState extends State<AlbumContent>
   /// Whether the album's menu offers to switch the stacking: where the album
   /// has bursts to stack, outside the edit mode.
   bool get offersStacking =>
-      !editMode &&
-      !isSearchView &&
-      !isNewsView &&
-      shownAlbum.stacks.isNotEmpty;
+      !editMode && !isSearchView && !isNewsView && shownAlbum.stacks.isNotEmpty;
 
   /// Whether the bursts are stacked, see [stacksShown].
   bool get stacking => _stacking;
@@ -2037,11 +2044,9 @@ class AlbumContentState extends State<AlbumContent>
             ? PhotoView.search
             : isNewsView
                 ? PhotoView.news
-                : isCollection(widget.album)
-                    ? PhotoView.collection
-                    : isSearch(widget.album)
-                        ? PhotoView.savedSearch
-                        : PhotoView.album,
+                : isSearch(widget.album)
+                    ? PhotoView.savedSearch
+                    : PhotoView.album,
         mode: editMode
             ? PhotoMode.edit
             : selectMode
@@ -2112,8 +2117,17 @@ class AlbumContentState extends State<AlbumContent>
       // The photo under the pointer covers an album made for it (#273).
       moveSelection(cover: tile.image.name);
 
+  /// Puts the photos of the selection into the trash — never a reference,
+  /// whose photograph lies in another album: references are taken out of
+  /// the album instead (issue #307), the files put into the trash after.
   @override
-  Future<void> deletePhotos(PhotoTile tile) => rate(tile.part, trashRating);
+  Future<void> deletePhotos(PhotoTile tile) async {
+    if (selectedReferences.isNotEmpty) {
+      await removeSelectedReferences();
+      return;
+    }
+    await rate(tile.part, trashRating);
+  }
 
   @override
   Future<void> labelPhotos(PhotoTile tile) => labelSelection();
@@ -2139,8 +2153,7 @@ class AlbumContentState extends State<AlbumContent>
   }
 
   @override
-  Future<void> removePhotosFromCollection(PhotoTile tile) =>
-      removeSelectionFromCollection();
+  Future<void> removeReferences(PhotoTile tile) => removeSelectedReferences();
 
   @override
   Future<void> downloadPhotos(PhotoTile? tile) {
@@ -2190,7 +2203,7 @@ class AlbumContentState extends State<AlbumContent>
       image: image,
       album: widget.album,
     );
-    // A photograph of a collection is cropped in its own album (#221), in
+    // A referenced photograph is cropped in its own album (#221, #307), in
     // the space the view stands in (#301).
     var source = sourceOfPhoto(tile);
     if (changed &&
@@ -2708,11 +2721,9 @@ class AlbumContentState extends State<AlbumContent>
       // the button is not offered rather than refused, see issue #49.
       // Inside a link the upload is offered exactly when the link allows a
       // contribution, which is what the server answered, see issue #51.
-      // A collection holds references, never files: photographs are added to
-      // it by "Add to collection…" from their albums (issue #221).
+      // A collection is an album and takes files like any (issue #307).
       floatingActionButton: previewing ||
               isNewsView ||
-              isCollection(self) ||
               isSearch(self) ||
               !rights.mayContribute ||
               (link != null && !link.writeAllowed)
@@ -2926,25 +2937,26 @@ class AlbumContentState extends State<AlbumContent>
             (_) => showLess(),
             enabled: minRating < maxMinRating,
           ),
-          // A reference to the selection in a collection, chosen or created
-          // (issue #221); nothing changes in this album. Below the filter,
-          // so that the entries a selection always had keep their places.
+          // References to the selection in another album, chosen or created
+          // (issues #221, #307); nothing changes in this album. Below the
+          // filter, so that the entries a selection always had keep their
+          // places.
           if (mayCollectSelection)
             keyedMenuItem(
               const Key("add-to-collection"),
-              Icons.collections_bookmark_outlined,
-              _l10n.addToCollection,
+              Icons.add_link,
+              _l10n.addToAlbumAsReference,
               (_) => collectSelection(),
             ),
-          if (mayRemoveFromCollection)
+          if (mayRemoveReferences)
             keyedMenuItem(
               const Key("remove-from-collection"),
-              Icons.remove_circle_outline,
-              _l10n.removeFromCollection,
-              (_) => removeSelectionFromCollection(),
+              Icons.link_off,
+              _l10n.removeReference,
+              (_) => removeSelectedReferences(),
             ),
-          // What a saved search looks for, and what it found turned into a
-          // collection (issue #227).
+          // What a saved search looks for, and what it found added to an
+          // album as references (issues #227, #307).
           if (mayEditSearch)
             keyedMenuItem(
               const Key("edit-search"),
@@ -2955,8 +2967,8 @@ class AlbumContentState extends State<AlbumContent>
           if (mayCollectAll)
             keyedMenuItem(
               const Key("collect-all"),
-              Icons.collections_bookmark_outlined,
-              _l10n.createCollectionFromThese,
+              Icons.add_link,
+              _l10n.addAllToAlbumAsReference,
               (_) => collectAll(),
             ),
 
@@ -4400,8 +4412,7 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
                 onTap: () => state.foldStack(opened!),
                 child: const Padding(
                   padding: EdgeInsets.all(4),
-                  child:
-                      Icon(Icons.unfold_less, size: 18, color: Colors.white),
+                  child: Icon(Icons.unfold_less, size: 18, color: Colors.white),
                 ),
               ),
             ),
@@ -4471,7 +4482,7 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
       return brokenTile(image, width, height);
     }
     if (image.missing) {
-      // A photograph of a collection that is gone (issue #221): nothing to
+      // A reference whose photograph is gone (issues #221, #307): nothing to
       // ask a thumbnail of.
       return missingTile(AppLocalizations.of(state.context)!, width, height);
     }
@@ -4488,7 +4499,13 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
     var fresh = state.isFresh(image);
     // The photo "Show in album" opened this album for (issue #289).
     var shown = state.isMarked(image);
-    if (image.kind == ImageKind.image && marker == null && !fresh && !shown) {
+    // A reference to a photo of another album (issue #307), marked as such.
+    var reference = isReference(image);
+    if (image.kind == ImageKind.image &&
+        marker == null &&
+        !fresh &&
+        !shown &&
+        !reference) {
       return thumbnail;
     }
     var tile = SizedBox(
@@ -4510,6 +4527,20 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
               ),
             ),
           if (marker != null) Positioned(top: 4, left: 4, child: marker),
+          if (reference)
+            Positioned(
+              bottom: 4,
+              left: 4,
+              child: Icon(
+                Icons.link,
+                key: referenceMarkKey,
+                size: 18,
+                color: Colors.white,
+                shadows: const [Shadow(color: Colors.black87, blurRadius: 6)],
+                semanticLabel:
+                    AppLocalizations.of(state.context)!.referenceMark,
+              ),
+            ),
           if (shown)
             const Positioned.fill(
               child: IgnorePointer(
@@ -4785,7 +4816,7 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
 
   /// The rotation tools, next to the selection mark.
   ///
-  /// A photograph of a collection that is gone (issue #221) has nothing to
+  /// A reference whose photograph is gone (issues #221, #307) has nothing to
   /// turn: it is only selected, to be removed.
   Widget topBar() => toolbar([
         toolButton(
@@ -4808,15 +4839,15 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
       return null;
     }
     var self = part;
-    // A collection has no groups (issue #221): it shows photographs of other
-    // albums one by one, each where its author put it.
-    var collection = isCollection(album.widget.album);
+    // A reference is never a member of a group (issue #307): it stands for a
+    // photograph of another album, one by one, where its author put it.
+    var references = album.selectedReferences.isNotEmpty;
     // A search has neither: its photographs lie in other albums and are shown
     // in date order (issue #227).
     var search = isSearch(album.widget.album);
     return toolbar([
       // A file that cannot be read represents no group (issue #253).
-      if (!search && multiSelected && !collection && image.hasPicture)
+      if (!search && multiSelected && !references && image.hasPicture)
         toolButton(Icons.join_left, _l10n.group, createGroup)
       else if (!search && multiSelected)
         toolButton(Icons.title, _l10n.insertHeading, createHeading)

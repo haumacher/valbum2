@@ -100,7 +100,7 @@ final class CollectionRewrite {
 					return FileVisitResult.CONTINUE;
 				}
 				FolderResource stored = ResourceCache.sidecar(dir.toFile());
-				if (!PhotoCollections.isCollection(stored)) {
+				if (!PhotoCollections.holdsReferences(stored)) {
 					return FileVisitResult.CONTINUE;
 				}
 				AlbumInfo collection = (AlbumInfo) stored;

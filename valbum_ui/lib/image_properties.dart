@@ -63,7 +63,7 @@ List<Widget> imagePropertyLines(
             ),
           ),
         ),
-      // Where a photograph of a collection lies (issue #221).
+      // Where a reference or a photograph of a search lies (#221, #307).
       if (sourceFolderLabel(image) != null)
         imagePropertyLine(
           const Key("property-source"),
