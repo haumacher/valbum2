@@ -1,1 +1,1 @@
-["AlbumInfo",{"kind":"SEARCH","title":"Like this","query":{"version":1,"root":["SearchAnd",{"criteria":[["SearchContent",{"text":"sunset over the sea"}],["SearchSimilar",{"photo":"A/a000.jpg"}]]}]}}]
+["AlbumInfo",{"kind":"SEARCH","title":"Like this","query":{"version":1,"root":["SearchAnd",{"criteria":[["SearchContent",{"text":"sunset over the sea"}],["SearchShot",{"photo":"A/a000.jpg"}]]}]}}]

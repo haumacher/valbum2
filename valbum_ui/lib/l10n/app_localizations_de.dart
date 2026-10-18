@@ -3889,6 +3889,24 @@ class AppLocalizationsDe extends AppLocalizations {
   String get searchShowMore => 'Mehr anzeigen';
 
   @override
+  String get moreLikeThis => 'Ähnliche Fotos';
+
+  @override
+  String get searchSimilarChip => 'Wie dieses Foto';
+
+  @override
+  String get searchSimilarTooltip =>
+      'Fotos, die diesem ähnlich sehen, die ähnlichsten zuerst';
+
+  @override
+  String get searchSimilarNotFound =>
+      'Das Foto, mit dem diese Suche verglichen wird, ist nicht vorhanden oder für Sie nicht sichtbar.';
+
+  @override
+  String get searchSimilarNotDescribed =>
+      'Dieses Foto ist noch nicht ausgewertet. Versuchen Sie es später noch einmal.';
+
+  @override
   String get searchMediaAll => 'Fotos und Videos';
 
   @override

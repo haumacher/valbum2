@@ -65,6 +65,13 @@ class PhotoSpace {
   /// Whether the space looks for faces, as the server answers it (#124).
   bool faces;
 
+  /// Whether the space has content search on, as the server answers it
+  /// (#257): what "More like this" is offered by.
+  bool content;
+
+  /// What a search answers, [found] where `null`.
+  String? searchAnswer;
+
   PhotoSpace({
     this.role = "edit",
     this.rights = const ["view", "download", "contribute", "edit"],
@@ -73,6 +80,8 @@ class PhotoSpace {
     this.refs = true,
     this.aKind = "IMAGE",
     this.faces = false,
+    this.content = false,
+    this.searchAnswer,
   });
 
   /// [photo], `a.jpg` of the kind [aKind].
@@ -81,7 +90,8 @@ class PhotoSpace {
 
   String get _auth => '{"mode":"writes","deviceName":"Desk",'
       '"writeAllowed":true,"userName":"carol","role":"$role","space":"",'
-      '"clearance":"all","mayShare":false,"faces":$faces}';
+      '"clearance":"all","mayShare":false,"faces":$faces,'
+      '"content":$content}';
 
   String get trip => '["AlbumInfo", {"path": "trip", "title": "Trip", '
       '"subTitle": "", "rights": ${rightsOf(rights)}, "parts": ['
@@ -144,7 +154,7 @@ class PhotoSpace {
     if (request.method == "POST") {
       switch (query["action"]) {
         case "search":
-          return json(found);
+          return json(searchAnswer ?? found);
         case "collect":
           return json('{"outcomes":[]}');
         case "news-read":

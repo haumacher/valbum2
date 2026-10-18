@@ -45,6 +45,9 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #isFaces() */
 	private static final String FACES__PROP = "faces";
 
+	/** @see #isContent() */
+	private static final String CONTENT__PROP = "content";
+
 	/** @see #getShare() */
 	private static final String SHARE__PROP = "share";
 
@@ -85,6 +88,8 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private String _mapUrl = "";
 
 	private boolean _faces = false;
+
+	private boolean _content = false;
 
 	private de.haumacher.imageServer.shared.model.ShareInfo _share = null;
 
@@ -345,6 +350,28 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** Internal setter for {@link #isFaces()} without chain call utility. */
 	protected final void internalSetFaces(boolean value) {
 		_faces = value;
+	}
+
+	/**
+	 * Whether this space has its content search switched on, see issue #257 (<code>space.json</code>
+	 * <code>content: on</code>): the app offers "More like this" on a photograph only then. Whether
+	 * the embedder can answer right now is not said here, and "More like this" needs none.
+	 */
+	public final boolean isContent() {
+		return _content;
+	}
+
+	/**
+	 * @see #isContent()
+	 */
+	public de.haumacher.imageServer.shared.model.AuthInfo setContent(boolean value) {
+		internalSetContent(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #isContent()} without chain call utility. */
+	protected final void internalSetContent(boolean value) {
+		_content = value;
 	}
 
 	/**
@@ -622,6 +649,8 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 		out.value(getMapUrl());
 		out.name(FACES__PROP);
 		out.value(isFaces());
+		out.name(CONTENT__PROP);
+		out.value(isContent());
 		if (hasShare()) {
 			out.name(SHARE__PROP);
 			getShare().writeTo(out);
@@ -663,6 +692,7 @@ public class AuthInfo extends de.haumacher.msgbuf.data.AbstractDataObject {
 			case MAY_SHARE__PROP: setMayShare(in.nextBoolean()); break;
 			case MAP_URL__PROP: setMapUrl(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case FACES__PROP: setFaces(in.nextBoolean()); break;
+			case CONTENT__PROP: setContent(in.nextBoolean()); break;
 			case SHARE__PROP: setShare(de.haumacher.imageServer.shared.model.ShareInfo.readShareInfo(in)); break;
 			case INVITATION__PROP: setInvitation(de.haumacher.imageServer.shared.model.InvitationInfo.readInvitationInfo(in)); break;
 			case PROOF_METHODS__PROP: {

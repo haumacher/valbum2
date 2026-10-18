@@ -283,6 +283,11 @@ class CallerInfo {
   /// entry is not offered at all rather than opening an empty screen.
   final bool faces;
 
+  /// Whether this space has its content search switched on (issue #257,
+  /// `space.json` `content: on`), as `?type=auth` answers it: what "More like
+  /// this" is offered by. False where the server is older than the field.
+  final bool content;
+
   /// The URL template the space shows a position on a map with (issue #112).
   ///
   /// Never empty: [defaultMapUrl] where the server named none, which is what
@@ -319,6 +324,7 @@ class CallerInfo {
     this.clearance = "",
     this.mayShare = false,
     this.faces = false,
+    this.content = false,
     String mapUrl = "",
     this.proofMethods = const [],
     this.inbox = "",
@@ -333,6 +339,7 @@ class CallerInfo {
         clearance: info.clearance,
         mayShare: info.mayShare,
         faces: info.faces,
+        content: info.content,
         mapUrl: info.mapUrl.trim(),
         proofMethods: List.unmodifiable(
             [for (var method in info.proofMethods) method.name]),
@@ -380,6 +387,7 @@ class CallerInfo {
       other.clearance == clearance &&
       other.mayShare == mayShare &&
       other.faces == faces &&
+      other.content == content &&
       other.mapUrl == mapUrl &&
       listEquals(other.proofMethods, proofMethods) &&
       other.inbox == inbox &&
@@ -387,7 +395,7 @@ class CallerInfo {
 
   @override
   int get hashCode => Object.hash(userName, role, space, clearance, mayShare,
-      faces, mapUrl, Object.hashAll(proofMethods), inbox, inboxCount);
+      faces, content, mapUrl, Object.hashAll(proofMethods), inbox, inboxCount);
 
   @override
   String toString() => "CallerInfo($userName, $role, $space)";
@@ -436,6 +444,11 @@ class CallerInfo {
   /// `false` where nobody said: a server that does not know the field answers
   /// no face either, so the face editor has nothing to show.
   static bool facesOf(BuildContext context) => maybeOf(context)?.faces ?? false;
+
+  /// Whether the space the enclosing app talks to has content search on
+  /// (issue #257), which "More like this" needs; `false` where nobody said.
+  static bool contentOf(BuildContext context) =>
+      maybeOf(context)?.content ?? false;
 
   /// Asks the server again who the enclosing app is signed in as, for the
   /// count of the inbox badge (issue #226): after a write that changes what

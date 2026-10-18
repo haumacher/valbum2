@@ -54,6 +54,16 @@
 /// unless the user groups it; switching back restores the conventional
 /// search with the criteria and the grouping it had. A refusal (content
 /// search off, the embedder down) is said in the server's words.
+///
+/// "More like this" (issue #257, offered on a photo by the viewer and the
+/// tile menus, see `photo_actions.dart`) opens this view with the photo as
+/// the query: a chip showing its thumbnail, removable like every other one,
+/// which leaves the conventional search of what else is chosen; the other
+/// chips narrow it. It is a search by what the photos show, so the "AI
+/// search" switch shows it on and cannot be turned off while the photo is the
+/// query; the field's text then narrows as in the conventional search. A
+/// photo that is not there for the reader, or not analysed yet, is said in
+/// the app's words in place of the result.
 library;
 
 import 'package:flutter/material.dart';
@@ -74,9 +84,11 @@ import 'loadable.dart';
 import 'move_view.dart';
 import 'offline.dart';
 import 'resource.dart';
+import 'rights.dart' show spaceOwnerOf;
 import 'routes.dart';
 import 'search_query.dart';
 import 'selectable.dart';
+import 'thumbnails.dart' show ThumbnailImage;
 
 /// What the search view below one folder holds: the criteria, the search
 /// running or done, and the options offered, see issue #227.
@@ -498,6 +510,7 @@ class SearchViewState extends State<SearchView> {
                 ? null
                 : () => _choose(criteria.copyWith(anyOf: !criteria.anyOf)),
           ),
+          if (criteria.similar != null) _similarChip(criteria.similar!),
           for (var (person, excluded) in _rows(
             criteria.persons,
             criteria.excludedPersons,
@@ -695,7 +708,7 @@ class SearchViewState extends State<SearchView> {
                   // A description of what the photos show ranks, and is
                   // never excluded (issue #257).
                   onPressed:
-                      criteria.has(SearchKind.text) && !criteria.byContent
+                      criteria.has(SearchKind.text) && !criteria.textRanks
                           ? () => _choose(
                                 session.criteria
                                     .copyWith(text: _text.text)
@@ -703,7 +716,7 @@ class SearchViewState extends State<SearchView> {
                               )
                           : null,
                 ),
-                hintText: criteria.byContent
+                hintText: criteria.textRanks
                     ? l10n.searchContentHint
                     : l10n.searchText,
                 hintStyle: const TextStyle(color: Colors.white54),
@@ -713,21 +726,55 @@ class SearchViewState extends State<SearchView> {
             ),
           ),
           // The AI search, where the space has it on (issue #257) — or
-          // where the criteria are one already, so that it can be left.
-          if (options.content || criteria.byContent)
+          // where the criteria are one already, so that it can be left. A
+          // photo as the query is one as well: on, and left by removing the
+          // photo's chip.
+          if (options.content || criteria.byWhatTheyShow)
             FilterChip(
               key: const Key("search-by-content"),
               avatar: const Icon(Icons.auto_awesome, size: 18),
               label: Text(l10n.searchByContent),
               tooltip: l10n.searchByContentTooltip,
-              selected: criteria.byContent,
-              onSelected: (on) {
-                session.byContent(on, _text.text, client, path);
-                widget.albumState.navigator.delegate.searchChanged(context);
-              },
+              selected: criteria.byWhatTheyShow,
+              onSelected: criteria.similar != null
+                  ? null
+                  : (on) {
+                      session.byContent(on, _text.text, client, path);
+                      widget.albumState.navigator.delegate
+                          .searchChanged(context);
+                    },
             ),
           _count(),
         ],
+      ),
+    );
+  }
+
+  /// The chip of the photo "More like this" compares with (issue #257): its
+  /// thumbnail, and a delete button that leaves the search of the other
+  /// chips. A reference the server answered empty (the reader may not see
+  /// the photo) shows no picture.
+  Widget _similarChip(String similar) {
+    var space = spaceOwnerOf(path) != null ? [path.first] : const <String>[];
+    var segments = [
+      for (var segment in similar.split("/"))
+        if (segment.isNotEmpty) segment,
+    ];
+    return InputChip(
+      key: const Key("search-similar"),
+      avatar: segments.isEmpty
+          ? const Icon(Icons.image_search, size: 18)
+          : CircleAvatar(
+              key: const Key("search-similar-thumbnail"),
+              backgroundImage: ThumbnailImage(
+                client,
+                client.baseUrl([...space, ...segments]),
+              ),
+            ),
+      label: Text(_l10n.searchSimilarChip),
+      tooltip: _l10n.searchSimilarTooltip,
+      onDeleted: () => _choose(
+        session.criteria.copyWith(text: _text.text, clearSimilar: true),
       ),
     );
   }
@@ -1184,6 +1231,17 @@ class SearchViewState extends State<SearchView> {
             const Center(child: CircularProgressIndicator()),
           );
         }
+        if (album.searchProblem != SearchProblem.none) {
+          // "More like this" of a photo that is not there for the reader,
+          // or not analysed yet (issue #257).
+          return _page(
+            criteria,
+            _sentence(
+              searchProblemText(l10n, album.searchProblem),
+              const Key("search-problem"),
+            ),
+          );
+        }
         if (!album.parts.any((part) => part is AbstractImage)) {
           return _page(
             criteria,
@@ -1280,6 +1338,7 @@ class SearchViewState extends State<SearchView> {
       fallback: _l10n.searchAction,
       not: _l10n.searchWordNot,
       or: _l10n.searchWordOr,
+      similarTo: _l10n.searchSimilarChip,
       personNames: {for (var p in options?.persons ?? <Person>[]) p.id: p.name},
       placeNames: {
         for (var p in options?.places ?? <PlaceTag>[]) p.geonameId: p.name,
@@ -1336,6 +1395,7 @@ class SearchViewState extends State<SearchView> {
       fallback: l10n.searchAction,
       not: l10n.searchWordNot,
       or: l10n.searchWordOr,
+      similarTo: l10n.searchSimilarChip,
       personNames: {for (var p in options?.persons ?? <Person>[]) p.id: p.name},
       placeNames: {
         for (var p in options?.places ?? <PlaceTag>[]) p.geonameId: p.name,

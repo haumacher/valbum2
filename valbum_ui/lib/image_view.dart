@@ -799,6 +799,7 @@ class ImageViewState extends State<ImageView>
       knowsSource: source != null,
       findsFaces: CallerInfo.facesOf(context),
       inInbox: album?.kind == AlbumKind.inbox,
+      searchesContent: CallerInfo.contentOf(context),
     );
   }
 
@@ -2727,6 +2728,7 @@ class ImageViewState extends State<ImageView>
     "download": "viewer-download",
     "crop": "viewer-crop",
     "show-in-album": "viewer-show-in-album",
+    "more-like-this": "viewer-more-like-this",
     "collect": "viewer-add-to-collection",
     "use-as-poster": "viewer-use-as-poster",
     "reset-poster": "viewer-reset-poster",

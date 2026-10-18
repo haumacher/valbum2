@@ -1912,6 +1912,7 @@ class AlbumContentState extends State<AlbumContent>
         maySelect: maySelect,
         // The search view and the view of an entry of the bell have none.
         mayEnterEdit: mayEnterEditMode && !isSearchView && !isNewsView,
+        searchesContent: CallerInfo.contentOf(context),
       );
 
   @override
@@ -2524,6 +2525,23 @@ class AlbumContentState extends State<AlbumContent>
           if (previewing) previewBanner(),
           if (self.parts.isNotEmpty)
             Expanded(child: contentView(self))
+          // A saved "More like this" that finds nothing, and why (issue
+          // #257): its photo is not there for the reader, or not analysed
+          // yet.
+          else if (self.searchProblem != SearchProblem.none)
+            Expanded(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(
+                    searchProblemText(_l10n, self.searchProblem),
+                    key: const Key("search-problem"),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white70),
+                  ),
+                ),
+              ),
+            )
           // An empty album the server has not read yet (issue #253): the
           // album is not empty, its photos are still on their way.
           else if (self.preparing)

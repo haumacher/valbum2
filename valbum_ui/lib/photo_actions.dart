@@ -32,6 +32,7 @@ import 'move_view.dart' show ImageSubject;
 import 'resource.dart';
 import 'rights.dart';
 import 'routes.dart';
+import 'search_query.dart';
 
 /// The views a photo of a grid is shown in.
 enum PhotoView {
@@ -186,6 +187,11 @@ class PhotoFacts {
   /// Whether the photo lies in an inbox, which keeps no description (#136).
   final bool inInbox;
 
+  /// Whether the space has content search on (issue #257), so that "More
+  /// like this" can be asked: `?type=auth` says it, see
+  /// `CallerInfo.contentOf`.
+  final bool searchesContent;
+
   const PhotoFacts({
     required this.view,
     required this.mode,
@@ -198,7 +204,13 @@ class PhotoFacts {
     this.knowsSource = false,
     this.findsFaces = false,
     this.inInbox = false,
+    this.searchesContent = false,
   });
+
+  /// Whether the caller may search the space: a member, or an editor of the
+  /// folder, never through a link — the rule of the search icon of a
+  /// folder's app bar (issue #243) and of the server (members only).
+  bool get maySearch => !shareLink && (signedIn || rights.mayEdit);
 
   /// Whether the actions on several photos act on the selection: in a mode
   /// that has one.
@@ -333,6 +345,10 @@ class PhotoAction {
 
   final Future<void> Function(PhotoActionHost host, PhotoTile tile) _run;
 
+  final bool Function(ImagePart image, PhotoFacts facts) _fits;
+
+  static bool _always(ImagePart image, PhotoFacts facts) => true;
+
   const PhotoAction._({
     required this.id,
     required this.icon,
@@ -341,10 +357,12 @@ class PhotoAction {
     required bool Function(ImagePart) applies,
     required bool Function(PhotoFacts) allowed,
     required Future<void> Function(PhotoActionHost, PhotoTile) run,
+    bool Function(ImagePart, PhotoFacts) fits = _always,
   })  : _label = label,
         _applies = applies,
         _allowed = allowed,
-        _run = run;
+        _run = run,
+        _fits = fits;
 
   /// Whether the action means something for [image].
   bool appliesTo(ImagePart image) => _applies(image);
@@ -353,9 +371,11 @@ class PhotoAction {
   /// "view as" preview.
   bool allowedFor(PhotoFacts facts) => !facts.previewing && _allowed(facts);
 
-  /// Whether a tile showing [image] in the view of [facts] offers it.
+  /// Whether a tile showing [image] in the view of [facts] offers it: the
+  /// action applies to the photo, the view allows it, and — for the few
+  /// actions that ask both — the photo fits the view.
   bool offeredOn(ImagePart image, PhotoFacts facts) =>
-      appliesTo(image) && allowedFor(facts);
+      appliesTo(image) && allowedFor(facts) && _fits(image, facts);
 
   /// The words of the entry, for [count] photos acted on.
   String label(AppLocalizations l10n, PhotoFacts facts, int count) =>
@@ -520,6 +540,35 @@ class PhotoAction {
     run: (host, tile) => host.showPhotoProperties(tile),
   );
 
+  /// Opens the search with the photo as its query (issue #257): the photos
+  /// that look like it, the most similar first. A read, so offered to every
+  /// member who may search, view-only ones too — where the space has content
+  /// search on, and the view knows where the photo lies (the viewer from
+  /// the album it lies in, a tile of a search or a collection by the path
+  /// the server answers a member).
+  static final PhotoAction moreLikeThis = PhotoAction._(
+    id: "more-like-this",
+    icon: Icons.image_search,
+    onSelection: false,
+    label: (l10n, _, __) => l10n.moreLikeThis,
+    applies: (image) => !image.missing && image.hasPicture,
+    allowed: (facts) =>
+        facts.searchesContent &&
+        facts.maySearch &&
+        (facts.view != PhotoView.viewer || facts.knowsSource),
+    // A photo shown where it does not lie is compared with where the server
+    // says it lies, to a member alone.
+    fits: (image, facts) =>
+        !facts.showsOtherAlbums || sourceFolderOf(image) != null,
+    run: (host, tile) async {
+      var delegate = host.photoDelegate;
+      var source = host.sourceOfPhoto(tile);
+      if (delegate != null && source != null) {
+        searchLikePhoto(delegate, source);
+      }
+    },
+  );
+
   /// Corrects the recording time of the selection (#77); a file that cannot
   /// be read has none (#253).
   static final PhotoAction time = PhotoAction._(
@@ -595,6 +644,7 @@ final List<PhotoAction> photoActions = [
   PhotoAction.removeFromCollection,
   PhotoAction.download,
   PhotoAction.showInAlbum,
+  PhotoAction.moreLikeThis,
   PhotoAction.properties,
   PhotoAction.time,
   PhotoAction.crop,
@@ -607,6 +657,7 @@ final List<PhotoAction> viewerActions = [
   PhotoAction.download,
   PhotoAction.crop,
   PhotoAction.showInAlbum,
+  PhotoAction.moreLikeThis,
   PhotoAction.collect,
   PhotoAction.usePoster,
   PhotoAction.resetPoster,
@@ -670,6 +721,26 @@ Future<void> showPhotoTileMenu({
 void showPhotoInAlbum(VAlbumRouterDelegate delegate, PhotoSource source) {
   delegate.markIn(source.folder, source.name);
   delegate.go(ListingOrAlbumRoute(source.folder));
+}
+
+/// Opens the search of the whole space [source] lies in with that photo as
+/// its query — "More like this" of issue #257 — unordered by date: the
+/// photos that look most like it first, the photo itself not among them.
+void searchLikePhoto(VAlbumRouterDelegate delegate, PhotoSource source) {
+  var space = spaceOwnerOf(source.folder) != null
+      ? [source.folder.first]
+      : const <String>[];
+  var path = [...source.folder.sublist(space.length), source.name].join("/");
+  var criteria = SearchCriteria(similar: path);
+  // The album it was asked from stays beneath the search and is where the
+  // way back leads, as for a search widened from it (issue #259).
+  var here = delegate.route;
+  if (here is! SearchRoute &&
+      !here.fromSearch &&
+      here.albumPath.join("/") != space.join("/")) {
+    delegate.searchSession(space).origin = [...here.albumPath];
+  }
+  delegate.go(SearchRoute(space, query: criteria.toAddress()));
 }
 
 /// The gestures of every photo tile (issue #290): what a tap means is the

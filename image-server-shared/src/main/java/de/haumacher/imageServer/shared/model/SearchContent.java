@@ -8,8 +8,9 @@ package de.haumacher.imageServer.shared.model;
  * embedder of the server, and the photographs are answered by how near their vectors are to it,
  * the nearest first ({@link ImagePart#getScore()}), those too far from it cut. It stands alone as the
  * {@link SearchQuery#getRoot()}, or once among the members of the root's {@link SearchAnd}, whose other
- * members narrow what is ranked; inside a {@link SearchOr} or a {@link SearchNot} it is refused.
- * A saved search stores the text, never a vector: a new model only embeds the text again.
+ * members narrow what is ranked; inside a {@link SearchOr} or a {@link SearchNot} it is refused,
+ * as it is next to a {@link SearchSimilar}. A saved search stores the text, never a vector: a new
+ * model only embeds the text again.
  * </p>
  */
 public class SearchContent extends SearchCriterion {

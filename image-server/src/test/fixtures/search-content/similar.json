@@ -1,0 +1,1 @@
+["AlbumInfo",{"kind":"SEARCH","title":"Like the sunset","query":{"version":1,"root":["SearchAnd",{"criteria":[["SearchSimilar",{"ref":{"hash":"3f0a6c1e9b2d4f5a6b7c8d9e0f1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c","path":"Lib/A/a000.jpg"}}],["SearchLabel",{"label":"flowers"}]]}]},"indexPicture":{"image":"A/a040.jpg"}}]

@@ -274,6 +274,19 @@ message AlbumInfo extends FolderResource {
 	SearchQuery query;
 
 	/**
+	 * Why a saved search (or the answer of <code>?action=search</code>) holding a
+	 * {@link SearchSimilar} criterion found nothing, see issue #257: the photograph it compares with
+	 * is not there for the caller, or has not been described yet. {@link SearchProblem#NONE} for
+	 * every other answer.
+	 *
+	 * <p>
+	 * Such an answer holds no photograph and is no error: the saved search opens with its title and
+	 * says why, in the app's words. Derived on every read and <b>never stored</b>.
+	 * </p>
+	 */
+	SearchProblem searchProblem;
+
+	/**
 	 * Whether the photographs of this album show the place they were taken in as their caption
 	 * where they have no description.
 	 *
@@ -815,8 +828,9 @@ message ImagePart extends AbstractImage {
 	 * search holding one (issue #257): the weighted cosine of the query's vector to the photograph's
 	 * picture and text, above the cut of the content search, so always above <code>0</code>. The
 	 * answer is ordered by it, the nearest first; the app keeps that order, also when it groups the
-	 * answer again. <code>0</code> in every other answer. Derived on every answer and <b>never
-	 * stored</b>.
+	 * answer again. For a {@link SearchSimilar} criterion it is the cosine of the picture's vector
+	 * to the one of the photograph compared with, above the cut of "More like this". <code>0</code>
+	 * in every other answer. Derived on every answer and <b>never stored</b>.
 	 */
 	double score;
 }
@@ -1777,6 +1791,13 @@ message AuthInfo {
 	 * </p>
 	 */
 	bool faces;
+
+	/**
+	 * Whether this space has its content search switched on, see issue #257 (<code>space.json</code>
+	 * <code>content: on</code>): the app offers "More like this" on a photograph only then. Whether
+	 * the embedder can answer right now is not said here, and "More like this" needs none.
+	 */
+	bool content;
 
 	/**
 	 * The share link this caller opened, <code>null</code> for everybody else (issue #51).
@@ -4562,6 +4583,24 @@ enum SearchGroup {
 	CAMERA;
 }
 
+/** Why a search found nothing that is no refusal, see {@link AlbumInfo#searchProblem} and issue #257. */
+enum SearchProblem {
+	/** Nothing is wrong. */
+	NONE;
+
+	/**
+	 * The photograph of a <code>SearchSimilar</code> is gone, or the caller may not see it: the two are
+	 * answered alike, so that nobody learns of a photograph they may not see.
+	 */
+	PHOTO_NOT_FOUND;
+
+	/**
+	 * The photograph of a <code>SearchSimilar</code> has no vector yet: the background has not described
+	 * it (or content search was switched on only lately).
+	 */
+	PHOTO_NOT_DESCRIBED;
+}
+
 /**
  * One condition of a {@link SearchQuery}, see issue #227.
  *
@@ -4662,13 +4701,44 @@ message SearchText extends SearchCriterion {
  * embedder of the server, and the photographs are answered by how near their vectors are to it,
  * the nearest first ({@link ImagePart#score}), those too far from it cut. It stands alone as the
  * {@link SearchQuery#root}, or once among the members of the root's {@link SearchAnd}, whose other
- * members narrow what is ranked; inside a {@link SearchOr} or a {@link SearchNot} it is refused.
- * A saved search stores the text, never a vector: a new model only embeds the text again.
+ * members narrow what is ranked; inside a {@link SearchOr} or a {@link SearchNot} it is refused,
+ * as it is next to a {@link SearchSimilar}. A saved search stores the text, never a vector: a new
+ * model only embeds the text again.
  * </p>
  */
 message SearchContent extends SearchCriterion {
 	/** What the photographs show, in any language; blanks around it are ignored, and it is never empty. */
 	string text;
+}
+
+/**
+ * The photograph looks like the given one, see issue #257: "More like this", the content search
+ * with a photograph as its query.
+ *
+ * <p>
+ * It ranks like a {@link SearchContent}: the photographs are answered by how near the vector of
+ * their picture is to the one of the given photograph (a video by its poster), the nearest first
+ * ({@link ImagePart#score}), those too far from it cut, the photograph itself never. It stands
+ * where a {@link SearchContent} may stand, and <b>a query ranks once</b>: a {@link SearchSimilar}
+ * next to a {@link SearchContent} is refused with a sentence (a text and a photograph are two
+ * questions, and no weighting of the two is meant), as is a second one. The text of a search
+ * holding it is a {@link SearchText}, which narrows.
+ * </p>
+ *
+ * <p>
+ * The reference is a {@link PhotoRef}, as a part of a collection holds it: the path relative to the
+ * space root is what the app sends, the content hash is filled in by the server when a saved search
+ * stores it, so that the search still finds its photograph after a move or a rename. A saved search
+ * stores the reference, never a vector. Where the photograph is gone, or the caller may not see it,
+ * the search answers nothing and {@link SearchProblem#PHOTO_NOT_FOUND} &mdash; the same for both,
+ * and its reference left out of the query answered; where it has no vector yet,
+ * {@link SearchProblem#PHOTO_NOT_DESCRIBED}. The vector is the one the index holds: no embedder is
+ * asked.
+ * </p>
+ */
+message SearchSimilar extends SearchCriterion {
+	/** The photograph to compare with; never absent, see above. */
+	PhotoRef ref;
 }
 
 /** The photograph was taken with the given camera, compared exactly, see {@link ImagePart#camera}. */

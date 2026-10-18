@@ -71,6 +71,13 @@ import junit.framework.TestCase;
  * twenty nearest are private, the next is in the trash, every fifth from 40 on is labelled
  * "flowers", and photograph <code>n</code> of the library was taken at <code>DATE + n</code>.
  * </p>
+ *
+ * <p>
+ * "More like this" (package 5) compares with the picture of a photograph of this library: the
+ * cosine of the pictures of photographs <code>a</code> and <code>b</code> is the product of their
+ * parts along the first axis, so that it falls with the number as well, and those up to
+ * <code>b009</code> are like <code>a000</code> above {@link ContentSearch#SIMILAR_THRESHOLD}.
+ * </p>
  */
 @SuppressWarnings("javadoc")
 public class TestContentQuery extends TestCase {
@@ -103,6 +110,8 @@ public class TestContentQuery extends TestCase {
 	private static final File FIXTURE = new File("src/test/fixtures/search-content/index.json");
 
 	private static final File LATER = new File("src/test/fixtures/search-content/later.json");
+
+	private static final File SIMILAR = new File("src/test/fixtures/search-content/similar.json");
 
 	private Path _base;
 
@@ -391,6 +400,290 @@ public class TestContentQuery extends TestCase {
 		found(get("/Lib/Sunset/", ADMIN));
 		assertEquals("An editor's opening stores the most similar.", "A/" + name("a", 0),
 			stored("Lib/Sunset").getIndexPicture().getImage());
+	}
+
+	// --- More like this (package 5). ---
+
+	/**
+	 * The cosine of the pictures of the photographs of the given numbers, see {@link #vector(int)}:
+	 * their second axes differ, so it is the product of their parts along the first.
+	 */
+	private static double cosine(int a, int b) {
+		double step = Math.PI / 2 / (IN_A + IN_B + 2);
+		return Math.cos((a + 1) * step) * Math.cos((b + 1) * step);
+	}
+
+	/** Every photograph "like" the first one of A for an editor: up to b009, less itself and the trash. */
+	private static final int LIKE_A0 = 130 - 2;
+
+	public void testMoreLikeThisAnswersTheNearestFirstWithoutThePhotoItself() throws Exception {
+		library(SpaceStore.CONTENT_ON);
+		AlbumInfo answer = found(search("/", similar(A + "/" + name("a", 0)), ADMIN, null));
+		List<String> names = names(answer);
+		assertEquals("A page: " + names, ContentSearch.PAGE, names.size());
+		assertEquals("The nearest first.", A + "/" + name("a", 1), names.get(0));
+		assertFalse("Never the photo itself.", names.contains(A + "/" + name("a", 0)));
+		assertFalse("Never the trash.", names.contains(A + "/" + name("a", 20)));
+		assertEquals(de.haumacher.imageServer.shared.model.SearchProblem.NONE, answer.getSearchProblem());
+		List<ImagePart> images = images(answer);
+		assertEquals("Its picture's cosine.", cosine(0, 1), images.get(0).getScore(), 1e-4);
+		for (int n = 0; n < images.size(); n++) {
+			assertTrue("Above the cut: " + images.get(n).getName(),
+				images.get(n).getScore() >= ContentSearch.SIMILAR_THRESHOLD);
+			if (n > 0) {
+				assertTrue("Nearest first: " + names, images.get(n - 1).getScore() >= images.get(n).getScore());
+			}
+		}
+		assertTrue("No embedder is asked.", _embedder._asked.isEmpty());
+
+		List<String> all = names(found(search("/", similar(A + "/" + name("a", 0)), ADMIN, "400")));
+		assertEquals("Everything above its own cut: " + all, LIKE_A0, all.size());
+		assertTrue(all.contains(B + "/" + name("b", 9)));
+		assertFalse("Below the cut.", all.contains(B + "/" + name("b", 10)));
+		assertEquals("A page is the start of the next.", names, all.subList(0, ContentSearch.PAGE));
+	}
+
+	public void testMoreLikeThisIsNarrowedByTheOtherCriteria() throws Exception {
+		library(SpaceStore.CONTENT_ON);
+		SearchQuery flowers = query(similarTo(A + "/" + name("a", 0)), SearchLabel.create().setLabel("flowers"));
+		List<String> expected = new ArrayList<>();
+		for (int n = 40; n < IN_A; n += 5) {
+			expected.add(A + "/" + name("a", n));
+		}
+		assertEquals("Only what carries the label, nearest first.", expected, names(found(search("/", flowers, ADMIN, null))));
+
+		List<String> inB = names(found(search("/" + B + "/", similar(A + "/" + name("a", 0)), ADMIN, null)));
+		List<String> below = new ArrayList<>();
+		for (int n = 0; n < 10; n++) {
+			below.add(name("b", n));
+		}
+		assertEquals("Only what lies below the folder searched, though the photo lies elsewhere.", below, inB);
+
+		assertEquals("A guest is answered what they may see, and still k.", 10,
+			names(found(search("/", similar(A + "/" + name("a", 30)), GUEST, "10"))).size());
+		for (String name : names(found(search("/", similar(A + "/" + name("a", 30)), GUEST, null)))) {
+			assertFalse("Nothing private: " + name, name.startsWith(A + "/") && number(name) <= 20);
+		}
+	}
+
+	public void testAPhotoTheCallerMayNotSeeIsAnsweredAsOneThatIsNotThere() throws Exception {
+		library(SpaceStore.CONTENT_ON);
+		FakeResponse hidden = search("/", similar(A + "/" + name("a", 5)), GUEST, null);
+		FakeResponse gone = search("/", similar(A + "/" + "zzz.jpg"), GUEST, null);
+		FakeResponse outside = search("/", similar("../" + name("a", 5)), GUEST, null);
+		AlbumInfo answer = found(hidden);
+		assertTrue("Nothing found.", names(answer).isEmpty());
+		assertEquals(de.haumacher.imageServer.shared.model.SearchProblem.PHOTO_NOT_FOUND, answer.getSearchProblem());
+		assertEquals("Not a word of where it lies.", "",
+			PhotoSearch.content(answer.getQuery()).similar().getPath());
+		assertEquals("A private photo is answered as one that is not there: no oracle.", gone.body(),
+			hidden.body());
+		assertEquals(gone.body(), outside.body());
+
+		// The editor sees it.
+		assertFalse(names(found(search("/", similar(A + "/" + name("a", 5)), ADMIN, null))).isEmpty());
+	}
+
+	public void testALinkComparesWithWhatTheLinkSeesAlone() throws Exception {
+		library(SpaceStore.CONTENT_ON);
+		de.haumacher.imageServer.auth.ShareStore shares = new de.haumacher.imageServer.auth.ShareStore(_base);
+		String link = shares.create("haui", "Lib", "", "", Privacy.PUBLIC, Ratings.MIN,
+			Arrays.asList(de.haumacher.imageServer.auth.Rights.VIEW)).getToken();
+		savedSearch("Lib/Hidden", similarTo(A + "/" + name("a", 5)));
+		savedSearch("Lib/Near", similarTo(A + "/" + name("a", 30)));
+		restart();
+
+		AlbumInfo hidden = found(get("/Hidden/", link));
+		assertTrue("Nothing found through the link.", names(hidden).isEmpty());
+		assertEquals(de.haumacher.imageServer.shared.model.SearchProblem.PHOTO_NOT_FOUND, hidden.getSearchProblem());
+		assertEquals("", PhotoSearch.content(hidden.getQuery()).similar().getPath());
+
+		AlbumInfo near = found(get("/Near/", link));
+		assertFalse(names(near).isEmpty());
+		for (String name : names(near)) {
+			assertFalse("Nothing private: " + name, name.startsWith("A/") && number(name) <= 20);
+		}
+		assertEquals("Where the photo lies is no business of a link.", "",
+			PhotoSearch.content(near.getQuery()).similar().getPath());
+		assertEquals("The editor is answered where it lies.", A + "/" + name("a", 30),
+			PhotoSearch.content(found(get("/Lib/Near/", ADMIN)).getQuery()).similar().getPath());
+		assertEquals("A search is still for the members.", HttpServletResponse.SC_FORBIDDEN,
+			search("/", similar(A + "/" + name("a", 30)), link, null).status());
+	}
+
+	public void testAPhotoWithoutAVectorIsNotDescribedYet() throws Exception {
+		library(SpaceStore.CONTENT_ON);
+		album("Lib/C", "c", 1, 1000);
+		_servlet.searchIndex().build();
+		AlbumInfo answer = found(search("/", similar("Lib/C/" + name("c", 0)), ADMIN, null));
+		assertTrue(names(answer).isEmpty());
+		assertEquals(de.haumacher.imageServer.shared.model.SearchProblem.PHOTO_NOT_DESCRIBED,
+			answer.getSearchProblem());
+		assertEquals("The editor's reference is kept.", "Lib/C/" + name("c", 0),
+			PhotoSearch.content(answer.getQuery()).similar().getPath());
+	}
+
+	public void testMoreLikeThisNeedsNoEmbedder() throws Exception {
+		library(SpaceStore.CONTENT_ON);
+		_embedder._problem = "the embedder service is starting";
+		assertEquals(LIKE_A0, names(found(search("/", similar(A + "/" + name("a", 0)), ADMIN, "400"))).size());
+		_servlet.setEmbedder(null);
+		assertEquals(LIKE_A0, names(found(search("/", similar(A + "/" + name("a", 0)), ADMIN, "400"))).size());
+		assertTrue(_embedder._asked.isEmpty());
+	}
+
+	public void testMoreLikeThisIsRefusedWhereItCannotRank() throws Exception {
+		library(SpaceStore.CONTENT_ON);
+		String photo = A + "/" + name("a", 0);
+		assertRefused(ContentSearch.TEXT_AND_PHOTO,
+			search("/", query(SearchContent.create().setText(SUNSET), similarTo(photo)), ADMIN, null));
+		assertRefused(ContentSearch.COMBINED, search("/", query(similarTo(photo), similarTo(photo)), ADMIN, null));
+		assertRefused(ContentSearch.COMBINED,
+			search("/", query(SearchNot.create().setCriterion(similarTo(photo))), ADMIN, null));
+		SearchQuery alone = SearchQuery.create().setVersion(1).setRoot(similarTo(photo));
+		assertEquals("Alone as the root it is answered.", ContentSearch.PAGE,
+			names(found(search("/", alone, ADMIN, null))).size());
+	}
+
+	public void testMoreLikeThisInASpaceWithoutContentSearchIsRefused() throws Exception {
+		library(SpaceStore.CONTENT_OFF);
+		FakeResponse response = search("/", similar(A + "/" + name("a", 0)), ADMIN, null);
+		assertEquals(HttpServletResponse.SC_CONFLICT, response.status());
+		assertEquals(ContentSearch.SWITCHED_OFF, errorMessage(response));
+	}
+
+	public void testTheStoredFormOfMoreLikeThisReadsWritesAndReadsAgain() throws Exception {
+		AlbumInfo read = (AlbumInfo) Resource.readResource(reader(Files.readString(SIMILAR.toPath())));
+		assertNull("Every criterion of the fixture is known.", PhotoSearch.refusal(read.getQuery()));
+		PhotoSearch.ContentQuery content = PhotoSearch.content(read.getQuery());
+		assertNull(content.text());
+		assertEquals("Lib/A/a000.jpg", content.similar().getPath());
+		assertEquals(64, content.similar().getHash().length());
+		assertEquals("The other narrows.", 1, ((SearchAnd) content.filter().getRoot()).getCriteria().size());
+		String written = write(read);
+		AlbumInfo again = (AlbumInfo) Resource.readResource(reader(written));
+		assertEquals(written, write(again));
+		assertEquals(PhotoSearch.content(read.getQuery()).similar().getHash(),
+			PhotoSearch.content(again.getQuery()).similar().getHash());
+	}
+
+	public void testASavedMoreLikeThisStoresTheReferenceAndAnswersWhoMaySeeIt() throws Exception {
+		library(SpaceStore.CONTENT_ON);
+		File folder = _base.resolve(A).toFile();
+		// Contents of its own: the photos of the library are alike to the byte, and the content
+		// hash is the identity of a photo.
+		BufferedImage own = new BufferedImage(16, 16, BufferedImage.TYPE_INT_RGB);
+		own.setRGB(3, 3, 0xffffff);
+		assertTrue(ImageIO.write(own, "jpg", new File(folder, name("a", 0))));
+		de.haumacher.imageServer.upload.HashCache hashes = new de.haumacher.imageServer.upload.HashCache(folder);
+		hashes.hashByName();
+		hashes.flush();
+		String photo = A + "/" + name("a", 0);
+		FakeResponse created = put("/Lib/Like/", write(AlbumInfo.create().setKind(AlbumKind.SEARCH).setTitle("Like")
+			.setQuery(query(similarTo(photo), SearchLabel.create().setLabel("flowers")))), ADMIN);
+		assertEquals(created.body(), HttpServletResponse.SC_OK, created.status());
+		String stored = Files.readString(_base.resolve("Lib/Like/index.json"));
+		assertFalse("Never a vector, never a score: " + stored, stored.contains("score"));
+		PhotoSearch.ContentQuery content = PhotoSearch.content(stored("Lib/Like").getQuery());
+		assertEquals("The reference is stored.", photo, content.similar().getPath());
+		assertEquals("Anchored by the content hash.", de.haumacher.imageServer.upload.HashCache.sha256(
+			_base.resolve(photo).toFile()), content.similar().getHash());
+		assertEquals("The most similar is its picture.", "A/" + name("a", 40), stored("Lib/Like").getIndexPicture().getImage());
+
+		AlbumInfo opened = found(get("/Lib/Like/", ADMIN));
+		List<String> expected = new ArrayList<>();
+		for (int n = 40; n < IN_A; n += 5) {
+			expected.add("A/" + name("a", n));
+		}
+		assertEquals("Nearest first.", expected, names(opened));
+		assertEquals(photo, PhotoSearch.content(opened.getQuery()).similar().getPath());
+		assertEquals("A photo it finds is served through it.", HttpServletResponse.SC_OK,
+			get("/Lib/Like/A/" + name("a", 45), ADMIN).status());
+		assertEquals("The photo itself is none of them.", HttpServletResponse.SC_NOT_FOUND,
+			get("/Lib/Like/" + "A/" + name("a", 0), ADMIN).status());
+
+		// The guest may not see the photo it compares with: the search opens, finds nothing, says
+		// why, and gives away nothing of the photo.
+		AlbumInfo guest = found(get("/Lib/Like/", GUEST));
+		assertTrue(names(guest).isEmpty());
+		assertEquals(de.haumacher.imageServer.shared.model.SearchProblem.PHOTO_NOT_FOUND, guest.getSearchProblem());
+		de.haumacher.imageServer.shared.model.PhotoRef answered = PhotoSearch.content(guest.getQuery()).similar();
+		assertEquals("", answered.getPath());
+		assertEquals("", answered.getHash());
+		assertEquals("Nor is a photo it would find served through it.", HttpServletResponse.SC_NOT_FOUND,
+			get("/Lib/Like/A/" + name("a", 45), GUEST).status());
+
+		// Written back with the reference it was answered without, the stored one stays.
+		FakeResponse renamed = put("/Lib/Like/", write(AlbumInfo.create().setKind(AlbumKind.SEARCH).setTitle("Like")
+			.setSubTitle("Flowers").setQuery(guest.getQuery())), ADMIN);
+		assertEquals(renamed.body(), HttpServletResponse.SC_OK, renamed.status());
+		assertEquals("Flowers", stored("Lib/Like").getSubTitle());
+		assertEquals(photo, PhotoSearch.content(stored("Lib/Like").getQuery()).similar().getPath());
+
+		// Once the photo is gone, the search says so.
+		Files.delete(_base.resolve(photo));
+		_servlet.searchIndex().build();
+		AlbumInfo gone = found(get("/Lib/Like/", ADMIN));
+		assertTrue(names(gone).isEmpty());
+		assertEquals(de.haumacher.imageServer.shared.model.SearchProblem.PHOTO_NOT_FOUND, gone.getSearchProblem());
+		assertFalse("Never stored.", Files.readString(_base.resolve("Lib/Like/index.json")).contains("PHOTO_NOT"));
+	}
+
+	/** A saved "More like this" follows its photo when the photo is moved to another album. */
+	public void testASavedMoreLikeThisFollowsItsPhotoThroughAMove() throws Exception {
+		library(SpaceStore.CONTENT_ON);
+		File folder = _base.resolve(A).toFile();
+		BufferedImage own = new BufferedImage(16, 16, BufferedImage.TYPE_INT_RGB);
+		own.setRGB(5, 7, 0xff00ff);
+		assertTrue(ImageIO.write(own, "jpg", new File(folder, name("a", 50))));
+		de.haumacher.imageServer.upload.HashCache hashes = new de.haumacher.imageServer.upload.HashCache(folder);
+		hashes.hashByName();
+		hashes.flush();
+		String photo = A + "/" + name("a", 50);
+		FakeResponse created = put("/Lib/Like/", write(AlbumInfo.create().setKind(AlbumKind.SEARCH).setTitle("Like")
+			.setQuery(similar(photo))), ADMIN);
+		assertEquals(created.body(), HttpServletResponse.SC_OK, created.status());
+
+		Map<String, String> parameters = new HashMap<>();
+		parameters.put("action", "move");
+		FakeResponse move = new FakeResponse();
+		_servlet.doPost(request("/" + A + "/",
+			"{\"target\":\"" + B + "\",\"names\":[{\"name\":\"" + name("a", 50) + "\"}]}", ADMIN, parameters),
+			move.response());
+		assertEquals(move.body(), HttpServletResponse.SC_OK, move.status());
+		assertTrue(_base.resolve(B).resolve(name("a", 50)).toFile().exists());
+		_servlet.searchIndex().build();
+
+		AlbumInfo opened = found(get("/Lib/Like/", ADMIN));
+		assertFalse("The photo is still there, only elsewhere.",
+			opened.getSearchProblem() == de.haumacher.imageServer.shared.model.SearchProblem.PHOTO_NOT_FOUND);
+		assertEquals("It is found where it lies now.", B + "/" + name("a", 50),
+			PhotoSearch.content(opened.getQuery()).similar().getPath());
+	}
+
+	private void savedSearch(String folder, SearchCriterion... criteria) throws IOException {
+		Files.createDirectories(_base.resolve(folder));
+		Files.writeString(_base.resolve(folder).resolve("index.json"),
+			write(AlbumInfo.create().setKind(AlbumKind.SEARCH).setTitle("Like").setQuery(query(criteria))));
+	}
+
+	private void restart() throws Exception {
+		_servlet.destroy();
+		AuthService auth = new AuthService(AuthMode.WRITES, _base);
+		_servlet = new ImageServlet(_base.toFile(), auth, "", SpaceStore.load(_base, ""));
+		_servlet.init();
+		_servlet.setEmbedder(_embedder);
+		_servlet.searchIndex().build();
+		_servlet.vectors().fill();
+	}
+
+	private static de.haumacher.imageServer.shared.model.SearchSimilar similarTo(String path) {
+		return de.haumacher.imageServer.shared.model.SearchSimilar.create()
+			.setRef(de.haumacher.imageServer.shared.model.PhotoRef.create().setPath(path));
+	}
+
+	private static SearchQuery similar(String path) {
+		return query(similarTo(path));
 	}
 
 	// --- The library. ---

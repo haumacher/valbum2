@@ -6009,6 +6009,36 @@ abstract class AppLocalizations {
   /// **'Show more'**
   String get searchShowMore;
 
+  /// Entry of the viewer's menu and of a photo tile's menu (issue #257): opens the search with this photo as the query, the photos that look most like it first. German: "Ähnliche Fotos"
+  ///
+  /// In en, this message translates to:
+  /// **'More like this'**
+  String get moreLikeThis;
+
+  /// Chip of the search view showing the thumbnail of the photo "More like this" compares with (issue #257); also the part of a saved search's proposed title naming it
+  ///
+  /// In en, this message translates to:
+  /// **'Like this photo'**
+  String get searchSimilarChip;
+
+  /// Tooltip of the chip of the search view showing the photo "More like this" compares with (issue #257)
+  ///
+  /// In en, this message translates to:
+  /// **'Photos that look like this one, the most similar first'**
+  String get searchSimilarTooltip;
+
+  /// Shown instead of the photos of a search "like this photo" (issue #257) whose photo was deleted, moved out of reach, or is hidden from the reader
+  ///
+  /// In en, this message translates to:
+  /// **'The photo this search compares with is not there, or you cannot see it.'**
+  String get searchSimilarNotFound;
+
+  /// Shown instead of the photos of a search "like this photo" (issue #257) while the server has not analysed that photo yet (it works in the background). German: "Dieses Foto ist noch nicht ausgewertet. Versuchen Sie es später noch einmal."
+  ///
+  /// In en, this message translates to:
+  /// **'This photo has not been analysed yet. Try again later.'**
+  String get searchSimilarNotDescribed;
+
   /// Choice of the search view: find photos and videos alike
   ///
   /// In en, this message translates to:

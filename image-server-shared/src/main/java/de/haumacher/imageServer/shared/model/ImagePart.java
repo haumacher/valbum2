@@ -1067,8 +1067,9 @@ public class ImagePart extends AbstractImage {
 	 * search holding one (issue #257): the weighted cosine of the query's vector to the photograph's
 	 * picture and text, above the cut of the content search, so always above <code>0</code>. The
 	 * answer is ordered by it, the nearest first; the app keeps that order, also when it groups the
-	 * answer again. <code>0</code> in every other answer. Derived on every answer and <b>never
-	 * stored</b>.
+	 * answer again. For a {@link SearchSimilar} criterion it is the cosine of the picture's vector
+	 * to the one of the photograph compared with, above the cut of "More like this". <code>0</code>
+	 * in every other answer. Derived on every answer and <b>never stored</b>.
 	 */
 	public final double getScore() {
 		return _score;

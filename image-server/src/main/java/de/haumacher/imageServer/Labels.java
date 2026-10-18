@@ -165,6 +165,7 @@ public final class Labels {
 			.setKind(album.getKind())
 			// What a saved search looks for is not a question of who is asking (#227).
 			.setQuery(album.getQuery())
+			.setSearchProblem(album.getSearchProblem())
 			.setTitle(album.getTitle())
 			.setSubTitle(album.getSubTitle())
 			.setStarred(album.isStarred())

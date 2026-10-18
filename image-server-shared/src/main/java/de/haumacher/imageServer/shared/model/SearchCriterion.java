@@ -46,6 +46,9 @@ public abstract class SearchCriterion extends de.haumacher.msgbuf.data.AbstractD
 		/** Type literal for {@link de.haumacher.imageServer.shared.model.SearchContent}. */
 		SEARCH_CONTENT,
 
+		/** Type literal for {@link de.haumacher.imageServer.shared.model.SearchSimilar}. */
+		SEARCH_SIMILAR,
+
 		/** Type literal for {@link de.haumacher.imageServer.shared.model.SearchCamera}. */
 		SEARCH_CAMERA,
 
@@ -91,6 +94,9 @@ public abstract class SearchCriterion extends de.haumacher.msgbuf.data.AbstractD
 		/** Visit case for {@link de.haumacher.imageServer.shared.model.SearchContent}.*/
 		R visit(de.haumacher.imageServer.shared.model.SearchContent self, A arg) throws E;
 
+		/** Visit case for {@link de.haumacher.imageServer.shared.model.SearchSimilar}.*/
+		R visit(de.haumacher.imageServer.shared.model.SearchSimilar self, A arg) throws E;
+
 		/** Visit case for {@link de.haumacher.imageServer.shared.model.SearchCamera}.*/
 		R visit(de.haumacher.imageServer.shared.model.SearchCamera self, A arg) throws E;
 
@@ -129,6 +135,7 @@ public abstract class SearchCriterion extends de.haumacher.msgbuf.data.AbstractD
 			case SearchMedia.SEARCH_MEDIA__TYPE: result = de.haumacher.imageServer.shared.model.SearchMedia.readSearchMedia(in); break;
 			case SearchText.SEARCH_TEXT__TYPE: result = de.haumacher.imageServer.shared.model.SearchText.readSearchText(in); break;
 			case SearchContent.SEARCH_CONTENT__TYPE: result = de.haumacher.imageServer.shared.model.SearchContent.readSearchContent(in); break;
+			case SearchSimilar.SEARCH_SIMILAR__TYPE: result = de.haumacher.imageServer.shared.model.SearchSimilar.readSearchSimilar(in); break;
 			case SearchCamera.SEARCH_CAMERA__TYPE: result = de.haumacher.imageServer.shared.model.SearchCamera.readSearchCamera(in); break;
 			case SearchFolder.SEARCH_FOLDER__TYPE: result = de.haumacher.imageServer.shared.model.SearchFolder.readSearchFolder(in); break;
 			default: in.skipValue(); result = null; break;

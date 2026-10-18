@@ -3835,6 +3835,24 @@ class AppLocalizationsEn extends AppLocalizations {
   String get searchShowMore => 'Show more';
 
   @override
+  String get moreLikeThis => 'More like this';
+
+  @override
+  String get searchSimilarChip => 'Like this photo';
+
+  @override
+  String get searchSimilarTooltip =>
+      'Photos that look like this one, the most similar first';
+
+  @override
+  String get searchSimilarNotFound =>
+      'The photo this search compares with is not there, or you cannot see it.';
+
+  @override
+  String get searchSimilarNotDescribed =>
+      'This photo has not been analysed yet. Try again later.';
+
+  @override
   String get searchMediaAll => 'Photos and videos';
 
   @override

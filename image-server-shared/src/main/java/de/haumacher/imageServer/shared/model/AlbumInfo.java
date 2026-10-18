@@ -45,6 +45,9 @@ public class AlbumInfo extends FolderResource {
 	/** @see #getQuery() */
 	private static final String QUERY__PROP = "query";
 
+	/** @see #getSearchProblem() */
+	private static final String SEARCH_PROBLEM__PROP = "searchProblem";
+
 	/** @see #getPlaceCaption() */
 	private static final String PLACE_CAPTION__PROP = "placeCaption";
 
@@ -70,6 +73,8 @@ public class AlbumInfo extends FolderResource {
 	private boolean _starred = false;
 
 	private de.haumacher.imageServer.shared.model.SearchQuery _query = null;
+
+	private de.haumacher.imageServer.shared.model.SearchProblem _searchProblem = de.haumacher.imageServer.shared.model.SearchProblem.NONE;
 
 	private de.haumacher.imageServer.shared.model.PlaceCaption _placeCaption = de.haumacher.imageServer.shared.model.PlaceCaption.UNSET;
 
@@ -379,6 +384,35 @@ public class AlbumInfo extends FolderResource {
 	}
 
 	/**
+	 * Why a saved search (or the answer of <code>?action=search</code>) holding a
+	 * {@link SearchSimilar} criterion found nothing, see issue #257: the photograph it compares with
+	 * is not there for the caller, or has not been described yet. {@link SearchProblem#NONE} for
+	 * every other answer.
+	 *
+	 * <p>
+	 * Such an answer holds no photograph and is no error: the saved search opens with its title and
+	 * says why, in the app's words. Derived on every read and <b>never stored</b>.
+	 * </p>
+	 */
+	public final de.haumacher.imageServer.shared.model.SearchProblem getSearchProblem() {
+		return _searchProblem;
+	}
+
+	/**
+	 * @see #getSearchProblem()
+	 */
+	public de.haumacher.imageServer.shared.model.AlbumInfo setSearchProblem(de.haumacher.imageServer.shared.model.SearchProblem value) {
+		internalSetSearchProblem(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getSearchProblem()} without chain call utility. */
+	protected final void internalSetSearchProblem(de.haumacher.imageServer.shared.model.SearchProblem value) {
+		if (value == null) throw new IllegalArgumentException("Property 'searchProblem' cannot be null.");
+		_searchProblem = value;
+	}
+
+	/**
 	 * Whether the photographs of this album show the place they were taken in as their caption
 	 * where they have no description.
 	 *
@@ -574,6 +608,8 @@ public class AlbumInfo extends FolderResource {
 			out.name(QUERY__PROP);
 			getQuery().writeTo(out);
 		}
+		out.name(SEARCH_PROBLEM__PROP);
+		getSearchProblem().writeTo(out);
 		out.name(PLACE_CAPTION__PROP);
 		getPlaceCaption().writeTo(out);
 		out.name(PARTS__PROP);
@@ -597,6 +633,7 @@ public class AlbumInfo extends FolderResource {
 			case INDEX_PICTURE__PROP: setIndexPicture(de.haumacher.imageServer.shared.model.ThumbnailInfo.readThumbnailInfo(in)); break;
 			case STARRED__PROP: setStarred(in.nextBoolean()); break;
 			case QUERY__PROP: setQuery(de.haumacher.imageServer.shared.model.SearchQuery.readSearchQuery(in)); break;
+			case SEARCH_PROBLEM__PROP: setSearchProblem(de.haumacher.imageServer.shared.model.SearchProblem.readSearchProblem(in)); break;
 			case PLACE_CAPTION__PROP: setPlaceCaption(de.haumacher.imageServer.shared.model.PlaceCaption.readPlaceCaption(in)); break;
 			case PARTS__PROP: {
 				in.beginArray();

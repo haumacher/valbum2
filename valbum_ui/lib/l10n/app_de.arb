@@ -981,6 +981,10 @@
   "searchRating": "Bewertung",
   "searchCamera": "Kamera",
   "searchText": "Text in Beschreibungen und Albumtiteln",
+  "searchByContent": "KI-Suche",
+  "searchByContentTooltip": "Fotos nach ihrem Inhalt finden, die ähnlichsten zuerst",
+  "searchContentHint": "Beschreiben Sie, was auf den Fotos zu sehen ist",
+  "searchShowMore": "Mehr anzeigen",
   "searchMediaAll": "Fotos und Videos",
   "searchMediaPhotos": "Nur Fotos",
   "searchMediaVideos": "Nur Videos",
@@ -1146,8 +1150,9 @@
   "downloadNotAllowed": "Sie dürfen die Fotos dieses Albums nicht herunterladen.",
   "nothingToDownload": "Es gibt nichts zum Herunterladen.",
   "trashRestoreSelection": "{count, plural, =1{1 Foto wiederherstellen} other{{count} Fotos wiederherstellen}}",
-  "searchByContent": "KI-Suche",
-  "searchByContentTooltip": "Fotos nach ihrem Inhalt finden, die ähnlichsten zuerst",
-  "searchContentHint": "Beschreiben Sie, was auf den Fotos zu sehen ist",
-  "searchShowMore": "Mehr anzeigen"
+  "moreLikeThis": "Ähnliche Fotos",
+  "searchSimilarChip": "Wie dieses Foto",
+  "searchSimilarTooltip": "Fotos, die diesem ähnlich sehen, die ähnlichsten zuerst",
+  "searchSimilarNotFound": "Das Foto, mit dem diese Suche verglichen wird, ist nicht vorhanden oder für Sie nicht sichtbar.",
+  "searchSimilarNotDescribed": "Dieses Foto ist noch nicht ausgewertet. Versuchen Sie es später noch einmal."
 }

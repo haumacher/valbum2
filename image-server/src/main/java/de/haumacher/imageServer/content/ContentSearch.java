@@ -3,6 +3,7 @@
  */
 package de.haumacher.imageServer.content;
 
+import de.haumacher.imageServer.shared.model.SearchProblem;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.LinkedHashMap;
@@ -11,7 +12,8 @@ import java.util.Map;
 /**
  * How a {@link de.haumacher.imageServer.shared.model.SearchContent} criterion is answered, see issue
  * #257: the one place its weights, its cut and its page are set, and where the text of a query is
- * turned into a vector.
+ * turned into a vector; and the cut of "More like this"
+ * ({@link de.haumacher.imageServer.shared.model.SearchSimilar}), which pages alike.
  *
  * <p>
  * <b>Not calibrated.</b> The weights and the cut below are first guesses, set before the search was
@@ -40,6 +42,16 @@ public final class ContentSearch {
 	 */
 	public static final float THRESHOLD = 0.05f;
 
+	/**
+	 * The cosine below which a photograph is not answered by "More like this" (a
+	 * {@link de.haumacher.imageServer.shared.model.SearchSimilar}): a cut of its own, for the cosines
+	 * of two pictures lie on another scale than those of a text and a picture &mdash; two unrelated
+	 * photographs are rarely orthogonal, while a text rarely comes near any picture. <b>Not
+	 * calibrated</b> either: a first guess, set before "More like this" was tried on a real library,
+	 * on the low side for the same reason as {@link #THRESHOLD}.
+	 */
+	public static final float SIMILAR_THRESHOLD = 0.3f;
+
 	/** How many photographs the search view is answered, the nearest first, where it asks for no other number. */
 	public static final int PAGE = 100;
 
@@ -66,6 +78,13 @@ public final class ContentSearch {
 	public static final String COMBINED =
 		"A search looks for what the photos show once, together with the other criteria (“all of these”): "
 			+ "it cannot be excluded or be one of “any of these”.";
+
+	/**
+	 * The message of a query that looks for what the photos show by a text and by a photograph at
+	 * once: a query ranks once, see {@link de.haumacher.imageServer.shared.model.SearchSimilar}.
+	 */
+	public static final String TEXT_AND_PHOTO =
+		"A search finds what the photos show either by a description or by a photo, not by both at once.";
 
 	/** The message of a content criterion without a text. */
 	public static final String EMPTY = "Describe what the photos should show.";
@@ -96,16 +115,57 @@ public final class ContentSearch {
 
 		private final int _status;
 
+		private final SearchProblem _problem;
+
 		/** Creates a {@link Refused}. */
 		public Refused(int status, String message) {
+			this(status, message, SearchProblem.NONE);
+		}
+
+		/**
+		 * Creates a {@link Refused} for the given problem of a
+		 * {@link de.haumacher.imageServer.shared.model.SearchSimilar}: answered as an empty result
+		 * saying it, see {@link de.haumacher.imageServer.shared.model.AlbumInfo#getSearchProblem()},
+		 * by whoever answers a search, and as an error only by what cannot say it otherwise.
+		 */
+		public Refused(int status, String message, SearchProblem problem) {
 			super(message, null, false, false);
 			_status = status;
+			_problem = problem;
 		}
 
 		/** The HTTP status the refusal is answered with. */
 		public int getStatus() {
 			return _status;
 		}
+
+		/**
+		 * What is wrong with the photograph of a "More like this", {@link SearchProblem#NONE} for
+		 * every other refusal.
+		 */
+		public SearchProblem getProblem() {
+			return _problem;
+		}
+	}
+
+	/** Why "More like this" is not answered for a photograph that is gone or hidden from the caller. */
+	public static final String PHOTO_NOT_FOUND = "The photo to compare with is not there.";
+
+	/** Why "More like this" is not answered for a photograph without a vector yet. */
+	public static final String PHOTO_NOT_DESCRIBED =
+		"The photo to compare with has not been described yet; try again later.";
+
+	/**
+	 * The refusal of a "More like this" whose photograph is gone or hidden from the caller: the same
+	 * for both, see {@link SearchProblem#PHOTO_NOT_FOUND}.
+	 */
+	public static Refused photoNotFound() {
+		return new Refused(HttpServletResponse.SC_NOT_FOUND, PHOTO_NOT_FOUND, SearchProblem.PHOTO_NOT_FOUND);
+	}
+
+	/** The refusal of a "More like this" whose photograph has no vector yet. */
+	public static Refused photoNotDescribed() {
+		return new Refused(HttpServletResponse.SC_CONFLICT, PHOTO_NOT_DESCRIBED, SearchProblem.PHOTO_NOT_DESCRIBED);
 	}
 
 	/** The refusal of a content search the embedder cannot answer, for the given reason. */

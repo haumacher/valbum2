@@ -138,6 +138,7 @@ public class PrivacyFilter {
 			.setKind(album.getKind())
 			// What a saved search looks for is not a question of who is asking (#227).
 			.setQuery(album.getQuery())
+			.setSearchProblem(album.getSearchProblem())
 			.setTitle(album.getTitle())
 			.setSubTitle(album.getSubTitle())
 			// Nor whether it stands out in its folder, see issue #239.

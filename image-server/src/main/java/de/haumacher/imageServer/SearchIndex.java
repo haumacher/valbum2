@@ -1140,6 +1140,63 @@ public final class SearchIndex implements FolderPipeline.Step {
 	}
 
 	/**
+	 * {@link #nearest(PathInfo, float[], float, float, int, Visibility, java.util.function.Predicate, SearchQuery, PeopleStore)}
+	 * without the photograph of the given row: "More like this" (issue #257), whose photograph is no
+	 * answer of its own.
+	 *
+	 * @param without
+	 *        The {@link Reference#id() row} of the photograph left out, <code>-1</code> for none.
+	 */
+	public List<Scored> nearest(PathInfo scope, float[] vector, float imageWeight, float textWeight, int k,
+			Visibility visibility, java.util.function.Predicate<String> folders, SearchQuery filter, PeopleStore people,
+			long without) {
+		return rank(scope, vector, imageWeight, textWeight, k, visibility, folders, filter, people, without);
+	}
+
+	/**
+	 * A photograph as the index holds it for "More like this" (issue #257), see
+	 * {@link SearchIndex#reference(PathInfo, String)}.
+	 *
+	 * @param id
+	 *        Its row, the key of its vectors.
+	 * @param image
+	 *        The vector of its picture, <code>null</code> where it has none (yet).
+	 */
+	public record Reference(long id, float[] image) {
+		// A pair.
+	}
+
+	/**
+	 * The photograph of the given name in the given folder as the index holds it for "More like
+	 * this" (issue #257): its row and the vector of its picture; <code>null</code> where the index
+	 * holds no row of it (yet) or the space has no vector index. Whether the caller may see it is
+	 * not asked here.
+	 */
+	public Reference reference(PathInfo folder, String name) {
+		String path = relative(folder.toFile());
+		de.haumacher.imageServer.index.VectorIndex vectors = _store.vectors();
+		if (path == null || vectors == null) {
+			return null;
+		}
+		writeThrough();
+		if (syncsOnRequest()) {
+			sync(path, false);
+		}
+		Map<String, Long> ids = photoIds(_store, path);
+		Long id = ids == null ? null : ids.get(name);
+		if (id == null) {
+			return null;
+		}
+		try {
+			return new Reference(id.longValue(),
+				vectors.vector(id.longValue(), de.haumacher.imageServer.index.VectorIndex.IMAGE));
+		} catch (IOException ex) {
+			LOG.warning("Cannot read the vector index of '" + _root + "': " + ex.getMessage());
+			return new Reference(id.longValue(), null);
+		}
+	}
+
+	/**
 	 * The score of the photograph of the given name in the given folder to the given vector, as
 	 * {@link #nearest} scores it: <code>imageWeight · cos(q, v_img) + textWeight · cos(q, v_txt)</code>;
 	 * <code>null</code> where the photograph has no vectors (yet), or none of that many dimensions.
@@ -1157,12 +1214,23 @@ public final class SearchIndex implements FolderPipeline.Step {
 			return null;
 		}
 		try {
-			float[] image = vectors.vector(id.longValue(), de.haumacher.imageServer.index.VectorIndex.IMAGE);
-			float[] text = vectors.vector(id.longValue(), de.haumacher.imageServer.index.VectorIndex.TEXT);
-			if (image == null || text == null || image.length != vector.length || text.length != vector.length) {
-				return null;
+			float result = 0;
+			// A vector of weight zero is not asked for: "More like this" compares the pictures alone.
+			if (imageWeight != 0) {
+				float[] image = vectors.vector(id.longValue(), de.haumacher.imageServer.index.VectorIndex.IMAGE);
+				if (image == null || image.length != vector.length) {
+					return null;
+				}
+				result += imageWeight * cosine(vector, image);
 			}
-			return Float.valueOf(imageWeight * cosine(vector, image) + textWeight * cosine(vector, text));
+			if (textWeight != 0) {
+				float[] text = vectors.vector(id.longValue(), de.haumacher.imageServer.index.VectorIndex.TEXT);
+				if (text == null || text.length != vector.length) {
+					return null;
+				}
+				result += textWeight * cosine(vector, text);
+			}
+			return Float.valueOf(result);
 		} catch (IOException ex) {
 			LOG.warning("Cannot read the vector index of '" + _root + "': " + ex.getMessage());
 			return null;
@@ -1221,10 +1289,10 @@ public final class SearchIndex implements FolderPipeline.Step {
 		if (vector == null) {
 			return new ArrayList<>();
 		}
-		return nearest(scope, vector, 1, 0, k, visibility, album -> true, null, null, id.longValue());
+		return rank(scope, vector, 1, 0, k, visibility, album -> true, null, null, id.longValue());
 	}
 
-	private List<Scored> nearest(PathInfo scope, float[] vector, float imageWeight, float textWeight, int k,
+	private List<Scored> rank(PathInfo scope, float[] vector, float imageWeight, float textWeight, int k,
 			Visibility visibility, java.util.function.Predicate<String> folders, SearchQuery filter, PeopleStore people,
 			long without) {
 		String prefix = relative(scope.toFile());

@@ -42,3 +42,15 @@ larger `k` is the same walk. The query vector is kept per model and text (64 of 
 opened again answers while the embedder is down; a stale one cannot outlive a model change, the
 index's stamp is compared on every query. The answer's order travels as `ImagePart.score`, which
 the app sorts by when it ungroups a result.
+
+**More like this (2026-10-18, #257 package 5):** a `SearchSimilar { PhotoRef ref }` ranks where a
+`SearchContent` may stand; a query ranks once, so a text and a photo together are refused
+(`ContentSearch.TEXT_AND_PHOTO`) — the app sends the field's text as a `SearchText` while a photo
+is the query. The vector is the photo's `v_img` from the index (weights 1/0, no embedder call, so it
+answers while the embedder is down), the photo itself left out inside the vector query, cut at
+`SIMILAR_THRESHOLD` 0.3 (picture-to-picture cosines run higher than text-to-picture; uncalibrated).
+A reference the caller may not see and one that leads nowhere are answered alike: `200`, no parts,
+`AlbumInfo.searchProblem = PHOTO_NOT_FOUND`, the reference emptied in the answered query (a link
+or anonymous visitor never gets the path at all); no vector yet is `PHOTO_NOT_DESCRIBED`. A saved
+search stores the path and the server fills in the content hash (`PhotoRef` semantics: follows a
+move); an empty reference written back by a member who was answered it empty keeps the stored one.

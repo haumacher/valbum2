@@ -6370,6 +6370,31 @@
     "description": "Button next to the count of the search view while the AI search is on (issue #257): asks for the next most similar photos",
     "x-translated": "aed6d102"
   },
+  "moreLikeThis": "More like this",
+  "@moreLikeThis": {
+    "description": "Entry of the viewer's menu and of a photo tile's menu (issue #257): opens the search with this photo as the query, the photos that look most like it first. German: \"Ähnliche Fotos\"",
+    "x-translated": "12c4ea2e"
+  },
+  "searchSimilarChip": "Like this photo",
+  "@searchSimilarChip": {
+    "description": "Chip of the search view showing the thumbnail of the photo \"More like this\" compares with (issue #257); also the part of a saved search's proposed title naming it",
+    "x-translated": "7a05516e"
+  },
+  "searchSimilarTooltip": "Photos that look like this one, the most similar first",
+  "@searchSimilarTooltip": {
+    "description": "Tooltip of the chip of the search view showing the photo \"More like this\" compares with (issue #257)",
+    "x-translated": "ab40547d"
+  },
+  "searchSimilarNotFound": "The photo this search compares with is not there, or you cannot see it.",
+  "@searchSimilarNotFound": {
+    "description": "Shown instead of the photos of a search \"like this photo\" (issue #257) whose photo was deleted, moved out of reach, or is hidden from the reader",
+    "x-translated": "8d76e3f0"
+  },
+  "searchSimilarNotDescribed": "This photo has not been analysed yet. Try again later.",
+  "@searchSimilarNotDescribed": {
+    "description": "Shown instead of the photos of a search \"like this photo\" (issue #257) while the server has not analysed that photo yet (it works in the background). German: \"Dieses Foto ist noch nicht ausgewertet. Versuchen Sie es später noch einmal.\"",
+    "x-translated": "e15ca298"
+  },
   "searchMediaAll": "Photos and videos",
   "@searchMediaAll": {
     "description": "Choice of the search view: find photos and videos alike",

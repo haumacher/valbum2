@@ -531,6 +531,17 @@ class AlbumInfo extends FolderResource {
 	///  </p>
 	SearchQuery? query;
 
+	///  Why a saved search (or the answer of <code>?action=search</code>) holding a
+	///  {@link SearchSimilar} criterion found nothing, see issue #257: the photograph it compares with
+	///  is not there for the caller, or has not been described yet. {@link SearchProblem#NONE} for
+	///  every other answer.
+	/// 
+	///  <p>
+	///  Such an answer holds no photograph and is no error: the saved search opens with its title and
+	///  says why, in the app's words. Derived on every read and <b>never stored</b>.
+	///  </p>
+	SearchProblem searchProblem;
+
 	///  Whether the photographs of this album show the place they were taken in as their caption
 	///  where they have no description.
 	/// 
@@ -568,6 +579,7 @@ class AlbumInfo extends FolderResource {
 			this.indexPicture, 
 			this.starred = false, 
 			this.query, 
+			this.searchProblem = SearchProblem.none, 
 			this.placeCaption = PlaceCaption.unset, 
 			this.parts = const [], 
 			this.imageByName = const {}, 
@@ -632,6 +644,10 @@ class AlbumInfo extends FolderResource {
 				query = json.tryNull() ? null : SearchQuery.read(json);
 				break;
 			}
+			case "searchProblem": {
+				searchProblem = readSearchProblem(json);
+				break;
+			}
 			case "placeCaption": {
 				placeCaption = readPlaceCaption(json);
 				break;
@@ -692,6 +708,9 @@ class AlbumInfo extends FolderResource {
 			json.addKey("query");
 			_query.writeContent(json);
 		}
+
+		json.addKey("searchProblem");
+		writeSearchProblem(json, searchProblem);
 
 		json.addKey("placeCaption");
 		writePlaceCaption(json, placeCaption);
@@ -1590,8 +1609,9 @@ class ImagePart extends AbstractImage {
 	///  search holding one (issue #257): the weighted cosine of the query's vector to the photograph's
 	///  picture and text, above the cut of the content search, so always above <code>0</code>. The
 	///  answer is ordered by it, the nearest first; the app keeps that order, also when it groups the
-	///  answer again. <code>0</code> in every other answer. Derived on every answer and <b>never
-	///  stored</b>.
+	///  answer again. For a {@link SearchSimilar} criterion it is the cosine of the picture's vector
+	///  to the one of the photograph compared with, above the cut of "More like this". <code>0</code>
+	///  in every other answer. Derived on every answer and <b>never stored</b>.
 	double score;
 
 	/// Creates a ImagePart.
@@ -3763,6 +3783,11 @@ class AuthInfo extends _JsonObject {
 	///  </p>
 	bool faces;
 
+	///  Whether this space has its content search switched on, see issue #257 (<code>space.json</code>
+	///  <code>content: on</code>): the app offers "More like this" on a photograph only then. Whether
+	///  the embedder can answer right now is not said here, and "More like this" needs none.
+	bool content;
+
 	///  The share link this caller opened, <code>null</code> for everybody else (issue #51).
 	/// 
 	///  <p>
@@ -3838,6 +3863,7 @@ class AuthInfo extends _JsonObject {
 			this.mayShare = false, 
 			this.mapUrl = "", 
 			this.faces = false, 
+			this.content = false, 
 			this.share, 
 			this.invitation, 
 			this.proofMethods = const [], 
@@ -3903,6 +3929,10 @@ class AuthInfo extends _JsonObject {
 			}
 			case "faces": {
 				faces = json.expectBool();
+				break;
+			}
+			case "content": {
+				content = json.expectBool();
 				break;
 			}
 			case "share": {
@@ -3988,6 +4018,9 @@ class AuthInfo extends _JsonObject {
 
 		json.addKey("faces");
 		json.addBool(faces);
+
+		json.addKey("content");
+		json.addBool(content);
 
 		var _share = share;
 		if (_share != null) {
@@ -12576,6 +12609,38 @@ SearchGroup readSearchGroup(JsonReader json) {
 	}
 }
 
+///  Why a search found nothing that is no refusal, see {@link AlbumInfo#searchProblem} and issue #257.
+enum SearchProblem {
+	///  Nothing is wrong.
+	none,
+	///  The photograph of a <code>SearchSimilar</code> is gone, or the caller may not see it: the two are
+	///  answered alike, so that nobody learns of a photograph they may not see.
+	photoNotFound,
+	///  The photograph of a <code>SearchSimilar</code> has no vector yet: the background has not described
+	///  it (or content search was switched on only lately).
+	photoNotDescribed,
+}
+
+/// Writes a value of SearchProblem to a JSON stream.
+void writeSearchProblem(JsonSink json, SearchProblem value) {
+	switch (value) {
+		case SearchProblem.none: json.addString("NONE"); break;
+		case SearchProblem.photoNotFound: json.addString("PHOTO_NOT_FOUND"); break;
+		case SearchProblem.photoNotDescribed: json.addString("PHOTO_NOT_DESCRIBED"); break;
+		default: throw ("No such literal: " + value.name);
+	}
+}
+
+/// Reads a value of SearchProblem from a JSON stream.
+SearchProblem readSearchProblem(JsonReader json) {
+	switch (json.expectString()) {
+		case "NONE": return SearchProblem.none;
+		case "PHOTO_NOT_FOUND": return SearchProblem.photoNotFound;
+		case "PHOTO_NOT_DESCRIBED": return SearchProblem.photoNotDescribed;
+		default: return SearchProblem.none;
+	}
+}
+
 /// Visitor interface for SearchCriterion.
 abstract class SearchCriterionVisitor<R, A> {
 	R visitSearchAnd(SearchAnd self, A arg);
@@ -12589,6 +12654,7 @@ abstract class SearchCriterionVisitor<R, A> {
 	R visitSearchMedia(SearchMedia self, A arg);
 	R visitSearchText(SearchText self, A arg);
 	R visitSearchContent(SearchContent self, A arg);
+	R visitSearchSimilar(SearchSimilar self, A arg);
 	R visitSearchCamera(SearchCamera self, A arg);
 	R visitSearchFolder(SearchFolder self, A arg);
 }
@@ -12629,6 +12695,7 @@ abstract class SearchCriterion extends _JsonObject {
 			case "SearchMedia": result = SearchMedia(); break;
 			case "SearchText": result = SearchText(); break;
 			case "SearchContent": result = SearchContent(); break;
+			case "SearchSimilar": result = SearchSimilar(); break;
 			case "SearchCamera": result = SearchCamera(); break;
 			case "SearchFolder": result = SearchFolder(); break;
 			default: result = null;
@@ -13199,8 +13266,9 @@ class SearchText extends SearchCriterion {
 ///  embedder of the server, and the photographs are answered by how near their vectors are to it,
 ///  the nearest first ({@link ImagePart#score}), those too far from it cut. It stands alone as the
 ///  {@link SearchQuery#root}, or once among the members of the root's {@link SearchAnd}, whose other
-///  members narrow what is ranked; inside a {@link SearchOr} or a {@link SearchNot} it is refused.
-///  A saved search stores the text, never a vector: a new model only embeds the text again.
+///  members narrow what is ranked; inside a {@link SearchOr} or a {@link SearchNot} it is refused,
+///  as it is next to a {@link SearchSimilar}. A saved search stores the text, never a vector: a new
+///  model only embeds the text again.
 ///  </p>
 class SearchContent extends SearchCriterion {
 	///  What the photographs show, in any language; blanks around it are ignored, and it is never empty.
@@ -13247,6 +13315,80 @@ class SearchContent extends SearchCriterion {
 
 	@override
 	R visitSearchCriterion<R, A>(SearchCriterionVisitor<R, A> v, A arg) => v.visitSearchContent(this, arg);
+
+}
+
+///  The photograph looks like the given one, see issue #257: "More like this", the content search
+///  with a photograph as its query.
+/// 
+///  <p>
+///  It ranks like a {@link SearchContent}: the photographs are answered by how near the vector of
+///  their picture is to the one of the given photograph (a video by its poster), the nearest first
+///  ({@link ImagePart#score}), those too far from it cut, the photograph itself never. It stands
+///  where a {@link SearchContent} may stand, and <b>a query ranks once</b>: a {@link SearchSimilar}
+///  next to a {@link SearchContent} is refused with a sentence (a text and a photograph are two
+///  questions, and no weighting of the two is meant), as is a second one. The text of a search
+///  holding it is a {@link SearchText}, which narrows.
+///  </p>
+/// 
+///  <p>
+///  The reference is a {@link PhotoRef}, as a part of a collection holds it: the path relative to the
+///  space root is what the app sends, the content hash is filled in by the server when a saved search
+///  stores it, so that the search still finds its photograph after a move or a rename. A saved search
+///  stores the reference, never a vector. Where the photograph is gone, or the caller may not see it,
+///  the search answers nothing and {@link SearchProblem#PHOTO_NOT_FOUND} &mdash; the same for both,
+///  and its reference left out of the query answered; where it has no vector yet,
+///  {@link SearchProblem#PHOTO_NOT_DESCRIBED}. The vector is the one the index holds: no embedder is
+///  asked.
+///  </p>
+class SearchSimilar extends SearchCriterion {
+	///  The photograph to compare with; never absent, see above.
+	PhotoRef? ref;
+
+	/// Creates a SearchSimilar.
+	SearchSimilar({
+			this.ref, 
+	});
+
+	/// Parses a SearchSimilar from a string source.
+	static SearchSimilar? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a SearchSimilar instance from the given reader.
+	static SearchSimilar read(JsonReader json) {
+		SearchSimilar result = SearchSimilar();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "SearchSimilar";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "ref": {
+				ref = json.tryNull() ? null : PhotoRef.read(json);
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		var _ref = ref;
+		if (_ref != null) {
+			json.addKey("ref");
+			_ref.writeContent(json);
+		}
+	}
+
+	@override
+	R visitSearchCriterion<R, A>(SearchCriterionVisitor<R, A> v, A arg) => v.visitSearchSimilar(this, arg);
 
 }
 

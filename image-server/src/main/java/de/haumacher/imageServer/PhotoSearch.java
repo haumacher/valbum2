@@ -13,6 +13,7 @@ import de.haumacher.imageServer.shared.model.AlbumPart;
 import de.haumacher.imageServer.shared.model.ImageGroup;
 import de.haumacher.imageServer.shared.model.ImagePart;
 import de.haumacher.imageServer.shared.model.LabelName;
+import de.haumacher.imageServer.shared.model.PhotoRef;
 import de.haumacher.imageServer.shared.model.PlaceInfo;
 import de.haumacher.imageServer.shared.model.PlaceKind;
 import de.haumacher.imageServer.shared.model.PlaceTag;
@@ -31,6 +32,7 @@ import de.haumacher.imageServer.shared.model.SearchPerson;
 import de.haumacher.imageServer.shared.model.SearchPlace;
 import de.haumacher.imageServer.shared.model.SearchQuery;
 import de.haumacher.imageServer.shared.model.SearchRating;
+import de.haumacher.imageServer.shared.model.SearchSimilar;
 import de.haumacher.imageServer.shared.model.SearchText;
 import java.io.File;
 import java.util.ArrayList;
@@ -141,8 +143,9 @@ public final class PhotoSearch {
 	 * </p>
 	 *
 	 * <p>
-	 * A {@link SearchContent} criterion (issue #257) is refused where it cannot rank: below an OR or
-	 * a NOT, deeper than the root's AND, more than once, or without a text.
+	 * A {@link SearchContent} or {@link SearchSimilar} criterion (issue #257) is refused where it
+	 * cannot rank: below an OR or a NOT, deeper than the root's AND, more than once (a text and a
+	 * photograph alike), or without a text.
 	 * </p>
 	 */
 	public static String refusal(SearchQuery query) {
@@ -160,18 +163,19 @@ public final class PhotoSearch {
 	}
 
 	/**
-	 * Why the {@link SearchContent} criteria of the given root cannot be answered, <code>null</code>
-	 * where they can: one at most, as the root or as a member of the root's {@link SearchAnd}, with a
-	 * text. A content criterion ranks; below an OR or a NOT there is nothing it could rank.
+	 * Why the ranking criteria ({@link SearchContent}, {@link SearchSimilar}) of the given root
+	 * cannot be answered, <code>null</code> where they can: one at most, as the root or as a member
+	 * of the root's {@link SearchAnd}, a text with a text. A ranking criterion ranks; below an OR or
+	 * a NOT there is nothing it could rank, and a query ranks by one thing alone.
 	 */
 	private static String contentRefusal(SearchCriterion root) {
-		List<SearchContent> placed = new ArrayList<>();
-		if (root instanceof SearchContent) {
-			placed.add((SearchContent) root);
+		List<SearchCriterion> placed = new ArrayList<>();
+		if (ranks(root)) {
+			placed.add(root);
 		} else if (root instanceof SearchAnd) {
 			for (SearchCriterion member : ((SearchAnd) root).getCriteria()) {
-				if (member instanceof SearchContent) {
-					placed.add((SearchContent) member);
+				if (ranks(member)) {
+					placed.add(member);
 				} else if (holdsContent(member)) {
 					return de.haumacher.imageServer.content.ContentSearch.COMBINED;
 				}
@@ -180,17 +184,26 @@ public final class PhotoSearch {
 			return de.haumacher.imageServer.content.ContentSearch.COMBINED;
 		}
 		if (placed.size() > 1) {
-			return de.haumacher.imageServer.content.ContentSearch.COMBINED;
+			boolean text = placed.stream().anyMatch(SearchContent.class::isInstance);
+			boolean photo = placed.stream().anyMatch(SearchSimilar.class::isInstance);
+			return text && photo ? de.haumacher.imageServer.content.ContentSearch.TEXT_AND_PHOTO
+				: de.haumacher.imageServer.content.ContentSearch.COMBINED;
 		}
-		if (placed.size() == 1 && text(placed.get(0)).isEmpty()) {
+		if (placed.size() == 1 && placed.get(0) instanceof SearchContent
+			&& text((SearchContent) placed.get(0)).isEmpty()) {
 			return de.haumacher.imageServer.content.ContentSearch.EMPTY;
 		}
 		return null;
 	}
 
-	/** Whether the given criterion is or holds a {@link SearchContent}. */
+	/** Whether the given criterion ranks, see issue #257: a {@link SearchContent} or a {@link SearchSimilar}. */
+	private static boolean ranks(SearchCriterion criterion) {
+		return criterion instanceof SearchContent || criterion instanceof SearchSimilar;
+	}
+
+	/** Whether the given criterion is or holds one that {@link #ranks(SearchCriterion) ranks}. */
 	private static boolean holdsContent(SearchCriterion criterion) {
-		if (criterion instanceof SearchContent) {
+		if (ranks(criterion)) {
 			return true;
 		}
 		if (criterion instanceof SearchAnd) {
@@ -211,44 +224,92 @@ public final class PhotoSearch {
 	}
 
 	/**
-	 * A query split into what its {@link SearchContent} criterion ranks by and what narrows it, see
-	 * {@link PhotoSearch#content(SearchQuery)}.
+	 * A query split into what its ranking criterion ranks by and what narrows it, see
+	 * {@link PhotoSearch#content(SearchQuery)}: exactly one of <code>text</code> and
+	 * <code>similar</code> is given.
 	 *
 	 * @param text
-	 *        The text of the content criterion, its blanks stripped.
+	 *        The text of a {@link SearchContent}, its blanks stripped; <code>null</code> for a
+	 *        {@link SearchSimilar}.
+	 * @param similar
+	 *        The photograph of a {@link SearchSimilar}, never <code>null</code> but possibly empty;
+	 *        <code>null</code> for a {@link SearchContent}.
 	 * @param filter
 	 *        The query without it: every other member of the root's AND, or every photograph.
 	 */
-	public record ContentQuery(String text, SearchQuery filter) {
-		// A pair.
+	public record ContentQuery(String text, PhotoRef similar, SearchQuery filter) {
+		// A triple.
 	}
 
 	/**
-	 * The given query split into the text it ranks by and the criteria that narrow it, see issue
-	 * #257; <code>null</code> for a query without a content criterion. Only for a query that passed
-	 * {@link #refusal(SearchQuery)}. The given query is never changed.
+	 * The given query split into what it ranks by (a text or a photograph) and the criteria that
+	 * narrow it, see issue #257; <code>null</code> for a query without a ranking criterion. Only for
+	 * a query that passed {@link #refusal(SearchQuery)}. The given query is never changed.
 	 */
 	public static ContentQuery content(SearchQuery query) {
 		if (query == null) {
 			return null;
 		}
 		SearchCriterion root = query.getRoot();
-		if (root instanceof SearchContent) {
-			return new ContentQuery(text((SearchContent) root), filter(query, new ArrayList<>()));
+		if (ranks(root)) {
+			return contentQuery(root, filter(query, new ArrayList<>()));
 		}
 		if (!(root instanceof SearchAnd)) {
 			return null;
 		}
-		String text = null;
+		SearchCriterion ranking = null;
 		List<SearchCriterion> rest = new ArrayList<>();
 		for (SearchCriterion member : ((SearchAnd) root).getCriteria()) {
-			if (member instanceof SearchContent && text == null) {
-				text = text((SearchContent) member);
+			if (ranks(member) && ranking == null) {
+				ranking = member;
 			} else {
 				rest.add(member);
 			}
 		}
-		return text == null ? null : new ContentQuery(text, filter(query, rest));
+		return ranking == null ? null : contentQuery(ranking, filter(query, rest));
+	}
+
+	private static ContentQuery contentQuery(SearchCriterion ranking, SearchQuery filter) {
+		if (ranking instanceof SearchContent) {
+			return new ContentQuery(text((SearchContent) ranking), null, filter);
+		}
+		PhotoRef ref = ((SearchSimilar) ranking).getRef();
+		return new ContentQuery(null, ref == null ? PhotoRef.create() : ref, filter);
+	}
+
+	/**
+	 * A copy of the given query whose {@link SearchSimilar} refers to the given photograph, see
+	 * issue #257; the given query itself where it holds none. The given query is never changed: what
+	 * the cache holds is shared by every request.
+	 *
+	 * <p>
+	 * What the answer of a saved search says of its photograph: its current path where the caller
+	 * may see it, an empty reference where they may not, see
+	 * {@link de.haumacher.imageServer.shared.model.SearchProblem#PHOTO_NOT_FOUND}.
+	 * </p>
+	 */
+	public static SearchQuery withSimilar(SearchQuery query, PhotoRef ref) {
+		if (query == null) {
+			return null;
+		}
+		SearchCriterion root = query.getRoot();
+		SearchCriterion replaced;
+		if (root instanceof SearchSimilar) {
+			replaced = SearchSimilar.create().setRef(ref);
+		} else if (root instanceof SearchAnd
+			&& ((SearchAnd) root).getCriteria().stream().anyMatch(SearchSimilar.class::isInstance)) {
+			List<SearchCriterion> members = new ArrayList<>();
+			for (SearchCriterion member : ((SearchAnd) root).getCriteria()) {
+				members.add(member instanceof SearchSimilar ? SearchSimilar.create().setRef(ref) : member);
+			}
+			replaced = SearchAnd.create().setCriteria(members);
+		} else {
+			return query;
+		}
+		return SearchQuery.create()
+			.setVersion(query.getVersion())
+			.setRoot(replaced)
+			.setGroupBy(new ArrayList<>(query.getGroupBy()));
 	}
 
 	private static SearchQuery filter(SearchQuery query, List<SearchCriterion> rest) {
@@ -284,7 +345,7 @@ public final class PhotoSearch {
 	private static final Set<Class<?>> KNOWN = new HashSet<>(Arrays.asList(SearchAnd.class, SearchOr.class,
 		SearchNot.class, SearchPerson.class, SearchDate.class, SearchPlace.class, SearchLabel.class,
 		SearchRating.class, SearchMedia.class, SearchText.class, SearchCamera.class, SearchFolder.class,
-		SearchContent.class));
+		SearchContent.class, SearchSimilar.class));
 
 	private static boolean allKnown(List<SearchCriterion> criteria) {
 		for (SearchCriterion criterion : criteria) {

@@ -32,10 +32,17 @@
 /// never excluded and never one of "any of these": in AI mode the rows
 /// combine with AND and the text is not negated, while what was chosen for
 /// the conventional search is kept for switching back.
+///
+/// "More like this" ([SearchCriteria.similar], issue #257 package 5) takes a
+/// photograph as the query, a [SearchSimilar]: it ranks like the AI search, so
+/// the rows combine with AND around it, and a query ranks once — while a photo
+/// is the query, the text is the conventional [SearchText] again, which
+/// narrows (and may be excluded), never a second [SearchContent].
 library;
 
 import 'package:jsontool/jsontool.dart';
 
+import 'l10n/app_localizations.dart';
 import 'resource.dart';
 
 /// The version of the stored query this app writes, see
@@ -135,6 +142,16 @@ class SearchCriteria {
   /// stated, see the library comment.
   final bool byContent;
 
+  /// The photograph "More like this" compares with (issue #257): its path
+  /// relative to the space root, `/`-separated, as [PhotoRef.path] says it;
+  /// `null` for none. Empty where the server answered a saved search without
+  /// it — the caller may not see the photo — which is kept as it is.
+  final String? similar;
+
+  /// The content hash of [similar] as the server answered it (it fills it in
+  /// when it stores a saved search), handed back unchanged; empty for none.
+  final String similarHash;
+
   const SearchCriteria({
     this.persons = const [],
     this.excludedPersons = const [],
@@ -152,6 +169,8 @@ class SearchCriteria {
     this.excluded = const {},
     this.anyOf = false,
     this.byContent = false,
+    this.similar,
+    this.similarHash = "",
   });
 
   /// No criterion at all: the search view asks for one before it searches.
@@ -167,7 +186,8 @@ class SearchCriteria {
       minRating == null &&
       media == SearchMediaKind.all &&
       text.trim().isEmpty &&
-      camera == null;
+      camera == null &&
+      similar == null;
 
   /// Whether the row of [kind] is chosen at all.
   bool has(SearchKind kind) => switch (kind) {
@@ -180,13 +200,20 @@ class SearchCriteria {
   /// Whether the row of [kind] is chosen and excluded; the text of an AI
   /// search never is, see [byContent].
   bool excludes(SearchKind kind) =>
-      excluded.contains(kind) &&
-      has(kind) &&
-      !(byContent && kind == SearchKind.text);
+      excluded.contains(kind) && has(kind) && !(textRanks && kind == SearchKind.text);
+
+  /// Whether the text describes what the photographs show ([SearchContent]):
+  /// the AI search, unless a photo is the query, see [similar].
+  bool get textRanks => byContent && similar == null;
 
   /// Whether these criteria rank by what the photographs show: the AI search
-  /// with a text, see [byContent].
-  bool get ranks => byContent && text.trim().isNotEmpty;
+  /// with a text ([byContent]), or "More like this" ([similar]).
+  bool get ranks => similar != null || (byContent && text.trim().isNotEmpty);
+
+  /// Whether the search is one by what the photos show at all — the AI
+  /// search, or "More like this", which is one as well: its rows are one
+  /// AND, and the switch of the search view shows it on.
+  bool get byWhatTheyShow => byContent || similar != null;
 
   /// These criteria with the given changes; a `null` argument keeps a value,
   /// the `clear…` flags take one away. An exclusion of a kind no longer
@@ -212,6 +239,9 @@ class SearchCriteria {
     Set<SearchKind>? excluded,
     bool? anyOf,
     bool? byContent,
+    String? similar,
+    String? similarHash,
+    bool clearSimilar = false,
   }) {
     var changed = SearchCriteria(
       persons: persons ?? this.persons,
@@ -230,6 +260,10 @@ class SearchCriteria {
       excluded: excluded ?? this.excluded,
       anyOf: anyOf ?? this.anyOf,
       byContent: byContent ?? this.byContent,
+      similar: clearSimilar ? null : similar ?? this.similar,
+      similarHash: clearSimilar
+          ? ""
+          : similarHash ?? (similar == null ? this.similarHash : ""),
     );
     var kept = {
       for (var kind in changed.excluded)
@@ -257,6 +291,8 @@ class SearchCriteria {
         excluded: value,
         anyOf: anyOf,
         byContent: byContent,
+        similar: similar,
+        similarHash: similarHash,
       );
 
   /// These criteria with the row of [kind] excluded or not.
@@ -274,11 +310,15 @@ class SearchCriteria {
   /// The stored form, see the library comment: one AND (or, for [anyOf], one
   /// OR) over the rows, the places and the labels chosen each an OR of the
   /// ones chosen, an excluded row a NOT of itself. In AI mode ([byContent])
-  /// the text is a [SearchContent], and the rows are one AND.
+  /// the text is a [SearchContent], and the rows are one AND; "More like
+  /// this" ([similar]) is a [SearchSimilar] first, the rows one AND, the text
+  /// a [SearchText].
   SearchQuery toQuery() {
     SearchCriterion row(SearchKind kind, SearchCriterion criterion) =>
         excludes(kind) ? SearchNot(criterion: criterion) : criterion;
     var criteria = <SearchCriterion>[
+      if (similar != null)
+        SearchSimilar(ref: PhotoRef(hash: similarHash, path: similar!)),
       for (var person in persons) SearchPerson(person: person),
       for (var person in excludedPersons)
         SearchNot(criterion: SearchPerson(person: person)),
@@ -311,14 +351,14 @@ class SearchCriteria {
       if (media != SearchMediaKind.all)
         SearchMedia(video: media == SearchMediaKind.videos),
       if (text.trim().isNotEmpty)
-        byContent
+        textRanks
             ? SearchContent(text: text.trim())
             : row(SearchKind.text, SearchText(text: text.trim())),
       if (camera != null) row(SearchKind.camera, SearchCamera(camera: camera!)),
     ];
     return SearchQuery(
       version: searchQueryVersion,
-      root: anyOf && !byContent
+      root: anyOf && !byWhatTheyShow
           ? SearchOr(criteria: criteria)
           : SearchAnd(criteria: criteria),
       groupBy: [...groupBy],
@@ -347,6 +387,9 @@ class SearchCriteria {
         // The content search alone, as the server takes it too.
         rows = [content];
         anyOf = false;
+      case SearchSimilar similar:
+        rows = [similar];
+        anyOf = false;
       default:
         return null;
     }
@@ -363,6 +406,8 @@ class SearchCriteria {
     var media = SearchMediaKind.all;
     var text = "";
     var byContent = false;
+    String? similar;
+    var similarHash = "";
     String? camera;
     var excluded = <SearchKind>{};
 
@@ -405,11 +450,22 @@ class SearchCriteria {
       switch (criterion) {
         case SearchContent(text: var value):
           // Ranks: once, and never one of "any of these".
-          if (anyOf || text.isNotEmpty || value.trim().isEmpty) {
+          if (anyOf ||
+              text.isNotEmpty ||
+              value.trim().isEmpty ||
+              similar != null) {
             return null;
           }
           text = value;
           byContent = true;
+        case SearchSimilar(ref: var ref):
+          // Ranks as well: once, never one of "any of these", never next to
+          // a text that ranks.
+          if (anyOf || similar != null || byContent) {
+            return null;
+          }
+          similar = ref?.path ?? "";
+          similarHash = ref?.hash ?? "";
         case SearchPerson(person: var person):
           persons.add(person);
         case SearchPlace(geonameId: var id):
@@ -487,6 +543,8 @@ class SearchCriteria {
       excluded: excluded,
       anyOf: anyOf,
       byContent: byContent,
+      similar: similar,
+      similarHash: similarHash,
     );
   }
 
@@ -510,15 +568,16 @@ class SearchCriteria {
   /// few words ("Anne & Philipp, 2020–2026", "Anne, not Philipp", "Rome or
   /// Florence, not 2019"), what is excluded last; [fallback] where nothing
   /// can be named. [not] and [or] are the words of the language shown (issue
-  /// #242).
+  /// #242), [similarTo] the name of the photo of "More like this" (#257).
   String title({
     required String fallback,
     Map<String, String> personNames = const {},
     Map<int, String> placeNames = const {},
     String not = "not",
     String or = "or",
+    String similarTo = "",
   }) {
-    var any = anyOf && !byContent;
+    var any = anyOf && !byWhatTheyShow;
     var either = " $or ";
     String no(String part) => "$not $part";
     bool out(SearchKind? kind) => kind != null && excludes(kind);
@@ -526,6 +585,8 @@ class SearchCriteria {
     String place(int id) => placeNames[id] ?? "$id";
     // What is looked for first, what is excluded after it.
     var rows = <(SearchKind?, String)>[
+      // The words of the language shown, where the caller gives them.
+      if (similar != null && similarTo.isNotEmpty) (null, similarTo),
       if (persons.isNotEmpty)
         (null, persons.map(person).join(any ? either : " & ")),
       if (from != null || to != null) (SearchKind.date, _span(from, to)),
@@ -589,7 +650,9 @@ class SearchCriteria {
       excluded.length == other.excluded.length &&
       excluded.containsAll(other.excluded) &&
       anyOf == other.anyOf &&
-      byContent == other.byContent;
+      byContent == other.byContent &&
+      similar == other.similar &&
+      similarHash == other.similarHash;
 
   @override
   int get hashCode => Object.hash(
@@ -609,6 +672,8 @@ class SearchCriteria {
         Object.hashAllUnordered(excluded),
         anyOf,
         byContent,
+        similar,
+        similarHash,
       );
 
   static bool _listEquals<T>(List<T> a, List<T> b) {
@@ -623,6 +688,17 @@ class SearchCriteria {
     return true;
   }
 }
+
+/// Why a search "like this photo" found nothing (issue #257), in the words of
+/// the language shown: its photo is not there for the reader (gone, or
+/// hidden from them — the server says both alike), or not analysed yet.
+/// Empty for [SearchProblem.none].
+String searchProblemText(AppLocalizations l10n, SearchProblem problem) =>
+    switch (problem) {
+      SearchProblem.photoNotFound => l10n.searchSimilarNotFound,
+      SearchProblem.photoNotDescribed => l10n.searchSimilarNotDescribed,
+      SearchProblem.none => "",
+    };
 
 /// Whether [album] is a saved search, see issue #227.
 bool isSearch(AlbumInfo album) => album.kind == AlbumKind.search;

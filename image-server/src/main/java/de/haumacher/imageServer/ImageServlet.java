@@ -1443,7 +1443,9 @@ public class ImageServlet extends HttpServlet {
 			}
 			// Always answerable: this is how an unpaired app learns that it must pair. The map
 			// template of the space rides along, see issue #112.
-			AuthInfo info = _auth.authInfo(caller, _basePath, _space).setMapUrl(_mapUrl).setFaces(_faces.isEnabled());
+			AuthInfo info = _auth.authInfo(caller, _basePath, _space).setMapUrl(_mapUrl).setFaces(_faces.isEnabled())
+				// Whether "More like this" is offered, see issue #257.
+				.setContent(_content.isEnabled());
 			// Where the inbox is and how much waits there, for whoever may put something in it,
 			// so that the app never guesses, see issue #226.
 			answerInbox(info, caller);
@@ -2037,7 +2039,8 @@ public class ImageServlet extends HttpServlet {
 				errorInfo(context, HttpServletResponse.SC_BAD_REQUEST, refusal);
 				return;
 			}
-			search.setQuery(PhotoSearch.normalized(search.getQuery()));
+			// The photograph of a "More like this" anchored by its content hash (issue #257).
+			search.setQuery(anchored(PhotoSearch.normalized(search.getQuery()), null));
 			search.setParts(new ArrayList<>());
 			search.setIndexPicture(null);
 			contents = sidecarOf(search);
@@ -2589,7 +2592,7 @@ public class ImageServlet extends HttpServlet {
 			ImagePart part;
 			PathInfo photo = null;
 			if (byPath) {
-				photo = name == null ? null : photoNamed(source, origin, name);
+				photo = name == null ? null : photoNamed(source, origin, name, caller);
 				AlbumInfo album = null;
 				if (photo != null) {
 					PathInfo folder = photo.parent();
@@ -3205,7 +3208,7 @@ public class ImageServlet extends HttpServlet {
 		int minRating = _auth.minRating(caller, folder, viewAs);
 		Map<String, File> result = new LinkedHashMap<>();
 		for (String name : names) {
-			PathInfo image = photoNamed(folder, search, name);
+			PathInfo image = photoNamed(folder, search, name, caller);
 			if (image == null || !image.toFile().isFile() || !labelShows(caller, image)) {
 				LOG.warning("Refusing the download in '" + context.request().getPathInfo() + "': no photograph '"
 					+ name + "'.");
@@ -6709,6 +6712,8 @@ public class ImageServlet extends HttpServlet {
 		boolean refused = false;
 		try {
 			answered = searchAnswer(existing, path, caller, Privacy.PRIVATE);
+			// A "More like this" that finds nothing now keeps its picture, as a refusal does.
+			refused = answered.getSearchProblem() != de.haumacher.imageServer.shared.model.SearchProblem.NONE;
 		} catch (ContentSearch.Refused ex) {
 			// A content search that cannot be answered now: its own statements are written all
 			// the same, no photograph is (none was shown), and its picture stays as it is.
@@ -6730,7 +6735,7 @@ public class ImageServlet extends HttpServlet {
 				if (!shown.contains(image.getName())) {
 					continue;
 				}
-				PathInfo source = photoNamed(path, existing, image.getName());
+				PathInfo source = photoNamed(path, existing, image.getName(), caller);
 				if (source != null) {
 					edits.add(new SourceEdit(source, image, labels));
 				}
@@ -6754,8 +6759,11 @@ public class ImageServlet extends HttpServlet {
 			cover = storedCover;
 		}
 
-		SearchQuery query =
-			PhotoSearch.normalized(received.getQuery() == null ? existing.getQuery() : received.getQuery());
+		// The photograph of a "More like this" anchored by its content hash, and kept where this
+		// caller was answered it empty (issue #257).
+		SearchQuery query = anchored(
+			PhotoSearch.normalized(received.getQuery() == null ? existing.getQuery() : received.getQuery()),
+			existing.getQuery());
 		if (!sameQuery(query, existing.getQuery())) {
 			// What it looks for changed: the picture is one of what it finds now, the one chosen
 			// where it still is, the first of the new matches this caller is shown otherwise -- the
@@ -6769,7 +6777,7 @@ public class ImageServlet extends HttpServlet {
 						kept |= image.getName().equals(cover.getImage());
 					}
 					// One this caller is not shown is kept while the new query still finds it.
-					kept |= cover == storedCover && storedHidden && matching(scope, cover.getImage(), query) != null;
+					kept |= cover == storedCover && storedHidden && matching(scope, cover.getImage(), query, caller) != null;
 				}
 				if (!kept) {
 					cover = found.isEmpty() ? null : PrivacyFilter.thumbnail(found.get(0));
@@ -7505,6 +7513,7 @@ public class ImageServlet extends HttpServlet {
 				.setKind(album.getKind())
 				// What a saved search looks for is not a question of who is asking (#227).
 				.setQuery(album.getQuery())
+				.setSearchProblem(album.getSearchProblem())
 				.setTitle(album.getTitle())
 				.setSubTitle(album.getSubTitle())
 				.setStarred(album.isStarred())
@@ -8637,7 +8646,7 @@ public class ImageServlet extends HttpServlet {
 		} else {
 			ImagePart shown = Crops.findImage(searchAnswer((AlbumInfo) resource, folderPath, caller, Privacy.PRIVATE),
 				name);
-			source = shown == null ? null : photoNamed(folderPath, resource, name);
+			source = shown == null ? null : photoNamed(folderPath, resource, name, caller);
 			if (source == null) {
 				errorInfo(context, HttpServletResponse.SC_NOT_FOUND, unknownImage(name));
 				return null;
@@ -9358,22 +9367,28 @@ public class ImageServlet extends HttpServlet {
 	 * answered by similarity, the nearest first, each answer carrying its
 	 * {@link ImagePart#getScore() score}: the text is embedded ({@link #contentVector(String)}), the
 	 * other criteria of the query narrow inside the vector query (as the visibility does), and what
-	 * scores below {@link ContentSearch#THRESHOLD} is cut. Every other query is answered by date.
+	 * scores below {@link ContentSearch#THRESHOLD} is cut. A query with a
+	 * {@link de.haumacher.imageServer.shared.model.SearchSimilar} ("More like this") is answered
+	 * alike by the vector of the photograph's picture, the photograph itself left out, cut at
+	 * {@link ContentSearch#SIMILAR_THRESHOLD}, see {@link #ranking}. Every other query is answered by
+	 * date.
 	 * </p>
 	 *
 	 * @throws ContentSearch.Refused
-	 *         Where the content search cannot be answered now, saying why.
+	 *         Where the content search cannot be answered now, saying why; for a photograph that is
+	 *         not there or has no vector yet with its {@link ContentSearch.Refused#getProblem()
+	 *         problem}.
 	 */
 	private List<ImagePart> searchMatches(PathInfo scope, SearchQuery query, Caller caller, int viewAs,
 			Map<String, PhotoSearch.Match> stored, boolean slim, int contentLimit) {
 		PhotoSearch.ContentQuery content = PhotoSearch.content(query);
 		if (content != null) {
-			float[] vector = contentVector(content.text());
+			Ranking ranking = ranking(content, caller, viewAs);
 			_searchRuns.incrementAndGet();
 			List<ImagePart> result = new ArrayList<>();
-			for (ScoredPart scored : nearestAnswers(scope, vector, ContentSearch.IMAGE_WEIGHT,
-				ContentSearch.TEXT_WEIGHT, contentLimit, caller, viewAs, content.filter())) {
-				if (scored.score() < ContentSearch.THRESHOLD) {
+			for (ScoredPart scored : nearestAnswers(scope, ranking.vector(), ranking.imageWeight(),
+				ranking.textWeight(), contentLimit, caller, viewAs, content.filter(), ranking.without())) {
+				if (scored.score() < ranking.threshold()) {
 					// Nearest first: what follows is farther still.
 					break;
 				}
@@ -9459,6 +9474,15 @@ public class ImageServlet extends HttpServlet {
 	 */
 	List<ScoredPart> nearestAnswers(PathInfo scope, float[] vector, float imageWeight, float textWeight, int k,
 			Caller caller, int viewAs, SearchQuery filter) {
+		return nearestAnswers(scope, vector, imageWeight, textWeight, k, caller, viewAs, filter, -1);
+	}
+
+	/**
+	 * {@link #nearestAnswers(PathInfo, float[], float, float, int, Caller, int, SearchQuery)} without
+	 * the photograph of the given row of the index: the one "More like this" compares with.
+	 */
+	List<ScoredPart> nearestAnswers(PathInfo scope, float[] vector, float imageWeight, float textWeight, int k,
+			Caller caller, int viewAs, SearchQuery filter, long without) {
 		List<ScoredPart> result = new ArrayList<>();
 		if (k <= 0 || !_auth.mayView(caller, scope)) {
 			// Not one album of it would be answered.
@@ -9479,7 +9503,8 @@ public class ImageServlet extends HttpServlet {
 		int limit = Math.max(k * NEAREST_MORE, NEAREST_LEAST);
 		for (int asked = k;; asked = Math.min(limit, asked * 4)) {
 			List<SearchIndex.Scored> scored =
-				_searchIndex.nearest(scope, vector, imageWeight, textWeight, asked, visibility, folders, filter, _people);
+				_searchIndex.nearest(scope, vector, imageWeight, textWeight, asked, visibility, folders, filter, _people,
+					without);
 			List<PhotoSearch.Match> found = new ArrayList<>(scored.size());
 			for (SearchIndex.Scored each : scored) {
 				found.add(each.match());
@@ -9501,6 +9526,149 @@ public class ImageServlet extends HttpServlet {
 				return result;
 			}
 		}
+	}
+
+	/**
+	 * What a ranking criterion of issue #257 ranks by, see {@link #ranking}.
+	 *
+	 * @param vector
+	 *        The query's vector.
+	 * @param threshold
+	 *        The score below which a photograph is not answered.
+	 * @param photo
+	 *        The photograph "More like this" compares with, <code>null</code> for a text.
+	 * @param without
+	 *        Its row in the index, left out of the answer; <code>-1</code> for a text.
+	 */
+	private record Ranking(float[] vector, float imageWeight, float textWeight, float threshold, PathInfo photo,
+			long without) {
+		// The parameters of a ranking.
+	}
+
+	/**
+	 * What the given ranking criterion ranks by: the vector of a text ({@link #contentVector}), or,
+	 * for "More like this", the vector of the photograph's picture as the index holds it &mdash; no
+	 * embedder is asked, so it is answered while the embedder is down.
+	 *
+	 * @throws ContentSearch.Refused
+	 *         Where the space has content search switched off, the text cannot be embedded now, the
+	 *         photograph is not there for the caller ({@link ContentSearch#photoNotFound()}, the same
+	 *         whether it is gone or hidden), or it has no vector yet
+	 *         ({@link ContentSearch#photoNotDescribed()}).
+	 */
+	private Ranking ranking(PhotoSearch.ContentQuery content, Caller caller, int viewAs) {
+		if (content.similar() == null) {
+			return new Ranking(contentVector(content.text()), ContentSearch.IMAGE_WEIGHT, ContentSearch.TEXT_WEIGHT,
+				ContentSearch.THRESHOLD, null, -1);
+		}
+		if (!_content.isEnabled()) {
+			throw new ContentSearch.Refused(HttpServletResponse.SC_CONFLICT, ContentSearch.SWITCHED_OFF);
+		}
+		PathInfo photo = similarPhoto(content.similar(), caller, viewAs);
+		if (photo == null) {
+			// Gone, or hidden from this caller: said alike, so that nothing is learned of it.
+			throw ContentSearch.photoNotFound();
+		}
+		SearchIndex.Reference reference = _searchIndex.reference(photo.parent(), photo.getName());
+		if (reference == null || reference.image() == null) {
+			throw ContentSearch.photoNotDescribed();
+		}
+		return new Ranking(reference.image(), 1, 0, ContentSearch.SIMILAR_THRESHOLD, photo, reference.id());
+	}
+
+	/**
+	 * The photograph the given reference of a "More like this" (issue #257) stands for, where the
+	 * given caller is shown it in its own album &mdash; its privacy, its rating (the trash), the
+	 * inbox rule, a link's subtree, rating floor and label, exactly as {@link #sourceAlbum} and the
+	 * search decide; <code>null</code> where it is gone or the caller is not shown it.
+	 */
+	private PathInfo similarPhoto(de.haumacher.imageServer.shared.model.PhotoRef ref, Caller caller, int viewAs) {
+		PathInfo image = locateSimilar(ref);
+		if (image == null || !image.toFile().isFile()) {
+			return null;
+		}
+		String name = image.getName();
+		AlbumInfo album = sourceAlbum(image.parent(), caller, viewAs, Collections.singleton(name), false);
+		ImagePart part = album == null ? null : Crops.findImage(album, name);
+		if (part == null || part.isMissing() || !Labels.shows(part, _auth.photoLabel(caller))) {
+			return null;
+		}
+		return image;
+	}
+
+	/**
+	 * Where the photograph of the given reference of a "More like this" lies now, whoever asks:
+	 * found by its content hash where it has one (see {@link PhotoCollections#locate}), at its path
+	 * otherwise; <code>null</code> where the reference leads nowhere in the space.
+	 */
+	private PathInfo locateSimilar(de.haumacher.imageServer.shared.model.PhotoRef ref) {
+		if (ref == null) {
+			return null;
+		}
+		if (!ref.getHash().isEmpty()) {
+			return _collections.locate(ref);
+		}
+		String hint = ref.getPath();
+		if (hint.isEmpty() || !LibraryFiles.isLibraryPath(hint)) {
+			return null;
+		}
+		java.nio.file.Path path = Paths.get(hint).normalize();
+		if (path.isAbsolute() || path.toString().isEmpty() || path.startsWith("..")) {
+			return null;
+		}
+		return new PathInfo(_basePath, path);
+	}
+
+	/**
+	 * The given query as it is stored, its "More like this" anchored (issue #257): the content hash
+	 * of its photograph filled in where it has none, so that the saved search follows the photograph
+	 * through a move or a rename (see {@link de.haumacher.imageServer.shared.model.PhotoRef}); a
+	 * reference that was answered empty to a caller who may not see the photograph
+	 * ({@link #answeredQuery}) replaced by the stored one, which is no choice of theirs.
+	 *
+	 * @param stored
+	 *        The query stored before, <code>null</code> for a new saved search.
+	 */
+	private SearchQuery anchored(SearchQuery query, SearchQuery stored) {
+		PhotoSearch.ContentQuery content = PhotoSearch.content(query);
+		if (content == null || content.similar() == null) {
+			return query;
+		}
+		de.haumacher.imageServer.shared.model.PhotoRef ref = content.similar();
+		if (ref.getPath().isEmpty() && ref.getHash().isEmpty()) {
+			PhotoSearch.ContentQuery before = PhotoSearch.content(stored);
+			return before == null || before.similar() == null ? query : PhotoSearch.withSimilar(query, before.similar());
+		}
+		if (!ref.getHash().isEmpty()) {
+			return query;
+		}
+		PathInfo image = locateSimilar(ref);
+		if (image == null || !image.toFile().isFile()) {
+			return query;
+		}
+		String hash = new HashCache(image.parent().toFile()).storedHashByName().get(image.getName());
+		if (hash == null || hash.isEmpty()) {
+			return query;
+		}
+		return PhotoSearch.withSimilar(query,
+			de.haumacher.imageServer.shared.model.PhotoRef.create().setHash(hash).setPath(image.relativePath()));
+	}
+
+	/**
+	 * The given query as it is answered to the given caller (issue #257): the photograph of its "More
+	 * like this" at the path it lies at now, to a member who is shown it; an empty reference to
+	 * everybody else &mdash; where a photograph lies is no business of a link or an anonymous
+	 * visitor, and of a photograph a member may not see they learn nothing, not even its name.
+	 */
+	private SearchQuery answeredQuery(SearchQuery query, Caller caller, int viewAs) {
+		PhotoSearch.ContentQuery content = PhotoSearch.content(query);
+		if (content == null || content.similar() == null) {
+			return query;
+		}
+		PathInfo photo = Faces.maySee(_auth, caller, viewAs) ? similarPhoto(content.similar(), caller, viewAs) : null;
+		return PhotoSearch.withSimilar(query, photo == null ? de.haumacher.imageServer.shared.model.PhotoRef.create()
+			: de.haumacher.imageServer.shared.model.PhotoRef.create().setHash(content.similar().getHash())
+				.setPath(photo.relativePath()));
 	}
 
 	/**
@@ -9540,27 +9708,41 @@ public class ImageServlet extends HttpServlet {
 	 * <p>
 	 * A photograph matches a content search (issue #257) where it matches its other criteria and
 	 * its score is at least {@link ContentSearch#THRESHOLD}, whether or not it is among those the
-	 * search answers, which are cut at a number.
+	 * search answers, which are cut at a number; a "More like this" alike, its photograph shown to
+	 * the given caller or nothing matching.
 	 * </p>
 	 *
 	 * @throws ContentSearch.Refused
 	 *         Where the content search cannot be answered now, see {@link #contentVector(String)}.
 	 */
-	private PathInfo matching(PathInfo scope, String relative, SearchQuery query) {
+	private PathInfo matching(PathInfo scope, String relative, SearchQuery query, Caller caller) {
 		PhotoSearch.ContentQuery content = PhotoSearch.content(query);
 		if (content == null) {
 			return PhotoSearch.matching(scope, relative, query, this::lookupOrSkip, _people, _searchIndex);
 		}
-		float[] vector = contentVector(content.text());
+		Ranking ranking;
+		try {
+			ranking = ranking(content, caller, Privacy.PRIVATE);
+		} catch (ContentSearch.Refused ex) {
+			if (ex.getProblem() != de.haumacher.imageServer.shared.model.SearchProblem.NONE) {
+				// "More like this" of a photograph that is not there for this caller finds nothing.
+				return null;
+			}
+			throw ex;
+		}
 		PathInfo folder =
 			PhotoSearch.matching(scope, relative, content.filter(), this::lookupOrSkip, _people, _searchIndex);
 		if (folder == null) {
 			return null;
 		}
 		List<String> segments = PhotoSearch.segments(relative);
-		Float score = _searchIndex.score(folder, segments.get(segments.size() - 1), vector,
-			ContentSearch.IMAGE_WEIGHT, ContentSearch.TEXT_WEIGHT);
-		return score != null && score.floatValue() >= ContentSearch.THRESHOLD ? folder : null;
+		String name = segments.get(segments.size() - 1);
+		if (ranking.photo() != null && ranking.photo().toFile().equals(folder.child(name).toFile())) {
+			// The photograph compared with is no answer of its own.
+			return null;
+		}
+		Float score = _searchIndex.score(folder, name, ranking.vector(), ranking.imageWeight(), ranking.textWeight());
+		return score != null && score.floatValue() >= ranking.threshold() ? folder : null;
 	}
 
 	/**
@@ -9643,10 +9825,24 @@ public class ImageServlet extends HttpServlet {
 	 * </p>
 	 */
 	AlbumInfo searchAnswer(AlbumInfo search, PathInfo path, Caller caller, int viewAs) {
-		List<ImagePart> parts = searchMatches(searchScope(path), search.getQuery(), caller, viewAs, null);
+		List<ImagePart> parts;
+		de.haumacher.imageServer.shared.model.SearchProblem problem =
+			de.haumacher.imageServer.shared.model.SearchProblem.NONE;
+		try {
+			parts = searchMatches(searchScope(path), search.getQuery(), caller, viewAs, null);
+		} catch (ContentSearch.Refused ex) {
+			if (ex.getProblem() == de.haumacher.imageServer.shared.model.SearchProblem.NONE) {
+				throw ex;
+			}
+			// The photograph of its "More like this" is gone, hidden from this caller or not
+			// described yet: the search opens, finds nothing, and says why (issue #257).
+			parts = Collections.emptyList();
+			problem = ex.getProblem();
+		}
 		AlbumInfo result = AlbumInfo.create()
 			.setKind(de.haumacher.imageServer.shared.model.AlbumKind.SEARCH)
-			.setQuery(search.getQuery())
+			.setQuery(answeredQuery(search.getQuery(), caller, viewAs))
+			.setSearchProblem(problem)
 			.setTitle(search.getTitle())
 			.setSubTitle(search.getSubTitle())
 			.setStarred(search.isStarred())
@@ -9722,7 +9918,7 @@ public class ImageServlet extends HttpServlet {
 			return;
 		}
 		ThumbnailInfo stored = search.getIndexPicture();
-		if (stored != null && photoNamed(path, search, stored.getImage()) != null) {
+		if (stored != null && photoNamed(path, search, stored.getImage(), caller) != null) {
 			// Chosen, and it still leads to a photograph the search finds.
 			return;
 		}
@@ -9806,10 +10002,24 @@ public class ImageServlet extends HttpServlet {
 		int viewAs = Privacy.PRIVATE;
 		// Written out partial: no faces derived, see ImagePart#isPartial(). A content search answers
 		// a page, the nearest first; "more" asks again for more of them.
-		List<ImagePart> parts = searchMatches(scope, query, caller, viewAs, null, true, contentCount(context));
+		List<ImagePart> parts;
+		de.haumacher.imageServer.shared.model.SearchProblem problem =
+			de.haumacher.imageServer.shared.model.SearchProblem.NONE;
+		try {
+			parts = searchMatches(scope, query, caller, viewAs, null, true, contentCount(context));
+		} catch (ContentSearch.Refused ex) {
+			if (ex.getProblem() == de.haumacher.imageServer.shared.model.SearchProblem.NONE) {
+				throw ex;
+			}
+			// "More like this" of a photograph that is not there, or not described yet: nothing
+			// found, and why (issue #257).
+			parts = Collections.emptyList();
+			problem = ex.getProblem();
+		}
 		AlbumInfo answer = AlbumInfo.create()
 			.setKind(de.haumacher.imageServer.shared.model.AlbumKind.SEARCH)
-			.setQuery(PhotoSearch.normalized(query))
+			.setQuery(answeredQuery(PhotoSearch.normalized(query), caller, viewAs))
+			.setSearchProblem(problem)
 			.setParts(new ArrayList<>(parts));
 		Set<String> rights = new HashSet<>();
 		rights.add(Rights.VIEW);
@@ -10125,7 +10335,7 @@ public class ImageServlet extends HttpServlet {
 		String relative = path.toFile().toPath().toAbsolutePath().normalize().toString();
 		String base = search.toFile().toPath().toAbsolutePath().normalize().toString();
 		relative = relative.substring(base.length() + 1).replace(File.separatorChar, '/');
-		PathInfo folder = matching(searchScope(search), relative, query);
+		PathInfo folder = matching(searchScope(search), relative, query, _auth.caller(context.request()));
 		if (folder == null) {
 			LOG.warning("No photograph of the saved search at '" + context.request().getPathInfo() + "'.");
 			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, PhotoSearch.NO_MATCH);
@@ -10161,9 +10371,12 @@ public class ImageServlet extends HttpServlet {
 	 * a path below it, which in a saved search is a path below the folder it looks in, where the
 	 * photograph matches its query.
 	 *
+	 * @param caller
+	 *        Who asks: the photograph a "More like this" compares with (issue #257) must be shown
+	 *        to them, or the saved search finds nothing.
 	 * @return <code>null</code> where the name stands for no photograph the folder can show.
 	 */
-	private PathInfo photoNamed(PathInfo folder, Resource container, String name) {
+	private PathInfo photoNamed(PathInfo folder, Resource container, String name, Caller caller) {
 		List<String> segments = PhotoSearch.segments(name);
 		if (segments == null) {
 			return null;
@@ -10173,7 +10386,7 @@ public class ImageServlet extends HttpServlet {
 			if (PhotoSearch.refusal(query) != null) {
 				return null;
 			}
-			PathInfo source = matching(searchScope(folder), name, query);
+			PathInfo source = matching(searchScope(folder), name, query, caller);
 			return source == null ? null : source.child(segments.get(segments.size() - 1));
 		}
 		PathInfo result = folder;
@@ -10350,7 +10563,8 @@ public class ImageServlet extends HttpServlet {
 	 */
 	private ImagePart linkPicture(PathInfo path, AlbumInfo search, String name, int clearance, int minRating,
 			String label) {
-		PathInfo image = photoNamed(path, search, name);
+		// The photograph of a "More like this" as anybody may see it: the card names no caller.
+		PathInfo image = photoNamed(path, search, name, Caller.ANONYMOUS);
 		if (image == null || Inboxes.isInbox(image.parent().toFile()) || !image.parent().toFile().isDirectory()) {
 			return null;
 		}
@@ -10534,7 +10748,7 @@ public class ImageServlet extends HttpServlet {
 			return null;
 		}
 		// Null for a query this build cannot run, too.
-		PathInfo image = photoNamed(path, search, chosen.getImage());
+		PathInfo image = photoNamed(path, search, chosen.getImage(), caller);
 		if (image == null || Inboxes.isInbox(image.parent().toFile())) {
 			// Deleted, moved, no longer found -- or a photograph of an inbox, never a tile's picture.
 			return null;

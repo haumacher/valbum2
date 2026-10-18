@@ -266,6 +266,11 @@ public final class AlbumDate {
 		}
 		if (resource instanceof AlbumInfo) {
 			AlbumInfo album = (AlbumInfo) resource;
+			if (album.getSearchProblem() != de.haumacher.imageServer.shared.model.SearchProblem.NONE) {
+				// Why a "More like this" found nothing is a property of this read, see issue #257.
+				album.setSearchProblem(de.haumacher.imageServer.shared.model.SearchProblem.NONE);
+				changed = true;
+			}
 			if (album.isPreparing()) {
 				// Whether the background has recorded the folder is a property of this read, see
 				// issue #253.
