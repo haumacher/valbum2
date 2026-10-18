@@ -6009,6 +6009,54 @@ abstract class AppLocalizations {
   /// **'Describe what the photos show'**
   String get searchContentHint;
 
+  /// Line of the tooltip of a photo found by the AI search or by "More like this": how similar it is to what was looked for, a number between 0 and 1 with two decimals (issue #302). German: "Ähnlichkeit {score}"
+  ///
+  /// In en, this message translates to:
+  /// **'Similarity {score}'**
+  String tileSimilarity(String score);
+
+  /// Chip of the search view while it ranks by what the photos show: the lowest similarity a photo found has; a tap opens the slider (issue #302). German: "Ähnlichkeit ≥ {score}"
+  ///
+  /// In en, this message translates to:
+  /// **'Similarity ≥ {score}'**
+  String searchSimilarityAtLeast(String score);
+
+  /// Tooltip of the similarity chip of the search view (issue #302)
+  ///
+  /// In en, this message translates to:
+  /// **'Show more or fewer photos: set how similar a photo must be'**
+  String get searchSimilarityTooltip;
+
+  /// Line above the similarity slider of the search view (issue #302)
+  ///
+  /// In en, this message translates to:
+  /// **'Photos less similar than this are not shown. Without a value of its own, the search uses the space\'s {score}.'**
+  String searchSimilarityLead(String score);
+
+  /// Button of the similarity slider: back to the space's default cut (issue #302)
+  ///
+  /// In en, this message translates to:
+  /// **'Default of the space'**
+  String get searchSimilarityReset;
+
+  /// Button closing the similarity slider of the search view (issue #302)
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get searchSimilarityClose;
+
+  /// Line below the search bar while a search is on its way (issue #302)
+  ///
+  /// In en, this message translates to:
+  /// **'Searching …'**
+  String get searchRunning;
+
+  /// Line below the search bar while an AI search or "More like this" is on its way, with the seconds it took so far (issue #302). German: "KI-Suche läuft … ({seconds} s)"
+  ///
+  /// In en, this message translates to:
+  /// **'AI search running … ({seconds} s)'**
+  String searchContentRunning(int seconds);
+
   /// Button next to the count of the search view while the AI search is on (issue #257): asks for the next most similar photos
   ///
   /// In en, this message translates to:
@@ -6986,6 +7034,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The server describes every photo and video in the background, so that it can be found by what it shows. Each photo is sent as a small preview to the embedder service, which may run on another computer and needs seconds to minutes per photo there. The descriptions take about 2 KB per photo on disk. Switching off keeps what was described.'**
   String get spaceSettingsContentHelp;
+
+  /// Field of the space settings, shown while the content search is on: the score below which a search by a description shows no photo (issue #302)
+  ///
+  /// In en, this message translates to:
+  /// **'Lowest similarity of an AI search'**
+  String get spaceSettingsTextThreshold;
+
+  /// Field of the space settings, shown while the content search is on: the similarity below which "More like this" shows no photo (issue #302)
+  ///
+  /// In en, this message translates to:
+  /// **'Lowest similarity of “More like this”'**
+  String get spaceSettingsSimilarThreshold;
+
+  /// Helper text of the two similarity fields of the space settings (issue #302)
+  ///
+  /// In en, this message translates to:
+  /// **'A number between 0 and 1: the higher, the fewer and the more similar the photos found. Empty for the built-in {score}. A search can set its own with the slider.'**
+  String spaceSettingsThresholdHelp(String score);
+
+  /// Error of a similarity field of the space settings that holds no number between 0 and 1 (issue #302)
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a number between 0 and 1, or leave the field empty.'**
+  String get spaceSettingsThresholdInvalid;
 
   /// Line below the content search switch: the service that describes the photos answers (issue #257)
   ///

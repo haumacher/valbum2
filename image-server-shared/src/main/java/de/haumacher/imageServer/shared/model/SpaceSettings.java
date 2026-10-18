@@ -69,6 +69,9 @@ public class SpaceSettings extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getContentUnavailable() */
 	private static final String CONTENT_UNAVAILABLE__PROP = "contentUnavailable";
 
+	/** @see #getThresholds() */
+	private static final String THRESHOLDS__PROP = "thresholds";
+
 	private String _name = "";
 
 	private de.haumacher.imageServer.shared.model.AnonymousAccess _anonymous = de.haumacher.imageServer.shared.model.AnonymousAccess.NONE;
@@ -94,6 +97,8 @@ public class SpaceSettings extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private de.haumacher.imageServer.shared.model.ContentSwitch _content = de.haumacher.imageServer.shared.model.ContentSwitch.KEEP;
 
 	private String _contentUnavailable = "";
+
+	private de.haumacher.imageServer.shared.model.ContentThresholds _thresholds = null;
 
 	/**
 	 * Creates a {@link SpaceSettings} instance.
@@ -379,6 +384,35 @@ public class SpaceSettings extends de.haumacher.msgbuf.data.AbstractDataObject {
 		_contentUnavailable = value;
 	}
 
+	/**
+	 * The space's cuts of the content search (issue #302), which a query stating none of its own is
+	 * answered with. Always answered. On a write, absent (what an app that does not know them
+	 * sends) leaves the space's cuts as they are.
+	 */
+	public final de.haumacher.imageServer.shared.model.ContentThresholds getThresholds() {
+		return _thresholds;
+	}
+
+	/**
+	 * @see #getThresholds()
+	 */
+	public de.haumacher.imageServer.shared.model.SpaceSettings setThresholds(de.haumacher.imageServer.shared.model.ContentThresholds value) {
+		internalSetThresholds(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getThresholds()} without chain call utility. */
+	protected final void internalSetThresholds(de.haumacher.imageServer.shared.model.ContentThresholds value) {
+		_thresholds = value;
+	}
+
+	/**
+	 * Checks, whether {@link #getThresholds()} has a value.
+	 */
+	public final boolean hasThresholds() {
+		return _thresholds != null;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.SpaceSettings readSpaceSettings(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.SpaceSettings result = new de.haumacher.imageServer.shared.model.SpaceSettings();
@@ -420,6 +454,10 @@ public class SpaceSettings extends de.haumacher.msgbuf.data.AbstractDataObject {
 		getContent().writeTo(out);
 		out.name(CONTENT_UNAVAILABLE__PROP);
 		out.value(getContentUnavailable());
+		if (hasThresholds()) {
+			out.name(THRESHOLDS__PROP);
+			getThresholds().writeTo(out);
+		}
 	}
 
 	@Override
@@ -438,6 +476,7 @@ public class SpaceSettings extends de.haumacher.msgbuf.data.AbstractDataObject {
 			case INBOX_FIXED__PROP: setInboxFixed(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case CONTENT__PROP: setContent(de.haumacher.imageServer.shared.model.ContentSwitch.readContentSwitch(in)); break;
 			case CONTENT_UNAVAILABLE__PROP: setContentUnavailable(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case THRESHOLDS__PROP: setThresholds(de.haumacher.imageServer.shared.model.ContentThresholds.readContentThresholds(in)); break;
 			default: super.readField(in, field);
 		}
 	}

@@ -354,7 +354,7 @@ public class TestContentQuery extends TestCase {
 			.setQuery(query(SearchContent.create().setText(SUNSET)))), ADMIN);
 		assertEquals(created.body(), HttpServletResponse.SC_OK, created.status());
 		String stored = Files.readString(_base.resolve("Lib/Sunset/index.json"));
-		assertTrue("The text is stored: " + stored, stored.contains("[\"SearchContent\",{\"text\":\"sunset\"}]"));
+		assertTrue("The text is stored: " + stored, stored.contains("[\"SearchContent\",{\"text\":\"sunset\",\"minSimilarity\":0.0}]"));
 		assertFalse("Never a vector, never a score: " + stored, stored.contains("score"));
 		AlbumInfo sidecar = (AlbumInfo) Resource.readResource(reader(stored));
 		assertEquals("The most similar is its picture.", "A/" + name("a", 0), sidecar.getIndexPicture().getImage());
@@ -661,6 +661,157 @@ public class TestContentQuery extends TestCase {
 			PhotoSearch.content(opened.getQuery()).similar().getPath());
 	}
 
+	// --- The cut of a query and of the space (issue #302). ---
+
+	/** The score of the photograph of the given number for {@link #SUNSET}, see {@link #vector(int)}. */
+	private static double sunset(int global) {
+		return Math.cos((global + 1) * (Math.PI / 2 / (IN_A + IN_B + 2)));
+	}
+
+	/** How many photographs an editor is answered for {@link #SUNSET} at the given cut: the trash never. */
+	private static int sunsetAbove(double cut) {
+		int result = 0;
+		for (int n = 0; n < IN_A + IN_B; n++) {
+			if (n != 20 && sunset(n) >= cut) {
+				result++;
+			}
+		}
+		return result;
+	}
+
+	private static SearchQuery content(String text, double minSimilarity) {
+		return query(SearchContent.create().setText(text).setMinSimilarity(minSimilarity));
+	}
+
+	public void testTheCutOfAQueryOverridesTheDefault() throws Exception {
+		library(SpaceStore.CONTENT_ON);
+		List<ImagePart> higher = images(found(search("/", content(SUNSET, 0.55), ADMIN, "400")));
+		assertEquals("Fewer than at the default.", sunsetAbove(0.55), higher.size());
+		assertTrue(higher.size() < ABOVE);
+		for (ImagePart image : higher) {
+			assertTrue("At least the cut: " + image.getName(), image.getScore() >= 0.55 - 1e-6);
+		}
+		List<String> lower = names(found(search("/", content(SUNSET, 0.01), ADMIN, "400")));
+		assertEquals("More than at the default.", sunsetAbove(0.01), lower.size());
+		assertTrue(lower.size() > ABOVE);
+		assertTrue("What the default cut leaves out.", lower.contains(B + "/" + name("b", 36)));
+
+		List<ImagePart> like = images(found(search("/",
+			query(similarTo(A + "/" + name("a", 0)).setMinSimilarity(0.9)), ADMIN, "400")));
+		assertFalse(like.isEmpty());
+		assertTrue("Fewer than at the default.", like.size() < LIKE_A0);
+		for (ImagePart image : like) {
+			assertTrue("At least the cut: " + image.getName(), image.getScore() >= 0.9 - 1e-6);
+		}
+	}
+
+	public void testACutOfAQueryIsClampedAndNoneIsTheDefault() throws Exception {
+		library(SpaceStore.CONTENT_ON);
+		assertEquals("Above one is one: nothing is that alike.", 0,
+			names(found(search("/", content(SUNSET, 5), ADMIN, "400"))).size());
+		assertEquals("A negative cut is none.", ABOVE, names(found(search("/", content(SUNSET, -0.3), ADMIN, "400"))).size());
+		assertEquals("Not a number is none.", 0.05, ContentSearch.cut(Double.NaN, 0, ContentSearch.THRESHOLD), 1e-12);
+		assertEquals("None is the default.", ABOVE, names(found(search("/", content(SUNSET, 0), ADMIN, "400"))).size());
+	}
+
+	public void testAQueryWithoutACutIsAnsweredWithTheCutOfTheSpace() throws Exception {
+		library(SpaceStore.CONTENT_ON, new SpaceStore.Thresholds(0.55, 0.9));
+		SearchOptions options = options("/");
+		assertEquals(0.55, options.getContentThreshold());
+		assertEquals(0.9, options.getSimilarThreshold());
+		assertEquals("The space's cut.", sunsetAbove(0.55), names(found(search("/", content(SUNSET), ADMIN, "400"))).size());
+		assertEquals("The query's cut comes first.", sunsetAbove(0.01),
+			names(found(search("/", content(SUNSET, 0.01), ADMIN, "400"))).size());
+		for (ImagePart image : images(found(search("/", similar(A + "/" + name("a", 0)), ADMIN, "400")))) {
+			assertTrue("The space's cut of More like this: " + image.getName(), image.getScore() >= 0.9 - 1e-6);
+		}
+	}
+
+	/**
+	 * Probe: the administrator changes the space's cut of "More like this" in the settings while the
+	 * server runs; the next search answers with it, and a saved search without a cut of its own follows.
+	 */
+	public void testTheCutOfTheSpaceChangedInTheSettingsHoldsAtOnce() throws Exception {
+		library(SpaceStore.CONTENT_ON);
+		savedSearch("Lib/Like", similarTo(A + "/" + name("a", 0)));
+		_servlet.searchIndex().build();
+		int before = names(found(get("/Lib/Like/", ADMIN))).size();
+
+		Map<String, String> parameters = new HashMap<>();
+		parameters.put("type", "space-settings");
+		FakeResponse read = new FakeResponse();
+		_servlet.doGet(request("/", "", ADMIN, parameters), read.response());
+		de.haumacher.imageServer.shared.model.SpaceSettings settings = de.haumacher.imageServer.shared.model.SpaceSettings
+			.readSpaceSettings(reader(read.body()));
+		settings.getThresholds().setSimilar(0.9);
+		parameters = new HashMap<>();
+		parameters.put("action", "space-settings");
+		FakeResponse saved = new FakeResponse();
+		StringWriter body = new StringWriter();
+		try (JsonWriter json = new JsonWriter(new WriterAdapter(body))) {
+			settings.writeTo(json);
+		}
+		_servlet.doPost(request("/", body.toString(), ADMIN, parameters), saved.response());
+		assertEquals(saved.body(), HttpServletResponse.SC_OK, saved.status());
+
+		List<ImagePart> live = images(found(search("/", similar(A + "/" + name("a", 0)), ADMIN, "400")));
+		assertFalse(live.isEmpty());
+		for (ImagePart image : live) {
+			assertTrue("At once, no restart: " + image.getScore(), image.getScore() >= 0.9 - 1e-6);
+		}
+		int after = names(found(get("/Lib/Like/", ADMIN))).size();
+		assertTrue("The saved search follows the space: " + before + " -> " + after, after < before);
+	}
+
+	public void testASpaceWithoutACutAnswersTheBuiltInOne() throws Exception {
+		library(SpaceStore.CONTENT_ON);
+		SearchOptions options = options("/");
+		assertEquals(0.05, options.getContentThreshold(), 1e-12);
+		assertEquals(0.3, options.getSimilarThreshold(), 1e-12);
+		assertEquals(ABOVE, names(found(search("/", content(SUNSET), ADMIN, "400"))).size());
+		assertEquals(LIKE_A0, names(found(search("/", similar(A + "/" + name("a", 0)), ADMIN, "400"))).size());
+	}
+
+	public void testAQueryStatingACutIsVersionTwoAndOneWithoutStaysOne() throws Exception {
+		assertEquals(PhotoSearch.FIRST_VERSION, PhotoSearch.normalized(content(SUNSET)).getVersion());
+		assertEquals(PhotoSearch.VERSION, PhotoSearch.normalized(content(SUNSET, 0.4)).getVersion());
+		assertEquals(PhotoSearch.VERSION, PhotoSearch.normalized(similar("Lib/A/a000.jpg").setVersion(0)
+			.setRoot(similarTo("Lib/A/a000.jpg").setMinSimilarity(0.7))).getVersion());
+		assertNull(PhotoSearch.refusal(PhotoSearch.normalized(content(SUNSET, 0.4))));
+		assertEquals("A build of version two refuses what it does not know.", PhotoSearch.NEWER,
+			PhotoSearch.refusal(content(SUNSET).setVersion(PhotoSearch.VERSION + 1)));
+	}
+
+	public void testASavedSearchStoresItsCutAndAnswersWithIt() throws Exception {
+		library(SpaceStore.CONTENT_ON);
+		FakeResponse created = put("/Lib/Sunset/", write(AlbumInfo.create().setKind(AlbumKind.SEARCH).setTitle("Sunset")
+			.setQuery(content(SUNSET, 0.55))), ADMIN);
+		assertEquals(created.body(), HttpServletResponse.SC_OK, created.status());
+		SearchQuery stored = stored("Lib/Sunset").getQuery();
+		assertEquals("Stated: an older build refuses it rather than answering its own cut.", PhotoSearch.VERSION,
+			stored.getVersion());
+		assertEquals(0.55, PhotoSearch.content(stored).minSimilarity());
+
+		AlbumInfo opened = found(get("/Lib/Sunset/", ADMIN));
+		assertEquals("Answered with its cut.", sunsetAbove(0.55), names(opened).size());
+		assertEquals("The answer says its cut.", 0.55, PhotoSearch.content(opened.getQuery()).minSimilarity());
+
+		String written = write(stored("Lib/Sunset"));
+		assertEquals("Read, written, read: the same.", written,
+			write(Resource.readResource(reader(written))));
+
+		// "More like this" keeps its cut through the anchoring of its photograph.
+		FakeResponse like = put("/Lib/Like/", write(AlbumInfo.create().setKind(AlbumKind.SEARCH).setTitle("Like")
+			.setQuery(query(similarTo(A + "/" + name("a", 0)).setMinSimilarity(0.9)))), ADMIN);
+		assertEquals(like.body(), HttpServletResponse.SC_OK, like.status());
+		assertEquals(0.9, PhotoSearch.content(stored("Lib/Like").getQuery()).minSimilarity());
+		AlbumInfo likeOpened = found(get("/Lib/Like/", ADMIN));
+		assertEquals(0.9, PhotoSearch.content(likeOpened.getQuery()).minSimilarity());
+		for (ImagePart image : images(likeOpened)) {
+			assertTrue(image.getName(), image.getScore() >= 0.9 - 1e-6);
+		}
+	}
+
 	private void savedSearch(String folder, SearchCriterion... criteria) throws IOException {
 		Files.createDirectories(_base.resolve(folder));
 		Files.writeString(_base.resolve(folder).resolve("index.json"),
@@ -689,9 +840,13 @@ public class TestContentQuery extends TestCase {
 	// --- The library. ---
 
 	private void library(String content) throws Exception {
+		library(content, SpaceStore.Thresholds.NONE);
+	}
+
+	private void library(String content, SpaceStore.Thresholds thresholds) throws Exception {
 		Files.createDirectories(_base.resolve(UserStore.DIRECTORY_NAME));
 		SpaceStore.store(_base, new SpaceStore.Config("Content", SpaceStore.ANONYMOUS_PUBLIC, "", SpaceStore.FACES_OFF,
-			"", "", content));
+			"", "", content, thresholds));
 		UserStore users = new UserStore(_base);
 		UserStore.User admin = new UserStore.User("haui", Roles.ADMIN, "", Instant.now().toString());
 		admin.addDevice(new UserStore.Device("Phone", UserStore.hash(ADMIN), Instant.now().toString()));

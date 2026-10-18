@@ -255,7 +255,8 @@ public class TestSavedSearch extends ShareTestCase {
 		createSearch("/Trips/AP", and(person(_anne), person(_philipp)));
 		AlbumInfo stored = stored("Trips/AP");
 		assertEquals(AlbumKind.SEARCH, stored.getKind());
-		assertEquals(PhotoSearch.VERSION, stored.getQuery().getVersion());
+		assertEquals("A query stating no cut stays version 1, see issue #302.", PhotoSearch.FIRST_VERSION,
+			stored.getQuery().getVersion());
 		assertEquals(Collections.emptyList(), stored.getParts());
 		assertEquals("The first match its creator is shown, see issue #287.", "2021 Lake/old.jpg",
 			stored.getIndexPicture().getImage());
@@ -895,7 +896,7 @@ public class TestSavedSearch extends ShareTestCase {
 		assertTrue(Arrays.equals(before, Files.readAllBytes(_base.resolve("Trips/Future/index.json"))));
 
 		Files.write(_base.resolve("Trips/Future/index.json"),
-			("[\"AlbumInfo\",{\"kind\":\"SEARCH\",\"query\":{\"version\":2,\"root\":[\"SearchAnd\",{}]}}]")
+			("[\"AlbumInfo\",{\"kind\":\"SEARCH\",\"query\":{\"version\":3,\"root\":[\"SearchAnd\",{}]}}]")
 				.getBytes(StandardCharsets.UTF_8));
 		servlet().cache().invalidate(new PathInfo(_base, Path.of("Trips/Future")));
 		assertEquals("A newer version is refused too.", PhotoSearch.NEWER,

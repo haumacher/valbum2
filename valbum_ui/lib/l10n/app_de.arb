@@ -1216,5 +1216,17 @@
   "statusPlaces": "Ortsnamen können nicht heruntergeladen werden",
   "statusSeeStatusPage": "Details auf der Statusseite",
   "statusLinkSubtitle": "Das Protokoll dieses Geräts, was läuft und was fehlschlug: auf der Statusseite",
-  "statusAppVersion": "Diese App: Version {version}"
+  "statusAppVersion": "Diese App: Version {version}",
+  "tileSimilarity": "Ähnlichkeit {score}",
+  "searchSimilarityAtLeast": "Ähnlichkeit ≥ {score}",
+  "searchSimilarityTooltip": "Mehr oder weniger Fotos anzeigen: Legen Sie fest, wie ähnlich ein Foto sein muss",
+  "searchSimilarityLead": "Fotos, die weniger ähnlich sind, werden nicht angezeigt. Ohne eigenen Wert verwendet die Suche den des Bereichs: {score}.",
+  "searchSimilarityReset": "Standard des Bereichs",
+  "searchSimilarityClose": "Schließen",
+  "searchRunning": "Suche läuft …",
+  "searchContentRunning": "KI-Suche läuft … ({seconds} s)",
+  "spaceSettingsTextThreshold": "Niedrigste Ähnlichkeit bei einer KI-Suche",
+  "spaceSettingsSimilarThreshold": "Niedrigste Ähnlichkeit bei „Ähnliche Fotos“",
+  "spaceSettingsThresholdHelp": "Eine Zahl zwischen 0 und 1: Je höher, desto weniger und desto ähnlichere Fotos werden gefunden. Leer für den eingebauten Wert {score}. Eine Suche kann mit dem Schieberegler ihren eigenen festlegen.",
+  "spaceSettingsThresholdInvalid": "Geben Sie eine Zahl zwischen 0 und 1 ein oder lassen Sie das Feld leer."
 }

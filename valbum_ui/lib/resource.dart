@@ -13676,8 +13676,18 @@ class FaceAssignment extends _JsonObject {
 ///  result.
 ///  </p>
 class SearchQuery extends _JsonObject {
-	///  The version of the format the query was written in; <code>1</code> in this build. A query
-	///  without a version (<code>0</code>) is read as version <code>1</code>.
+	///  The version of the format the query was written in. A query without a version
+	///  (<code>0</code>) is read as version <code>1</code>.
+	/// 
+	///  <ul>
+	///  <li><code>1</code>: the criteria of issues #227, #242 and #257.</li>
+	///  <li><code>2</code>: a ranking criterion states its own cut, {@link SearchContent#minSimilarity} or
+	///  {@link SearchSimilar#minSimilarity} (issue #302). Only a query that states one is written as
+	///  version <code>2</code>; every other query stays version <code>1</code>, so that a build that
+	///  does not know the cut still answers it. A build of version <code>1</code> would read past
+	///  the cut and answer with its own &mdash; a wider or narrower result &mdash;, so it refuses a
+	///  query of version <code>2</code> instead.</li>
+	///  </ul>
 	int version;
 
 	///  The condition a photograph must meet; an empty {@link SearchAnd} for every photograph.
@@ -14479,9 +14489,16 @@ class SearchContent extends SearchCriterion {
 	///  What the photographs show, in any language; blanks around it are ignored, and it is never empty.
 	String text;
 
+	///  The score below which a photograph is not answered (issue #302); <code>0</code> for the cut
+	///  of the space, {@link SearchOptions#contentThreshold}. A value above <code>1</code> is read as
+	///  <code>1</code>, a negative one as <code>0</code>. A query stating it is written as
+	///  {@link SearchQuery#version} <code>2</code>.
+	double minSimilarity;
+
 	/// Creates a SearchContent.
 	SearchContent({
 			this.text = "", 
+			this.minSimilarity = 0.0, 
 	});
 
 	/// Parses a SearchContent from a string source.
@@ -14506,6 +14523,10 @@ class SearchContent extends SearchCriterion {
 				text = json.expectString();
 				break;
 			}
+			case "minSimilarity": {
+				minSimilarity = json.expectDouble();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -14516,6 +14537,9 @@ class SearchContent extends SearchCriterion {
 
 		json.addKey("text");
 		json.addString(text);
+
+		json.addKey("minSimilarity");
+		json.addNumber(minSimilarity);
 	}
 
 	@override
@@ -14550,9 +14574,15 @@ class SearchSimilar extends SearchCriterion {
 	///  The photograph to compare with; never absent, see above.
 	PhotoRef? ref;
 
+	///  The cosine below which a photograph is not answered (issue #302); <code>0</code> for the cut
+	///  of the space, {@link SearchOptions#similarThreshold}. Read and written as
+	///  {@link SearchContent#minSimilarity} is.
+	double minSimilarity;
+
 	/// Creates a SearchSimilar.
 	SearchSimilar({
 			this.ref, 
+			this.minSimilarity = 0.0, 
 	});
 
 	/// Parses a SearchSimilar from a string source.
@@ -14577,6 +14607,10 @@ class SearchSimilar extends SearchCriterion {
 				ref = json.tryNull() ? null : PhotoRef.read(json);
 				break;
 			}
+			case "minSimilarity": {
+				minSimilarity = json.expectDouble();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -14590,6 +14624,9 @@ class SearchSimilar extends SearchCriterion {
 			json.addKey("ref");
 			_ref.writeContent(json);
 		}
+
+		json.addKey("minSimilarity");
+		json.addNumber(minSimilarity);
 	}
 
 	@override
@@ -14724,6 +14761,16 @@ class SearchOptions extends _JsonObject {
 	///  can answer right now is not said here: a search it cannot answer is refused with the reason.
 	bool content;
 
+	///  The score below which the space's search by a text ({@link SearchContent}) answers no
+	///  photograph where the query states no cut of its own (issue #302): the space's setting
+	///  ({@link ContentThresholds#text}), else the server's built-in cut. Answered where
+	///  {@link #content} is on, <code>0</code> otherwise.
+	double contentThreshold;
+
+	///  The cosine below which "More like this" ({@link SearchSimilar}) answers no photograph where
+	///  the query states no cut of its own, see {@link #contentThreshold}.
+	double similarThreshold;
+
 	/// Creates a SearchOptions.
 	SearchOptions({
 			this.persons = const [], 
@@ -14731,6 +14778,8 @@ class SearchOptions extends _JsonObject {
 			this.labels = const [], 
 			this.cameras = const [], 
 			this.content = false, 
+			this.contentThreshold = 0.0, 
+			this.similarThreshold = 0.0, 
 	});
 
 	/// Parses a SearchOptions from a string source.
@@ -14807,6 +14856,14 @@ class SearchOptions extends _JsonObject {
 				content = json.expectBool();
 				break;
 			}
+			case "contentThreshold": {
+				contentThreshold = json.expectDouble();
+				break;
+			}
+			case "similarThreshold": {
+				similarThreshold = json.expectDouble();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -14845,6 +14902,12 @@ class SearchOptions extends _JsonObject {
 
 		json.addKey("content");
 		json.addBool(content);
+
+		json.addKey("contentThreshold");
+		json.addNumber(contentThreshold);
+
+		json.addKey("similarThreshold");
+		json.addNumber(similarThreshold);
 	}
 
 }
@@ -15504,6 +15567,11 @@ class SpaceSettings extends _JsonObject {
 	///  started before the switch is turned on.
 	String contentUnavailable;
 
+	///  The space's cuts of the content search (issue #302), which a query stating none of its own is
+	///  answered with. Always answered. On a write, absent (what an app that does not know them
+	///  sends) leaves the space's cuts as they are.
+	ContentThresholds? thresholds;
+
 	/// Creates a SpaceSettings.
 	SpaceSettings({
 			this.name = "", 
@@ -15519,6 +15587,7 @@ class SpaceSettings extends _JsonObject {
 			this.inboxFixed = "", 
 			this.content = ContentSwitch.keep, 
 			this.contentUnavailable = "", 
+			this.thresholds, 
 	});
 
 	/// Parses a SpaceSettings from a string source.
@@ -15591,6 +15660,10 @@ class SpaceSettings extends _JsonObject {
 				contentUnavailable = json.expectString();
 				break;
 			}
+			case "thresholds": {
+				thresholds = json.tryNull() ? null : ContentThresholds.read(json);
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -15637,6 +15710,95 @@ class SpaceSettings extends _JsonObject {
 
 		json.addKey("contentUnavailable");
 		json.addString(contentUnavailable);
+
+		var _thresholds = thresholds;
+		if (_thresholds != null) {
+			json.addKey("thresholds");
+			_thresholds.writeContent(json);
+		}
+	}
+
+}
+
+///  The cuts of the content search of a space, see {@link SpaceSettings#thresholds} and issue #302:
+///  stored in its <code>space.json</code> as <code>contentThreshold</code> and
+///  <code>similarThreshold</code>.
+class ContentThresholds extends _JsonObject {
+	///  The score below which a search by a text ({@link SearchContent}) answers no photograph,
+	///  between <code>0</code> and <code>1</code>; <code>0</code> for {@link #defaultText}.
+	double text;
+
+	///  The cosine below which "More like this" ({@link SearchSimilar}) answers no photograph,
+	///  between <code>0</code> and <code>1</code>; <code>0</code> for {@link #defaultSimilar}.
+	double similar;
+
+	///  <em>Answered:</em> the server's built-in cut of a search by a text, which a {@link #text} of <code>0</code> means.
+	double defaultText;
+
+	///  <em>Answered:</em> the server's built-in cut of "More like this", which a {@link #similar} of <code>0</code> means.
+	double defaultSimilar;
+
+	/// Creates a ContentThresholds.
+	ContentThresholds({
+			this.text = 0.0, 
+			this.similar = 0.0, 
+			this.defaultText = 0.0, 
+			this.defaultSimilar = 0.0, 
+	});
+
+	/// Parses a ContentThresholds from a string source.
+	static ContentThresholds? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a ContentThresholds instance from the given reader.
+	static ContentThresholds read(JsonReader json) {
+		ContentThresholds result = ContentThresholds();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "ContentThresholds";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "text": {
+				text = json.expectDouble();
+				break;
+			}
+			case "similar": {
+				similar = json.expectDouble();
+				break;
+			}
+			case "defaultText": {
+				defaultText = json.expectDouble();
+				break;
+			}
+			case "defaultSimilar": {
+				defaultSimilar = json.expectDouble();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("text");
+		json.addNumber(text);
+
+		json.addKey("similar");
+		json.addNumber(similar);
+
+		json.addKey("defaultText");
+		json.addNumber(defaultText);
+
+		json.addKey("defaultSimilar");
+		json.addNumber(defaultSimilar);
 	}
 
 }

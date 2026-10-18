@@ -64,7 +64,24 @@
 /// query; the field's text then narrows as in the conventional search. A
 /// photo that is not there for the reader, or not analysed yet, is said in
 /// the app's words in place of the result.
+///
+/// While the search ranks by what the photos show, a chip "Similarity ≥
+/// 0.45" says the cut (issue #302): the lowest similarity a photo found has,
+/// the query's own or, without one, the space's. A tap on it opens a slider
+/// below the chips — inline, not in a dialog, so that what it finds stays in
+/// view while it is moved — which searches again with the cut set, a moment
+/// after the slider stops moving; the cut travels in the query and is stored
+/// by "Save as view…". Every photo found by what it shows says its
+/// similarity in its tooltip.
+///
+/// While a search is on its way (issue #302: an AI search takes a while, the
+/// more so where the embedder first has to start), a thin bar below the app
+/// bar says so, and what was found before stays in view, dimmed; after two
+/// seconds a line says how long it has taken. A search replaced by a newer
+/// one is forgotten, never shown as failed.
 library;
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 
@@ -104,6 +121,9 @@ class SearchSession extends ChangeNotifier {
   /// How many photos an AI search asks for (issue #257): a page, and one
   /// more page with every "Show more"; a new search starts with one page.
   int contentCount = contentSearchPage;
+
+  /// Whether the slider of the cut is open below the chips (issue #302).
+  bool similarityOpen = false;
 
   /// The grouping of the conventional search while the AI search, which
   /// starts ungrouped, is on: what switching back restores, see
@@ -366,6 +386,7 @@ class SearchViewState extends State<SearchView> {
 
   @override
   void dispose() {
+    _cutTimer?.cancel();
     _listened.removeListener(_changed);
     _text.dispose();
     super.dispose();
@@ -453,6 +474,12 @@ class SearchViewState extends State<SearchView> {
         children: [
           if (!selecting)
             OfflineBanner(onRetry: () => session.run(client, path)),
+          // A search on its way says so (issue #302).
+          SearchProgress(
+            key: ValueKey(session.result),
+            search: session.result,
+            ranks: session.criteria.ranks,
+          ),
           // The criteria scroll away with what was found, one page from
           // the chips down to the last photograph (issue #248): on a phone
           // they would otherwise take most of the screen.
@@ -490,265 +517,429 @@ class SearchViewState extends State<SearchView> {
     var placeNames = {for (var p in options.places) p.geonameId: p.name};
     var ratingNames = _ratingNames(l10n);
     var anyOf = criteria.anyOf && !criteria.ranks;
+    var cut = _cutOf(options);
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
-      child: Wrap(
-        key: const Key("search-criteria"),
-        spacing: 6,
-        runSpacing: 6,
-        crossAxisAlignment: WrapCrossAlignment.center,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ..._scopeChip(),
-          ActionChip(
-            key: const Key("search-any-of"),
-            avatar: Icon(
-              anyOf ? Icons.join_full : Icons.join_inner,
-              size: 18,
-            ),
-            label: Text(anyOf ? l10n.searchAnyOf : l10n.searchAllOf),
-            // What is ranked is narrowed by all of the others (issue #257).
-            onPressed: criteria.ranks
-                ? null
-                : () => _choose(criteria.copyWith(anyOf: !criteria.anyOf)),
-          ),
-          if (criteria.similar != null) _similarChip(criteria.similar!),
-          for (var (person, excluded) in _rows(
-            criteria.persons,
-            criteria.excludedPersons,
-          ))
-            _valueChip<String>(
-              key: "search-person-$person",
-              icon: Icons.person,
-              name: personNames[person] ?? person,
-              value: person,
-              excluded: excluded,
-              included: criteria.persons,
-              excludedValues: criteria.excludedPersons,
-              choose: (included, excludedValues) => _choose(
-                criteria.copyWith(
-                  persons: included,
-                  excludedPersons: excludedValues,
-                ),
-              ),
-            ),
-          ActionChip(
-            key: const Key("search-add-persons"),
-            avatar: const Icon(Icons.person_add_alt, size: 18),
-            label: Text(l10n.searchPersons),
-            onPressed: choosePersons,
-          ),
-          _dateChip(
-            key: "search-from",
-            label: l10n.searchFrom,
-            value: criteria.from,
-            onPicked: (day) => _choose(criteria.copyWith(from: day)),
-            onCleared: () => _choose(criteria.copyWith(clearFrom: true)),
-          ),
-          _dateChip(
-            key: "search-to",
-            label: l10n.searchTo,
-            value: criteria.to,
-            onPicked: (day) => _choose(criteria.copyWith(to: day)),
-            onCleared: () => _choose(criteria.copyWith(clearTo: true)),
-          ),
-          for (var (place, excluded) in _rows(
-            criteria.places,
-            criteria.excludedPlaces,
-          ))
-            _valueChip<int>(
-              key: "search-place-$place",
-              icon: Icons.place,
-              name: placeNames[place] ?? "$place",
-              value: place,
-              excluded: excluded,
-              included: criteria.places,
-              excludedValues: criteria.excludedPlaces,
-              choose: (included, excludedValues) => _choose(
-                criteria.copyWith(
-                  places: included,
-                  excludedPlaces: excludedValues,
-                ),
-              ),
-            ),
-          ActionChip(
-            key: const Key("search-add-places"),
-            avatar: const Icon(Icons.add_location_alt_outlined, size: 18),
-            label: Text(l10n.searchPlaces),
-            onPressed: choosePlaces,
-          ),
-          for (var (label, excluded) in _rows(
-            criteria.labels,
-            criteria.excludedLabels,
-          ))
-            _valueChip<String>(
-              key: "search-label-$label",
-              icon: Icons.label_outline,
-              name: label,
-              value: label,
-              excluded: excluded,
-              included: criteria.labels,
-              excludedValues: criteria.excludedLabels,
-              choose: (included, excludedValues) => _choose(
-                criteria.copyWith(
-                  labels: included,
-                  excludedLabels: excludedValues,
-                ),
-              ),
-            ),
-          ActionChip(
-            key: const Key("search-add-labels"),
-            avatar: const Icon(Icons.new_label_outlined, size: 18),
-            label: Text(l10n.searchLabels),
-            onPressed: chooseLabels,
-          ),
-          criteria.minRating == null
-              ? ActionChip(
-                  key: const Key("search-rating"),
-                  avatar: const Icon(Icons.star_border, size: 18),
-                  label: Text(l10n.searchRating),
-                  onPressed: chooseRating,
-                )
-              : _kindChip(
-                  key: "search-rating",
-                  kind: SearchKind.rating,
-                  icon: Icons.star,
-                  name: l10n.searchRatingAtLeast(
-                    ratingNames[criteria.minRating] ?? "",
-                  ),
-                  onPressed: chooseRating,
-                  onDeleted: () =>
-                      _choose(criteria.copyWith(clearMinRating: true)),
-                ),
-          criteria.camera == null
-              ? ActionChip(
-                  key: const Key("search-camera"),
-                  avatar: const Icon(Icons.photo_camera_outlined, size: 18),
-                  label: Text(l10n.searchCamera),
-                  onPressed: chooseCamera,
-                )
-              : _kindChip(
-                  key: "search-camera",
-                  kind: SearchKind.camera,
-                  icon: Icons.photo_camera,
-                  name: criteria.camera!,
-                  onPressed: chooseCamera,
-                  onDeleted: () =>
-                      _choose(criteria.copyWith(clearCamera: true)),
-                ),
-          criteria.groupBy.isEmpty
-              ? ActionChip(
-                  key: const Key("search-group-by"),
-                  avatar: const Icon(Icons.segment, size: 18),
-                  label: Text(l10n.groupByTitle),
-                  onPressed: chooseGrouping,
-                )
-              : InputChip(
-                  key: const Key("search-group-by"),
-                  avatar: const Icon(Icons.segment, size: 18),
-                  label: Text(
-                    l10n.searchGroupedBy(
-                      criteria.groupBy
-                          .map((key) => searchGroupName(l10n, key))
-                          .join(" › "),
-                    ),
-                  ),
-                  onPressed: chooseGrouping,
-                  onDeleted: () =>
-                      _choose(criteria.copyWith(groupBy: const [])),
-                ),
-          DropdownButton<SearchMediaKind>(
-            key: const Key("search-media"),
-            value: criteria.media,
-            dropdownColor: Colors.grey.shade900,
-            style: const TextStyle(color: Colors.white),
-            underline: const SizedBox.shrink(),
-            items: [
-              DropdownMenuItem(
-                value: SearchMediaKind.all,
-                child: Text(l10n.searchMediaAll),
-              ),
-              DropdownMenuItem(
-                value: SearchMediaKind.photos,
-                child: Text(l10n.searchMediaPhotos),
-              ),
-              DropdownMenuItem(
-                value: SearchMediaKind.videos,
-                child: Text(l10n.searchMediaVideos),
-              ),
-            ],
-            onChanged: (value) {
-              if (value != null) {
-                _choose(criteria.copyWith(media: value));
-              }
-            },
-          ),
-          SizedBox(
-            width: 280,
-            child: TextField(
-              key: const Key("search-text"),
-              controller: _text,
-              style: const TextStyle(color: Colors.white),
-              textInputAction: TextInputAction.search,
-              decoration: InputDecoration(
-                isDense: true,
-                // The exclusion of the text: the field has no chip to press
-                // long, its long press selects (issue #242).
-                prefixIcon: IconButton(
-                  key: Key(
-                    criteria.excludes(SearchKind.text)
-                        ? "search-text-exclude-excluded"
-                        : "search-text-exclude",
-                  ),
-                  isSelected: criteria.excludes(SearchKind.text),
-                  icon: const Icon(Icons.search, color: Colors.white70),
-                  selectedIcon: const Icon(
-                    Icons.block,
-                    color: Colors.redAccent,
-                  ),
-                  tooltip: l10n.searchExclude,
-                  // A description of what the photos show ranks, and is
-                  // never excluded (issue #257).
-                  onPressed:
-                      criteria.has(SearchKind.text) && !criteria.textRanks
-                          ? () => _choose(
-                                session.criteria
-                                    .copyWith(text: _text.text)
-                                    .toggled(SearchKind.text),
-                              )
-                          : null,
-                ),
-                hintText: criteria.textRanks
-                    ? l10n.searchContentHint
-                    : l10n.searchText,
-                hintStyle: const TextStyle(color: Colors.white54),
-              ),
-              onSubmitted: (value) =>
-                  _choose(session.criteria.copyWith(text: value)),
-            ),
-          ),
-          // The AI search, where the space has it on (issue #257) — or
-          // where the criteria are one already, so that it can be left. A
-          // photo as the query is one as well: on, and left by removing the
-          // photo's chip.
-          if (options.content || criteria.byWhatTheyShow)
-            FilterChip(
-              key: const Key("search-by-content"),
-              avatar: const Icon(Icons.auto_awesome, size: 18),
-              label: Text(l10n.searchByContent),
-              tooltip: l10n.searchByContentTooltip,
-              selected: criteria.byWhatTheyShow,
-              onSelected: criteria.similar != null
-                  ? null
-                  : (on) {
-                      session.byContent(on, _text.text, client, path);
-                      widget.albumState.navigator.delegate
-                          .searchChanged(context);
-                    },
-            ),
-          _count(),
+          _chips(options, l10n, criteria, personNames, placeNames, ratingNames,
+              anyOf, cut),
+          if (cut != null && session.similarityOpen) _similarityPanel(cut),
         ],
       ),
     );
+  }
+
+  /// The chips and the field of [criteriaBar].
+  Widget _chips(
+    SearchOptions options,
+    AppLocalizations l10n,
+    SearchCriteria criteria,
+    Map<String, String> personNames,
+    Map<int, String> placeNames,
+    Map<int, String> ratingNames,
+    bool anyOf,
+    _Cut? cut,
+  ) {
+    return Wrap(
+      key: const Key("search-criteria"),
+      spacing: 6,
+      runSpacing: 6,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        ..._scopeChip(),
+        ActionChip(
+          key: const Key("search-any-of"),
+          avatar: Icon(
+            anyOf ? Icons.join_full : Icons.join_inner,
+            size: 18,
+          ),
+          label: Text(anyOf ? l10n.searchAnyOf : l10n.searchAllOf),
+          // What is ranked is narrowed by all of the others (issue #257).
+          onPressed: criteria.ranks
+              ? null
+              : () => _choose(criteria.copyWith(anyOf: !criteria.anyOf)),
+        ),
+        if (criteria.similar != null) _similarChip(criteria.similar!),
+        for (var (person, excluded) in _rows(
+          criteria.persons,
+          criteria.excludedPersons,
+        ))
+          _valueChip<String>(
+            key: "search-person-$person",
+            icon: Icons.person,
+            name: personNames[person] ?? person,
+            value: person,
+            excluded: excluded,
+            included: criteria.persons,
+            excludedValues: criteria.excludedPersons,
+            choose: (included, excludedValues) => _choose(
+              criteria.copyWith(
+                persons: included,
+                excludedPersons: excludedValues,
+              ),
+            ),
+          ),
+        ActionChip(
+          key: const Key("search-add-persons"),
+          avatar: const Icon(Icons.person_add_alt, size: 18),
+          label: Text(l10n.searchPersons),
+          onPressed: choosePersons,
+        ),
+        _dateChip(
+          key: "search-from",
+          label: l10n.searchFrom,
+          value: criteria.from,
+          onPicked: (day) => _choose(criteria.copyWith(from: day)),
+          onCleared: () => _choose(criteria.copyWith(clearFrom: true)),
+        ),
+        _dateChip(
+          key: "search-to",
+          label: l10n.searchTo,
+          value: criteria.to,
+          onPicked: (day) => _choose(criteria.copyWith(to: day)),
+          onCleared: () => _choose(criteria.copyWith(clearTo: true)),
+        ),
+        for (var (place, excluded) in _rows(
+          criteria.places,
+          criteria.excludedPlaces,
+        ))
+          _valueChip<int>(
+            key: "search-place-$place",
+            icon: Icons.place,
+            name: placeNames[place] ?? "$place",
+            value: place,
+            excluded: excluded,
+            included: criteria.places,
+            excludedValues: criteria.excludedPlaces,
+            choose: (included, excludedValues) => _choose(
+              criteria.copyWith(
+                places: included,
+                excludedPlaces: excludedValues,
+              ),
+            ),
+          ),
+        ActionChip(
+          key: const Key("search-add-places"),
+          avatar: const Icon(Icons.add_location_alt_outlined, size: 18),
+          label: Text(l10n.searchPlaces),
+          onPressed: choosePlaces,
+        ),
+        for (var (label, excluded) in _rows(
+          criteria.labels,
+          criteria.excludedLabels,
+        ))
+          _valueChip<String>(
+            key: "search-label-$label",
+            icon: Icons.label_outline,
+            name: label,
+            value: label,
+            excluded: excluded,
+            included: criteria.labels,
+            excludedValues: criteria.excludedLabels,
+            choose: (included, excludedValues) => _choose(
+              criteria.copyWith(
+                labels: included,
+                excludedLabels: excludedValues,
+              ),
+            ),
+          ),
+        ActionChip(
+          key: const Key("search-add-labels"),
+          avatar: const Icon(Icons.new_label_outlined, size: 18),
+          label: Text(l10n.searchLabels),
+          onPressed: chooseLabels,
+        ),
+        criteria.minRating == null
+            ? ActionChip(
+                key: const Key("search-rating"),
+                avatar: const Icon(Icons.star_border, size: 18),
+                label: Text(l10n.searchRating),
+                onPressed: chooseRating,
+              )
+            : _kindChip(
+                key: "search-rating",
+                kind: SearchKind.rating,
+                icon: Icons.star,
+                name: l10n.searchRatingAtLeast(
+                  ratingNames[criteria.minRating] ?? "",
+                ),
+                onPressed: chooseRating,
+                onDeleted: () =>
+                    _choose(criteria.copyWith(clearMinRating: true)),
+              ),
+        criteria.camera == null
+            ? ActionChip(
+                key: const Key("search-camera"),
+                avatar: const Icon(Icons.photo_camera_outlined, size: 18),
+                label: Text(l10n.searchCamera),
+                onPressed: chooseCamera,
+              )
+            : _kindChip(
+                key: "search-camera",
+                kind: SearchKind.camera,
+                icon: Icons.photo_camera,
+                name: criteria.camera!,
+                onPressed: chooseCamera,
+                onDeleted: () => _choose(criteria.copyWith(clearCamera: true)),
+              ),
+        criteria.groupBy.isEmpty
+            ? ActionChip(
+                key: const Key("search-group-by"),
+                avatar: const Icon(Icons.segment, size: 18),
+                label: Text(l10n.groupByTitle),
+                onPressed: chooseGrouping,
+              )
+            : InputChip(
+                key: const Key("search-group-by"),
+                avatar: const Icon(Icons.segment, size: 18),
+                label: Text(
+                  l10n.searchGroupedBy(
+                    criteria.groupBy
+                        .map((key) => searchGroupName(l10n, key))
+                        .join(" › "),
+                  ),
+                ),
+                onPressed: chooseGrouping,
+                onDeleted: () => _choose(criteria.copyWith(groupBy: const [])),
+              ),
+        DropdownButton<SearchMediaKind>(
+          key: const Key("search-media"),
+          value: criteria.media,
+          dropdownColor: Colors.grey.shade900,
+          style: const TextStyle(color: Colors.white),
+          underline: const SizedBox.shrink(),
+          items: [
+            DropdownMenuItem(
+              value: SearchMediaKind.all,
+              child: Text(l10n.searchMediaAll),
+            ),
+            DropdownMenuItem(
+              value: SearchMediaKind.photos,
+              child: Text(l10n.searchMediaPhotos),
+            ),
+            DropdownMenuItem(
+              value: SearchMediaKind.videos,
+              child: Text(l10n.searchMediaVideos),
+            ),
+          ],
+          onChanged: (value) {
+            if (value != null) {
+              _choose(criteria.copyWith(media: value));
+            }
+          },
+        ),
+        SizedBox(
+          width: 280,
+          child: TextField(
+            key: const Key("search-text"),
+            controller: _text,
+            style: const TextStyle(color: Colors.white),
+            textInputAction: TextInputAction.search,
+            // On the centre line of the chips beside it: the underline
+            // border puts the text at the top of the row the 48 px of the
+            // prefix button make, high above the chips' labels.
+            textAlignVertical: TextAlignVertical.center,
+            decoration: InputDecoration(
+              isDense: true,
+              // The exclusion of the text: the field has no chip to press
+              // long, its long press selects (issue #242).
+              prefixIcon: IconButton(
+                key: Key(
+                  criteria.excludes(SearchKind.text)
+                      ? "search-text-exclude-excluded"
+                      : "search-text-exclude",
+                ),
+                isSelected: criteria.excludes(SearchKind.text),
+                icon: const Icon(Icons.search, color: Colors.white70),
+                selectedIcon: const Icon(
+                  Icons.block,
+                  color: Colors.redAccent,
+                ),
+                tooltip: l10n.searchExclude,
+                // A description of what the photos show ranks, and is
+                // never excluded (issue #257).
+                onPressed: criteria.has(SearchKind.text) && !criteria.textRanks
+                    ? () => _choose(
+                          session.criteria
+                              .copyWith(text: _text.text)
+                              .toggled(SearchKind.text),
+                        )
+                    : null,
+              ),
+              hintText:
+                  criteria.textRanks ? l10n.searchContentHint : l10n.searchText,
+              hintStyle: const TextStyle(color: Colors.white54),
+            ),
+            onSubmitted: (value) =>
+                _choose(session.criteria.copyWith(text: value)),
+          ),
+        ),
+        // The AI search, where the space has it on (issue #257) — or
+        // where the criteria are one already, so that it can be left. A
+        // photo as the query is one as well: on, and left by removing the
+        // photo's chip.
+        if (options.content || criteria.byWhatTheyShow)
+          FilterChip(
+            key: const Key("search-by-content"),
+            avatar: const Icon(Icons.auto_awesome, size: 18),
+            label: Text(l10n.searchByContent),
+            tooltip: l10n.searchByContentTooltip,
+            selected: criteria.byWhatTheyShow,
+            onSelected: criteria.similar != null
+                ? null
+                : (on) {
+                    session.byContent(on, _text.text, client, path);
+                    widget.albumState.navigator.delegate.searchChanged(context);
+                  },
+          ),
+        if (cut != null) _similarityChip(cut),
+        _count(),
+      ],
+    );
+  }
+
+  // --- The cut of a search by what the photos show (issue #302). ---
+
+  /// The cut of the criteria where they rank, `null` where they do not, or
+  /// where the server says no cut of the space (one that does not know the
+  /// cut, which would refuse a query stating one) and the query states none.
+  _Cut? _cutOf(SearchOptions options) {
+    var criteria = session.criteria;
+    var kind = criteria.rankKind;
+    if (kind == SearchRankKind.none) {
+      return null;
+    }
+    var space = kind == SearchRankKind.text
+        ? options.contentThreshold
+        : options.similarThreshold;
+    var stated = criteria.statedMinSimilarity;
+    if (stated <= 0 && space <= 0) {
+      return null;
+    }
+    return _Cut(kind, stated > 0 ? stated : space, space);
+  }
+
+  /// The chip saying the cut, "Similarity ≥ 0.45": a tap opens or closes
+  /// the slider below the chips.
+  Widget _similarityChip(_Cut cut) => ActionChip(
+        key: const Key("search-similarity"),
+        avatar: const Icon(Icons.tune, size: 18),
+        label: Text(
+          _l10n.searchSimilarityAtLeast(
+            formatSimilarity(_l10n.localeName, _dragged ?? cut.value),
+          ),
+        ),
+        tooltip: _l10n.searchSimilarityTooltip,
+        onPressed: () => setState(
+          () => session.similarityOpen = !session.similarityOpen,
+        ),
+      );
+
+  /// The value the slider is moved to and not yet searched for; `null`
+  /// while it is not moved.
+  double? _dragged;
+
+  /// Searches with the cut the slider was moved to, a moment after it stopped
+  /// moving, see [_cutDelay].
+  Timer? _cutTimer;
+
+  /// The slider of the cut (issue #302), over the range the similarities of
+  /// its kind lie in.
+  Widget _similarityPanel(_Cut cut) {
+    var l10n = _l10n;
+    var (low, high) = similarityRange(cut.kind);
+    var value = (_dragged ?? cut.value).clamp(low, high).toDouble();
+    return Padding(
+      key: const Key("search-similarity-panel"),
+      padding: const EdgeInsets.only(top: 8),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.white10,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 4, 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                l10n.searchSimilarityLead(
+                  formatSimilarity(l10n.localeName, cut.space),
+                ),
+                style: const TextStyle(color: Colors.white70),
+              ),
+              Row(
+                children: [
+                  Expanded(
+                    child: Slider(
+                      key: const Key("search-similarity-slider"),
+                      min: low,
+                      max: high,
+                      divisions: ((high - low) / similarityStep).round(),
+                      value: value,
+                      label: formatSimilarity(l10n.localeName, value),
+                      onChanged: (moved) {
+                        setState(() => _dragged = moved);
+                        _cutTimer?.cancel();
+                        _cutTimer = Timer(cutDelay, () => _applyCut(moved));
+                      },
+                      onChangeEnd: (moved) {
+                        _cutTimer?.cancel();
+                        _applyCut(moved);
+                      },
+                    ),
+                  ),
+                  Text(
+                    formatSimilarity(l10n.localeName, value),
+                    key: const Key("search-similarity-value"),
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ],
+              ),
+              Wrap(
+                spacing: 8,
+                children: [
+                  TextButton(
+                    key: const Key("search-similarity-reset"),
+                    onPressed: session.criteria.statedMinSimilarity > 0 &&
+                            cut.space > 0
+                        ? () {
+                            _cutTimer?.cancel();
+                            _applyCut(0);
+                          }
+                        : null,
+                    child: Text(l10n.searchSimilarityReset),
+                  ),
+                  TextButton(
+                    key: const Key("search-similarity-close"),
+                    onPressed: () =>
+                        setState(() => session.similarityOpen = false),
+                    child: Text(l10n.searchSimilarityClose),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Searches with the cut [value], `0` for the space's (issue #302), unless
+  /// it is the one searched for already.
+  void _applyCut(double value) {
+    if (!mounted) {
+      return;
+    }
+    _dragged = null;
+    var rounded = (value * 100).round() / 100;
+    if (rounded == session.criteria.statedMinSimilarity) {
+      setState(() {});
+      return;
+    }
+    _choose(session.criteria.copyWith(minSimilarity: rounded));
   }
 
   /// The chip of the photo "More like this" compares with (issue #257): its
@@ -1215,7 +1406,10 @@ class SearchViewState extends State<SearchView> {
     return FutureBuilder<AlbumInfo>(
       future: result,
       builder: (context, snapshot) {
-        if (snapshot.hasError) {
+        // A newer search on its way: what was found before stays in view,
+        // dimmed (issue #302); an error of the one before is not repeated.
+        var waiting = snapshot.connectionState != ConnectionState.done;
+        if (snapshot.hasError && !waiting) {
           var error = snapshot.error;
           return _page(
             criteria,
@@ -1226,7 +1420,7 @@ class SearchViewState extends State<SearchView> {
           );
         }
         var album = snapshot.data;
-        if (album == null) {
+        if (album == null || (waiting && snapshot.hasError)) {
           return _page(
             criteria,
             const Center(child: CircularProgressIndicator()),
@@ -1261,6 +1455,7 @@ class SearchViewState extends State<SearchView> {
           downloadSelected: downloadFound,
           collectSelected: collectFound,
           header: criteria,
+          dimmed: waiting,
         );
       },
     );
@@ -1866,6 +2061,127 @@ class _SearchGroupDialogState extends State<SearchGroupDialog> {
           label: Text(l10n.apply),
           onPressed: () => Navigator.of(context).pop(chosen),
         ),
+      ],
+    );
+  }
+}
+
+/// The cut of a search by what the photos show, as the search view shows it
+/// (issue #302).
+class _Cut {
+  /// What the search ranks by.
+  final SearchRankKind kind;
+
+  /// The cut the search is answered with: the query's own, else the space's.
+  final double value;
+
+  /// The space's cut of [kind]; `0` where the server says none.
+  final double space;
+
+  const _Cut(this.kind, this.value, this.space);
+}
+
+/// The step of the slider of the cut (issue #302).
+const double similarityStep = 0.01;
+
+/// How long the slider of the cut rests before it is searched with (issue
+/// #302): a search per position passed would keep the embedder and the
+/// server busy for nothing.
+const Duration cutDelay = Duration(milliseconds: 400);
+
+/// The range the slider of the cut of [kind] offers (issue #302): where the
+/// similarities of that kind lie. A text and a photo are far apart — the
+/// cosine of a text to a picture rarely exceeds 0.4, while two pictures of
+/// one scene come near 1 and two unrelated ones are seldom below 0.3.
+(double, double) similarityRange(SearchRankKind kind) => switch (kind) {
+      SearchRankKind.photo => (0.2, 1.0),
+      // Above 0, which is no cut but the space's.
+      _ => (0.01, 0.5),
+    };
+
+/// After how long a search on its way says how long it has taken (issue
+/// #302): a quick one is not worth a sentence.
+const int searchProgressLineAfter = 2;
+
+/// The bar below the app bar of the search view while [search] is on its
+/// way (issue #302), and after [searchProgressLineAfter] seconds a line
+/// saying how long it has taken — of an AI search ([ranks]) with the
+/// seconds, for it may first have to wait for the embedder to start.
+/// Nothing once it is in, whether found or failed; a search replaced by a
+/// newer one is a new bar, keyed by its future.
+class SearchProgress extends StatefulWidget {
+  /// The search, `null` for none.
+  final Future<AlbumInfo>? search;
+
+  /// Whether it ranks by what the photos show.
+  final bool ranks;
+
+  const SearchProgress({super.key, required this.search, required this.ranks});
+
+  @override
+  State<SearchProgress> createState() => _SearchProgressState();
+}
+
+class _SearchProgressState extends State<SearchProgress> {
+  bool _done = true;
+
+  /// The seconds it has taken so far.
+  int _seconds = 0;
+
+  Timer? _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    var search = widget.search;
+    if (search == null) {
+      return;
+    }
+    _done = false;
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) {
+        setState(() => _seconds++);
+      }
+    });
+    void finished() {
+      _ticker?.cancel();
+      if (mounted) {
+        setState(() => _done = true);
+      }
+    }
+
+    // Its failure is the results' to say, never this bar's.
+    search.then((_) => finished(), onError: (_) => finished());
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_done) {
+      return const SizedBox.shrink();
+    }
+    var l10n = AppLocalizations.of(context)!;
+    return Column(
+      key: const Key("search-progress"),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const LinearProgressIndicator(minHeight: 2),
+        if (_seconds >= searchProgressLineAfter)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+            child: Text(
+              widget.ranks
+                  ? l10n.searchContentRunning(_seconds)
+                  : l10n.searchRunning,
+              key: const Key("search-progress-line"),
+              style: const TextStyle(color: Colors.white70),
+            ),
+          ),
       ],
     );
   }

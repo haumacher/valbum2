@@ -9628,10 +9628,11 @@ public class ImageServlet extends HttpServlet {
 	 * answered by similarity, the nearest first, each answer carrying its
 	 * {@link ImagePart#getScore() score}: the text is embedded ({@link #contentVector(String)}), the
 	 * other criteria of the query narrow inside the vector query (as the visibility does), and what
-	 * scores below {@link ContentSearch#THRESHOLD} is cut. A query with a
+	 * scores below the cut is cut ({@link ContentSearch#cut(double, double, float)}: the query's,
+	 * else the space's, else {@link ContentSearch#THRESHOLD}). A query with a
 	 * {@link de.haumacher.imageServer.shared.model.SearchSimilar} ("More like this") is answered
 	 * alike by the vector of the photograph's picture, the photograph itself left out, cut at
-	 * {@link ContentSearch#SIMILAR_THRESHOLD}, see {@link #ranking}. Every other query is answered by
+	 * its cut, by default {@link ContentSearch#SIMILAR_THRESHOLD}, see {@link #ranking}. Every other query is answered by
 	 * date.
 	 * </p>
 	 *
@@ -9818,9 +9819,10 @@ public class ImageServlet extends HttpServlet {
 	 *         ({@link ContentSearch#photoNotDescribed()}).
 	 */
 	private Ranking ranking(PhotoSearch.ContentQuery content, Caller caller, int viewAs) {
+		SpaceStore.Thresholds space = _config.getThresholds();
 		if (content.similar() == null) {
 			return new Ranking(contentVector(content.text()), ContentSearch.IMAGE_WEIGHT, ContentSearch.TEXT_WEIGHT,
-				ContentSearch.THRESHOLD, null, -1);
+				(float) ContentSearch.cut(content.minSimilarity(), space.text(), ContentSearch.THRESHOLD), null, -1);
 		}
 		if (!_content.isEnabled()) {
 			throw new ContentSearch.Refused(HttpServletResponse.SC_CONFLICT, ContentSearch.SWITCHED_OFF);
@@ -9834,7 +9836,9 @@ public class ImageServlet extends HttpServlet {
 		if (reference == null || reference.image() == null) {
 			throw ContentSearch.photoNotDescribed();
 		}
-		return new Ranking(reference.image(), 1, 0, ContentSearch.SIMILAR_THRESHOLD, photo, reference.id());
+		return new Ranking(reference.image(), 1, 0,
+			(float) ContentSearch.cut(content.minSimilarity(), space.similar(), ContentSearch.SIMILAR_THRESHOLD), photo,
+			reference.id());
 	}
 
 	/**
@@ -9968,7 +9972,7 @@ public class ImageServlet extends HttpServlet {
 	 *
 	 * <p>
 	 * A photograph matches a content search (issue #257) where it matches its other criteria and
-	 * its score is at least {@link ContentSearch#THRESHOLD}, whether or not it is among those the
+	 * its score is at least its cut (see {@link #ranking}), whether or not it is among those the
 	 * search answers, which are cut at a number; a "More like this" alike, its photograph shown to
 	 * the given caller or nothing matching.
 	 * </p>
@@ -10382,6 +10386,12 @@ public class ImageServlet extends HttpServlet {
 		options.setPlaces(sorted);
 		// Whether the view offers to search by what the photos show, see issue #257.
 		options.setContent(_content.isEnabled());
+		if (_content.isEnabled()) {
+			// The cuts a query stating none is answered with, see issue #302.
+			SpaceStore.Thresholds thresholds = _config.getThresholds();
+			options.setContentThreshold(ContentSearch.cut(0, thresholds.text(), ContentSearch.THRESHOLD));
+			options.setSimilarThreshold(ContentSearch.cut(0, thresholds.similar(), ContentSearch.SIMILAR_THRESHOLD));
+		}
 		serveJsonObject(context.response(), options);
 	}
 

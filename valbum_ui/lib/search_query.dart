@@ -38,16 +38,47 @@
 /// the rows combine with AND around it, and a query ranks once — while a photo
 /// is the query, the text is the conventional [SearchText] again, which
 /// narrows (and may be excluded), never a second [SearchContent].
+///
+/// A query that ranks may state its own cut ([SearchCriteria.minSimilarity],
+/// issue #302): the lowest similarity a photo found has, on the criterion
+/// that ranks. Without one, the space's cut holds
+/// ([SearchOptions.contentThreshold], [SearchOptions.similarThreshold]). A
+/// query stating one is written as version 2 ([searchQueryVersion]), which a
+/// build that does not know the cut refuses rather than answering its own.
 library;
 
+import 'package:intl/intl.dart';
 import 'package:jsontool/jsontool.dart';
 
 import 'l10n/app_localizations.dart';
 import 'resource.dart';
 
-/// The version of the stored query this app writes, see
-/// [SearchQuery.version].
-const int searchQueryVersion = 1;
+/// The newest version of the stored query this app reads and writes, see
+/// [SearchQuery.version]: a query whose ranking criterion states its own cut
+/// (issue #302).
+const int searchQueryVersion = 2;
+
+/// The version of every query that states no cut of its own: what a build
+/// before issue #302 reads.
+const int searchQueryFirstVersion = 1;
+
+/// [value], a similarity between 0 and 1, as the language shown writes it
+/// with two decimals ("0,62", "0.62"), see issue #302.
+String formatSimilarity(String locale, double value) =>
+    NumberFormat.decimalPatternDigits(locale: locale, decimalDigits: 2)
+        .format(value);
+
+/// What a criterion ranks by, see [SearchCriteria.rankKind].
+enum SearchRankKind {
+  /// Nothing: the result is by date.
+  none,
+
+  /// A text describing what the photos show ([SearchContent]).
+  text,
+
+  /// A photo ("More like this", [SearchSimilar]).
+  photo,
+}
 
 /// Which media a search looks for.
 enum SearchMediaKind {
@@ -152,6 +183,12 @@ class SearchCriteria {
   /// when it stores a saved search), handed back unchanged; empty for none.
   final String similarHash;
 
+  /// The lowest similarity a photo found has (issue #302), stated on the
+  /// criterion that ranks; `0` for the cut of the space. Kept only while the
+  /// criteria rank by the same kind ([rankKind]): a text and a photo are
+  /// compared on different scales, so a change of the kind takes it away.
+  final double minSimilarity;
+
   const SearchCriteria({
     this.persons = const [],
     this.excludedPersons = const [],
@@ -171,6 +208,7 @@ class SearchCriteria {
     this.byContent = false,
     this.similar,
     this.similarHash = "",
+    this.minSimilarity = 0,
   });
 
   /// No criterion at all: the search view asks for one before it searches.
@@ -210,6 +248,18 @@ class SearchCriteria {
   /// with a text ([byContent]), or "More like this" ([similar]).
   bool get ranks => similar != null || (byContent && text.trim().isNotEmpty);
 
+  /// What these criteria rank by, see [ranks].
+  SearchRankKind get rankKind => similar != null
+      ? SearchRankKind.photo
+      : textRanks && text.trim().isNotEmpty
+          ? SearchRankKind.text
+          : SearchRankKind.none;
+
+  /// The cut these criteria state, `0` for none: [minSimilarity] where they
+  /// rank, nothing where they do not.
+  double get statedMinSimilarity =>
+      rankKind == SearchRankKind.none ? 0 : minSimilarity;
+
   /// Whether the search is one by what the photos show at all — the AI
   /// search, or "More like this", which is one as well: its rows are one
   /// AND, and the switch of the search view shows it on.
@@ -242,6 +292,7 @@ class SearchCriteria {
     String? similar,
     String? similarHash,
     bool clearSimilar = false,
+    double? minSimilarity,
   }) {
     var changed = SearchCriteria(
       persons: persons ?? this.persons,
@@ -264,7 +315,14 @@ class SearchCriteria {
       similarHash: clearSimilar
           ? ""
           : similarHash ?? (similar == null ? this.similarHash : ""),
+      minSimilarity: minSimilarity ?? this.minSimilarity,
     );
+    if (minSimilarity == null &&
+        changed.minSimilarity != 0 &&
+        changed.rankKind != rankKind) {
+      // Another scale: the cut of the space holds again.
+      changed = changed._withMinSimilarity(0);
+    }
     var kept = {
       for (var kind in changed.excluded)
         if (changed.has(kind)) kind,
@@ -273,6 +331,28 @@ class SearchCriteria {
         ? changed
         : changed._withExcluded(kept);
   }
+
+  SearchCriteria _withMinSimilarity(double value) => SearchCriteria(
+        persons: persons,
+        excludedPersons: excludedPersons,
+        from: from,
+        to: to,
+        places: places,
+        excludedPlaces: excludedPlaces,
+        labels: labels,
+        excludedLabels: excludedLabels,
+        minRating: minRating,
+        media: media,
+        text: text,
+        camera: camera,
+        groupBy: groupBy,
+        excluded: excluded,
+        anyOf: anyOf,
+        byContent: byContent,
+        similar: similar,
+        similarHash: similarHash,
+        minSimilarity: value,
+      );
 
   SearchCriteria _withExcluded(Set<SearchKind> value) => SearchCriteria(
         persons: persons,
@@ -293,6 +373,7 @@ class SearchCriteria {
         byContent: byContent,
         similar: similar,
         similarHash: similarHash,
+        minSimilarity: minSimilarity,
       );
 
   /// These criteria with the row of [kind] excluded or not.
@@ -316,9 +397,13 @@ class SearchCriteria {
   SearchQuery toQuery() {
     SearchCriterion row(SearchKind kind, SearchCriterion criterion) =>
         excludes(kind) ? SearchNot(criterion: criterion) : criterion;
+    var cut = statedMinSimilarity;
     var criteria = <SearchCriterion>[
       if (similar != null)
-        SearchSimilar(ref: PhotoRef(hash: similarHash, path: similar!)),
+        SearchSimilar(
+          ref: PhotoRef(hash: similarHash, path: similar!),
+          minSimilarity: cut,
+        ),
       for (var person in persons) SearchPerson(person: person),
       for (var person in excludedPersons)
         SearchNot(criterion: SearchPerson(person: person)),
@@ -352,12 +437,12 @@ class SearchCriteria {
         SearchMedia(video: media == SearchMediaKind.videos),
       if (text.trim().isNotEmpty)
         textRanks
-            ? SearchContent(text: text.trim())
+            ? SearchContent(text: text.trim(), minSimilarity: cut)
             : row(SearchKind.text, SearchText(text: text.trim())),
       if (camera != null) row(SearchKind.camera, SearchCamera(camera: camera!)),
     ];
     return SearchQuery(
-      version: searchQueryVersion,
+      version: cut != 0 ? searchQueryVersion : searchQueryFirstVersion,
       root: anyOf && !byWhatTheyShow
           ? SearchOr(criteria: criteria)
           : SearchAnd(criteria: criteria),
@@ -408,6 +493,7 @@ class SearchCriteria {
     var byContent = false;
     String? similar;
     var similarHash = "";
+    double minSimilarity = 0;
     String? camera;
     var excluded = <SearchKind>{};
 
@@ -448,7 +534,7 @@ class SearchCriteria {
 
     for (var criterion in rows) {
       switch (criterion) {
-        case SearchContent(text: var value):
+        case SearchContent(text: var value, minSimilarity: var cut):
           // Ranks: once, and never one of "any of these".
           if (anyOf ||
               text.isNotEmpty ||
@@ -458,7 +544,8 @@ class SearchCriteria {
           }
           text = value;
           byContent = true;
-        case SearchSimilar(ref: var ref):
+          minSimilarity = cut;
+        case SearchSimilar(ref: var ref, minSimilarity: var cut):
           // Ranks as well: once, never one of "any of these", never next to
           // a text that ranks.
           if (anyOf || similar != null || byContent) {
@@ -466,6 +553,7 @@ class SearchCriteria {
           }
           similar = ref?.path ?? "";
           similarHash = ref?.hash ?? "";
+          minSimilarity = cut;
         case SearchPerson(person: var person):
           persons.add(person);
         case SearchPlace(geonameId: var id):
@@ -545,6 +633,7 @@ class SearchCriteria {
       byContent: byContent,
       similar: similar,
       similarHash: similarHash,
+      minSimilarity: minSimilarity,
     );
   }
 
@@ -652,7 +741,8 @@ class SearchCriteria {
       anyOf == other.anyOf &&
       byContent == other.byContent &&
       similar == other.similar &&
-      similarHash == other.similarHash;
+      similarHash == other.similarHash &&
+      minSimilarity == other.minSimilarity;
 
   @override
   int get hashCode => Object.hash(
@@ -674,6 +764,7 @@ class SearchCriteria {
         byContent,
         similar,
         similarHash,
+        minSimilarity,
       );
 
   static bool _listEquals<T>(List<T> a, List<T> b) {

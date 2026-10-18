@@ -28,7 +28,12 @@ public class SearchContent extends SearchCriterion {
 	/** @see #getText() */
 	private static final String TEXT__PROP = "text";
 
+	/** @see #getMinSimilarity() */
+	private static final String MIN_SIMILARITY__PROP = "minSimilarity";
+
 	private String _text = "";
+
+	private double _minSimilarity = 0.0d;
 
 	/**
 	 * Creates a {@link SearchContent} instance.
@@ -64,6 +69,29 @@ public class SearchContent extends SearchCriterion {
 		_text = value;
 	}
 
+	/**
+	 * The score below which a photograph is not answered (issue #302); <code>0</code> for the cut
+	 * of the space, {@link SearchOptions#getContentThreshold()}. A value above <code>1</code> is read as
+	 * <code>1</code>, a negative one as <code>0</code>. A query stating it is written as
+	 * {@link SearchQuery#getVersion()} <code>2</code>.
+	 */
+	public final double getMinSimilarity() {
+		return _minSimilarity;
+	}
+
+	/**
+	 * @see #getMinSimilarity()
+	 */
+	public de.haumacher.imageServer.shared.model.SearchContent setMinSimilarity(double value) {
+		internalSetMinSimilarity(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getMinSimilarity()} without chain call utility. */
+	protected final void internalSetMinSimilarity(double value) {
+		_minSimilarity = value;
+	}
+
 	@Override
 	public String jsonType() {
 		return SEARCH_CONTENT__TYPE;
@@ -81,12 +109,15 @@ public class SearchContent extends SearchCriterion {
 		super.writeFields(out);
 		out.name(TEXT__PROP);
 		out.value(getText());
+		out.name(MIN_SIMILARITY__PROP);
+		out.value(getMinSimilarity());
 	}
 
 	@Override
 	protected void readField(de.haumacher.msgbuf.json.JsonReader in, String field) throws java.io.IOException {
 		switch (field) {
 			case TEXT__PROP: setText(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+			case MIN_SIMILARITY__PROP: setMinSimilarity(in.nextDouble()); break;
 			default: super.readField(in, field);
 		}
 	}

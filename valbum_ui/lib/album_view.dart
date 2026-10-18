@@ -211,6 +211,11 @@ class AlbumContent extends StatefulWidget {
   /// in an album.
   final Widget? header;
 
+  /// Whether the photographs are shown dimmed, the [header] not: the search
+  /// view's answer while a newer search is on its way, stale but kept in
+  /// view (issue #302).
+  final bool dimmed;
+
   const AlbumContent(
     this.albumState,
     this.album,
@@ -221,6 +226,7 @@ class AlbumContent extends StatefulWidget {
     this.downloadSelected,
     this.collectSelected,
     this.header,
+    this.dimmed = false,
   });
 
   @override
@@ -3584,6 +3590,8 @@ class AlbumContentState extends State<AlbumContent>
     if (header != null) {
       result.add(SliverToBoxAdapter(child: header));
     }
+    // What follows is what [AlbumContent.dimmed] dims.
+    var photosFrom = result.length;
     // An album the server has not read yet says so (issue #253): an empty
     // page would look like an empty album, and one missing its newest photos
     // like an album without them. It is asked for again meanwhile, see
@@ -3687,6 +3695,17 @@ class AlbumContentState extends State<AlbumContent>
     flushImages();
     tileHighlight.spots = spots;
 
+    // Wrapped whether dimmed or not, where a page above may dim them (the
+    // search view), so that a change of it keeps the tree, and with it the
+    // tiles, as it is.
+    if (header != null) {
+      for (var index = photosFrom; index < result.length; index++) {
+        result[index] = SliverOpacity(
+          opacity: widget.dimmed ? albumDimmedOpacity : 1,
+          sliver: result[index],
+        );
+      }
+    }
     return result;
   }
 
@@ -4213,6 +4232,28 @@ Offset tileCaptionPosition(TooltipPositionContext context) {
   return Offset(x, y);
 }
 
+/// How visible the photographs of an [AlbumContent.dimmed] are.
+const double albumDimmedOpacity = 0.4;
+
+/// The tooltip of the tile of [image] in [album], `null` for none: the
+/// caption ([captionOf]), and for a photo found by what it shows ("More like
+/// this", the AI search: [ImagePart.score] above `0`, issue #302) a line
+/// saying how similar it is, "Similarity 0.62", in the language shown.
+String? tileTooltipText(
+  AppLocalizations l10n,
+  ImagePart image,
+  AlbumInfo? album,
+) {
+  var caption = captionOf(image, album)?.text;
+  var similarity = image.score > 0
+      ? l10n.tileSimilarity(formatSimilarity(l10n.localeName, image.score))
+      : null;
+  if (caption == null || similarity == null) {
+    return caption ?? similarity;
+  }
+  return "$caption\n$similarity";
+}
+
 /// The key of the mark on the tile of the photo "Show in album" opened its
 /// album for (issue #289).
 const Key shownInAlbumMarkKey = Key("shown-in-album-mark");
@@ -4394,15 +4435,22 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
   /// It is shown inside the tile on its bottom edge (issue #247), see
   /// [tileCaptionPosition], no wider than the tile where the tile leaves room
   /// for a few words a line.
+  ///
+  /// A photo found by what it shows (issue #302) says how similar it is,
+  /// below its caption, see [tileTooltipText].
   Widget imageThumbnail(ImagePart image) {
     var thumbnail = _imageThumbnail(image);
-    var caption = captionOf(image, state.widget.album);
-    if (caption == null) {
+    var message = tileTooltipText(
+      AppLocalizations.of(state.context)!,
+      image,
+      state.widget.album,
+    );
+    if (message == null) {
       return thumbnail;
     }
     return Tooltip(
       key: const Key("tile-caption"),
-      message: caption.text,
+      message: message,
       triggerMode: TooltipTriggerMode.manual,
       waitDuration: const Duration(milliseconds: 500),
       constraints: BoxConstraints(

@@ -3891,6 +3891,39 @@ class AppLocalizationsDe extends AppLocalizations {
       'Beschreiben Sie, was auf den Fotos zu sehen ist';
 
   @override
+  String tileSimilarity(String score) {
+    return 'Ähnlichkeit $score';
+  }
+
+  @override
+  String searchSimilarityAtLeast(String score) {
+    return 'Ähnlichkeit ≥ $score';
+  }
+
+  @override
+  String get searchSimilarityTooltip =>
+      'Mehr oder weniger Fotos anzeigen: Legen Sie fest, wie ähnlich ein Foto sein muss';
+
+  @override
+  String searchSimilarityLead(String score) {
+    return 'Fotos, die weniger ähnlich sind, werden nicht angezeigt. Ohne eigenen Wert verwendet die Suche den des Bereichs: $score.';
+  }
+
+  @override
+  String get searchSimilarityReset => 'Standard des Bereichs';
+
+  @override
+  String get searchSimilarityClose => 'Schließen';
+
+  @override
+  String get searchRunning => 'Suche läuft …';
+
+  @override
+  String searchContentRunning(int seconds) {
+    return 'KI-Suche läuft … ($seconds s)';
+  }
+
+  @override
   String get searchShowMore => 'Mehr anzeigen';
 
   @override
@@ -4555,6 +4588,23 @@ class AppLocalizationsDe extends AppLocalizations {
   @override
   String get spaceSettingsContentHelp =>
       'Der Server beschreibt jedes Foto und jedes Video im Hintergrund, damit es anhand seines Inhalts gefunden werden kann. Jedes Foto wird als kleine Vorschau an den Einbettungsdienst gesendet, der möglicherweise auf einem anderen Computer läuft und dort pro Foto einige Sekunden bis Minuten benötigt. Die Beschreibungen belegen auf der Festplatte etwa 2 KB pro Foto. Beim Deaktivieren bleiben die bereits erstellten Beschreibungen erhalten.';
+
+  @override
+  String get spaceSettingsTextThreshold =>
+      'Niedrigste Ähnlichkeit bei einer KI-Suche';
+
+  @override
+  String get spaceSettingsSimilarThreshold =>
+      'Niedrigste Ähnlichkeit bei „Ähnliche Fotos“';
+
+  @override
+  String spaceSettingsThresholdHelp(String score) {
+    return 'Eine Zahl zwischen 0 und 1: Je höher, desto weniger und desto ähnlichere Fotos werden gefunden. Leer für den eingebauten Wert $score. Eine Suche kann mit dem Schieberegler ihren eigenen festlegen.';
+  }
+
+  @override
+  String get spaceSettingsThresholdInvalid =>
+      'Geben Sie eine Zahl zwischen 0 und 1 ein oder lassen Sie das Feld leer.';
 
   @override
   String get spaceSettingsContentReady => 'Der Einbettungsdienst ist bereit.';

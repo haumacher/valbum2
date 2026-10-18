@@ -47,6 +47,7 @@ String settingsOf({
   String inboxFixed = "",
   String? content,
   String contentUnavailable = "",
+  Map<String, double>? thresholds,
 }) =>
     jsonEncode({
       "name": name,
@@ -63,6 +64,15 @@ String settingsOf({
       // A server of an earlier release answers no switch of the content search.
       if (content != null) "content": content,
       if (content != null) "contentUnavailable": contentUnavailable,
+      // A server before issue #302 answers no cuts.
+      if (thresholds != null)
+        "thresholds": {
+          "text": 0.0,
+          "similar": 0.0,
+          "defaultText": 0.05,
+          "defaultSimilar": 0.3,
+          ...thresholds,
+        },
     });
 
 /// Pumps the page alone, asking the given transport.
@@ -311,6 +321,110 @@ void main() {
     expect(posts, hasLength(1));
     expect(posts.single["content"] ?? "KEEP", "KEEP",
         reason: "The space keeps what it says.");
+  });
+
+  group('the cuts of the content search (issue #302)', () {
+    testWidgets('are offered only where the content search is on',
+        (tester) async {
+      await pumpPage(
+          tester,
+          MockClient((request) async =>
+              json(settingsOf(content: "OFF", thresholds: const {}))));
+      expect(find.byKey(spaceSettingsTextThresholdKey), findsNothing);
+      expect(find.byKey(spaceSettingsSimilarThresholdKey), findsNothing);
+
+      await tester.tap(find.byKey(spaceSettingsContentKey));
+      await tester.pumpAndSettle();
+      expect(find.byKey(spaceSettingsTextThresholdKey), findsOneWidget);
+      expect(find.byKey(spaceSettingsSimilarThresholdKey), findsOneWidget);
+      expect(find.text(testL10n.spaceSettingsThresholdHelp("0.05")),
+          findsOneWidget,
+          reason: "The built-in cut is what an empty field means.");
+    });
+
+    testWidgets('show the space\'s and save what was edited', (tester) async {
+      var posts = <Map<String, dynamic>>[];
+      await pumpPage(
+        tester,
+        MockClient((request) async {
+          if (request.method == "POST") {
+            var sent = jsonDecode(request.body) as Map<String, dynamic>;
+            posts.add(sent);
+            var cuts = sent["thresholds"] as Map<String, dynamic>;
+            return json(settingsOf(content: "ON", thresholds: {
+              "text": (cuts["text"] as num).toDouble(),
+              "similar": (cuts["similar"] as num).toDouble(),
+            }));
+          }
+          return json(settingsOf(content: "ON", thresholds: {"similar": 0.6}));
+        }),
+      );
+      String field(Key key) => tester
+          .widget<TextField>(find.byKey(key))
+          .controller!
+          .text;
+      expect(field(spaceSettingsTextThresholdKey), "",
+          reason: "None of its own: the built-in one.");
+      expect(field(spaceSettingsSimilarThresholdKey), "0.60");
+
+      await tester.enterText(find.byKey(spaceSettingsTextThresholdKey), "0,12");
+      await tester.enterText(find.byKey(spaceSettingsSimilarThresholdKey), "");
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(spaceSettingsSaveKey));
+      await tester.pumpAndSettle();
+      expect(posts, hasLength(1));
+      expect(posts.single["thresholds"]["text"], 0.12);
+      expect(posts.single["thresholds"]["similar"], 0,
+          reason: "Empty takes the space's cut away.");
+      expect(field(spaceSettingsTextThresholdKey), "0.12");
+      expect(field(spaceSettingsSimilarThresholdKey), "");
+    });
+
+    testWidgets('a value that is no cut is said and not sent', (tester) async {
+      var posts = <http.Request>[];
+      await pumpPage(
+        tester,
+        MockClient((request) async {
+          if (request.method == "POST") {
+            posts.add(request);
+          }
+          return json(settingsOf(content: "ON", thresholds: const {}));
+        }),
+      );
+      await tester.enterText(find.byKey(spaceSettingsTextThresholdKey), "1.5");
+      await tester.pumpAndSettle();
+      expect(find.text(testL10n.spaceSettingsThresholdInvalid), findsOneWidget);
+      await tester.tap(find.byKey(spaceSettingsSaveKey));
+      await tester.pumpAndSettle();
+      expect(posts, isEmpty);
+    });
+
+    testWidgets('a server without them is shown none, and sent none',
+        (tester) async {
+      var posts = <Map<String, dynamic>>[];
+      await pumpPage(
+        tester,
+        MockClient((request) async {
+          if (request.method == "POST") {
+            posts.add(jsonDecode(request.body) as Map<String, dynamic>);
+          }
+          return json(settingsOf(content: "ON"));
+        }),
+      );
+      expect(find.byKey(spaceSettingsTextThresholdKey), findsNothing);
+      await tester.tap(find.byKey(spaceSettingsSaveKey));
+      await tester.pumpAndSettle();
+      expect(posts.single.containsKey("thresholds"), isFalse,
+          reason: "The space keeps what it says.");
+    });
+
+    test('read with a comma or a point', () {
+      expect(SpaceSettingsScreenState.parseThreshold("0,45"), 0.45);
+      expect(SpaceSettingsScreenState.parseThreshold(" 0.3 "), 0.3);
+      expect(SpaceSettingsScreenState.parseThreshold(""), 0);
+      expect(SpaceSettingsScreenState.parseThreshold("-0.1"), isNull);
+      expect(SpaceSettingsScreenState.parseThreshold("high"), isNull);
+    });
   });
 
   testWidgets('a refusal is shown in the server\'s words', (tester) async {

@@ -336,6 +336,109 @@ public class TestSpaceSettings extends TestCase {
 		assertFalse(servlet().dataOf(SPACE).content().isEnabled());
 	}
 
+	// --- The cuts of the content search (issue #302). ---
+
+	/** What a build before issue #302 wrote, every key it knew. */
+	private static final String PREVIOUS_BUILD = "{\"version\":1,\"name\":\"The Family\",\"anonymous\":\"none\","
+		+ "\"mapUrl\":\"https://www.openstreetmap.org/?mlat={lat}&mlon={lon}\",\"faces\":\"off\","
+		+ "\"timeZone\":\"Europe/Berlin\",\"inbox\":\"Inbox\",\"content\":\"on\"}";
+
+	public void testASpaceJsonOfThePreviousBuildReadsWithoutCuts() throws Exception {
+		spaceJson(PREVIOUS_BUILD);
+		SpaceStore.Config config = SpaceStore.load(_root, SPACE);
+		assertEquals(SpaceStore.Thresholds.NONE, config.getThresholds());
+		assertTrue(config.isContentEnabled());
+		assertEquals("Europe/Berlin", config.getTimeZone());
+
+		SpaceSettings settings = read(SharingFixture.ALICE);
+		assertNotNull("Always answered.", settings.getThresholds());
+		assertEquals(0.0, settings.getThresholds().getText());
+		assertEquals(0.0, settings.getThresholds().getSimilar());
+		assertEquals(0.05, settings.getThresholds().getDefaultText(), 1e-12);
+		assertEquals(0.3, settings.getThresholds().getDefaultSimilar(), 1e-12);
+
+		FakeResponse saved = save(SharingFixture.ALICE, settings);
+		assertEquals(saved.body(), 200, saved.status());
+		assertEquals("Saving what was read writes no cut.", PREVIOUS_BUILD,
+			new String(Files.readAllBytes(SpaceStore.file(_root)), StandardCharsets.UTF_8));
+	}
+
+	public void testTheCutsAreStoredReadAgainAndTakeEffect() throws Exception {
+		SpaceSettings settings = read(SharingFixture.ALICE);
+		settings.getThresholds().setText(0.12).setSimilar(0.6);
+		FakeResponse saved = save(SharingFixture.ALICE, settings);
+		SpaceSettings answered = settings(saved);
+		assertEquals(0.12, answered.getThresholds().getText());
+		assertEquals(0.6, answered.getThresholds().getSimilar());
+		String written = new String(Files.readAllBytes(SpaceStore.file(_root)), StandardCharsets.UTF_8);
+		assertTrue(written, written.contains("\"contentThreshold\":0.12"));
+		assertTrue(written, written.contains("\"similarThreshold\":0.6"));
+		assertEquals(new SpaceStore.Thresholds(0.12, 0.6), SpaceStore.load(_root, SPACE).getThresholds());
+		assertEquals("In effect without a restart.", new SpaceStore.Thresholds(0.12, 0.6),
+			servlet().dataOf(SPACE).config().getThresholds());
+		assertEquals("Read, written, read: the same.", write(answered), write(read(SharingFixture.ALICE)));
+		byte[] before = Files.readAllBytes(SpaceStore.file(_root));
+		save(SharingFixture.ALICE, read(SharingFixture.ALICE));
+		assertTrue("And the file stays as it is.", Arrays.equals(before, Files.readAllBytes(SpaceStore.file(_root))));
+
+		// An app that does not know the cuts sends none: the space keeps them.
+		String older = write(read(SharingFixture.ALICE).setName("Renamed").setThresholds(null));
+		assertFalse(older, older.contains("thresholds"));
+		FakeResponse kept = post(SharingFixture.ALICE, older);
+		assertEquals(0.12, settings(kept).getThresholds().getText());
+		assertEquals("Renamed", settings(kept).getName());
+
+		// Empty takes the space's cut away: the built-in one holds, and the key is gone.
+		SpaceSettings cleared = read(SharingFixture.ALICE);
+		cleared.getThresholds().setText(0).setSimilar(0);
+		assertEquals(0.0, settings(save(SharingFixture.ALICE, cleared)).getThresholds().getText());
+		written = new String(Files.readAllBytes(SpaceStore.file(_root)), StandardCharsets.UTF_8);
+		assertFalse(written, written.contains("Threshold"));
+	}
+
+	public void testACutOutsideZeroToOneIsRefused() throws Exception {
+		byte[] before = Files.readAllBytes(SpaceStore.file(_root));
+		SpaceSettings valid = read(SharingFixture.ALICE);
+		SpaceSettings high = copy(valid);
+		high.getThresholds().setText(1.5);
+		assertRefused(high, SpaceConfiguration.THRESHOLD_RANGE, before);
+		SpaceSettings negative = copy(valid);
+		negative.getThresholds().setSimilar(-0.2);
+		assertRefused(negative, SpaceConfiguration.THRESHOLD_RANGE, before);
+	}
+
+	public void testAMemberCannotSetTheCuts() throws Exception {
+		byte[] before = Files.readAllBytes(SpaceStore.file(_root));
+		for (String token : new String[] { SharingFixture.CAROL, SharingFixture.DAVE }) {
+			FakeResponse write = save(token, SpaceSettings.create().setName("The Family")
+				.setThresholds(de.haumacher.imageServer.shared.model.ContentThresholds.create().setText(0.5)));
+			assertEquals(write.body(), 403, write.status());
+			assertEquals(SpaceConfiguration.ADMIN_ONLY, error(write));
+		}
+		assertTrue(Arrays.equals(before, Files.readAllBytes(SpaceStore.file(_root))));
+	}
+
+	public void testACutInTheFileThatIsNoneOfASpaceIsReadAsNoneAndKept() throws Exception {
+		spaceJson("{\"version\":1,\"name\":\"The Family\",\"anonymous\":\"none\",\"faces\":\"off\","
+			+ "\"contentThreshold\":\"high\",\"similarThreshold\":7}");
+		assertEquals(SpaceStore.Thresholds.NONE, SpaceStore.load(_root, SPACE).getThresholds());
+		// An app that does not know the cuts keeps what the file says.
+		FakeResponse saved = post(SharingFixture.ALICE, write(read(SharingFixture.ALICE).setName("Renamed").setThresholds(null)));
+		assertEquals(saved.body(), 200, saved.status());
+		String written = new String(Files.readAllBytes(SpaceStore.file(_root)), StandardCharsets.UTF_8);
+		assertTrue("Kept as it is written: " + written, written.contains("\"contentThreshold\":\"high\""));
+		assertTrue("Kept as it is written: " + written, written.contains("\"similarThreshold\":7"));
+
+		// The administrator's save of the cuts replaces it.
+		SpaceSettings set = read(SharingFixture.ALICE);
+		set.getThresholds().setText(0.2);
+		assertEquals(saved.body(), 200, save(SharingFixture.ALICE, set).status());
+		written = new String(Files.readAllBytes(SpaceStore.file(_root)), StandardCharsets.UTF_8);
+		assertFalse(written, written.contains("high"));
+		assertTrue(written, written.contains("\"contentThreshold\":0.2"));
+		assertFalse("One key, once: " + written, written.contains("similarThreshold"));
+	}
+
 	// --- Where the server decides. ---
 
 	public void testOneLibraryDecidesItsVisitorsAtTheStart() throws Exception {

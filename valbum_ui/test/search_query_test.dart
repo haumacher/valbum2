@@ -24,7 +24,8 @@ void main() {
         camera: "Pixel 7",
       ).toQuery();
 
-      expect(query.version, searchQueryVersion);
+      expect(query.version, searchQueryFirstVersion,
+          reason: "No cut stated: what a build before #302 reads.");
       var root = query.root as SearchAnd;
       expect(root.criteria.map((c) => c.runtimeType).toList(), [
         SearchPerson,

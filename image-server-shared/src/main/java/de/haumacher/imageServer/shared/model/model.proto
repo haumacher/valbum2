@@ -4854,8 +4854,18 @@ message FaceAssignment {
  */
 message SearchQuery {
 	/**
-	 * The version of the format the query was written in; <code>1</code> in this build. A query
-	 * without a version (<code>0</code>) is read as version <code>1</code>.
+	 * The version of the format the query was written in. A query without a version
+	 * (<code>0</code>) is read as version <code>1</code>.
+	 *
+	 * <ul>
+	 * <li><code>1</code>: the criteria of issues #227, #242 and #257.</li>
+	 * <li><code>2</code>: a ranking criterion states its own cut, {@link SearchContent#minSimilarity} or
+	 * {@link SearchSimilar#minSimilarity} (issue #302). Only a query that states one is written as
+	 * version <code>2</code>; every other query stays version <code>1</code>, so that a build that
+	 * does not know the cut still answers it. A build of version <code>1</code> would read past
+	 * the cut and answer with its own &mdash; a wider or narrower result &mdash;, so it refuses a
+	 * query of version <code>2</code> instead.</li>
+	 * </ul>
 	 */
 	int version;
 
@@ -5034,6 +5044,14 @@ message SearchText extends SearchCriterion {
 message SearchContent extends SearchCriterion {
 	/** What the photographs show, in any language; blanks around it are ignored, and it is never empty. */
 	string text;
+
+	/**
+	 * The score below which a photograph is not answered (issue #302); <code>0</code> for the cut
+	 * of the space, {@link SearchOptions#contentThreshold}. A value above <code>1</code> is read as
+	 * <code>1</code>, a negative one as <code>0</code>. A query stating it is written as
+	 * {@link SearchQuery#version} <code>2</code>.
+	 */
+	double minSimilarity;
 }
 
 /**
@@ -5064,6 +5082,13 @@ message SearchContent extends SearchCriterion {
 message SearchSimilar extends SearchCriterion {
 	/** The photograph to compare with; never absent, see above. */
 	PhotoRef ref;
+
+	/**
+	 * The cosine below which a photograph is not answered (issue #302); <code>0</code> for the cut
+	 * of the space, {@link SearchOptions#similarThreshold}. Read and written as
+	 * {@link SearchContent#minSimilarity} is.
+	 */
+	double minSimilarity;
 }
 
 /** The photograph was taken with the given camera, compared exactly, see {@link ImagePart#camera}. */
@@ -5112,6 +5137,20 @@ message SearchOptions {
 	 * can answer right now is not said here: a search it cannot answer is refused with the reason.
 	 */
 	bool content;
+
+	/**
+	 * The score below which the space's search by a text ({@link SearchContent}) answers no
+	 * photograph where the query states no cut of its own (issue #302): the space's setting
+	 * ({@link ContentThresholds#text}), else the server's built-in cut. Answered where
+	 * {@link #content} is on, <code>0</code> otherwise.
+	 */
+	double contentThreshold;
+
+	/**
+	 * The cosine below which "More like this" ({@link SearchSimilar}) answers no photograph where
+	 * the query states no cut of its own, see {@link #contentThreshold}.
+	 */
+	double similarThreshold;
 }
 
 /** A camera label, see {@link ImagePart#camera} and {@link SearchOptions#cameras}. */
@@ -5329,6 +5368,38 @@ message SpaceSettings {
 	 * started before the switch is turned on.
 	 */
 	string contentUnavailable;
+
+	/**
+	 * The space's cuts of the content search (issue #302), which a query stating none of its own is
+	 * answered with. Always answered. On a write, absent (what an app that does not know them
+	 * sends) leaves the space's cuts as they are.
+	 */
+	ContentThresholds thresholds;
+}
+
+/**
+ * The cuts of the content search of a space, see {@link SpaceSettings#thresholds} and issue #302:
+ * stored in its <code>space.json</code> as <code>contentThreshold</code> and
+ * <code>similarThreshold</code>.
+ */
+message ContentThresholds {
+	/**
+	 * The score below which a search by a text ({@link SearchContent}) answers no photograph,
+	 * between <code>0</code> and <code>1</code>; <code>0</code> for {@link #defaultText}.
+	 */
+	double text;
+
+	/**
+	 * The cosine below which "More like this" ({@link SearchSimilar}) answers no photograph,
+	 * between <code>0</code> and <code>1</code>; <code>0</code> for {@link #defaultSimilar}.
+	 */
+	double similar;
+
+	/** <em>Answered:</em> the server's built-in cut of a search by a text, which a {@link #text} of <code>0</code> means. */
+	double defaultText;
+
+	/** <em>Answered:</em> the server's built-in cut of "More like this", which a {@link #similar} of <code>0</code> means. */
+	double defaultSimilar;
 }
 
 /** The content search of a space, see {@link SpaceSettings#content}. */

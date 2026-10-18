@@ -22,6 +22,12 @@ import java.util.Map;
  * <code>IMAGE_WEIGHT · cos(q, v_img) + TEXT_WEIGHT · cos(q, v_txt)</code>; the weights add up to
  * one, so the score is a cosine, and an unrelated photograph scores about <code>0</code>.
  * </p>
+ *
+ * <p>
+ * The two cuts below are the built-in ones (issue #302): a space may state its own
+ * (<code>space.json</code>, the administrator's settings), and a query its own, see
+ * {@link #cut(double, double, float)}.
+ * </p>
  */
 public final class ContentSearch {
 
@@ -86,6 +92,28 @@ public final class ContentSearch {
 	 * its links, which the links of the others usually make up for.
 	 */
 	public static final int SCENERY_NEIGHBOURS = 12;
+
+	/**
+	 * The cut a ranking criterion is answered with, see issue #302: the one the query states, at most
+	 * <code>1</code>; where it states none (<code>0</code>, a negative value or not a number), the
+	 * space's; where the space states none either (<code>0</code>), the built-in one.
+	 *
+	 * @param asked
+	 *        {@link de.haumacher.imageServer.shared.model.SearchContent#getMinSimilarity()} or
+	 *        {@link de.haumacher.imageServer.shared.model.SearchSimilar#getMinSimilarity()}.
+	 * @param space
+	 *        The space's cut of that kind, see
+	 *        {@link de.haumacher.imageServer.auth.SpaceStore.Thresholds}.
+	 * @param builtIn
+	 *        {@link #THRESHOLD} or {@link #SIMILAR_THRESHOLD}.
+	 */
+	public static double cut(double asked, double space, float builtIn) {
+		if (asked > 0) {
+			return Math.min(asked, 1);
+		}
+		// The built-in cut as it is written, not as the float holds it.
+		return space > 0 ? space : Double.parseDouble(Float.toString(builtIn));
+	}
 
 	/** How many photographs the search view is answered, the nearest first, where it asks for no other number. */
 	public static final int PAGE = 100;

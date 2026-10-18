@@ -65,8 +65,15 @@ import java.util.function.Function;
  */
 public final class PhotoSearch {
 
-	/** The version of the {@link SearchQuery} format this build reads and writes. */
-	public static final int VERSION = 1;
+	/**
+	 * The newest version of the {@link SearchQuery} format this build reads and writes: version
+	 * <code>2</code> is a query whose ranking criterion states its own cut (issue #302), see
+	 * {@link #versionOf(SearchQuery)}.
+	 */
+	public static final int VERSION = 2;
+
+	/** The version of a query that states nothing a build of the first version cannot answer. */
+	public static final int FIRST_VERSION = 1;
 
 	/** The message a query of a newer build, or with a criterion this build does not know, is answered with. */
 	public static final String NEWER =
@@ -236,9 +243,11 @@ public final class PhotoSearch {
 	 *        <code>null</code> for a {@link SearchContent}.
 	 * @param filter
 	 *        The query without it: every other member of the root's AND, or every photograph.
+	 * @param minSimilarity
+	 *        The cut the criterion states (issue #302), <code>0</code> for the space's.
 	 */
-	public record ContentQuery(String text, PhotoRef similar, SearchQuery filter) {
-		// A triple.
+	public record ContentQuery(String text, PhotoRef similar, SearchQuery filter, double minSimilarity) {
+		// The parts of a ranking query.
 	}
 
 	/**
@@ -271,10 +280,12 @@ public final class PhotoSearch {
 
 	private static ContentQuery contentQuery(SearchCriterion ranking, SearchQuery filter) {
 		if (ranking instanceof SearchContent) {
-			return new ContentQuery(text((SearchContent) ranking), null, filter);
+			SearchContent content = (SearchContent) ranking;
+			return new ContentQuery(text(content), null, filter, content.getMinSimilarity());
 		}
-		PhotoRef ref = ((SearchSimilar) ranking).getRef();
-		return new ContentQuery(null, ref == null ? PhotoRef.create() : ref, filter);
+		SearchSimilar similar = (SearchSimilar) ranking;
+		PhotoRef ref = similar.getRef();
+		return new ContentQuery(null, ref == null ? PhotoRef.create() : ref, filter, similar.getMinSimilarity());
 	}
 
 	/**
@@ -295,12 +306,14 @@ public final class PhotoSearch {
 		SearchCriterion root = query.getRoot();
 		SearchCriterion replaced;
 		if (root instanceof SearchSimilar) {
-			replaced = SearchSimilar.create().setRef(ref);
+			replaced = SearchSimilar.create().setRef(ref).setMinSimilarity(((SearchSimilar) root).getMinSimilarity());
 		} else if (root instanceof SearchAnd
 			&& ((SearchAnd) root).getCriteria().stream().anyMatch(SearchSimilar.class::isInstance)) {
 			List<SearchCriterion> members = new ArrayList<>();
 			for (SearchCriterion member : ((SearchAnd) root).getCriteria()) {
-				members.add(member instanceof SearchSimilar ? SearchSimilar.create().setRef(ref) : member);
+				members.add(member instanceof SearchSimilar
+					? SearchSimilar.create().setRef(ref).setMinSimilarity(((SearchSimilar) member).getMinSimilarity())
+					: member);
 			}
 			replaced = SearchAnd.create().setCriteria(members);
 		} else {
@@ -362,14 +375,24 @@ public final class PhotoSearch {
 	 */
 	public static SearchQuery normalized(SearchQuery query) {
 		SearchQuery result = query == null ? SearchQuery.create() : query;
-		if (result.getVersion() == 0) {
-			result.setVersion(VERSION);
-		}
 		if (result.getRoot() == null) {
 			// Every photograph, stated as such: an absent root is what a newer criterion reads as.
 			result.setRoot(SearchAnd.create());
 		}
+		// At least the version of what it states, so that an older build refuses what it would
+		// answer otherwise (issue #302).
+		result.setVersion(Math.max(result.getVersion(), versionOf(result)));
 		return result;
+	}
+
+	/**
+	 * The lowest version of the format that states what the given query states: {@link #VERSION}
+	 * for a query whose ranking criterion states its own cut (issue #302), {@link #FIRST_VERSION}
+	 * for every other one.
+	 */
+	public static int versionOf(SearchQuery query) {
+		ContentQuery content = refusal(query) == null ? content(query) : null;
+		return content != null && content.minSimilarity() != 0 ? VERSION : FIRST_VERSION;
 	}
 
 	/** A photograph the search found. */

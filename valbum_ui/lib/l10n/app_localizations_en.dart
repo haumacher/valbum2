@@ -3837,6 +3837,39 @@ class AppLocalizationsEn extends AppLocalizations {
   String get searchContentHint => 'Describe what the photos show';
 
   @override
+  String tileSimilarity(String score) {
+    return 'Similarity $score';
+  }
+
+  @override
+  String searchSimilarityAtLeast(String score) {
+    return 'Similarity ≥ $score';
+  }
+
+  @override
+  String get searchSimilarityTooltip =>
+      'Show more or fewer photos: set how similar a photo must be';
+
+  @override
+  String searchSimilarityLead(String score) {
+    return 'Photos less similar than this are not shown. Without a value of its own, the search uses the space\'s $score.';
+  }
+
+  @override
+  String get searchSimilarityReset => 'Default of the space';
+
+  @override
+  String get searchSimilarityClose => 'Close';
+
+  @override
+  String get searchRunning => 'Searching …';
+
+  @override
+  String searchContentRunning(int seconds) {
+    return 'AI search running … ($seconds s)';
+  }
+
+  @override
   String get searchShowMore => 'Show more';
 
   @override
@@ -4496,6 +4529,22 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get spaceSettingsContentHelp =>
       'The server describes every photo and video in the background, so that it can be found by what it shows. Each photo is sent as a small preview to the embedder service, which may run on another computer and needs seconds to minutes per photo there. The descriptions take about 2 KB per photo on disk. Switching off keeps what was described.';
+
+  @override
+  String get spaceSettingsTextThreshold => 'Lowest similarity of an AI search';
+
+  @override
+  String get spaceSettingsSimilarThreshold =>
+      'Lowest similarity of “More like this”';
+
+  @override
+  String spaceSettingsThresholdHelp(String score) {
+    return 'A number between 0 and 1: the higher, the fewer and the more similar the photos found. Empty for the built-in $score. A search can set its own with the slider.';
+  }
+
+  @override
+  String get spaceSettingsThresholdInvalid =>
+      'Enter a number between 0 and 1, or leave the field empty.';
 
   @override
   String get spaceSettingsContentReady => 'The embedder service is ready.';

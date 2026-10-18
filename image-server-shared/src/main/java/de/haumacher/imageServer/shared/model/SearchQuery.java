@@ -50,8 +50,18 @@ public class SearchQuery extends de.haumacher.msgbuf.data.AbstractDataObject {
 	}
 
 	/**
-	 * The version of the format the query was written in; <code>1</code> in this build. A query
-	 * without a version (<code>0</code>) is read as version <code>1</code>.
+	 * The version of the format the query was written in. A query without a version
+	 * (<code>0</code>) is read as version <code>1</code>.
+	 *
+	 * <ul>
+	 * <li><code>1</code>: the criteria of issues #227, #242 and #257.</li>
+	 * <li><code>2</code>: a ranking criterion states its own cut, {@link SearchContent#getMinSimilarity()} or
+	 * {@link SearchSimilar#getMinSimilarity()} (issue #302). Only a query that states one is written as
+	 * version <code>2</code>; every other query stays version <code>1</code>, so that a build that
+	 * does not know the cut still answers it. A build of version <code>1</code> would read past
+	 * the cut and answer with its own &mdash; a wider or narrower result &mdash;, so it refuses a
+	 * query of version <code>2</code> instead.</li>
+	 * </ul>
 	 */
 	public final int getVersion() {
 		return _version;

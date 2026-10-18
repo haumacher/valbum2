@@ -1,7 +1,9 @@
 /// The settings of a space, made by its administrator (issue #297): its name,
 /// whether visitors see its public photos, faces, the content search (issue
 /// #257), the map a position opens, the time zone of photos that state none,
-/// and the inbox.
+/// and the inbox. Where the content search is on, the lowest similarity a
+/// photo found by it has (issue #302): one for a search by a description,
+/// one for "More like this", each empty for the server's built-in cut.
 ///
 /// Before, these were keys of `space.json` edited on the server by hand. Now
 /// the administrator finds them in the server settings, each switch with one
@@ -16,6 +18,7 @@ library;
 import 'package:flutter/material.dart';
 
 import 'action_guard.dart';
+import 'search_query.dart' show formatSimilarity;
 import 'client.dart';
 import 'l10n/app_localizations.dart';
 import 'manage_view.dart' show refusalMessage;
@@ -50,6 +53,14 @@ const Key spaceSettingsContentKey = Key("spaceSettings.content");
 const Key spaceSettingsStatusLinkKey = Key("space-settings-status-link");
 
 const Key spaceSettingsContentStatusKey = Key("spaceSettings.content.status");
+
+/// The key of the field of the cut of a search by a description (issue
+/// #302).
+const Key spaceSettingsTextThresholdKey = Key("spaceSettings.textThreshold");
+
+/// The key of the field of the cut of "More like this" (issue #302).
+const Key spaceSettingsSimilarThresholdKey =
+    Key("spaceSettings.similarThreshold");
 
 /// The key of the map field.
 const Key spaceSettingsMapKey = Key("spaceSettings.mapUrl");
@@ -139,6 +150,8 @@ class SpaceSettingsScreenState extends State<SpaceSettingsScreen> {
   final TextEditingController _mapUrl = TextEditingController();
   final TextEditingController _timeZone = TextEditingController();
   final TextEditingController _inbox = TextEditingController();
+  final TextEditingController _textThreshold = TextEditingController();
+  final TextEditingController _similarThreshold = TextEditingController();
 
   bool _anonymous = false;
   bool _faces = false;
@@ -156,6 +169,8 @@ class SpaceSettingsScreenState extends State<SpaceSettingsScreen> {
     _mapUrl.dispose();
     _timeZone.dispose();
     _inbox.dispose();
+    _textThreshold.dispose();
+    _similarThreshold.dispose();
     super.dispose();
   }
 
@@ -186,7 +201,34 @@ class SpaceSettingsScreenState extends State<SpaceSettingsScreen> {
     _anonymous = settings.anonymous == AnonymousAccess.public;
     _faces = settings.faces;
     _content = settings.content == ContentSwitch.on;
+    // A cut of the space's own, in the language shown; empty for the
+    // built-in one, which is the hint.
+    var thresholds = settings.thresholds;
+    String cut(double value) => value <= 0 ? "" : _format(value);
+    _textThreshold.text = thresholds == null ? "" : cut(thresholds.text);
+    _similarThreshold.text = thresholds == null ? "" : cut(thresholds.similar);
   }
+
+  String _format(double value) => formatSimilarity(
+      AppLocalizations.of(context)!.localeName, value);
+
+  /// The cut [text] says: `0` for an empty field, `null` for one that holds
+  /// no number between 0 and 1. Read with a comma or a point.
+  static double? parseThreshold(String text) {
+    var trimmed = text.trim();
+    if (trimmed.isEmpty) {
+      return 0;
+    }
+    var value = double.tryParse(trimmed.replaceAll(",", "."));
+    return value == null || value.isNaN || value < 0 || value > 1
+        ? null
+        : value;
+  }
+
+  /// Whether both fields of the cuts can be saved.
+  bool get _thresholdsValid =>
+      parseThreshold(_textThreshold.text) != null &&
+      parseThreshold(_similarThreshold.text) != null;
 
   /// Whether the server knows the switch of the content search: one of an
   /// earlier release answers none, and is then sent none.
@@ -211,6 +253,13 @@ class SpaceSettingsScreenState extends State<SpaceSettingsScreen> {
           : _content
               ? ContentSwitch.on
               : ContentSwitch.off,
+      // A server that does not know the cuts answers none, and is sent none.
+      thresholds: current.thresholds == null
+          ? null
+          : ContentThresholds(
+              text: parseThreshold(_textThreshold.text) ?? 0,
+              similar: parseThreshold(_similarThreshold.text) ?? 0,
+            ),
     );
     var done = await writeAction(
       context,
@@ -251,6 +300,35 @@ class SpaceSettingsScreenState extends State<SpaceSettingsScreen> {
           constraints: const BoxConstraints(maxWidth: 640),
           child: _body(l10n),
         ),
+      ),
+    );
+  }
+
+  /// A field of a cut of the content search, its built-in value [builtIn]
+  /// the hint.
+  Widget _thresholdField(
+    Key key,
+    TextEditingController controller,
+    String label,
+    double builtIn,
+    AppLocalizations l10n,
+  ) {
+    var shown = _format(builtIn);
+    return TextField(
+      key: key,
+      controller: controller,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      autocorrect: false,
+      onChanged: (_) => setState(() {}),
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: shown,
+        helperText: l10n.spaceSettingsThresholdHelp(shown),
+        helperMaxLines: 4,
+        errorText: parseThreshold(controller.text) == null
+            ? l10n.spaceSettingsThresholdInvalid
+            : null,
+        border: const OutlineInputBorder(),
       ),
     );
   }
@@ -360,6 +438,25 @@ class SpaceSettingsScreenState extends State<SpaceSettingsScreen> {
           // How far the content search has got, and why it waits, are on
           // the status page (issue #305).
           const StatusPageLink(key: spaceSettingsStatusLinkKey),
+          // The cuts of the content search, where it is on (issue #302).
+          if (_content && settings.thresholds != null) ...[
+            const SizedBox(height: 16),
+            _thresholdField(
+              spaceSettingsTextThresholdKey,
+              _textThreshold,
+              l10n.spaceSettingsTextThreshold,
+              settings.thresholds!.defaultText,
+              l10n,
+            ),
+            const SizedBox(height: 16),
+            _thresholdField(
+              spaceSettingsSimilarThresholdKey,
+              _similarThreshold,
+              l10n.spaceSettingsSimilarThreshold,
+              settings.thresholds!.defaultSimilar,
+              l10n,
+            ),
+          ],
         ],
         const SizedBox(height: 16),
         TextField(
@@ -408,7 +505,7 @@ class SpaceSettingsScreenState extends State<SpaceSettingsScreen> {
           alignment: Alignment.centerLeft,
           child: FilledButton.icon(
             key: spaceSettingsSaveKey,
-            onPressed: _saving ? null : _save,
+            onPressed: _saving || !_thresholdsValid ? null : _save,
             icon: const Icon(Icons.save),
             label: Text(l10n.save),
           ),

@@ -35,6 +35,12 @@ public class SearchOptions extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #isContent() */
 	private static final String CONTENT__PROP = "content";
 
+	/** @see #getContentThreshold() */
+	private static final String CONTENT_THRESHOLD__PROP = "contentThreshold";
+
+	/** @see #getSimilarThreshold() */
+	private static final String SIMILAR_THRESHOLD__PROP = "similarThreshold";
+
 	private final java.util.List<de.haumacher.imageServer.shared.model.Person> _persons = new java.util.ArrayList<>();
 
 	private final java.util.List<de.haumacher.imageServer.shared.model.PlaceTag> _places = new java.util.ArrayList<>();
@@ -44,6 +50,10 @@ public class SearchOptions extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private final java.util.List<de.haumacher.imageServer.shared.model.CameraName> _cameras = new java.util.ArrayList<>();
 
 	private boolean _content = false;
+
+	private double _contentThreshold = 0.0d;
+
+	private double _similarThreshold = 0.0d;
 
 	/**
 	 * Creates a {@link SearchOptions} instance.
@@ -244,6 +254,50 @@ public class SearchOptions extends de.haumacher.msgbuf.data.AbstractDataObject {
 		_content = value;
 	}
 
+	/**
+	 * The score below which the space's search by a text ({@link SearchContent}) answers no
+	 * photograph where the query states no cut of its own (issue #302): the space's setting
+	 * ({@link ContentThresholds#getText()}), else the server's built-in cut. Answered where
+	 * {@link #isContent()} is on, <code>0</code> otherwise.
+	 */
+	public final double getContentThreshold() {
+		return _contentThreshold;
+	}
+
+	/**
+	 * @see #getContentThreshold()
+	 */
+	public de.haumacher.imageServer.shared.model.SearchOptions setContentThreshold(double value) {
+		internalSetContentThreshold(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getContentThreshold()} without chain call utility. */
+	protected final void internalSetContentThreshold(double value) {
+		_contentThreshold = value;
+	}
+
+	/**
+	 * The cosine below which "More like this" ({@link SearchSimilar}) answers no photograph where
+	 * the query states no cut of its own, see {@link #getContentThreshold()}.
+	 */
+	public final double getSimilarThreshold() {
+		return _similarThreshold;
+	}
+
+	/**
+	 * @see #getSimilarThreshold()
+	 */
+	public de.haumacher.imageServer.shared.model.SearchOptions setSimilarThreshold(double value) {
+		internalSetSimilarThreshold(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getSimilarThreshold()} without chain call utility. */
+	protected final void internalSetSimilarThreshold(double value) {
+		_similarThreshold = value;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.SearchOptions readSearchOptions(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.SearchOptions result = new de.haumacher.imageServer.shared.model.SearchOptions();
@@ -285,6 +339,10 @@ public class SearchOptions extends de.haumacher.msgbuf.data.AbstractDataObject {
 		out.endArray();
 		out.name(CONTENT__PROP);
 		out.value(isContent());
+		out.name(CONTENT_THRESHOLD__PROP);
+		out.value(getContentThreshold());
+		out.name(SIMILAR_THRESHOLD__PROP);
+		out.value(getSimilarThreshold());
 	}
 
 	@Override
@@ -323,6 +381,8 @@ public class SearchOptions extends de.haumacher.msgbuf.data.AbstractDataObject {
 			}
 			break;
 			case CONTENT__PROP: setContent(in.nextBoolean()); break;
+			case CONTENT_THRESHOLD__PROP: setContentThreshold(in.nextDouble()); break;
+			case SIMILAR_THRESHOLD__PROP: setSimilarThreshold(in.nextDouble()); break;
 			default: super.readField(in, field);
 		}
 	}

@@ -40,7 +40,12 @@ public class SearchSimilar extends SearchCriterion {
 	/** @see #getRef() */
 	private static final String REF__PROP = "ref";
 
+	/** @see #getMinSimilarity() */
+	private static final String MIN_SIMILARITY__PROP = "minSimilarity";
+
 	private de.haumacher.imageServer.shared.model.PhotoRef _ref = null;
+
+	private double _minSimilarity = 0.0d;
 
 	/**
 	 * Creates a {@link SearchSimilar} instance.
@@ -83,6 +88,28 @@ public class SearchSimilar extends SearchCriterion {
 		return _ref != null;
 	}
 
+	/**
+	 * The cosine below which a photograph is not answered (issue #302); <code>0</code> for the cut
+	 * of the space, {@link SearchOptions#getSimilarThreshold()}. Read and written as
+	 * {@link SearchContent#getMinSimilarity()} is.
+	 */
+	public final double getMinSimilarity() {
+		return _minSimilarity;
+	}
+
+	/**
+	 * @see #getMinSimilarity()
+	 */
+	public de.haumacher.imageServer.shared.model.SearchSimilar setMinSimilarity(double value) {
+		internalSetMinSimilarity(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getMinSimilarity()} without chain call utility. */
+	protected final void internalSetMinSimilarity(double value) {
+		_minSimilarity = value;
+	}
+
 	@Override
 	public String jsonType() {
 		return SEARCH_SIMILAR__TYPE;
@@ -102,12 +129,15 @@ public class SearchSimilar extends SearchCriterion {
 			out.name(REF__PROP);
 			getRef().writeTo(out);
 		}
+		out.name(MIN_SIMILARITY__PROP);
+		out.value(getMinSimilarity());
 	}
 
 	@Override
 	protected void readField(de.haumacher.msgbuf.json.JsonReader in, String field) throws java.io.IOException {
 		switch (field) {
 			case REF__PROP: setRef(de.haumacher.imageServer.shared.model.PhotoRef.readPhotoRef(in)); break;
+			case MIN_SIMILARITY__PROP: setMinSimilarity(in.nextDouble()); break;
 			default: super.readField(in, field);
 		}
 	}
