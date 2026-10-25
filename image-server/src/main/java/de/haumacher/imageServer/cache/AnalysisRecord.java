@@ -109,8 +109,13 @@ public final class AnalysisRecord {
 	/**
 	 * The version of the analysis itself: a failure recorded by a lower one is tried again on the
 	 * unchanged file. Raise it when a build learns to read a file an earlier one could not.
+	 *
+	 * <p>
+	 * 2: a picture is read by what its bytes are, not by its name (issue #312) &mdash; a JPEG named
+	 * <code>.heic</code>, a HEIC or a PNG named <code>.jpg</code> recorded as broken before.
+	 * </p>
 	 */
-	public static final int ANALYSIS = 1;
+	public static final int ANALYSIS = 2;
 
 	private static final String VERSION__PROP = "version";
 

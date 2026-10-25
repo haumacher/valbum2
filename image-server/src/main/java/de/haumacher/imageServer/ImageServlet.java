@@ -30,6 +30,7 @@ import de.haumacher.imageServer.cache.AnalysisStep;
 import de.haumacher.imageServer.cache.BrokenParts;
 import de.haumacher.imageServer.cache.ResourceCache;
 import de.haumacher.imageServer.coded.CodedPictures;
+import de.haumacher.imageServer.coded.PictureFormat;
 import de.haumacher.imageServer.content.ContentIndex;
 import de.haumacher.imageServer.content.ContentSearch;
 import de.haumacher.imageServer.content.ContentVectors;
@@ -313,7 +314,7 @@ public class ImageServlet extends HttpServlet {
 			// raw carries no preview and what to do (issue #191).
 			return failure.getCause().getMessage();
 		}
-		String unavailable = CodedPictures.unavailability(file.getName());
+		String unavailable = CodedPictures.unavailability(file);
 		if (unavailable != null) {
 			return unavailable;
 		}
@@ -8526,11 +8527,8 @@ public class ImageServlet extends HttpServlet {
 		} else {
 			Resource resource = _cache.lookup(pathInfo);
 			if (resource != null) {
-				// The raw companion of a photograph is served as what it is, see issue #191.
-				String mimeType = RawFile.isRawName(pathInfo.getName()) ? RawFile.contentType(pathInfo.getName())
-					: mimeType(context, resource);
-
-				serveData(context, pathInfo.toFile(), mimeType);
+				File original = pathInfo.toFile();
+				serveData(context, original, originalType(context, resource, original));
 			} else {
 				// Never an empty answer: a file the album does not describe is no photograph here.
 				notFound(context, pathInfo);
@@ -8552,6 +8550,16 @@ public class ImageServlet extends HttpServlet {
 	 */
 	private void serveDisplay(Context context, File file) throws IOException {
 		if (!PreviewCache.needsDisplay(file)) {
+			String name = file.getName();
+			PictureFormat format = PictureFormat.of(file);
+			if (format != null && format.isViewable()
+				&& (CodedPictures.handles(name) || RawFile.isRawName(name))) {
+				// Named as a picture that needs a rendition, and its bytes are a JPEG, a PNG, a GIF or
+				// a WebP (issue #312): the app asks for the rendition by the name, and the original is
+				// what it would be shown of the same bytes named rightly, under their own type.
+				serveData(context, file, format.contentType());
+				return;
+			}
 			errorInfo(context, HttpServletResponse.SC_NOT_FOUND, DISPLAY_NOT_NEEDED);
 			return;
 		}
@@ -8586,7 +8594,7 @@ public class ImageServlet extends HttpServlet {
 			|| failure.getCause() instanceof PictureTooLargeException) {
 			return failure.getCause().getMessage();
 		}
-		String unavailable = CodedPictures.unavailability(file.getName());
+		String unavailable = CodedPictures.unavailability(file);
 		return unavailable != null ? unavailable : DISPLAY_FAILED;
 	}
 
@@ -12121,6 +12129,25 @@ public class ImageServlet extends HttpServlet {
 			context.response().setHeader("WWW-Authenticate", "Bearer");
 			errorInfo(context, HttpServletResponse.SC_UNAUTHORIZED, message);
 		}
+	}
+
+	/**
+	 * The content type an original is delivered with: a picture's by what its bytes are, whatever its
+	 * name says (issue #312); the raw companion of a photograph as what it is (issue #191); else by
+	 * the name and kind the album says.
+	 */
+	private String originalType(Context context, Resource resource, File original) {
+		String name = original.getName();
+		if (!PreviewCache.isVideoName(name)) {
+			String picture = CodedPictures.contentType(original);
+			if (picture != null) {
+				return picture;
+			}
+		}
+		if (RawFile.isRawName(name)) {
+			return RawFile.contentType(name);
+		}
+		return mimeType(context, resource);
 	}
 
 	private String mimeType(Context context, Resource resource) {
