@@ -7197,17 +7197,11 @@ abstract class AppLocalizations {
   /// **'Back to the similar photos'**
   String get similarBack;
 
-  /// Tooltip of the badge on a tile of an album that stands for a burst: several photos taken a few minutes apart that look alike, shown as one tile with the best shot on top (issue #257). Tapping the tile shows them all.
+  /// Tooltip of the badge on a tile of an album that stands for a burst: several photos taken a few minutes apart that look alike, shown as one tile with the best shot on top (issue #257). Like a group's tile, opening it shows the best shot; going down in the viewer shows them all (issue #314).
   ///
   /// In en, this message translates to:
   /// **'{count, plural, =1{1 similar shot} other{{count} similar shots}}'**
   String stackCount(int count);
-
-  /// Tooltip of the badge on the first tile of a burst that was opened in the album (issue #257): folds the similar shots back into one tile.
-  ///
-  /// In en, this message translates to:
-  /// **'Show the similar shots as one tile again'**
-  String get stackCollapse;
 
   /// Entry of an album's menu (issue #257) switching on that bursts of photos that look alike are shown as one tile each; remembered on this device. German: 'Ähnliche Aufnahmen stapeln'.
   ///

@@ -222,6 +222,63 @@ public class TestSimilarShots extends TestCase {
 		assertEquals(names(before), names(after));
 	}
 
+	/**
+	 * A stack whose representative was chosen in the app becomes a stored group (issue #314): its
+	 * shots leave the album's own parts, and with them the stacks, which join no member of a group.
+	 */
+	public void testAStackTurnedIntoAGroupLeavesTheStacks() throws Exception {
+		burst();
+		library(SpaceStore.CONTENT_ON);
+
+		AlbumInfo before = album(BURST, ADMIN);
+		List<String> members = stacks(before).get(0);
+		assertEquals(5, members.size());
+
+		// What the app writes: the stack's shots as one group in the stack's order, the second shot
+		// chosen, where the stack's tile (its first shot) stood.
+		de.haumacher.imageServer.shared.model.ImageGroup group = de.haumacher.imageServer.shared.model.ImageGroup
+			.create();
+		List<de.haumacher.imageServer.shared.model.AlbumPart> parts = new ArrayList<>();
+		for (de.haumacher.imageServer.shared.model.AlbumPart part : before.getParts()) {
+			if (part instanceof ImagePart image && members.contains(image.getName())) {
+				if (image.getName().equals(members.get(0))) {
+					parts.add(group);
+				}
+				continue;
+			}
+			parts.add(part);
+		}
+		for (String name : members) {
+			for (de.haumacher.imageServer.shared.model.AlbumPart part : before.getParts()) {
+				if (part instanceof ImagePart image && image.getName().equals(name)) {
+					group.addImage(image);
+				}
+			}
+		}
+		group.setRepresentative(1);
+		before.setParts(parts);
+		before.setStacks(new ArrayList<>());
+
+		FakeResponse written = put("/" + BURST + "/", before.toString(), ADMIN);
+		assertEquals(written.body(), HttpServletResponse.SC_OK, written.status());
+
+		AlbumInfo after = album(BURST, ADMIN);
+		assertTrue("A group is no stack: " + stacks(after), stacks(after).isEmpty());
+		de.haumacher.imageServer.shared.model.ImageGroup stored = null;
+		for (de.haumacher.imageServer.shared.model.AlbumPart part : after.getParts()) {
+			if (part instanceof de.haumacher.imageServer.shared.model.ImageGroup found) {
+				stored = found;
+			}
+		}
+		assertNotNull("The group is stored: " + after, stored);
+		List<String> grouped = new ArrayList<>();
+		for (ImagePart image : stored.getImages()) {
+			grouped.add(image.getName());
+		}
+		assertEquals("The stack's shots in the stack's order.", members, grouped);
+		assertEquals("The chosen shot represents the group.", 1, stored.getRepresentative());
+	}
+
 	/** A rated member is on top; the others follow in the order they were taken. */
 	public void testARatedShotIsOnTop() throws Exception {
 		burst();

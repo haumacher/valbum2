@@ -5,6 +5,7 @@
 library;
 
 import 'album_edit.dart' show noMinRating;
+import 'album_stacks.dart' show stackGroups;
 import 'album_layout.dart' show ToImage;
 import 'inbox_view.dart' show inboxDays;
 import 'locales.dart' show platformMessages;
@@ -27,6 +28,12 @@ import 'search_grouping.dart';
 /// keys of its query (issue #244, see [groupSearchParts]): its headings are
 /// derived from its photos whenever it is initialized, never stored, and the
 /// chain the viewer pages through follows the sections.
+///
+/// The bursts of an album are groups the author never made (issue #314, see
+/// `album_stacks.dart`): where the album stacks them, each is a transient
+/// [ImageGroup] ([stackGroups]) linked into the chain in place of its shots,
+/// its shots chained inside it and given it as their [ImagePart.group] —
+/// while the album's stored parts stay as they are.
 class AlbumInitializer {
   /// The words of the headings of a grouped search; the app's language where
   /// none are given.
@@ -60,7 +67,31 @@ class AlbumInitializer {
         part.group = null;
       }
     }
-    _link(_chainOf(self));
+    var chain = _chainOf(self);
+    var stacks = stackGroups(self);
+    if (stacks.isNotEmpty) {
+      var groupOf = Map<AbstractImage, ImageGroup>.identity();
+      for (var stack in stacks) {
+        stack.owner = self;
+        for (var image in stack.images) {
+          image.group = stack;
+          groupOf[image] = stack;
+        }
+        _link(stack.images);
+      }
+      // The burst is one link of the chain, where its tile stands.
+      var linked = <AbstractImage>[];
+      for (var image in chain) {
+        var stack = groupOf[image];
+        if (stack == null) {
+          linked.add(image);
+        } else if (identical(stack.images[stack.representative], image)) {
+          linked.add(stack);
+        }
+      }
+      chain = linked;
+    }
+    _link(chain);
   }
 
   /// The images of the album in the order the viewer pages through them: the

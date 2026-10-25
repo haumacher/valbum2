@@ -4773,10 +4773,6 @@ class AppLocalizationsDe extends AppLocalizations {
   }
 
   @override
-  String get stackCollapse =>
-      'Ähnliche Aufnahmen wieder als eine Kachel anzeigen';
-
-  @override
   String get stackShotsAction => 'Ähnliche Aufnahmen stapeln';
 
   @override

@@ -4710,9 +4710,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get stackCollapse => 'Show the similar shots as one tile again';
-
-  @override
   String get stackShotsAction => 'Stack similar shots';
 
   @override

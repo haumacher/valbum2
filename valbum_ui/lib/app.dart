@@ -13,6 +13,7 @@ import 'package:http/http.dart' as http;
 import 'action_guard.dart';
 import 'add_email.dart';
 import 'album_model.dart';
+import 'album_stacks.dart' show isStackGroup, storeStack;
 import 'album_view.dart';
 import 'background.dart';
 import 'caller.dart';
@@ -3301,6 +3302,9 @@ class VAlbumState extends State<VAlbumView>
       );
     }
 
+    // The picture of a group is chosen where its alternatives are seen, in
+    // the view mode too (issue #314) — by whoever may edit the album.
+    var choose = mayChooseRepresentative(self);
     if (current is AlternativesRoute) {
       return GroupView(
         client: client,
@@ -3309,6 +3313,9 @@ class VAlbumState extends State<VAlbumView>
         onUp: navigator.up,
         onShowDetail: (member) => navigator.go(current.member(member.name)),
         upTooltip: duplicatesUpTooltip,
+        onSetRepresentative: choose
+            ? (member) => chooseRepresentative(self, group, member)
+            : null,
       );
     }
 
@@ -3336,14 +3343,69 @@ class VAlbumState extends State<VAlbumView>
           navigator.go(memberRoute.withMember(next.thumbnailName)),
       upTooltip: duplicatesUpTooltip,
       isRepresentative: identical(group.images[group.representative], member),
-      // Picking the representative is an edit of the album, saved with the
-      // other edits from the album view the edit mode was entered in.
-      onSetRepresentative: editing
-          ? () => setState(() {
-                group.representative = group.images.indexOf(member);
-              })
-          : null,
+      onSetRepresentative:
+          choose ? () => chooseRepresentative(self, group, member) : null,
     );
+  }
+
+  /// Whether the picture of a group of [album] may be chosen here (issue
+  /// #314): in an ordinary album the viewer pages through itself, by a
+  /// caller who may edit it — not offered rather than refused (#49), so a
+  /// share link without `edit` never sees the choice.
+  bool mayChooseRepresentative(AlbumInfo album) =>
+      album.kind == AlbumKind.album &&
+      !route.fromSearch &&
+      route.newsKey == null &&
+      rightsOf(context, album).mayEdit;
+
+  /// Makes [member] the picture of [group] of [album] (issue #314).
+  ///
+  /// The group of a burst ([isStackGroup]) becomes a stored group of its
+  /// shots on the way, see [storeStack]. Inside an edit session the choice
+  /// goes into the buffer, saved with the album's other edits; outside of
+  /// one it is written at once, the whole album as the edit mode's Save
+  /// writes it, and a refused write takes it back and says the server's own
+  /// reason.
+  Future<void> chooseRepresentative(
+    AlbumInfo album,
+    ImageGroup group,
+    ImagePart member,
+  ) async {
+    var index = group.images.indexWhere((image) => identical(image, member));
+    if (index < 0 || index == group.representative && !isStackGroup(group)) {
+      return;
+    }
+    var session = navigator.delegate.editSession(statePath);
+    var editing = session.editMode;
+    if (!editing && refuseWhileOffline(context)) {
+      return;
+    }
+    var parts = album.parts;
+    var representative = group.representative;
+    setState(() {
+      if (isStackGroup(group)) {
+        storeStack(album, group, member);
+        AlbumInitializer().init(album);
+      } else {
+        group.representative = index;
+      }
+    });
+    if (editing) {
+      session.dirty = true;
+      return;
+    }
+    var done = await writeAction(context, () => client.saveAlbum(path, album));
+    if (done != null) {
+      return;
+    }
+    // Nothing was stored: the album says what the server holds.
+    void undo() {
+      album.parts = parts;
+      group.representative = representative;
+      AlbumInitializer().init(album);
+    }
+
+    mounted ? setState(undo) : undo();
   }
 
   /// The name of the image a route inside an album names.

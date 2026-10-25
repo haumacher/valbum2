@@ -1,9 +1,11 @@
 /// The bursts of an album, stacked into one tile each (issue #257, package
-/// 6): the server answers them derived ([AlbumInfo.stacks]), the grid shows
-/// each as its best shot with a count, a tap opens it in place, the viewer
-/// pages through every photograph as ever, the stacking is a view of this
-/// device switched in the album's menu and remembered, a tile of a burst
-/// selects all of its shots, and the edit mode shows every photograph singly.
+/// 6, and issue #314): the server answers them derived ([AlbumInfo.stacks]),
+/// the grid shows each as its best shot with a count, and a burst is a group
+/// the author never made — a tap opens the viewer on the best shot, which
+/// pages past the burst's other shots, and "down" shows them all. The
+/// stacking is a view of this device switched in the album's menu and
+/// remembered, a tile of a burst selects all of its shots, and a long press
+/// switches the mode with the bursts left as they are.
 library;
 
 import 'package:flutter/material.dart' hide Orientation;
@@ -102,6 +104,15 @@ VAlbumRoute routeOf(WidgetTester tester) =>
 
 Finder badge(String name) => find.byKey(ValueKey("stack-badge-$name"));
 
+AlbumContentState albumState(WidgetTester tester) =>
+    tester.state<AlbumContentState>(find.byType(AlbumContent).last);
+
+/// The names of the selected photographs of the album shown.
+Set<String> selectedNames(WidgetTester tester) => {
+      for (var part in albumState(tester).selection)
+        if (part is ImagePart) part.name,
+    };
+
 void main() {
   setUp(withEmptyImageCache);
 
@@ -123,47 +134,51 @@ void main() {
       });
     });
 
-    testWidgets('opens in place, and folds again', (tester) async {
+    testWidgets('opens the viewer on its best shot, which pages past it',
+        (tester) async {
       await withFakeImageHttp(() async {
         await pumpBurst(tester);
         await tester.tap(tile("p2.jpg"));
         await tester.pumpAndSettle();
-        expect(routeOf(tester), const ListingOrAlbumRoute(["Burst"]),
-            reason: "Opening a burst opens no viewer.");
-        expect(tiles(), allNames);
-        expect(badge("p2.jpg"), findsNothing);
-
-        // A shot of the opened burst opens the viewer like any tile.
-        await tester.tap(tile("p0.jpg"));
+        expect(routeOf(tester), const ImageRoute(["Burst"], "p2.jpg"),
+            reason: "The tile opens the viewer, as a group's does (#314).");
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
         await tester.pumpAndSettle();
-        expect(routeOf(tester), const ImageRoute(["Burst"], "p0.jpg"));
+        expect(routeOf(tester), const ImageRoute(["Burst"], "x.jpg"),
+            reason: "Next is the tile after the burst, not a shot of it.");
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+        await tester.pumpAndSettle();
+        expect(routeOf(tester), const ImageRoute(["Burst"], "p2.jpg"));
         await tester.sendKeyEvent(LogicalKeyboardKey.escape);
         await tester.pumpAndSettle();
-
-        await tester.tap(find.byKey(const ValueKey("stack-fold-p2.jpg")));
-        await tester.pumpAndSettle();
-        expect(tiles(), ["p2.jpg", "x.jpg"]);
+        expect(tiles(), ["p2.jpg", "x.jpg"], reason: "Nothing unfolded.");
       });
     });
 
-    testWidgets('hides nothing from the viewer', (tester) async {
+    testWidgets('shows all of its shots below the viewer', (tester) async {
       await withFakeImageHttp(() async {
         await pumpBurst(tester);
-        await tester.tap(tile("x.jpg"));
+        await tester.tap(tile("p2.jpg"));
         await tester.pumpAndSettle();
-        expect(routeOf(tester), const ImageRoute(["Burst"], "x.jpg"));
-        var seen = <String>["x.jpg"];
-        for (var step = 0; step < allNames.length - 1; step++) {
-          await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
-          await tester.pumpAndSettle();
-          seen.add((routeOf(tester) as ImageRoute).name);
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        await tester.pumpAndSettle();
+        expect(routeOf(tester), const AlternativesRoute(["Burst"], "p2.jpg"));
+        for (var name in burst) {
+          expect(find.byKey(ValueKey("group-tile-$name")), findsOneWidget);
         }
-        expect(seen, allNames.reversed.toList(),
-            reason: "The viewer pages through every photograph of the album.");
+        await tester.tap(find.byKey(const ValueKey("group-tile-p2.jpg")));
+        await tester.pumpAndSettle();
+        var seen = <String>[(routeOf(tester) as MemberRoute).member];
+        for (var step = 0; step < burst.length - 1; step++) {
+          await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+          await tester.pumpAndSettle();
+          seen.add((routeOf(tester) as MemberRoute).member);
+        }
+        expect(seen, burst, reason: "The shots in the burst's order.");
       });
     });
 
-    testWidgets('opens on Enter from the keyboard', (tester) async {
+    testWidgets('opens the viewer on Enter', (tester) async {
       await withFakeImageHttp(() async {
         await pumpBurst(tester);
         // The keyboard walks the tiles shown: the burst's first.
@@ -171,8 +186,8 @@ void main() {
         await tester.pumpAndSettle();
         await tester.sendKeyEvent(LogicalKeyboardKey.enter);
         await tester.pumpAndSettle();
-        expect(tiles(), allNames);
-        expect(routeOf(tester), const ListingOrAlbumRoute(["Burst"]));
+        expect(routeOf(tester), const ImageRoute(["Burst"], "p2.jpg"),
+            reason: "Enter opens the viewer on the tile's shot (#314).");
       });
     });
   });
@@ -201,6 +216,29 @@ void main() {
         await tester.pumpAndSettle();
         expect(tiles(), ["p2.jpg", "x.jpg"]);
         expect(store.albumStacking, isTrue);
+      });
+    });
+
+    testWidgets('switched off, the viewer walks every shot', (tester) async {
+      await withFakeImageHttp(() async {
+        await pumpBurst(tester);
+        await openAlbumMenu(tester);
+        await tester.tap(find.byKey(const Key("toggle-stacks")));
+        await tester.pumpAndSettle();
+        expect(tiles(), allNames);
+        await tester.tap(tile("p0.jpg"));
+        await tester.pumpAndSettle();
+        var seen = <String>[(routeOf(tester) as ImageRoute).name];
+        for (var step = 0; step < allNames.length - 1; step++) {
+          await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+          await tester.pumpAndSettle();
+          seen.add((routeOf(tester) as ImageRoute).name);
+        }
+        expect(seen, allNames);
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        await tester.pumpAndSettle();
+        expect(routeOf(tester), isA<ImageRoute>(),
+            reason: "A single shot has no alternatives.");
       });
     });
 
@@ -257,16 +295,34 @@ void main() {
       });
     });
 
-    testWidgets('arranging shows every shot singly', (tester) async {
+    testWidgets('arranging keeps the bursts as they are shown', (tester) async {
       await withFakeImageHttp(() async {
         await pumpBurst(tester);
         expect(tiles(), ["p2.jpg", "x.jpg"]);
         await longPressTile(tester, "x.jpg");
-        expect(tiles(), allNames, reason: "The edit mode stacks nothing.");
-        expect(badge("p2.jpg"), findsNothing);
+        expect(albumState(tester).editMode, isTrue);
+        expect(tiles(), ["p2.jpg", "x.jpg"],
+            reason: "The edit mode keeps the burst folded (#314).");
+        expect(badge("p2.jpg"), findsOneWidget);
         await tester.sendKeyEvent(LogicalKeyboardKey.escape);
         await tester.pumpAndSettle();
         expect(tiles(), ["p2.jpg", "x.jpg"]);
+      });
+    });
+
+    testWidgets('a long press into the select mode takes the whole burst',
+        (tester) async {
+      await withFakeImageHttp(() async {
+        await pumpBurst(tester, rights: const ["view", "download"]);
+        await longPressTile(tester, "p2.jpg");
+        expect(albumState(tester).selectMode, isTrue);
+        expect(tiles(), ["p2.jpg", "x.jpg"], reason: "Still folded.");
+        expect(
+            tester
+                .widget<Text>(find.byKey(const Key("select-mode-count")))
+                .data,
+            testL10n.selectedCount(5));
+
       });
     });
   });
@@ -278,7 +334,7 @@ void main() {
 
     test('folds what is shown, the first shown on top', () {
       var parts = <AlbumPart>[for (var name in allNames) part(name)];
-      var view = stackView(parts, [stack(burst)], isOpened: (_) => false);
+      var view = stackView(parts, [stack(burst)]);
       expect([for (var p in view.parts) (p as ImagePart).name],
           ["p2.jpg", "x.jpg"]);
       expect(view.hiddenUnder["p0.jpg"], "p2.jpg");
@@ -288,24 +344,58 @@ void main() {
         for (var p in parts)
           if ((p as ImagePart).name != "p2.jpg") p
       ];
-      var narrower =
-          stackView(filtered, [stack(burst)], isOpened: (_) => false);
+      var narrower = stackView(filtered, [stack(burst)]);
       expect([for (var p in narrower.parts) (p as ImagePart).name],
           ["p0.jpg", "x.jpg"]);
     });
 
-    test('a burst of one shown is no burst, an opened one hides nothing', () {
+    test('a burst of one shown is no burst', () {
       var parts = <AlbumPart>[part("p0.jpg"), part("x.jpg")];
-      expect(stackView(parts, [stack(burst)], isOpened: (_) => false).parts,
-          hasLength(2));
-      var all = <AlbumPart>[for (var name in allNames) part(name)];
-      var opened = stackView(all, [stack(burst)], isOpened: (tile) => true);
-      expect(opened.parts, hasLength(allNames.length));
-      expect(opened.opened, hasLength(1));
-      var kept = stackView(all, [stack(burst)],
-          isOpened: (_) => false, keepShown: {"p3.jpg"});
-      expect(kept.parts, hasLength(allNames.length),
-          reason: "The photo the album was opened for is never hidden.");
+      expect(stackView(parts, [stack(burst)]).parts, hasLength(2));
+    });
+
+    AlbumInfo album() => AlbumInfo(
+          path: "Burst",
+          parts: [for (var name in allNames) part(name)],
+          stacks: [stack(burst)],
+        );
+
+    test('a burst is a group to the viewer, the album stores none', () {
+      var self = album();
+      AlbumInitializer().init(self);
+      expect(self.parts, hasLength(allNames.length),
+          reason: "The stored parts are untouched.");
+      var best = self.parts[2] as ImagePart;
+      var group = best.group!;
+      expect(isStackGroup(group), isTrue);
+      expect([for (var m in group.images) m.name], burst);
+      expect(group.images[group.representative].name, "p2.jpg");
+      expect(group.next, same(self.parts[5]), reason: "Next is x.jpg.");
+      expect((self.parts[5] as ImagePart).previous, same(group));
+      expect(group.previous, isNull, reason: "p0 and p1 are in the burst.");
+      expect(self.toString(), isNot(contains("ImageGroup")));
+
+      setAlbumStacking(self, false);
+      AlbumInitializer().init(self);
+      expect(best.group, isNull);
+      expect(best.next, same(self.parts[3]));
+    });
+
+    test('a chosen picture makes the burst a stored group', () {
+      var self = album();
+      AlbumInitializer().init(self);
+      var stack = (self.parts[2] as ImagePart).group!;
+      var chosen = stack.images[1];
+      var group = storeStack(self, stack, chosen)!;
+      AlbumInitializer().init(self);
+      expect([
+        for (var p in self.parts) p is ImagePart ? p.name : "group",
+      ], ["group", "x.jpg"], reason: "Where the tile (p2) stood.");
+      expect(isStackGroup(group), isFalse);
+      expect([for (var m in group.images) m.name], burst);
+      expect(group.images[group.representative].name, "p0.jpg");
+      expect(stackView(self.parts, self.stacks).folded, isEmpty,
+          reason: "Grouped shots are no burst any more.");
     });
   });
 }

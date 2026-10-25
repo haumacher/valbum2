@@ -450,7 +450,9 @@ class AlbumContentState extends State<AlbumContent>
   Orientation layoutOrientation(ImagePart image) =>
       _layoutOrientation.putIfAbsent(image, () => image.orientation);
 
-  /// Enters the edit mode with the given part selected.
+  /// Enters the edit mode with the given part selected — every shot of the
+  /// burst where [selected] is the tile of a folded one (issue #314): the
+  /// bursts stay as they are shown, folded or opened.
   ///
   /// Refused while the app is offline: an edit that could never be saved is
   /// worse than no edit at all, so the reason is said instead, see
@@ -471,7 +473,7 @@ class AlbumContentState extends State<AlbumContent>
       setLabelFilter(widget.album, null);
       selection
         ..clear()
-        ..add(selected);
+        ..addAll(standsFor(selected));
       lastClicked = selected;
     });
   }
@@ -487,9 +489,23 @@ class AlbumContentState extends State<AlbumContent>
   ///
   /// A tile of the current multi-selection carries the whole selection, in
   /// the order the parts are stored in; any other tile carries itself alone
-  /// and leaves the selection alone.
+  /// and leaves the selection alone. The tile of a folded burst is all of its
+  /// shots (issue #314): it carries them as one block, in their stored order,
+  /// or the whole selection where they are part of a larger one.
   DraggedParts dragOf(AlbumPart part) {
-    if (!hasMultiSelection || !isSelected(part)) {
+    var stack = _stackView.foldedOf(part);
+    if (stack != null) {
+      var members = Set<AlbumPart>.identity()..addAll(stack.members);
+      if (!stackSelected(stack) || selection.length <= members.length) {
+        return DraggedParts(
+          [
+            for (var candidate in widget.album.parts)
+              if (members.contains(candidate)) candidate,
+          ],
+          part,
+        );
+      }
+    } else if (!hasMultiSelection || !isSelected(part)) {
       return DraggedParts([part], part);
     }
     return DraggedParts(
@@ -1821,10 +1837,11 @@ class AlbumContentState extends State<AlbumContent>
 
   /// What the keys do with the tile highlighted (issue #295), the policy of
   /// a tap of the mode ([PhotoTileGestures]): in the view mode `Enter`
-  /// opens the viewer; in a mode with a selection — the edit and the select
-  /// mode — `Enter` and `Space` toggle the tile and `Ctrl+A` selects every
-  /// photo shown; the menu key opens the tile's menu wherever a secondary
-  /// click does. A "view as" preview is acted on by no key.
+  /// opens the viewer — on the tile of a burst too, as on a group's; in a
+  /// mode with a selection — the edit and the select mode — `Enter` and
+  /// `Space` toggle the tile (all shots of a burst) and `Ctrl+A` selects
+  /// every photo shown; the menu key opens the tile's menu wherever a
+  /// secondary click does. A "view as" preview is acted on by no key.
   TileKeyActions<AbstractImage> get tileKeyActions {
     if (previewing) {
       return const TileKeyActions();
@@ -1833,26 +1850,17 @@ class AlbumContentState extends State<AlbumContent>
         showTileMenu(PhotoTile(part, layouter.ToImage.toImage(part)), position);
     if (editMode || selectMode) {
       // The tile of a burst stands for all of its shots (issue #257).
-      void toggle(AbstractImage part) {
-        var stack = _stackView.foldedOf(part);
-        stack == null ? toggleSelection(part) : toggleStack(stack);
-      }
-
       return TileKeyActions(
-        onEnter: toggle,
-        onToggle: toggle,
+        onEnter: toggleTile,
+        onToggle: toggleTile,
         onMenu: offersTileMenu ? menu : null,
         onSelectAll: selectAllShown,
       );
     }
     return TileKeyActions(
       onEnter: (part) {
-        // The tile of a burst opens it in place (issue #257).
-        var stack = _stackView.foldedOf(part);
-        if (stack != null) {
-          openStack(stack);
-          return;
-        }
+        // The tile of a burst opens the viewer on its best shot, as a
+        // group's opens it on its representative (issue #314).
         var image = layouter.ToImage.toImage(part);
         // A photograph that is gone opens no viewer (issue #221).
         if (!image.missing) {
@@ -1914,16 +1922,12 @@ class AlbumContentState extends State<AlbumContent>
   }
 
   /// Whether the tiles stack the bursts of the album: where the server
-  /// answered some, the device has not switched it off, and the album is
-  /// looked at rather than arranged — the edit mode shows every photograph
-  /// singly, and the results of a search or of an entry of the bell are no
-  /// album of their own.
+  /// answered some and the device has not switched it off — in the edit mode
+  /// as well, which keeps the bursts as they were shown (issue #314); the
+  /// results of a search or of an entry of the bell are no album of their
+  /// own.
   bool get stacksShown =>
-      _stacking &&
-      !editMode &&
-      !isSearchView &&
-      !isNewsView &&
-      shownAlbum.stacks.isNotEmpty;
+      _stacking && !isSearchView && !isNewsView && shownAlbum.stacks.isNotEmpty;
 
   /// Whether the album's menu offers to switch the stacking: where the album
   /// has bursts to stack, outside the edit mode.
@@ -1936,19 +1940,13 @@ class AlbumContentState extends State<AlbumContent>
   /// Switches the stacking of the bursts on or off, for every album of this
   /// device, and remembers it.
   void setStacking(bool value) {
-    setState(() {
-      _stacking = value;
-      _openedStacks.clear();
-    });
+    setState(() => _stacking = value);
     var store = _settingsStore;
     if (store != null) {
       _stackingOf[store] = value;
       store.saveAlbumStacking(value);
     }
   }
-
-  /// The names of the tiles of the bursts opened in place.
-  final Set<String> _openedStacks = {};
 
   /// What the grid shows of the album's parts, see [stackView]; laid out
   /// anew with the grid.
@@ -1957,13 +1955,46 @@ class AlbumContentState extends State<AlbumContent>
   /// What the grid shows, see [_stackView].
   StackView get shownStacks => _stackView;
 
-  /// Opens the burst [stack] in place: its shots get their tiles back.
-  void openStack(ShownStack stack) =>
-      setState(() => _openedStacks.add(stack.tile.name));
+  /// Whether the viewer opened from this album pages past the bursts, as
+  /// past a group's alternatives (issue #314, see [albumStacking]): where the
+  /// device stacks them and the page is the album itself.
+  bool get _pagesStacked => _stacking && !isSearchView && !isNewsView;
 
-  /// Folds the opened burst [stack] into one tile again.
-  void foldStack(ShownStack stack) =>
-      setState(() => _openedStacks.remove(stack.tile.name));
+  /// Tells the album whether its bursts are groups to the viewer, and links
+  /// it anew where that changed (see [AlbumInitializer]).
+  void _syncAlbumStacking() {
+    var album = widget.album;
+    if (setAlbumStacking(album, _pagesStacked)) {
+      AlbumInitializer().init(album);
+    }
+  }
+
+  /// The parts the tile of [part] stands for: every shot of the burst where
+  /// it is the tile of one, [part] alone otherwise.
+  List<AlbumPart> standsFor(AlbumPart part) =>
+      _stackView.foldedOf(part)?.members ?? [part];
+
+  /// Whether the tile of [part] shows as selected: all shots of a folded
+  /// burst where it stands for one, see [stackSelected].
+  bool tileSelected(AlbumPart part) {
+    var stack = _stackView.foldedOf(part);
+    return stack == null ? isSelected(part) : stackSelected(stack);
+  }
+
+  /// A tap on the tile of [part] in a mode with a selection: toggles every
+  /// shot of a folded burst ([toggleStack]), a click on any other tile
+  /// ([handleTap]).
+  void tapTile(AlbumPart part) {
+    var stack = _stackView.foldedOf(part);
+    stack == null ? handleTap(part) : toggleStack(stack);
+  }
+
+  /// A toggle of the tile of [part] — a long press, its check mark: every
+  /// shot of a folded burst ([toggleStack]), the part alone otherwise.
+  void toggleTile(AlbumPart part) {
+    var stack = _stackView.foldedOf(part);
+    stack == null ? toggleSelection(part) : toggleStack(stack);
+  }
 
   /// Whether every shot of the folded burst [stack] is selected: what its
   /// tile shows as selected.
@@ -2019,7 +2050,8 @@ class AlbumContentState extends State<AlbumContent>
       holdsImages;
 
   /// Enters the select mode, with [first] selected where a long press opened
-  /// it.
+  /// it — every shot of a folded burst where [first] is its tile (issue
+  /// #314).
   void enterSelectMode([AlbumPart? first]) {
     if (!maySelect) {
       return;
@@ -2028,7 +2060,7 @@ class AlbumContentState extends State<AlbumContent>
       _selecting = true;
       selection.clear();
       if (first != null) {
-        selection.add(first);
+        selection.addAll(standsFor(first));
       }
       lastClicked = first;
     });
@@ -2120,8 +2152,14 @@ class AlbumContentState extends State<AlbumContent>
   /// that what the menu says is what it acts on. In the view mode it acts on
   /// the tile alone.
   Future<void> showTileMenu(PhotoTile tile, Offset position) async {
-    if ((editMode || selectMode) && !isSelected(tile.part)) {
-      selectOnly(tile.part);
+    if ((editMode || selectMode) && !tileSelected(tile.part)) {
+      // The tile of a folded burst is all of its shots (issue #314).
+      setState(() {
+        selection
+          ..clear()
+          ..addAll(standsFor(tile.part));
+        lastClicked = tile.part;
+      });
     }
     await showPhotoTileMenu(
       host: this,
@@ -2244,12 +2282,6 @@ class AlbumContentState extends State<AlbumContent>
       relayout();
     }
   }
-
-  /// The name of the photo "Show in album" opened this album for (issue
-  /// #289), `null` for none.
-  String? get _markedName => widget.albumState.route is! ListingOrAlbumRoute
-      ? null
-      : widget.albumState.navigator.delegate.markedIn(widget.albumState.path);
 
   /// Whether the tile of [image] is the one "Show in album" opened this
   /// album for (issue #289), see [VAlbumRouterDelegate.markIn].
@@ -3693,15 +3725,9 @@ class AlbumContentState extends State<AlbumContent>
 
     // The bursts of the album, each one tile where it is stacked (#257).
     var shown = shownParts(self);
+    _syncAlbumStacking();
     _stackView = stacksShown
-        ? stackView(
-            shown,
-            self.stacks,
-            isOpened: _openedStacks.contains,
-            keepShown: {
-              if (_markedName case var marked?) marked,
-            },
-          )
+        ? stackView(shown, self.stacks)
         : StackView.unstacked(shown);
     for (var part in _stackView.parts) {
       if (part is AbstractImage) {
@@ -3787,6 +3813,19 @@ class AlbumContentState extends State<AlbumContent>
         if (!dragged.contains(candidate)) {
           predecessor = candidate;
           break;
+        }
+      }
+    }
+    // Behind the tile of a folded burst is behind all of its shots (issue
+    // #314): the block must not land between the tile and the shots hidden
+    // under it.
+    if (predecessor != null) {
+      if (_stackView.foldedOf(predecessor) case var stack?) {
+        var members = Set<AlbumPart>.identity()..addAll(stack.members);
+        for (var stored in widget.album.parts) {
+          if (members.contains(stored) && !dragged.contains(stored)) {
+            predecessor = stored;
+          }
         }
       }
     }
@@ -4317,24 +4356,17 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
     void Function(Offset)? menu = state.offersTileMenu
         ? (position) => state.showTileMenu(tile, position)
         : null;
-    // The tile of a burst stands for all of its shots (issue #257).
-    var stack = state.shownStacks.foldedOf(part);
     if (state.selectMode) {
       // The select mode of issue #209: a tap selects, the viewer stays shut.
+      // The tile of a folded burst stands for all of its shots (#257).
       return SizedBox(
         key: ValueKey(image.name),
         width: width,
         height: height,
         child: SelectableTile(
-          selected: stack == null
-              ? state.isSelected(part)
-              : state.stackSelected(stack),
-          onTap: stack == null
-              ? () => state.handleTap(part)
-              : () => state.toggleStack(stack),
-          onToggle: stack == null
-              ? () => state.toggleSelection(part)
-              : () => state.toggleStack(stack),
+          selected: state.tileSelected(part),
+          onTap: () => state.tapTile(part),
+          onToggle: () => state.toggleTile(part),
           onMenu: menu,
           child: stacked(part, imageThumbnail(image)),
         ),
@@ -4360,13 +4392,11 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
             : null;
     return PhotoTileGestures(
       key: ValueKey(image.name),
-      // A photograph that is gone opens no viewer (issue #221); the tile of
-      // a burst opens the burst in place (issue #257).
-      onTap: stack != null
-          ? () => state.openStack(stack)
-          : image.missing
-              ? null
-              : () => state.widget.pushPart(part, image.name),
+      // A photograph that is gone opens no viewer (issue #221). The tile of
+      // a burst opens the viewer on its best shot, as a group's opens it on
+      // its representative (issue #314).
+      onTap:
+          image.missing ? null : () => state.widget.pushPart(part, image.name),
       onLongPress: modeSwitch,
       onMenu: menu,
       child: stacked(part, imageThumbnail(image)),
@@ -4374,68 +4404,63 @@ class ImageWidgetBuilder implements AbstractImageVisitor<Widget, void> {
   }
 
   /// The given tile with the badge of the burst it stands for, or of the
-  /// burst it opens (issue #257): how many shots a folded burst holds, and
-  /// the way to fold an opened one again; [child] itself for every other
-  /// tile.
+  /// burst it opens, see [stackBadge]; [child] itself for every other tile.
   Widget stacked(AbstractImage part, Widget child) {
-    var l10n = AppLocalizations.of(state.context)!;
-    var folded = state.shownStacks.foldedOf(part);
-    var opened = folded == null ? state.shownStacks.openedOf(part) : null;
-    if (folded == null && opened == null) {
+    var badge = stackBadge(part);
+    if (badge == null) {
       return child;
     }
-    var tile = (folded ?? opened)!.tile.name;
-    var badge = folded != null
-        ? IgnorePointer(
-            child: Tooltip(
-              message: l10n.stackCount(folded.members.length),
-              child: Container(
-                key: ValueKey("stack-badge-$tile"),
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.black54,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.burst_mode, size: 16, color: Colors.white),
-                    const SizedBox(width: 4),
-                    Text(
-                      "${folded.members.length}",
-                      key: ValueKey("stack-count-$tile"),
-                      style: const TextStyle(color: Colors.white, fontSize: 13),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          )
-        : Tooltip(
-            message: l10n.stackCollapse,
-            child: Material(
-              color: Colors.black54,
-              shape: const CircleBorder(),
-              child: InkWell(
-                key: ValueKey("stack-fold-$tile"),
-                customBorder: const CircleBorder(),
-                onTap: () => state.foldStack(opened!),
-                child: const Padding(
-                  padding: EdgeInsets.all(4),
-                  child: Icon(Icons.unfold_less, size: 18, color: Colors.white),
-                ),
-              ),
-            ),
-          );
     return SizedBox(
       width: width,
       height: height,
       child: Stack(
         fit: StackFit.expand,
-        children: [
-          child,
-          Positioned(right: 4, bottom: 4, child: badge),
-        ],
+        children: [child, badge],
+      ),
+    );
+  }
+
+  /// The badge of the burst the tile of [part] stands for (issues #257,
+  /// #314), in the tile's bottom right corner: how many shots it holds;
+  /// `null` for every other tile.
+  ///
+  /// A mark and no control: a burst is a group the author never made, its
+  /// tile is opened, selected and moved as a group's is, and the badge is
+  /// all that tells the two apart.
+  Widget? stackBadge(AbstractImage part) {
+    var stack = state.shownStacks.foldedOf(part);
+    if (stack == null) {
+      return null;
+    }
+    var l10n = AppLocalizations.of(state.context)!;
+    var tile = stack.tile.name;
+    return Positioned(
+      right: 4,
+      bottom: 4,
+      child: IgnorePointer(
+        child: Tooltip(
+          message: l10n.stackCount(stack.members.length),
+          child: Container(
+            key: ValueKey("stack-badge-$tile"),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.black54,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.burst_mode, size: 16, color: Colors.white),
+                const SizedBox(width: 4),
+                Text(
+                  "${stack.members.length}",
+                  key: ValueKey("stack-count-$tile"),
+                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -4742,8 +4767,14 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
   ImagePart get image => widget.image;
   AlbumPart get part => widget.part;
 
-  bool get selected => album.isSelected(part);
-  bool get multiSelected => selected && album.hasMultiSelection;
+  /// Whether the tile shows as selected: all shots of the folded burst it
+  /// stands for (issue #314), see [AlbumContentState.tileSelected].
+  bool get selected => album.tileSelected(part);
+
+  /// Whether more is selected than this tile stands for: the shots of a
+  /// burst alone are one tile's, as a group's members are (issue #314).
+  bool get multiSelected =>
+      selected && album.selection.length > album.standsFor(part).length;
 
   /// Whether the tile shows its toolbars.
   bool get active => selected || _hovered;
@@ -4755,6 +4786,10 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
   Widget build(BuildContext context) {
     var width = widget.builder.width;
     var height = widget.builder.height;
+    // The badge of a burst (issue #314) keeps the bottom right corner, and
+    // what else stands there makes room for it.
+    var badge = widget.builder.stackBadge(part as AbstractImage);
+    var badgeRoom = badge == null ? 0.0 : 48.0;
 
     return ReorderablePart(
       album: album,
@@ -4777,18 +4812,19 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
               Positioned.fill(
                 // The tile shell of every mode (issue #290): a tap selects,
                 // a long press toggles, a secondary click opens the tile's
-                // menu at the pointer (issue #156).
+                // menu at the pointer (issue #156). The tile of a folded
+                // burst does so with all of its shots (issue #314).
                 child: PhotoTileGestures(
                   behavior: HitTestBehavior.opaque,
-                  onTap: () => album.handleTap(part),
-                  onLongPress: () => album.toggleSelection(part),
+                  onTap: () => album.tapTile(part),
+                  onLongPress: () => album.toggleTile(part),
                   onMenu: showTileMenu,
                   child: widget.builder.imageThumbnail(image),
                 ),
               ),
               if (isIndexPicture(album.widget.album, image))
                 Positioned(
-                  right: 4,
+                  right: 4 + badgeRoom,
                   bottom: 4,
                   child: IgnorePointer(
                     child: Tooltip(
@@ -4816,7 +4852,13 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
                 Positioned(top: 0, left: 0, right: 0, child: topBar()),
               if (active) Positioned.fill(child: Center(child: centerBar())),
               if (active && !image.missing)
-                Positioned(bottom: 0, left: 0, right: 0, child: bottomBar()!),
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: badgeRoom,
+                  child: bottomBar()!,
+                ),
+              if (badge != null) badge,
             ],
           ),
         ),
@@ -4832,7 +4874,7 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
         toolButton(
           selected ? Icons.check_box : Icons.check_box_outline_blank,
           _l10n.select,
-          () => album.toggleSelection(part),
+          () => album.toggleTile(part),
           active: selected,
         ),
         // Nor has a file that cannot be read (issue #253).
@@ -4876,7 +4918,16 @@ class ThumbnailEditorState extends State<ThumbnailEditor> {
             _l10n.chooseGroupPicture,
             () => album.widget.albumState.showGroupView(self),
           ),
-        ],
+        ] else if (image.group case var stack?
+            when isStackGroup(stack) && album.shownStacks.foldedOf(self) != null)
+          // A burst is a group the author never made (issue #314): its
+          // picture is chosen the same way, which makes it a stored group.
+          // Nothing to ungroup — its shots are single photographs already.
+          toolButton(
+            Icons.collections,
+            _l10n.chooseGroupPicture,
+            () => album.widget.albumState.showGroupView(stack),
+          ),
       ],
       // Everything one device contributed, in one gesture — the selection the
       // recording time correction below then works on, see issue #78; on an

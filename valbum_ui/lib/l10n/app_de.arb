@@ -1184,7 +1184,6 @@
   "similarPhotos": "{count, plural, =1{1 Foto} other{{count} Fotos}}",
   "similarBack": "Zurück zu den ähnlichen Fotos",
   "stackCount": "{count, plural, =1{1 ähnliche Aufnahme} other{{count} ähnliche Aufnahmen}}",
-  "stackCollapse": "Ähnliche Aufnahmen wieder als eine Kachel anzeigen",
   "stackShotsAction": "Ähnliche Aufnahmen stapeln",
   "unstackShotsAction": "Jedes Foto einzeln anzeigen",
   "statusTitle": "Status",

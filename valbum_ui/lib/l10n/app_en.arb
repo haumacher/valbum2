@@ -7765,18 +7765,13 @@
   },
   "stackCount": "{count, plural, =1{1 similar shot} other{{count} similar shots}}",
   "@stackCount": {
-    "description": "Tooltip of the badge on a tile of an album that stands for a burst: several photos taken a few minutes apart that look alike, shown as one tile with the best shot on top (issue #257). Tapping the tile shows them all.",
+    "description": "Tooltip of the badge on a tile of an album that stands for a burst: several photos taken a few minutes apart that look alike, shown as one tile with the best shot on top (issue #257). Like a group's tile, opening it shows the best shot; going down in the viewer shows them all (issue #314).",
     "placeholders": {
       "count": {
         "type": "int"
       }
     },
     "x-translated": "23b04357"
-  },
-  "stackCollapse": "Show the similar shots as one tile again",
-  "@stackCollapse": {
-    "description": "Tooltip of the badge on the first tile of a burst that was opened in the album (issue #257): folds the similar shots back into one tile.",
-    "x-translated": "1b186c06"
   },
   "stackShotsAction": "Stack similar shots",
   "@stackShotsAction": {

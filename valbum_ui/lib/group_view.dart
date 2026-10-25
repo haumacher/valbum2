@@ -8,6 +8,11 @@
 /// "detail mode": its previous/next follow the group's own image order (the
 /// links [AlbumInitializer] built inside the group), "up" returns here, and
 /// there is no "down" any more.
+///
+/// The burst of an album is shown here the same way (issue #314): it is a
+/// group the author never made, see `album_stacks.dart`. Whoever may edit the
+/// album chooses the picture of either here — on a tile of this view, or in
+/// the viewer of one member — in the view mode as well as in the edit mode.
 library;
 
 import 'package:flutter/material.dart';
@@ -49,6 +54,11 @@ class GroupView extends StatelessWidget {
   /// back to the overview of the photographs in several albums (#231).
   final String? upTooltip;
 
+  /// Makes the given member the picture of the group, `null` where the
+  /// choice is not offered (issue #314): a check mark to tap on every other
+  /// member's tile.
+  final void Function(ImagePart image)? onSetRepresentative;
+
   const GroupView({
     super.key,
     required this.client,
@@ -57,6 +67,7 @@ class GroupView extends StatelessWidget {
     required this.onUp,
     required this.onShowDetail,
     this.upTooltip,
+    this.onSetRepresentative,
   });
 
   /// The title of the album the group belongs to, as in the GWT client.
@@ -133,6 +144,22 @@ class GroupView extends StatelessWidget {
           ),
           // The representative stands out, so that the choice can be checked
           // here, where all alternatives are seen side by side.
+          if (!identical(group.images[group.representative], self) &&
+              onSetRepresentative != null)
+            Positioned(
+              right: 0,
+              top: 0,
+              child: IconButton(
+                key: ValueKey("group-choose-${self.name}"),
+                tooltip: AppLocalizations.of(context)!.useAsGroupPicture,
+                icon: const Icon(
+                  Icons.check_circle_outline,
+                  color: Colors.white,
+                  shadows: [Shadow(color: Colors.black, blurRadius: 4)],
+                ),
+                onPressed: () => onSetRepresentative!(self),
+              ),
+            ),
           if (identical(group.images[group.representative], self))
             Positioned(
               right: 8,
@@ -172,8 +199,8 @@ class GroupDetailView extends StatelessWidget {
   /// Whether [image] is the one representing its group in the album.
   final bool isRepresentative;
 
-  /// Makes [image] the representative of its group; `null` outside the edit
-  /// mode of the album, where the choice is not offered.
+  /// Makes [image] the representative of its group; `null` where the choice
+  /// is not offered — to a caller who may not edit the album (issue #314).
   ///
   /// Deciding which of several shots of one scene is the best is what the
   /// detail view is for: the shots are compared full-screen, one after the
