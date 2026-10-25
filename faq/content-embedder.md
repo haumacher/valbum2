@@ -36,8 +36,9 @@ without the switch sends, so an older app's save never turns the search off. The
 **The query (2026-10-17, #257 package 4):** a `SearchContent` ranks, so it stands only as the root
 or once in the root's AND; the other members are evaluated by H2 into the filter *inside* the
 vector query (no intersection afterwards, so `k` stays `k`), and OR/NOT around it is refused. The
-weights (0.7 picture, 0.3 text), the cut (0.05) and the page (100, at most 1000) are uncalibrated
-guesses, all in `ContentSearch`. "More" asks again for a larger `count` — HNSW has no offset, a
+weights (0.7 picture, 0.3 text) and the page (100, at most 1000) are uncalibrated guesses; the cut
+was a guess of 0.05 until #302 calibrated it to 0.7 on the author's library ("cows" showed cows only
+above 0.7). All are in `ContentSearch`. "More" asks again for a larger `count` — HNSW has no offset, a
 larger `k` is the same walk. The query vector is kept per model and text (64 of them), so a search
 opened again answers while the embedder is down; a stale one cannot outlive a model change, the
 index's stamp is compared on every query. The answer's order travels as `ImagePart.score`, which

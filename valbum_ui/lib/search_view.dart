@@ -2089,13 +2089,14 @@ const double similarityStep = 0.01;
 const Duration cutDelay = Duration(milliseconds: 400);
 
 /// The range the slider of the cut of [kind] offers (issue #302): where the
-/// similarities of that kind lie. A text and a photo are far apart — the
-/// cosine of a text to a picture rarely exceeds 0.4, while two pictures of
-/// one scene come near 1 and two unrelated ones are seldom below 0.3.
+/// similarities of that kind lie. Two unrelated pictures are seldom below
+/// 0.3, two of one scene come near 1. A text's score blends the photo's
+/// picture and its words and reaches up to 1 as well: on the author's
+/// library a reasonable match lies above 0.7, so its slider must go there.
 (double, double) similarityRange(SearchRankKind kind) => switch (kind) {
       SearchRankKind.photo => (0.2, 1.0),
       // Above 0, which is no cut but the space's.
-      _ => (0.01, 0.5),
+      _ => (0.01, 1.0),
     };
 
 /// After how long a search on its way says how long it has taken (issue

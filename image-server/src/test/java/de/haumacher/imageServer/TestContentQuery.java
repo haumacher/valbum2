@@ -65,18 +65,26 @@ import junit.framework.TestCase;
  * search that cannot be answered says why, and a saved search stores the text.
  *
  * <p>
- * The library is made of vectors written for the test, without an embedder: each photograph's
- * cosine to the query "sunset" (the first axis) falls with its number, A's first (0 to 119), then
- * B's (120 to 159), and the four last of B fall below {@link ContentSearch#THRESHOLD}. In A, the
+ * The library is made of vectors written for the test, without an embedder, derived from the
+ * built-in cuts so that what follows holds whatever they are: each photograph's cosine to the query
+ * "sunset" (the first axis) falls with its number, A's first (0 to 119), then B's (120 to 159), and
+ * the four last of B fall below {@link ContentSearch#THRESHOLD}, everything else lies above it. The
+ * vectors lie on a cone around the first axis (their angle to it grows slowly with the number, see
+ * {@link #polar(int)}), turning around it with the number (see {@link #azimuth(int)}). In A, the
  * twenty nearest are private, the next is in the trash, every fifth from 40 on is labelled
  * "flowers", and photograph <code>n</code> of the library was taken at <code>DATE + n</code>.
  * </p>
  *
  * <p>
  * "More like this" (package 5) compares with the picture of a photograph of this library: the
- * cosine of the pictures of photographs <code>a</code> and <code>b</code> is the product of their
- * parts along the first axis, so that it falls with the number as well, and those up to
- * <code>b009</code> are like <code>a000</code> above {@link ContentSearch#SIMILAR_THRESHOLD}.
+ * further apart their numbers, the further the pictures of two photographs turn apart around the
+ * first axis, so that their cosine falls with the distance of their numbers, and those up to
+ * <code>b009</code> are like <code>a000</code> above {@link ContentSearch#SIMILAR_THRESHOLD}, the
+ * others below it. That needs the cone to be wide enough: two photographs above the cut of a text
+ * search must be able to lie further apart than the cut of "More like this", which holds for a
+ * {@link ContentSearch#THRESHOLD} up to about <code>0.76</code> (with a
+ * {@link ContentSearch#SIMILAR_THRESHOLD} of <code>0.3</code>); above, the fixture refuses to be
+ * built.
  * </p>
  */
 @SuppressWarnings("javadoc")
@@ -104,8 +112,42 @@ public class TestContentQuery extends TestCase {
 	/** A query whose vector is orthogonal to every photograph's. */
 	private static final String UNRELATED = "unrelated";
 
-	/** Every photograph above the cut: those up to 155 of the library, less the trash. */
-	private static final int ABOVE = 156 - 1;
+	/** The number of the last photograph of the library above the built-in cut of a text search. */
+	private static final int LAST_ABOVE = 155;
+
+	/** Every photograph above the cut: those up to {@link #LAST_ABOVE} of the library, less the trash. */
+	private static final int ABOVE = LAST_ABOVE + 1 - 1;
+
+	/** The number of the last photograph of the library like <code>a000</code>: <code>b009</code>. */
+	private static final int LAST_LIKE_A0 = IN_A + 9;
+
+	/**
+	 * The built-in cut of a text search as the server answers it: as it is written, not as the float
+	 * holds it, see {@link ContentSearch#cut(double, double, float)}.
+	 */
+	private static final double CUT = Double.parseDouble(Float.toString(ContentSearch.THRESHOLD));
+
+	/** The built-in cut of "More like this" as the server answers it, see {@link #CUT}. */
+	private static final double SIMILAR_CUT = Double.parseDouble(Float.toString(ContentSearch.SIMILAR_THRESHOLD));
+
+	/** The angle to the first axis of a photograph scoring exactly {@link #CUT}. */
+	private static final double CUT_ANGLE = Math.acos(CUT);
+
+	/**
+	 * How much the angle to the first axis grows from one photograph to the next: the cone is narrow,
+	 * <code>a000</code> lies at nine tenths of {@link #CUT_ANGLE}, so that every photograph above the
+	 * cut is far enough from the first axis to turn away from another one.
+	 */
+	private static final double POLAR_STEP = CUT_ANGLE / 10 / (LAST_ABOVE + 0.5);
+
+	/** How far a photograph turns around the first axis from one number to the next, see {@link #turn()}. */
+	private static final double TURN = turn();
+
+	/** A cut of a text search above the built-in one: in the middle of A. */
+	private static final double HIGHER = between(77);
+
+	/** A cut of a text search below the built-in one: all but the very last photograph. */
+	private static final double LOWER = between(IN_A + IN_B - 2);
 
 	private static final File FIXTURE = new File("src/test/fixtures/search-content/index.json");
 
@@ -157,7 +199,7 @@ public class TestContentQuery extends TestCase {
 				assertTrue("Nearest first: " + names, images.get(n - 1).getScore() >= image.getScore());
 			}
 		}
-		assertEquals("Its own cosine.", Math.cos(Math.PI / 2 / (IN_A + IN_B + 2)), images.get(0).getScore(), 1e-4);
+		assertEquals("Its own cosine.", sunset(0), images.get(0).getScore(), 1e-4);
 		assertEquals("The query is the text, prefixed as a query.", Arrays.asList(SUNSET), _embedder._asked);
 
 		// A conventional search answers no score.
@@ -193,8 +235,8 @@ public class TestContentQuery extends TestCase {
 		List<String> all = names(found(search("/", content(SUNSET), ADMIN, "400")));
 		assertEquals("Everything above the cut, and nothing below it: " + all, ABOVE, all.size());
 		assertEquals("A page is the start of the next.", ten, all.subList(0, 10));
-		assertTrue(all.contains(B + "/" + name("b", 35)));
-		assertFalse("Below the cut.", all.contains(B + "/" + name("b", 36)));
+		assertTrue(all.contains(B + "/" + name("b", LAST_ABOVE - IN_A)));
+		assertFalse("Below the cut.", all.contains(B + "/" + name("b", LAST_ABOVE + 1 - IN_A)));
 		assertEquals("Never more than the most.", ABOVE, names(found(search("/", content(SUNSET), ADMIN, "99999"))).size());
 		assertEquals("Nonsense is a page.", ContentSearch.PAGE,
 			names(found(search("/", content(SUNSET), ADMIN, "many"))).size());
@@ -406,15 +448,48 @@ public class TestContentQuery extends TestCase {
 
 	/**
 	 * The cosine of the pictures of the photographs of the given numbers, see {@link #vector(int)}:
-	 * their second axes differ, so it is the product of their parts along the first.
+	 * the spherical law of cosines.
 	 */
 	private static double cosine(int a, int b) {
-		double step = Math.PI / 2 / (IN_A + IN_B + 2);
-		return Math.cos((a + 1) * step) * Math.cos((b + 1) * step);
+		return Math.cos(polar(a)) * Math.cos(polar(b))
+			+ Math.sin(polar(a)) * Math.sin(polar(b)) * Math.cos(azimuth(a) - azimuth(b));
+	}
+
+	/**
+	 * The turn from one number to the next that puts the cut of "More like this" of <code>a000</code>
+	 * midway between {@link #LAST_LIKE_A0} and the one after; at most half a turn over the library, so
+	 * that the cosine to <code>a000</code> falls with the number.
+	 */
+	private static double turn() {
+		double low = 0;
+		double high = Math.PI / (IN_A + IN_B - 1);
+		if (midLike(high) > SIMILAR_CUT) {
+			throw new AssertionError("No fixture for a cut of a text search of " + CUT + " and of More like this of "
+				+ SIMILAR_CUT + ": the photographs above the first lie too close to each other.");
+		}
+		for (int n = 0; n < 100; n++) {
+			double middle = (low + high) / 2;
+			if (midLike(middle) > SIMILAR_CUT) {
+				low = middle;
+			} else {
+				high = middle;
+			}
+		}
+		return (low + high) / 2;
+	}
+
+	/** The cosine to <code>a000</code> midway between {@link #LAST_LIKE_A0} and the next, at the given turn. */
+	private static double midLike(double turn) {
+		return (like(LAST_LIKE_A0, turn) + like(LAST_LIKE_A0 + 1, turn)) / 2;
+	}
+
+	private static double like(int global, double turn) {
+		return Math.cos(polar(0)) * Math.cos(polar(global))
+			+ Math.sin(polar(0)) * Math.sin(polar(global)) * Math.cos(global * turn);
 	}
 
 	/** Every photograph "like" the first one of A for an editor: up to b009, less itself and the trash. */
-	private static final int LIKE_A0 = 130 - 2;
+	private static final int LIKE_A0 = LAST_LIKE_A0 + 1 - 2;
 
 	public void testMoreLikeThisAnswersTheNearestFirstWithoutThePhotoItself() throws Exception {
 		library(SpaceStore.CONTENT_ON);
@@ -438,8 +513,8 @@ public class TestContentQuery extends TestCase {
 
 		List<String> all = names(found(search("/", similar(A + "/" + name("a", 0)), ADMIN, "400")));
 		assertEquals("Everything above its own cut: " + all, LIKE_A0, all.size());
-		assertTrue(all.contains(B + "/" + name("b", 9)));
-		assertFalse("Below the cut.", all.contains(B + "/" + name("b", 10)));
+		assertTrue(all.contains(B + "/" + name("b", LAST_LIKE_A0 - IN_A)));
+		assertFalse("Below the cut.", all.contains(B + "/" + name("b", LAST_LIKE_A0 + 1 - IN_A)));
 		assertEquals("A page is the start of the next.", names, all.subList(0, ContentSearch.PAGE));
 	}
 
@@ -454,7 +529,7 @@ public class TestContentQuery extends TestCase {
 
 		List<String> inB = names(found(search("/" + B + "/", similar(A + "/" + name("a", 0)), ADMIN, null)));
 		List<String> below = new ArrayList<>();
-		for (int n = 0; n < 10; n++) {
+		for (int n = 0; n <= LAST_LIKE_A0 - IN_A; n++) {
 			below.add(name("b", n));
 		}
 		assertEquals("Only what lies below the folder searched, though the photo lies elsewhere.", below, inB);
@@ -665,7 +740,12 @@ public class TestContentQuery extends TestCase {
 
 	/** The score of the photograph of the given number for {@link #SUNSET}, see {@link #vector(int)}. */
 	private static double sunset(int global) {
-		return Math.cos((global + 1) * (Math.PI / 2 / (IN_A + IN_B + 2)));
+		return Math.cos(polar(global));
+	}
+
+	/** A cut of a text search midway between the scores of the photograph of the given number and the next. */
+	private static double between(int global) {
+		return (sunset(global) + sunset(global + 1)) / 2;
 	}
 
 	/** How many photographs an editor is answered for {@link #SUNSET} at the given cut: the trash never. */
@@ -685,16 +765,16 @@ public class TestContentQuery extends TestCase {
 
 	public void testTheCutOfAQueryOverridesTheDefault() throws Exception {
 		library(SpaceStore.CONTENT_ON);
-		List<ImagePart> higher = images(found(search("/", content(SUNSET, 0.55), ADMIN, "400")));
-		assertEquals("Fewer than at the default.", sunsetAbove(0.55), higher.size());
+		List<ImagePart> higher = images(found(search("/", content(SUNSET, HIGHER), ADMIN, "400")));
+		assertEquals("Fewer than at the default.", sunsetAbove(HIGHER), higher.size());
 		assertTrue(higher.size() < ABOVE);
 		for (ImagePart image : higher) {
-			assertTrue("At least the cut: " + image.getName(), image.getScore() >= 0.55 - 1e-6);
+			assertTrue("At least the cut: " + image.getName(), image.getScore() >= HIGHER - 1e-6);
 		}
-		List<String> lower = names(found(search("/", content(SUNSET, 0.01), ADMIN, "400")));
-		assertEquals("More than at the default.", sunsetAbove(0.01), lower.size());
+		List<String> lower = names(found(search("/", content(SUNSET, LOWER), ADMIN, "400")));
+		assertEquals("More than at the default.", sunsetAbove(LOWER), lower.size());
 		assertTrue(lower.size() > ABOVE);
-		assertTrue("What the default cut leaves out.", lower.contains(B + "/" + name("b", 36)));
+		assertTrue("What the default cut leaves out.", lower.contains(B + "/" + name("b", LAST_ABOVE + 1 - IN_A)));
 
 		List<ImagePart> like = images(found(search("/",
 			query(similarTo(A + "/" + name("a", 0)).setMinSimilarity(0.9)), ADMIN, "400")));
@@ -710,18 +790,20 @@ public class TestContentQuery extends TestCase {
 		assertEquals("Above one is one: nothing is that alike.", 0,
 			names(found(search("/", content(SUNSET, 5), ADMIN, "400"))).size());
 		assertEquals("A negative cut is none.", ABOVE, names(found(search("/", content(SUNSET, -0.3), ADMIN, "400"))).size());
-		assertEquals("Not a number is none.", 0.05, ContentSearch.cut(Double.NaN, 0, ContentSearch.THRESHOLD), 1e-12);
+		assertEquals("Not a number is none.", CUT, ContentSearch.cut(Double.NaN, 0, ContentSearch.THRESHOLD), 0.0);
+		assertEquals("The built-in cut as it is written, not as the float holds it.", 0.7,
+			ContentSearch.cut(0, 0, 0.7f), 0.0);
 		assertEquals("None is the default.", ABOVE, names(found(search("/", content(SUNSET, 0), ADMIN, "400"))).size());
 	}
 
 	public void testAQueryWithoutACutIsAnsweredWithTheCutOfTheSpace() throws Exception {
-		library(SpaceStore.CONTENT_ON, new SpaceStore.Thresholds(0.55, 0.9));
+		library(SpaceStore.CONTENT_ON, new SpaceStore.Thresholds(HIGHER, 0.9));
 		SearchOptions options = options("/");
-		assertEquals(0.55, options.getContentThreshold());
+		assertEquals(HIGHER, options.getContentThreshold());
 		assertEquals(0.9, options.getSimilarThreshold());
-		assertEquals("The space's cut.", sunsetAbove(0.55), names(found(search("/", content(SUNSET), ADMIN, "400"))).size());
-		assertEquals("The query's cut comes first.", sunsetAbove(0.01),
-			names(found(search("/", content(SUNSET, 0.01), ADMIN, "400"))).size());
+		assertEquals("The space's cut.", sunsetAbove(HIGHER), names(found(search("/", content(SUNSET), ADMIN, "400"))).size());
+		assertEquals("The query's cut comes first.", sunsetAbove(LOWER),
+			names(found(search("/", content(SUNSET, LOWER), ADMIN, "400"))).size());
 		for (ImagePart image : images(found(search("/", similar(A + "/" + name("a", 0)), ADMIN, "400")))) {
 			assertTrue("The space's cut of More like this: " + image.getName(), image.getScore() >= 0.9 - 1e-6);
 		}
@@ -766,8 +848,8 @@ public class TestContentQuery extends TestCase {
 	public void testASpaceWithoutACutAnswersTheBuiltInOne() throws Exception {
 		library(SpaceStore.CONTENT_ON);
 		SearchOptions options = options("/");
-		assertEquals(0.05, options.getContentThreshold(), 1e-12);
-		assertEquals(0.3, options.getSimilarThreshold(), 1e-12);
+		assertEquals(CUT, options.getContentThreshold(), 1e-12);
+		assertEquals(SIMILAR_CUT, options.getSimilarThreshold(), 1e-12);
 		assertEquals(ABOVE, names(found(search("/", content(SUNSET), ADMIN, "400"))).size());
 		assertEquals(LIKE_A0, names(found(search("/", similar(A + "/" + name("a", 0)), ADMIN, "400"))).size());
 	}
@@ -785,16 +867,16 @@ public class TestContentQuery extends TestCase {
 	public void testASavedSearchStoresItsCutAndAnswersWithIt() throws Exception {
 		library(SpaceStore.CONTENT_ON);
 		FakeResponse created = put("/Lib/Sunset/", write(AlbumInfo.create().setKind(AlbumKind.SEARCH).setTitle("Sunset")
-			.setQuery(content(SUNSET, 0.55))), ADMIN);
+			.setQuery(content(SUNSET, HIGHER))), ADMIN);
 		assertEquals(created.body(), HttpServletResponse.SC_OK, created.status());
 		SearchQuery stored = stored("Lib/Sunset").getQuery();
 		assertEquals("Stated: an older build refuses it rather than answering its own cut.", PhotoSearch.VERSION,
 			stored.getVersion());
-		assertEquals(0.55, PhotoSearch.content(stored).minSimilarity());
+		assertEquals(HIGHER, PhotoSearch.content(stored).minSimilarity());
 
 		AlbumInfo opened = found(get("/Lib/Sunset/", ADMIN));
-		assertEquals("Answered with its cut.", sunsetAbove(0.55), names(opened).size());
-		assertEquals("The answer says its cut.", 0.55, PhotoSearch.content(opened.getQuery()).minSimilarity());
+		assertEquals("Answered with its cut.", sunsetAbove(HIGHER), names(opened).size());
+		assertEquals("The answer says its cut.", HIGHER, PhotoSearch.content(opened.getQuery()).minSimilarity());
 
 		String written = write(stored("Lib/Sunset"));
 		assertEquals("Read, written, read: the same.", written,
@@ -920,13 +1002,29 @@ public class TestContentQuery extends TestCase {
 		return Integer.parseInt(name.substring(1, 4));
 	}
 
-	/** The vector of the photograph of the given number: its cosine to the first axis falls with it. */
+	/**
+	 * The vector of the photograph of the given number: its cosine to the first axis falls with it,
+	 * and it turns around the first axis with it, see {@link TestContentQuery}.
+	 */
 	private static float[] vector(int global) {
 		float[] result = new float[Embedder.DIMENSION];
-		double angle = (global + 1) * (Math.PI / 2 / (IN_A + IN_B + 2));
-		result[0] = (float) Math.cos(angle);
-		result[1 + global % 255] = (float) Math.sin(angle);
+		result[0] = (float) Math.cos(polar(global));
+		result[1] = (float) (Math.sin(polar(global)) * Math.cos(azimuth(global)));
+		result[2] = (float) (Math.sin(polar(global)) * Math.sin(azimuth(global)));
 		return result;
+	}
+
+	/**
+	 * The angle of the photograph of the given number to the first axis: {@link #CUT_ANGLE} midway
+	 * between {@link #LAST_ABOVE} and the next.
+	 */
+	private static double polar(int global) {
+		return CUT_ANGLE + (global - LAST_ABOVE - 0.5) * POLAR_STEP;
+	}
+
+	/** How far the photograph of the given number is turned around the first axis. */
+	private static double azimuth(int global) {
+		return global * TURN;
 	}
 
 	private static float[] axis(int n) {
