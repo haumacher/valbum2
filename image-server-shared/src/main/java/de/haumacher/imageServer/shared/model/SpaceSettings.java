@@ -72,6 +72,9 @@ public class SpaceSettings extends de.haumacher.msgbuf.data.AbstractDataObject {
 	/** @see #getThresholds() */
 	private static final String THRESHOLDS__PROP = "thresholds";
 
+	/** @see #getBurst() */
+	private static final String BURST__PROP = "burst";
+
 	private String _name = "";
 
 	private de.haumacher.imageServer.shared.model.AnonymousAccess _anonymous = de.haumacher.imageServer.shared.model.AnonymousAccess.NONE;
@@ -99,6 +102,8 @@ public class SpaceSettings extends de.haumacher.msgbuf.data.AbstractDataObject {
 	private String _contentUnavailable = "";
 
 	private de.haumacher.imageServer.shared.model.ContentThresholds _thresholds = null;
+
+	private de.haumacher.imageServer.shared.model.BurstThreshold _burst = null;
 
 	/**
 	 * Creates a {@link SpaceSettings} instance.
@@ -413,6 +418,35 @@ public class SpaceSettings extends de.haumacher.msgbuf.data.AbstractDataObject {
 		return _thresholds != null;
 	}
 
+	/**
+	 * The space's cut of its bursts (issue #315), which the stacks of its albums
+	 * ({@link AlbumInfo#getStacks()}) are computed with. Always answered. On a write, absent (what an
+	 * app that does not know it sends) leaves the space's cut as it is.
+	 */
+	public final de.haumacher.imageServer.shared.model.BurstThreshold getBurst() {
+		return _burst;
+	}
+
+	/**
+	 * @see #getBurst()
+	 */
+	public de.haumacher.imageServer.shared.model.SpaceSettings setBurst(de.haumacher.imageServer.shared.model.BurstThreshold value) {
+		internalSetBurst(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #getBurst()} without chain call utility. */
+	protected final void internalSetBurst(de.haumacher.imageServer.shared.model.BurstThreshold value) {
+		_burst = value;
+	}
+
+	/**
+	 * Checks, whether {@link #getBurst()} has a value.
+	 */
+	public final boolean hasBurst() {
+		return _burst != null;
+	}
+
 	/** Reads a new instance from the given reader. */
 	public static de.haumacher.imageServer.shared.model.SpaceSettings readSpaceSettings(de.haumacher.msgbuf.json.JsonReader in) throws java.io.IOException {
 		de.haumacher.imageServer.shared.model.SpaceSettings result = new de.haumacher.imageServer.shared.model.SpaceSettings();
@@ -458,6 +492,10 @@ public class SpaceSettings extends de.haumacher.msgbuf.data.AbstractDataObject {
 			out.name(THRESHOLDS__PROP);
 			getThresholds().writeTo(out);
 		}
+		if (hasBurst()) {
+			out.name(BURST__PROP);
+			getBurst().writeTo(out);
+		}
 	}
 
 	@Override
@@ -477,6 +515,7 @@ public class SpaceSettings extends de.haumacher.msgbuf.data.AbstractDataObject {
 			case CONTENT__PROP: setContent(de.haumacher.imageServer.shared.model.ContentSwitch.readContentSwitch(in)); break;
 			case CONTENT_UNAVAILABLE__PROP: setContentUnavailable(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 			case THRESHOLDS__PROP: setThresholds(de.haumacher.imageServer.shared.model.ContentThresholds.readContentThresholds(in)); break;
+			case BURST__PROP: setBurst(de.haumacher.imageServer.shared.model.BurstThreshold.readBurstThreshold(in)); break;
 			default: super.readField(in, field);
 		}
 	}

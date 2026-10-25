@@ -4654,6 +4654,15 @@ class AppLocalizationsDe extends AppLocalizations {
   }
 
   @override
+  String get spaceSettingsBurstThreshold =>
+      'Niedrigster Ähnlichkeitswert einer Bildserie';
+
+  @override
+  String spaceSettingsBurstThresholdHelp(String score) {
+    return 'Eine Zahl zwischen 0,5 und 1: Fotos, die im Abstand von wenigen Minuten aufgenommen wurden, werden zu einer Bildserie zusammengefasst, sofern sie mindestens diesen Ähnlichkeitsgrad aufweisen. Je höher der Wert, desto weniger Fotos werden zusammengefasst. Leer lassen für den integrierten $score.';
+  }
+
+  @override
   String get spaceSettingsThresholdInvalid =>
       'Geben Sie eine Zahl zwischen 0 und 1 ein oder lassen Sie das Feld leer.';
 

@@ -359,6 +359,11 @@ public class TestSpaceSettings extends TestCase {
 			settings.getThresholds().getDefaultText(), 1e-12);
 		assertEquals(Double.parseDouble(Float.toString(ContentSearch.SIMILAR_THRESHOLD)),
 			settings.getThresholds().getDefaultSimilar(), 1e-12);
+		assertEquals(0.0, config.getBurstThreshold());
+		assertNotNull("Always answered.", settings.getBurst());
+		assertEquals(0.0, settings.getBurst().getCut());
+		assertEquals("The built-in cut of the bursts, as it is written.",
+			Double.parseDouble(Float.toString(ContentSearch.BURST_THRESHOLD)), settings.getBurst().getDefaultCut(), 1e-12);
 
 		FakeResponse saved = save(SharingFixture.ALICE, settings);
 		assertEquals(saved.body(), 200, saved.status());
@@ -397,6 +402,66 @@ public class TestSpaceSettings extends TestCase {
 		assertEquals(0.0, settings(save(SharingFixture.ALICE, cleared)).getThresholds().getText());
 		written = new String(Files.readAllBytes(SpaceStore.file(_root)), StandardCharsets.UTF_8);
 		assertFalse(written, written.contains("Threshold"));
+	}
+
+	// --- The cut of the bursts (issue #315). ---
+
+	public void testTheBurstCutIsStoredReadAgainAndTakesEffect() throws Exception {
+		SpaceSettings settings = read(SharingFixture.ALICE);
+		settings.getBurst().setCut(0.97);
+		SpaceSettings answered = settings(save(SharingFixture.ALICE, settings));
+		assertEquals(0.97, answered.getBurst().getCut());
+		String written = new String(Files.readAllBytes(SpaceStore.file(_root)), StandardCharsets.UTF_8);
+		assertTrue(written, written.contains("\"burstThreshold\":0.97"));
+		assertEquals(0.97, SpaceStore.load(_root, SPACE).getBurstThreshold());
+		assertEquals("In effect without a restart.", 0.97, servlet().dataOf(SPACE).config().getBurstThreshold());
+		assertEquals("Read, written, read: the same.", write(answered), write(read(SharingFixture.ALICE)));
+		byte[] before = Files.readAllBytes(SpaceStore.file(_root));
+		save(SharingFixture.ALICE, read(SharingFixture.ALICE));
+		assertTrue("And the file stays as it is.", Arrays.equals(before, Files.readAllBytes(SpaceStore.file(_root))));
+
+		// An app that does not know the cut sends none: the space keeps it.
+		String older = write(read(SharingFixture.ALICE).setName("Renamed").setBurst(null).setThresholds(null));
+		assertFalse(older, older.contains("burst"));
+		FakeResponse kept = post(SharingFixture.ALICE, older);
+		assertEquals(0.97, settings(kept).getBurst().getCut());
+		assertEquals("Renamed", settings(kept).getName());
+
+		// Empty takes the space's cut away: the built-in one holds, and the key is gone.
+		SpaceSettings cleared = read(SharingFixture.ALICE);
+		cleared.getBurst().setCut(0);
+		assertEquals(0.0, settings(save(SharingFixture.ALICE, cleared)).getBurst().getCut());
+		written = new String(Files.readAllBytes(SpaceStore.file(_root)), StandardCharsets.UTF_8);
+		assertFalse(written, written.contains("burst"));
+	}
+
+	public void testABurstCutBelowHalfOrAboveOneIsRefused() throws Exception {
+		byte[] before = Files.readAllBytes(SpaceStore.file(_root));
+		for (double cut : new double[] { 0.3, 1.5 }) {
+			SpaceSettings wrong = read(SharingFixture.ALICE);
+			wrong.getBurst().setCut(cut);
+			assertRefused(wrong, SpaceConfiguration.BURST_RANGE, before);
+		}
+		SpaceSettings half = read(SharingFixture.ALICE);
+		half.getBurst().setCut(0.5);
+		assertEquals("The lowest cut a space may state.", 0.5, settings(save(SharingFixture.ALICE, half)).getBurst().getCut());
+	}
+
+	public void testABurstCutInTheFileThatIsNoneOfASpaceIsReadAsNoneAndKept() throws Exception {
+		spaceJson("{\"version\":1,\"name\":\"The Family\",\"anonymous\":\"none\",\"faces\":\"off\","
+			+ "\"burstThreshold\":\"strict\"}");
+		assertEquals(0.0, SpaceStore.load(_root, SPACE).getBurstThreshold());
+		FakeResponse saved = post(SharingFixture.ALICE, write(read(SharingFixture.ALICE).setName("Renamed").setBurst(null)));
+		assertEquals(saved.body(), 200, saved.status());
+		String written = new String(Files.readAllBytes(SpaceStore.file(_root)), StandardCharsets.UTF_8);
+		assertTrue("Kept as it is written: " + written, written.contains("\"burstThreshold\":\"strict\""));
+
+		SpaceSettings set = read(SharingFixture.ALICE);
+		set.getBurst().setCut(0.96);
+		assertEquals(200, save(SharingFixture.ALICE, set).status());
+		written = new String(Files.readAllBytes(SpaceStore.file(_root)), StandardCharsets.UTF_8);
+		assertFalse(written, written.contains("strict"));
+		assertTrue(written, written.contains("\"burstThreshold\":0.96"));
 	}
 
 	public void testACutOutsideZeroToOneIsRefused() throws Exception {

@@ -13,6 +13,7 @@ import de.haumacher.imageServer.cache.ResourceCache;
 import de.haumacher.imageServer.content.ContentSearch;
 import de.haumacher.imageServer.faces.FaceDetection;
 import de.haumacher.imageServer.shared.model.AnonymousAccess;
+import de.haumacher.imageServer.shared.model.BurstThreshold;
 import de.haumacher.imageServer.shared.model.ContentSwitch;
 import de.haumacher.imageServer.shared.model.ContentThresholds;
 import de.haumacher.imageServer.shared.model.SpaceSettings;
@@ -90,6 +91,15 @@ final class SpaceConfiguration {
 	static final String THRESHOLD_RANGE =
 		"A cut of the similarity lies between 0 and 1; leave it empty for the built-in cut.";
 
+	/**
+	 * What a cut of the bursts outside {@link ContentSearch#MIN_BURST_THRESHOLD} to 1 is refused
+	 * with, see issue #315.
+	 */
+	static final String BURST_RANGE = "A cut of the bursts lies between " + ContentSearch.MIN_BURST_THRESHOLD
+		+ " and 1: below " + ContentSearch.MIN_BURST_THRESHOLD
+		+ ", photos that merely show the same kind of scene would be stacked as one moment. "
+		+ "Leave it empty for the built-in cut.";
+
 	/** Why the inbox stays where it is while it holds something. */
 	static final String INBOX_HOLDS_PHOTOS = "The inbox holds photos: another inbox would turn them into an "
 		+ "ordinary album that every member sees. Sort them into albums first.";
@@ -156,7 +166,7 @@ final class SpaceConfiguration {
 					: SpaceStore.ANONYMOUS_NONE,
 				request.isFaces() ? SpaceStore.FACES_ON : SpaceStore.FACES_OFF, request.getMapUrl(),
 				request.getTimeZone(), request.getInbox(), content(request.getContent()),
-				thresholds(request.getThresholds()));
+				thresholds(request.getThresholds()), burst(request.getBurst()));
 			// Read back as the start reads it, so that what everybody sees from now on is what the
 			// next start sees.
 			stored = SpaceStore.load(_root, _segment);
@@ -188,6 +198,14 @@ final class SpaceConfiguration {
 	 */
 	private static SpaceStore.Thresholds thresholds(ContentThresholds value) {
 		return value == null ? null : new SpaceStore.Thresholds(value.getText(), value.getSimilar());
+	}
+
+	/**
+	 * What the given cut of the bursts is stored as (issue #315), <code>null</code> to keep what the
+	 * space says: an app that does not know it sends none.
+	 */
+	private static Double burst(BurstThreshold value) {
+		return value == null ? null : Double.valueOf(value.getCut());
 	}
 
 	/**
@@ -238,7 +256,10 @@ final class SpaceConfiguration {
 				.setText(config.getThresholds().text())
 				.setSimilar(config.getThresholds().similar())
 				.setDefaultText(ContentSearch.cut(0, 0, ContentSearch.THRESHOLD))
-				.setDefaultSimilar(ContentSearch.cut(0, 0, ContentSearch.SIMILAR_THRESHOLD)));
+				.setDefaultSimilar(ContentSearch.cut(0, 0, ContentSearch.SIMILAR_THRESHOLD)))
+			.setBurst(BurstThreshold.create()
+				.setCut(config.getBurstThreshold())
+				.setDefaultCut(ContentSearch.cut(0, 0, ContentSearch.BURST_THRESHOLD)));
 	}
 
 	/** What is wrong with the given settings, one sentence per value; empty where nothing is. */
@@ -263,6 +284,10 @@ final class SpaceConfiguration {
 		ContentThresholds thresholds = request.getThresholds();
 		if (thresholds != null && !(cut(thresholds.getText()) && cut(thresholds.getSimilar()))) {
 			result.add(THRESHOLD_RANGE);
+		}
+		BurstThreshold burst = request.getBurst();
+		if (burst != null && burst.getCut() != 0 && !SpaceStore.validBurst(burst.getCut())) {
+			result.add(BURST_RANGE);
 		}
 		String inbox = request.getInbox() == null ? "" : request.getInbox().trim();
 		if (!inbox.equals(current.getInbox())) {

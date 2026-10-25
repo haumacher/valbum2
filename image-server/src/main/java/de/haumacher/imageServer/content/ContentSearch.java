@@ -66,12 +66,24 @@ public final class ContentSearch {
 	/**
 	 * The cosine of their pictures' vectors at or above which two photographs taken one after the
 	 * other belong to one burst of their album (a {@link de.haumacher.imageServer.shared.model.PhotoStack}),
-	 * if they were also taken at most {@link #BURST_GAP} apart. High on purpose: a stack hides
-	 * photographs behind one tile, so a cut too low stacks what the author wants to see side by
-	 * side, while one too high merely shows a burst as single tiles, as before. <b>Not calibrated</b>:
-	 * a first guess, set before stacks were tried on a real library.
+	 * if they were also taken at most {@link #BURST_GAP} apart, where the space states no cut of its
+	 * own: an administrator sets one in the space settings (<code>burstThreshold</code> of
+	 * <code>space.json</code>, issue #315), between {@link #MIN_BURST_THRESHOLD} and <code>1</code>.
+	 * High on purpose: a stack hides photographs behind one tile, so a cut too low stacks what the
+	 * author wants to see side by side, while one too high merely shows a burst as single tiles, as
+	 * before. <b>Not calibrated</b>: the first guess of <code>0.9</code> proved too low on the
+	 * author's library ("it groups photos that are not the same", issue #315); <code>0.95</code> is
+	 * an interim default until the author has calibrated it with the setting.
 	 */
-	public static final float BURST_THRESHOLD = 0.9f;
+	public static final float BURST_THRESHOLD = 0.95f;
+
+	/**
+	 * The lowest cut of the bursts a space may state, see {@link #BURST_THRESHOLD}: below it, shots
+	 * that merely show the same kind of scene &mdash; no longer the same moment &mdash; would be
+	 * hidden behind one tile (the overview of the same scenery already links those at
+	 * {@link #SCENERY_THRESHOLD}).
+	 */
+	public static final double MIN_BURST_THRESHOLD = 0.5;
 
 	/**
 	 * How far apart in time two photographs taken one after the other may be and still belong to

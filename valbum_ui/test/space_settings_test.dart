@@ -48,6 +48,7 @@ String settingsOf({
   String? content,
   String contentUnavailable = "",
   Map<String, double>? thresholds,
+  Map<String, double>? burst,
 }) =>
     jsonEncode({
       "name": name,
@@ -72,6 +73,13 @@ String settingsOf({
           "defaultText": 0.05,
           "defaultSimilar": 0.3,
           ...thresholds,
+        },
+      // A server before issue #315 answers no cut of the bursts.
+      if (burst != null)
+        "burst": {
+          "cut": 0.0,
+          "defaultCut": 0.95,
+          ...burst,
         },
     });
 
@@ -424,6 +432,130 @@ void main() {
       expect(SpaceSettingsScreenState.parseThreshold(""), 0);
       expect(SpaceSettingsScreenState.parseThreshold("-0.1"), isNull);
       expect(SpaceSettingsScreenState.parseThreshold("high"), isNull);
+    });
+  });
+
+  group('the cut of the bursts (issue #315)', () {
+    testWidgets('is offered where the content search is on, with the built-in '
+        'cut in its help', (tester) async {
+      await pumpPage(
+          tester,
+          MockClient((request) async => json(settingsOf(
+              content: "OFF", thresholds: const {}, burst: const {}))));
+      expect(find.byKey(spaceSettingsBurstThresholdKey), findsNothing);
+
+      await tester.tap(find.byKey(spaceSettingsContentKey));
+      await tester.pumpAndSettle();
+      expect(find.byKey(spaceSettingsBurstThresholdKey), findsOneWidget);
+      expect(find.text(testL10n.spaceSettingsBurstThresholdHelp("0.95")),
+          findsOneWidget,
+          reason: "The built-in cut is what an empty field means.");
+    });
+
+    testWidgets('shows the space\'s and saves what was edited',
+        (tester) async {
+      var posts = <Map<String, dynamic>>[];
+      await pumpPage(
+        tester,
+        MockClient((request) async {
+          if (request.method == "POST") {
+            var sent = jsonDecode(request.body) as Map<String, dynamic>;
+            posts.add(sent);
+            var burst = sent["burst"] as Map<String, dynamic>;
+            return json(settingsOf(
+                content: "ON",
+                thresholds: const {},
+                burst: {"cut": (burst["cut"] as num).toDouble()}));
+          }
+          return json(settingsOf(
+              content: "ON", thresholds: const {}, burst: {"cut": 0.97}));
+        }),
+      );
+      String field() => tester
+          .widget<TextField>(find.byKey(spaceSettingsBurstThresholdKey))
+          .controller!
+          .text;
+      expect(field(), "0.97");
+
+      await tester.enterText(
+          find.byKey(spaceSettingsBurstThresholdKey), "0,98");
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(spaceSettingsSaveKey));
+      await tester.pumpAndSettle();
+      expect(posts, hasLength(1));
+      expect(posts.single["burst"]["cut"], 0.98);
+      expect(field(), "0.98");
+
+      await tester.enterText(find.byKey(spaceSettingsBurstThresholdKey), "");
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(spaceSettingsSaveKey));
+      await tester.pumpAndSettle();
+      expect(posts.last["burst"]["cut"], 0,
+          reason: "Empty takes the space's cut away.");
+      expect(field(), "");
+    });
+
+    testWidgets('a cut the server refuses is said in its words',
+        (tester) async {
+      const reason = "A cut of the bursts lies between 0.5 and 1: below 0.5, "
+          "photos that merely show the same kind of scene would be stacked "
+          "as one moment. Leave it empty for the built-in cut.";
+      var posts = <Map<String, dynamic>>[];
+      await pumpPage(
+        tester,
+        MockClient((request) async {
+          if (request.method == "POST") {
+            posts.add(jsonDecode(request.body) as Map<String, dynamic>);
+            return json('["ErrorInfo", {"message": ${jsonEncode(reason)}}]',
+                status: 400);
+          }
+          return json(settingsOf(
+              content: "ON", thresholds: const {}, burst: const {}));
+        }),
+      );
+      await tester.enterText(
+          find.byKey(spaceSettingsBurstThresholdKey), "0.3");
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(spaceSettingsSaveKey));
+      await tester.pumpAndSettle();
+      expect(posts.single["burst"]["cut"], 0.3,
+          reason: "The lowest cut is the server's to say.");
+      expect(find.text(testL10n.spaceSettingsRefused(reason)), findsOneWidget);
+      expect(
+          tester
+              .widget<TextField>(find.byKey(spaceSettingsBurstThresholdKey))
+              .controller!
+              .text,
+          "0.3",
+          reason: "What was typed stays, so that it can be corrected.");
+
+      // Above 1 is no cut at all: said at once, and not sent.
+      await tester.enterText(
+          find.byKey(spaceSettingsBurstThresholdKey), "1.5");
+      await tester.pumpAndSettle();
+      expect(find.text(testL10n.spaceSettingsThresholdInvalid), findsOneWidget);
+      await tester.tap(find.byKey(spaceSettingsSaveKey));
+      await tester.pumpAndSettle();
+      expect(posts, hasLength(1));
+    });
+
+    testWidgets('a server without it is shown none, and sent none',
+        (tester) async {
+      var posts = <Map<String, dynamic>>[];
+      await pumpPage(
+        tester,
+        MockClient((request) async {
+          if (request.method == "POST") {
+            posts.add(jsonDecode(request.body) as Map<String, dynamic>);
+          }
+          return json(settingsOf(content: "ON", thresholds: const {}));
+        }),
+      );
+      expect(find.byKey(spaceSettingsBurstThresholdKey), findsNothing);
+      await tester.tap(find.byKey(spaceSettingsSaveKey));
+      await tester.pumpAndSettle();
+      expect(posts.single.containsKey("burst"), isFalse,
+          reason: "The space keeps what it says.");
     });
   });
 

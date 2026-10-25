@@ -7077,6 +7077,18 @@ abstract class AppLocalizations {
   /// **'A number between 0 and 1: the higher, the fewer and the more similar the photos found. Empty for the built-in {score}. A search can set its own with the slider.'**
   String spaceSettingsThresholdHelp(String score);
 
+  /// Field of the space settings, shown while the content search is on: the similarity at or above which photos taken within a few minutes are stacked as one burst in their album (issue #315)
+  ///
+  /// In en, this message translates to:
+  /// **'Lowest similarity of a burst'**
+  String get spaceSettingsBurstThreshold;
+
+  /// Helper text of the burst similarity field of the space settings (issue #315)
+  ///
+  /// In en, this message translates to:
+  /// **'A number between 0.5 and 1: photos taken within a few minutes of each other are stacked as one burst where they are at least this similar. The higher, the fewer photos stacked. Empty for the built-in {score}.'**
+  String spaceSettingsBurstThresholdHelp(String score);
+
   /// Error of a similarity field of the space settings that holds no number between 0 and 1 (issue #302)
   ///
   /// In en, this message translates to:

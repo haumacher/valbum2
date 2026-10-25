@@ -8240,7 +8240,10 @@ public class ImageServlet extends HttpServlet {
 			Resource stored = lookupOrSkip(path);
 			Set<String> references = stored instanceof AlbumInfo ? PhotoCollections.referenceNames((AlbumInfo) stored)
 				: Collections.<String> emptySet();
-			album.setStacks(Stacks.of(album, path.toFile(), references));
+			// The space's cut of the bursts as it is now (issue #315): no stack is kept, so a cut
+			// changed in the settings holds from this read on.
+			float cut = (float) ContentSearch.cut(0, _config.getBurstThreshold(), ContentSearch.BURST_THRESHOLD);
+			album.setStacks(Stacks.of(album, path.toFile(), references, cut));
 		}
 		return answer;
 	}
