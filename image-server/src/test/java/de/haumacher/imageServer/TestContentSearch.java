@@ -449,8 +449,22 @@ public class TestContentSearch extends TestCase {
 		assertEquals(sentTexts, _embedder._texts.size());
 	}
 
+	/** How many photos the INFO lines say were described in the given album, over all its lines. */
+	private static int describedIn(List<String> info, String album) {
+		java.util.regex.Pattern pattern = java.util.regex.Pattern
+			.compile("described (\\d+) photos? in '" + java.util.regex.Pattern.quote(album) + "' in ");
+		int result = 0;
+		for (String line : info) {
+			java.util.regex.Matcher matcher = pattern.matcher(line);
+			if (matcher.find()) {
+				result += Integer.parseInt(matcher.group(1));
+			}
+		}
+		return result;
+	}
+
 	/**
-	 * The log says what the embedder did (issue #305): one INFO line per album once its photos are
+	 * The log says what the embedder did (issue #305): an INFO line per album as its photos are
 	 * described, with how many, how long and how far the space has got, and one FINE line per photo.
 	 */
 	public void testTheLogSaysWhatWasDescribed() throws Exception {
@@ -491,23 +505,17 @@ public class TestContentSearch extends TestCase {
 				(record.getLevel() == java.util.logging.Level.INFO ? info : fine).add(record.getMessage());
 			}
 		}
-		String album = null;
-		String other = null;
+		// Per album, its lines add up to its photos: on a lane (issue #311) a photo whose preview comes
+		// later (the poster of a video, made by the video work the lane does not wait for) is
+		// described in a batch, and a line, of its own.
+		assertEquals("The new album's photos: " + info, 3, describedIn(info, NEW));
+		assertEquals("The old album's photos: " + info, 2, describedIn(info, OLD));
 		for (String line : info) {
-			if (line.contains("described 3 photos in '" + NEW + "' in ")) {
-				album = line;
-			}
-			if (line.contains("described 2 photos in '" + OLD + "' in ")) {
-				other = line;
-			}
+			// Of the albums looked at so far: on a lane the newer one may be described before the older
+			// one is looked at.
+			assertTrue(line, line.matches(".* each\\); [0-5] of [1-5] described\\."));
 		}
-		assertNotNull("One line for the new album: " + info, album);
-		assertNotNull("And one for the old one: " + info, other);
-		// Of the albums looked at so far: on a lane (issue #311) the newer one may be described before
-		// the older one is looked at.
-		assertTrue(album, album.matches(".* each\\); [0-5] of [35] described\\."));
 		assertTrue("The last line counts everything: " + info, info.get(info.size() - 1).endsWith("; 5 of 5 described."));
-		assertEquals("One line per album: " + info, 2, info.size());
 		assertEquals("One fine line per photo: " + fine, MEDIA.length, fine.size());
 		for (String medium : MEDIA) {
 			boolean found = false;
