@@ -17,6 +17,7 @@ import com.drew.metadata.exif.ExifSubIFDDirectory;
 import com.drew.metadata.exif.ExifTiffHandler;
 import com.drew.metadata.exif.GpsDirectory;
 import de.haumacher.imageServer.PreviewCache;
+import de.haumacher.imageServer.coded.PictureFormat;
 import de.haumacher.util.servlet.Util;
 import java.io.BufferedInputStream;
 import java.io.File;
@@ -118,9 +119,23 @@ public final class RawFile {
 		return suffix != null && PreviewCache.RAW_EXTENSIONS.contains(suffix);
 	}
 
-	/** Whether the given file is a raw photograph, by its extension. */
+	/**
+	 * Whether the given file is a raw photograph: by its extension, unless its first bytes say it is
+	 * a picture of another format (a JPEG named <code>.dng</code> is a JPEG), see
+	 * {@link PictureFormat} and issue #312.
+	 *
+	 * <p>
+	 * The extension stays decisive where the bytes say a TIFF or nothing recognisable: most raws are
+	 * TIFF files, and which raw a TIFF is &mdash; where its preview is to be looked for &mdash; only
+	 * the extension says.
+	 * </p>
+	 */
 	public static boolean isRaw(File file) {
-		return isRawName(file.getName());
+		if (!isRawName(file.getName())) {
+			return false;
+		}
+		PictureFormat format = PictureFormat.of(file);
+		return format == null || format == PictureFormat.RAW;
 	}
 
 	/**
