@@ -31,9 +31,16 @@ import java.util.Map;
  * The photographs of each section of the album (the parts between two {@link Heading}s: a stack
  * that pulled a photograph out of its section would rearrange the album) are taken in the order
  * they were recorded, and each is compared with the one before it: where the cosine of their
- * pictures' vectors is at least {@link ContentSearch#BURST_THRESHOLD} and they were taken at most
+ * pictures' vectors is at least the cut of the bursts and they were taken at most
  * {@link ContentSearch#BURST_GAP} apart, they belong to one stack. A chain of such neighbours is
  * one stack, however long it is: a burst of a minute is a run of shots each like the last.
+ * </p>
+ *
+ * <p>
+ * The cut is the space's own (<code>burstThreshold</code> of its <code>space.json</code>, set in
+ * the space settings, issue #315), else {@link ContentSearch#BURST_THRESHOLD}. It is given with
+ * every computation and no stack is kept, so a cut changed in the settings holds from the next
+ * read of an album on.
  * </p>
  *
  * <p>
@@ -57,7 +64,8 @@ import java.util.Map;
  * <p>
  * The vectors are read from the album's own {@link ContentCache}, which names them by file name,
  * as the album does; the file is read once per change (kept by its time and size), so answering an
- * album again costs one cosine per photograph.
+ * album again costs one cosine per photograph. What is kept are the vectors alone, never a stack:
+ * nothing kept depends on the cut.
  * </p>
  */
 public final class Stacks {
@@ -97,18 +105,22 @@ public final class Stacks {
 
 	/**
 	 * The stacks of the given answer of the album in the given folder, see {@link Stacks}: from the
-	 * album's own cache of vectors.
+	 * album's own cache of vectors, with the built-in cut {@link ContentSearch#BURST_THRESHOLD}.
 	 */
 	public static List<PhotoStack> of(AlbumInfo answer, File folder) {
-		return of(answer, folder, java.util.Collections.emptySet());
+		return of(answer, folder, java.util.Collections.emptySet(), ContentSearch.BURST_THRESHOLD);
 	}
 
 	/**
 	 * {@link #of(AlbumInfo, File)} without the photographs of the given names: the references of
 	 * the album, see issue #307. A reference stands for a photograph of another album, whose bursts
 	 * are that album's; it never joins a stack here.
+	 *
+	 * @param threshold
+	 *        The cut of the bursts, see {@link #compute(AlbumInfo, Map, float)}.
 	 */
-	public static List<PhotoStack> of(AlbumInfo answer, File folder, java.util.Set<String> excluded) {
+	public static List<PhotoStack> of(AlbumInfo answer, File folder, java.util.Set<String> excluded,
+			float threshold) {
 		Map<String, Shot> shots = shots(folder);
 		if (!excluded.isEmpty()) {
 			// The cached map is shared; a copy is narrowed.
@@ -118,20 +130,32 @@ public final class Stacks {
 		if (shots.isEmpty()) {
 			return new ArrayList<>();
 		}
-		return compute(answer, shots);
+		return compute(answer, shots, threshold);
+	}
+
+	/**
+	 * The stacks of the given answer, the vectors and qualities by file name given, with the
+	 * built-in cut {@link ContentSearch#BURST_THRESHOLD}, see {@link Stacks}.
+	 */
+	public static List<PhotoStack> compute(AlbumInfo answer, Map<String, Shot> shots) {
+		return compute(answer, shots, ContentSearch.BURST_THRESHOLD);
 	}
 
 	/**
 	 * The stacks of the given answer, the vectors and qualities by file name given, see
 	 * {@link Stacks}.
+	 *
+	 * @param threshold
+	 *        The cosine at or above which two neighbours taken near enough in time are one burst:
+	 *        the space's cut, else {@link ContentSearch#BURST_THRESHOLD}.
 	 */
-	public static List<PhotoStack> compute(AlbumInfo answer, Map<String, Shot> shots) {
+	public static List<PhotoStack> compute(AlbumInfo answer, Map<String, Shot> shots, float threshold) {
 		List<PhotoStack> result = new ArrayList<>();
 		List<Candidate> section = new ArrayList<>();
 		int index = 0;
 		for (AlbumPart part : answer.getParts()) {
 			if (part instanceof Heading) {
-				chain(section, result);
+				chain(section, threshold, result);
 				section.clear();
 			} else if (part instanceof ImagePart) {
 				ImagePart image = (ImagePart) part;
@@ -142,7 +166,7 @@ public final class Stacks {
 			}
 			index++;
 		}
-		chain(section, result);
+		chain(section, threshold, result);
 		return result;
 	}
 
@@ -158,8 +182,8 @@ public final class Stacks {
 		// A triple.
 	}
 
-	/** Adds the stacks of the given section to the given list. */
-	private static void chain(List<Candidate> section, List<PhotoStack> result) {
+	/** Adds the stacks of the given section, cut at the given cosine, to the given list. */
+	private static void chain(List<Candidate> section, float threshold, List<PhotoStack> result) {
 		if (section.size() < 2) {
 			return;
 		}
@@ -170,7 +194,7 @@ public final class Stacks {
 			if (!run.isEmpty()) {
 				Candidate last = run.get(run.size() - 1);
 				boolean near = candidate.image().getDate() - last.image().getDate() <= ContentSearch.BURST_GAP;
-				if (!near || dot(last.shot().vector(), candidate.shot().vector()) < ContentSearch.BURST_THRESHOLD) {
+				if (!near || dot(last.shot().vector(), candidate.shot().vector()) < threshold) {
 					stack(run, result);
 					run = new ArrayList<>();
 				}

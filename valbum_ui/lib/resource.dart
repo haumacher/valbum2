@@ -560,8 +560,8 @@ class AlbumInfo extends FolderResource {
 	///  server chains the photographs of each section of the album (the parts between two
 		///  {@link Heading}s) in the order they were taken, and two neighbours belong to one stack where
 	///  the cosine of their pictures' vectors is at least the burst threshold and they were taken at
-	///  most the burst gap apart (<code>ContentSearch#BURST_THRESHOLD</code>,
-	///  <code>ContentSearch#BURST_GAP</code>). Only where the space has the content search on and the
+	///  most the burst gap apart (the space's {@link SpaceSettings#burst}, else
+	///  <code>ContentSearch#BURST_THRESHOLD</code>; <code>ContentSearch#BURST_GAP</code>). Only where the space has the content search on and the
 	///  photographs have their vectors; a video, a photograph without a vector or without a date, a
 	///  group's member and the trash never join a stack. Built from what the caller is answered: a
 	///  stack never names a photograph the caller is not shown, and holds at least two.
@@ -15848,6 +15848,11 @@ class SpaceSettings extends _JsonObject {
 	///  sends) leaves the space's cuts as they are.
 	ContentThresholds? thresholds;
 
+	///  The space's cut of its bursts (issue #315), which the stacks of its albums
+	///  ({@link AlbumInfo#stacks}) are computed with. Always answered. On a write, absent (what an
+	///  app that does not know it sends) leaves the space's cut as it is.
+	BurstThreshold? burst;
+
 	/// Creates a SpaceSettings.
 	SpaceSettings({
 			this.name = "", 
@@ -15864,6 +15869,7 @@ class SpaceSettings extends _JsonObject {
 			this.content = ContentSwitch.keep, 
 			this.contentUnavailable = "", 
 			this.thresholds, 
+			this.burst, 
 	});
 
 	/// Parses a SpaceSettings from a string source.
@@ -15940,6 +15946,10 @@ class SpaceSettings extends _JsonObject {
 				thresholds = json.tryNull() ? null : ContentThresholds.read(json);
 				break;
 			}
+			case "burst": {
+				burst = json.tryNull() ? null : BurstThreshold.read(json);
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -15992,6 +16002,72 @@ class SpaceSettings extends _JsonObject {
 			json.addKey("thresholds");
 			_thresholds.writeContent(json);
 		}
+
+		var _burst = burst;
+		if (_burst != null) {
+			json.addKey("burst");
+			_burst.writeContent(json);
+		}
+	}
+
+}
+
+///  The cut of the bursts of a space, see {@link SpaceSettings#burst} and issue #315: stored in its
+///  <code>space.json</code> as <code>burstThreshold</code>.
+class BurstThreshold extends _JsonObject {
+	///  The cosine of their pictures' vectors at or above which two photographs taken one after the
+	///  other are one burst, between <code>0.5</code> and <code>1</code>; <code>0</code> for
+	///  {@link #defaultCut}.
+	double cut;
+
+	///  <em>Answered:</em> the server's built-in cut of the bursts, which a {@link #cut} of <code>0</code> means.
+	double defaultCut;
+
+	/// Creates a BurstThreshold.
+	BurstThreshold({
+			this.cut = 0.0, 
+			this.defaultCut = 0.0, 
+	});
+
+	/// Parses a BurstThreshold from a string source.
+	static BurstThreshold? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a BurstThreshold instance from the given reader.
+	static BurstThreshold read(JsonReader json) {
+		BurstThreshold result = BurstThreshold();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "BurstThreshold";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "cut": {
+				cut = json.expectDouble();
+				break;
+			}
+			case "defaultCut": {
+				defaultCut = json.expectDouble();
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("cut");
+		json.addNumber(cut);
+
+		json.addKey("defaultCut");
+		json.addNumber(defaultCut);
 	}
 
 }

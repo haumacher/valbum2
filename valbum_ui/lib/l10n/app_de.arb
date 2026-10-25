@@ -1239,5 +1239,7 @@
   "keptQuestionAll": "{count, plural, =1{1 Foto wird noch in {albums} gezeigt – es bleibt dort, statt in den Papierkorb zu kommen.} other{{count} Fotos werden noch in {albums} gezeigt – sie bleiben dort, statt in den Papierkorb zu kommen.}}",
   "keptReport": "{count, plural, =1{1 Foto wird noch in {albums} gezeigt und wurde dorthin verschoben statt in den Papierkorb.} other{{count} Fotos werden noch in {albums} gezeigt und wurden dorthin verschoben statt in den Papierkorb.}}",
   "keptPurgeQuestion": "{count, plural, =1{1 Foto wird noch in {albums} gezeigt – es wird dorthin verschoben, statt von der Festplatte gelöscht zu werden.} other{{count} Fotos werden noch in {albums} gezeigt – sie werden dorthin verschoben, statt von der Festplatte gelöscht zu werden.}}",
-  "keptPurgeReport": "{count, plural, =1{1 Foto wird noch in {albums} gezeigt und wurde dorthin verschoben, statt gelöscht zu werden.} other{{count} Fotos werden noch in {albums} gezeigt und wurden dorthin verschoben, statt gelöscht zu werden.}}"
+  "keptPurgeReport": "{count, plural, =1{1 Foto wird noch in {albums} gezeigt und wurde dorthin verschoben, statt gelöscht zu werden.} other{{count} Fotos werden noch in {albums} gezeigt und wurden dorthin verschoben, statt gelöscht zu werden.}}",
+  "spaceSettingsBurstThreshold": "Niedrigster Ähnlichkeitswert einer Bildserie",
+  "spaceSettingsBurstThresholdHelp": "Eine Zahl zwischen 0,5 und 1: Fotos, die im Abstand von wenigen Minuten aufgenommen wurden, werden zu einer Bildserie zusammengefasst, sofern sie mindestens diesen Ähnlichkeitsgrad aufweisen. Je höher der Wert, desto weniger Fotos werden zusammengefasst. Leer lassen für den integrierten {score}."
 }

@@ -3,6 +3,7 @@
  */
 package de.haumacher.imageServer.auth;
 
+import de.haumacher.imageServer.content.ContentSearch;
 import de.haumacher.msgbuf.json.JsonReader;
 import de.haumacher.msgbuf.json.JsonWriter;
 import de.haumacher.msgbuf.server.io.ReaderAdapter;
@@ -50,7 +51,7 @@ import java.util.logging.Logger;
  * <pre>
  * {"version":1,"name":"Alice","anonymous":"public","mapUrl":"https://www.google.com/maps?q={lat},{lon}",
  *  "faces":"on","timeZone":"Europe/Berlin","inbox":"Inbox","content":"on",
- *  "contentThreshold":0.12,"similarThreshold":0.6}
+ *  "contentThreshold":0.12,"similarThreshold":0.6,"burstThreshold":0.97}
  * </pre>
  *
  * <p>
@@ -69,6 +70,14 @@ import java.util.logging.Logger;
  * text and <code>similarThreshold</code> for "More like this", are numbers between <code>0</code>
  * and <code>1</code>; absent, <code>0</code>, or a value out of that range (logged) means the
  * server's built-in cut. A value that is no number is kept as it is written and read as none.
+ * </p>
+ *
+ * <p>
+ * The cut of the bursts (issue #315), <code>burstThreshold</code>, is the cosine at or above which
+ * two shots taken one after the other are stacked in their album, between
+ * {@link ContentSearch#MIN_BURST_THRESHOLD} and <code>1</code>; absent, <code>0</code> or a value
+ * out of that range (logged) means {@link ContentSearch#BURST_THRESHOLD}, and a value that is no
+ * number is kept and read as none, as with the two cuts of the content search.
  * </p>
  *
  * @author <a href="mailto:haui@haumacher.de">Bernhard Haumacher</a>
@@ -148,6 +157,16 @@ public class SpaceStore {
 
 	private static final String SIMILAR_THRESHOLD__PROP = "similarThreshold";
 
+	private static final String BURST_THRESHOLD__PROP = "burstThreshold";
+
+	/**
+	 * Whether the given value can be a space's cut of its bursts, see issue #315: at least
+	 * {@link ContentSearch#MIN_BURST_THRESHOLD}, at most <code>1</code>.
+	 */
+	public static boolean validBurst(double value) {
+		return value >= ContentSearch.MIN_BURST_THRESHOLD && value <= 1;
+	}
+
 	/**
 	 * The cuts of the content search of a space, see issue #302 and
 	 * {@link de.haumacher.imageServer.content.ContentSearch}: each between <code>0</code> and
@@ -224,6 +243,8 @@ public class SpaceStore {
 
 		private final Thresholds _thresholds;
 
+		private final double _burst;
+
 		/** Creates a {@link Config} with the default map, see {@link SpaceStore#DEFAULT_MAP_URL}. */
 		public Config(String name, String anonymous) {
 			this(name, anonymous, "");
@@ -294,6 +315,19 @@ public class SpaceStore {
 		 */
 		public Config(String name, String anonymous, String mapUrl, String faces, String timeZone, String inbox,
 				String content, Thresholds thresholds) {
+			this(name, anonymous, mapUrl, faces, timeZone, inbox, content, thresholds, 0);
+		}
+
+		/**
+		 * Creates a {@link Config}.
+		 *
+		 * @param burst
+		 *        The cut of the bursts, see issue #315 and {@link #getBurstThreshold()}; one that is
+		 *        none of a space (see {@link SpaceStore#validBurst(double)}) is read as none.
+		 */
+		public Config(String name, String anonymous, String mapUrl, String faces, String timeZone, String inbox,
+				String content, Thresholds thresholds, double burst) {
+			_burst = validBurst(burst) ? burst : 0;
 			_thresholds = thresholds == null ? Thresholds.NONE : Thresholds.of(thresholds.text(), thresholds.similar());
 			_content = CONTENT_ON.equals(content) ? CONTENT_ON : CONTENT_OFF;
 			_name = name;
@@ -328,17 +362,31 @@ public class SpaceStore {
 
 		/** This configuration with the given inbox, see {@link #getInbox()}. */
 		public Config withInbox(String inbox) {
-			return new Config(_name, _anonymous, _mapUrl, _faces, _timeZone, inbox, _content, _thresholds);
+			return new Config(_name, _anonymous, _mapUrl, _faces, _timeZone, inbox, _content, _thresholds, _burst);
 		}
 
 		/** This configuration with the given content search, see {@link #isContentEnabled()}. */
 		public Config withContent(String content) {
-			return new Config(_name, _anonymous, _mapUrl, _faces, _timeZone, _inbox, content, _thresholds);
+			return new Config(_name, _anonymous, _mapUrl, _faces, _timeZone, _inbox, content, _thresholds, _burst);
 		}
 
 		/** This configuration with the given cuts of the content search, see {@link #getThresholds()}. */
 		public Config withThresholds(Thresholds thresholds) {
-			return new Config(_name, _anonymous, _mapUrl, _faces, _timeZone, _inbox, _content, thresholds);
+			return new Config(_name, _anonymous, _mapUrl, _faces, _timeZone, _inbox, _content, thresholds, _burst);
+		}
+
+		/** This configuration with the given cut of the bursts, see {@link #getBurstThreshold()}. */
+		public Config withBurstThreshold(double burst) {
+			return new Config(_name, _anonymous, _mapUrl, _faces, _timeZone, _inbox, _content, _thresholds, burst);
+		}
+
+		/**
+		 * The cut of the bursts the space states, see issue #315: the cosine at or above which two
+		 * shots taken one after the other are one stack; <code>0</code> where it states none, and
+		 * {@link ContentSearch#BURST_THRESHOLD} holds.
+		 */
+		public double getBurstThreshold() {
+			return _burst;
 		}
 
 		/**
@@ -443,7 +491,7 @@ public class SpaceStore {
 		public String toString() {
 			return "Space[" + _name + ", anonymous=" + _anonymous + ", map=" + _mapUrl + ", faces="
 				+ _faces + ", timeZone=" + _timeZone + ", inbox=" + getInbox() + ", content=" + _content
-				+ ", thresholds=" + _thresholds.text() + "/" + _thresholds.similar() + "]";
+				+ ", thresholds=" + _thresholds.text() + "/" + _thresholds.similar() + ", burst=" + _burst + "]";
 		}
 	}
 
@@ -475,7 +523,18 @@ public class SpaceStore {
 		return new Config(stored.name.trim().isEmpty() ? folderName : stored.name.trim(),
 			ANONYMOUS_PUBLIC.equals(stored.anonymous) ? ANONYMOUS_PUBLIC : ANONYMOUS_NONE, stored.mapUrl,
 			stored.faces.trim(), stored.timeZone, stored.inbox, stored.content.trim(),
-			thresholds(stored, folderName));
+			thresholds(stored, folderName), burst(stored, folderName));
+	}
+
+	/** The cut of the bursts the given file states, one that is none of a space logged and read as none. */
+	private static double burst(Stored stored, String folderName) {
+		double value = stored.burstThreshold == null ? 0 : stored.burstThreshold.doubleValue();
+		if (value != 0 && !validBurst(value)) {
+			LOG.warning("The space '" + folderName + "' names the cut " + value + " of its bursts, which lies outside "
+				+ ContentSearch.MIN_BURST_THRESHOLD + " to 1; the built-in cut holds.");
+			return 0;
+		}
+		return value;
 	}
 
 	/** The cuts the given file states, each one that is none of a space logged and read as none. */
@@ -512,6 +571,9 @@ public class SpaceStore {
 
 		/** The <code>similarThreshold</code> as it is written, <code>null</code> where it is absent. */
 		Double similarThreshold;
+
+		/** The <code>burstThreshold</code> as it is written, <code>null</code> where it is absent. */
+		Double burstThreshold;
 
 		/**
 		 * The keys this build does not know, with their values as JSON, in the order they are
@@ -558,12 +620,15 @@ public class SpaceStore {
 						break;
 					case CONTENT_THRESHOLD__PROP:
 					case SIMILAR_THRESHOLD__PROP:
+					case BURST_THRESHOLD__PROP:
 						if (in.peek() == de.haumacher.msgbuf.json.JsonToken.NUMBER) {
 							double value = in.nextDouble();
 							if (CONTENT_THRESHOLD__PROP.equals(key)) {
 								result.contentThreshold = Double.valueOf(value);
-							} else {
+							} else if (SIMILAR_THRESHOLD__PROP.equals(key)) {
 								result.similarThreshold = Double.valueOf(value);
+							} else {
+								result.burstThreshold = Double.valueOf(value);
 							}
 						} else {
 							// No number: kept as it is written, and read as none.
@@ -707,7 +772,9 @@ public class SpaceStore {
 			config.getTimeZone().isEmpty() ? null : config.getTimeZone(),
 			config.hasStoredInbox() ? config.getInbox() : null, config.isContentEnabled() ? CONTENT_ON : null,
 			thresholds.text() == 0 ? null : Double.valueOf(thresholds.text()),
-			thresholds.similar() == 0 ? null : Double.valueOf(thresholds.similar()), Collections.emptyMap(), true);
+			thresholds.similar() == 0 ? null : Double.valueOf(thresholds.similar()),
+			config.getBurstThreshold() == 0 ? null : Double.valueOf(config.getBurstThreshold()), Collections.emptyMap(),
+			true);
 	}
 
 	/**
@@ -763,7 +830,7 @@ public class SpaceStore {
 		}
 		String trimmed = name == null ? "" : name.trim();
 		write(spaceRoot, trimmed.isEmpty() ? null : trimmed, anonymous, null, faces, zone.isEmpty() ? null : zone,
-			null, null, null, null, Collections.emptyMap(), false);
+			null, null, null, null, null, Collections.emptyMap(), false);
 	}
 
 	/**
@@ -826,6 +893,22 @@ public class SpaceStore {
 	 */
 	public static void storeSettings(Path spaceRoot, String folderName, String name, String anonymous, String faces,
 			String mapUrl, String timeZone, String inbox, String content, Thresholds thresholds) throws IOException {
+		storeSettings(spaceRoot, folderName, name, anonymous, faces, mapUrl, timeZone, inbox, content, thresholds, null);
+	}
+
+	/**
+	 * Writes what the administrator of the space at the given folder set in the app, see
+	 * {@link #storeSettings(Path, String, String, String, String, String, String, String, String, Thresholds)},
+	 * with the cut of the bursts of issue #315.
+	 *
+	 * @param burst
+	 *        The cut, between {@link ContentSearch#MIN_BURST_THRESHOLD} and <code>1</code>,
+	 *        <code>0</code> to take the space's own cut away; <code>null</code> to keep what the
+	 *        file says (an app that does not know it).
+	 */
+	public static void storeSettings(Path spaceRoot, String folderName, String name, String anonymous, String faces,
+			String mapUrl, String timeZone, String inbox, String content, Thresholds thresholds, Double burst)
+			throws IOException {
 		Path file = file(spaceRoot);
 		Stored stored = Files.isRegularFile(file) ? readStored(file) : new Stored();
 		String newName = trim(name);
@@ -849,6 +932,10 @@ public class SpaceStore {
 			// What was kept because it was no number is replaced by what is set now.
 			stored.unknown.remove(CONTENT_THRESHOLD__PROP);
 			stored.unknown.remove(SIMILAR_THRESHOLD__PROP);
+		}
+		if (burst != null) {
+			stored.burstThreshold = burst.doubleValue() == 0 ? null : burst;
+			stored.unknown.remove(BURST_THRESHOLD__PROP);
 		}
 		write(spaceRoot, stored, true);
 	}
@@ -893,7 +980,7 @@ public class SpaceStore {
 			stored.inbox.trim().isEmpty() ? null : stored.inbox.trim(),
 			stored.content.trim().isEmpty() ? null
 				: CONTENT_ON.equals(stored.content.trim()) ? CONTENT_ON : CONTENT_OFF,
-			stored.contentThreshold, stored.similarThreshold, stored.unknown, replace);
+			stored.contentThreshold, stored.similarThreshold, stored.burstThreshold, stored.unknown, replace);
 	}
 
 	/**
@@ -913,6 +1000,8 @@ public class SpaceStore {
 	 *        <code>null</code> to leave the cut of a search by a text out, see issue #302.
 	 * @param similarThreshold
 	 *        <code>null</code> to leave the cut of "More like this" out.
+	 * @param burstThreshold
+	 *        <code>null</code> to leave the cut of the bursts out, see issue #315.
 	 * @param unknown
 	 *        The keys this build does not know, with their values as JSON, written behind the
 	 *        ones it knows, see issue #297.
@@ -921,7 +1010,7 @@ public class SpaceStore {
 	 */
 	private static void write(Path spaceRoot, String name, String anonymous, String mapUrl, String faces,
 			String timeZone, String inbox, String content, Double contentThreshold, Double similarThreshold,
-			Map<String, String> unknown, boolean replace) throws IOException {
+			Double burstThreshold, Map<String, String> unknown, boolean replace) throws IOException {
 		Path file = file(spaceRoot);
 		Files.createDirectories(file.getParent());
 		Path tmp = file.resolveSibling(FILE_NAME + ".tmp");
@@ -962,6 +1051,10 @@ public class SpaceStore {
 				if (similarThreshold != null) {
 					out.name(SIMILAR_THRESHOLD__PROP);
 					out.value(similarThreshold.doubleValue());
+				}
+				if (burstThreshold != null) {
+					out.name(BURST_THRESHOLD__PROP);
+					out.value(burstThreshold.doubleValue());
 				}
 				for (Map.Entry<String, String> entry : unknown.entrySet()) {
 					out.name(entry.getKey());

@@ -428,8 +428,8 @@ public class AlbumInfo extends FolderResource {
 	 * server chains the photographs of each section of the album (the parts between two
 		 * {@link Heading}s) in the order they were taken, and two neighbours belong to one stack where
 	 * the cosine of their pictures' vectors is at least the burst threshold and they were taken at
-	 * most the burst gap apart (<code>ContentSearch#BURST_THRESHOLD</code>,
-	 * <code>ContentSearch#BURST_GAP</code>). Only where the space has the content search on and the
+	 * most the burst gap apart (the space's {@link SpaceSettings#getBurst()}, else
+	 * <code>ContentSearch#BURST_THRESHOLD</code>; <code>ContentSearch#BURST_GAP</code>). Only where the space has the content search on and the
 	 * photographs have their vectors; a video, a photograph without a vector or without a date, a
 	 * group's member and the trash never join a stack. Built from what the caller is answered: a
 	 * stack never names a photograph the caller is not shown, and holds at least two.

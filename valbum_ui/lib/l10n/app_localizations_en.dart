@@ -4592,6 +4592,14 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get spaceSettingsBurstThreshold => 'Lowest similarity of a burst';
+
+  @override
+  String spaceSettingsBurstThresholdHelp(String score) {
+    return 'A number between 0.5 and 1: photos taken within a few minutes of each other are stacked as one burst where they are at least this similar. The higher, the fewer photos stacked. Empty for the built-in $score.';
+  }
+
+  @override
   String get spaceSettingsThresholdInvalid =>
       'Enter a number between 0 and 1, or leave the field empty.';
 

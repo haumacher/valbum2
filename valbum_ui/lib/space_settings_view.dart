@@ -62,6 +62,10 @@ const Key spaceSettingsTextThresholdKey = Key("spaceSettings.textThreshold");
 const Key spaceSettingsSimilarThresholdKey =
     Key("spaceSettings.similarThreshold");
 
+/// The key of the field of the cut of the bursts stacked in an album (issue
+/// #315).
+const Key spaceSettingsBurstThresholdKey = Key("spaceSettings.burstThreshold");
+
 /// The key of the map field.
 const Key spaceSettingsMapKey = Key("spaceSettings.mapUrl");
 
@@ -152,6 +156,7 @@ class SpaceSettingsScreenState extends State<SpaceSettingsScreen> {
   final TextEditingController _inbox = TextEditingController();
   final TextEditingController _textThreshold = TextEditingController();
   final TextEditingController _similarThreshold = TextEditingController();
+  final TextEditingController _burstThreshold = TextEditingController();
 
   bool _anonymous = false;
   bool _faces = false;
@@ -171,6 +176,7 @@ class SpaceSettingsScreenState extends State<SpaceSettingsScreen> {
     _inbox.dispose();
     _textThreshold.dispose();
     _similarThreshold.dispose();
+    _burstThreshold.dispose();
     super.dispose();
   }
 
@@ -207,6 +213,8 @@ class SpaceSettingsScreenState extends State<SpaceSettingsScreen> {
     String cut(double value) => value <= 0 ? "" : _format(value);
     _textThreshold.text = thresholds == null ? "" : cut(thresholds.text);
     _similarThreshold.text = thresholds == null ? "" : cut(thresholds.similar);
+    var burst = settings.burst;
+    _burstThreshold.text = burst == null ? "" : cut(burst.cut);
   }
 
   String _format(double value) => formatSimilarity(
@@ -228,7 +236,8 @@ class SpaceSettingsScreenState extends State<SpaceSettingsScreen> {
   /// Whether both fields of the cuts can be saved.
   bool get _thresholdsValid =>
       parseThreshold(_textThreshold.text) != null &&
-      parseThreshold(_similarThreshold.text) != null;
+      parseThreshold(_similarThreshold.text) != null &&
+      parseThreshold(_burstThreshold.text) != null;
 
   /// Whether the server knows the switch of the content search: one of an
   /// earlier release answers none, and is then sent none.
@@ -260,6 +269,12 @@ class SpaceSettingsScreenState extends State<SpaceSettingsScreen> {
               text: parseThreshold(_textThreshold.text) ?? 0,
               similar: parseThreshold(_similarThreshold.text) ?? 0,
             ),
+      // A server that does not know the cut of the bursts answers none, and
+      // is sent none. Whether it lies at or above the lowest cut a space may
+      // state is the server's to say.
+      burst: current.burst == null
+          ? null
+          : BurstThreshold(cut: parseThreshold(_burstThreshold.text) ?? 0),
     );
     var done = await writeAction(
       context,
@@ -311,8 +326,9 @@ class SpaceSettingsScreenState extends State<SpaceSettingsScreen> {
     TextEditingController controller,
     String label,
     double builtIn,
-    AppLocalizations l10n,
-  ) {
+    AppLocalizations l10n, {
+    String Function(String builtIn)? help,
+  }) {
     var shown = _format(builtIn);
     return TextField(
       key: key,
@@ -323,7 +339,7 @@ class SpaceSettingsScreenState extends State<SpaceSettingsScreen> {
       decoration: InputDecoration(
         labelText: label,
         hintText: shown,
-        helperText: l10n.spaceSettingsThresholdHelp(shown),
+        helperText: (help ?? l10n.spaceSettingsThresholdHelp)(shown),
         helperMaxLines: 4,
         errorText: parseThreshold(controller.text) == null
             ? l10n.spaceSettingsThresholdInvalid
@@ -455,6 +471,19 @@ class SpaceSettingsScreenState extends State<SpaceSettingsScreen> {
               l10n.spaceSettingsSimilarThreshold,
               settings.thresholds!.defaultSimilar,
               l10n,
+            ),
+          ],
+          // The cut of the bursts the albums are stacked by (issue #315):
+          // stacks exist only where the content search is on.
+          if (_content && settings.burst != null) ...[
+            const SizedBox(height: 16),
+            _thresholdField(
+              spaceSettingsBurstThresholdKey,
+              _burstThreshold,
+              l10n.spaceSettingsBurstThreshold,
+              settings.burst!.defaultCut,
+              l10n,
+              help: l10n.spaceSettingsBurstThresholdHelp,
             ),
           ],
         ],
