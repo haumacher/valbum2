@@ -62,6 +62,11 @@ Future<({String hash, int bytes})> sha256OfFile(String path) =>
 /// platforms), so the `dart:io` type is checked as well.
 bool isSocketError(Object error) => error is SocketException;
 
+/// Whether the given error is the transport failing (issue #313): a refused or
+/// dropped connection, a broken TLS handshake, a stream cut short — never a
+/// codec that could not read the bytes it was given.
+bool isTransportError(Object error) => error is IOException;
+
 /// The browser's `Blob` behind an object URL: there is none off the web, so a
 /// picked file is read through its own `openRead`, see `browser_upload.dart`
 /// and issue #170.

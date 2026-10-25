@@ -877,6 +877,15 @@ class VAlbumClient {
     log: log,
   );
 
+  /// The images whose original the platform could not decode, by image
+  /// address (issue #313): the viewer shows each by the server's display
+  /// rendition for as long as this client lives, so that paging back to one
+  /// does not fetch and fail the original a second time, see `viewerPicture`.
+  ///
+  /// A HEIC named `.jpg` is the case it was made for: the server reads a
+  /// picture by its bytes and renders it, the app picks a codec by the name.
+  final Set<String> undecodableOriginals = {};
+
   VAlbumClient({
     required this.dataUrl,
     this.token,
@@ -1036,6 +1045,9 @@ class VAlbumClient {
   /// picture at [imageUrl] (issues #186, #191, #193): a full-size JPEG of it,
   /// upright, which every platform can decode, see [needsDisplayRendition].
   /// It asks the `download` right, as the original does.
+  ///
+  /// Also of any picture whose original the platform failed to decode (issue
+  /// #313, [undecodableOriginals]).
   String displayUrl(String imageUrl) => "$imageUrl?type=display";
 
   /// The URL of the playback rendition of the video at [imageUrl] (issue #74).

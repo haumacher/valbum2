@@ -55,6 +55,12 @@ Future<({String hash, int bytes})> sha256OfFile(String path) =>
 /// fail with arrives as a `ClientException`, which the caller checks itself.
 bool isSocketError(Object error) => false;
 
+/// Whether the given error is the transport failing (issue #313).
+///
+/// A browser reports no `dart:io` error; what the platform's picture loading
+/// fails with on the network is told by the caller, see `isUndecodable`.
+bool isTransportError(Object error) => false;
+
 /// The photo library of a browser: there is none, see [PhotoLibrary].
 ///
 /// A page cannot watch the machine's photos, so camera-roll sync says so

@@ -240,6 +240,8 @@ const Map<String, String> allowedLiterals = {
       "diagnostics log",
   "Tried: the display rendition (?type=display), because the original is a HEIC/HEIF, AVIF, JPEG XL or raw picture the platform cannot be expected to decode":
       "diagnostics log",
+  "Tried: the display rendition (?type=display), because the platform could not decode the original":
+      "diagnostics log",
   r"URL: ${}": "diagnostics log",
   r"Lookup ${} ${}: ${}": "diagnostics log",
   r"Lookup ${} ${} failed: ${}": "diagnostics log",
@@ -441,6 +443,8 @@ const Map<String, String> allowedLiterals = {
   // The words a player's own failure is classified by, see `videoErrorHint`:
   // they are matched against the platform's English message, which no
   // translation of this app ever changes, and none of them is ever shown.
+  "Failed to load network image":
+      "the web engine's transport failure, matched in isUndecodable, never shown",
   "renderer error": "keyword of the video failure classification",
   "no suitable": "keyword of the video failure classification",
   "source error": "keyword of the video failure classification",

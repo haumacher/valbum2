@@ -34,12 +34,17 @@ class FakeImageHttp {
   /// not made the picture yet (issue #256).
   static bool Function(Uri url)? notReady;
 
+  /// Which URLs are answered `200` with bytes no codec decodes: the head of a
+  /// HEIF file, as a HEIC named `.jpg` arrives (issue #313).
+  static bool Function(Uri url)? undecodable;
+
   /// Back to "every picture is a 1x1 PNG, and nobody is counting".
   static void reset() {
     requested = null;
     pending = null;
     failing = null;
     notReady = null;
+    undecodable = null;
   }
 }
 
@@ -56,17 +61,21 @@ class FakeImageHttp {
 /// picture its background has not made yet (issue #256) — no failure, the
 /// placeholder or the thumbnail beneath stands in until a re-ask (issue
 /// #258). The predicates are read at every request, so a test may change its
-/// mind (the background made it) by changing what they answer.
+/// mind (the background made it) by changing what they answer. A URL
+/// [undecodable] answers `true` for is answered `200` with the head of a HEIF
+/// file ([heifBytes]), which the platform's codec cannot read (issue #313).
 void fakeImageRequests({
   List<String>? requested,
   bool Function(Uri url)? pending,
   bool Function(Uri url)? failing,
   bool Function(Uri url)? notReady,
+  bool Function(Uri url)? undecodable,
 }) {
   FakeImageHttp.requested = requested;
   FakeImageHttp.pending = pending;
   FakeImageHttp.failing = failing;
   FakeImageHttp.notReady = notReady;
+  FakeImageHttp.undecodable = undecodable;
   addTearDown(FakeImageHttp.reset);
 }
 
@@ -99,6 +108,7 @@ class _FakeHttpClient implements HttpClient {
           : (FakeImageHttp.notReady?.call(url) ?? false)
               ? HttpStatus.accepted
               : null,
+      undecodable: FakeImageHttp.undecodable?.call(url) ?? false,
     );
   }
 
@@ -113,7 +123,10 @@ class _FakeHttpClientRequest implements HttpClientRequest {
   /// The status to answer with, `null` for the 1x1 PNG.
   final int? status;
 
-  _FakeHttpClientRequest(this.pending, this.status);
+  /// Whether the answer is [heifBytes] rather than the 1x1 PNG.
+  final bool undecodable;
+
+  _FakeHttpClientRequest(this.pending, this.status, {this.undecodable = false});
 
   @override
   final HttpHeaders headers = _FakeHttpHeaders();
@@ -124,7 +137,8 @@ class _FakeHttpClientRequest implements HttpClientRequest {
       // Never answered: the picture stays on its way.
       return Completer<HttpClientResponse>().future;
     }
-    return Future<HttpClientResponse>.value(_FakeHttpClientResponse(status));
+    return Future<HttpClientResponse>.value(
+        _FakeHttpClientResponse(status, undecodable: undecodable));
   }
 
   @override
@@ -134,13 +148,20 @@ class _FakeHttpClientRequest implements HttpClientRequest {
 class _FakeHttpClientResponse implements HttpClientResponse {
   final int? status;
 
-  _FakeHttpClientResponse(this.status);
+  /// Whether the body is [heifBytes] rather than the 1x1 PNG.
+  final bool undecodable;
+
+  _FakeHttpClientResponse(this.status, {this.undecodable = false});
 
   @override
   int get statusCode => status ?? HttpStatus.ok;
 
   /// What is sent: the 1x1 PNG, or the `ErrorInfo` of a `202`.
-  Uint8List get _body => status == HttpStatus.accepted ? _notReadyBody : transparentPixelPng;
+  Uint8List get _body => status == HttpStatus.accepted
+      ? _notReadyBody
+      : undecodable
+          ? heifBytes
+          : transparentPixelPng;
 
   @override
   int get contentLength => _body.length;
@@ -183,6 +204,17 @@ class _FakeHttpClientResponse implements HttpClientResponse {
   @override
   dynamic noSuchMethod(Invocation invocation) => null;
 }
+
+/// The head of a HEIF file (an ISO media `ftyp` box of the brand `heic`): what
+/// a HEIC named `.jpg` sends, and what no codec of the test engine reads, see
+/// [FakeImageHttp.undecodable].
+final Uint8List heifBytes = Uint8List.fromList([
+  0, 0, 0, 24, // box size
+  ...ascii.encode("ftypheic"),
+  0, 0, 0, 0, // minor version
+  ...ascii.encode("mif1heic"),
+  0, 0, 0, 8, ...ascii.encode("meta"),
+]);
 
 /// The answer of a picture the server has not made yet, see
 /// [FakeImageHttp.notReady].

@@ -31,7 +31,7 @@ import 'move_view.dart';
 import 'offline.dart';
 import 'people_registry.dart';
 import 'photo_actions.dart';
-import 'platform.dart' show platformDescription;
+import 'platform.dart' show isTransportError, platformDescription;
 import 'person_names.dart';
 import 'persons_view.dart' show PersonChooser;
 import 'l10n/app_localizations.dart';
@@ -83,6 +83,11 @@ const Duration _snapBackDuration = Duration(milliseconds: 150);
 /// (issue #191) is shown the same way, by the rendition of the JPEG preview it
 /// carries.
 ///
+/// An original the platform failed to decode (issue #313, [isUndecodable]) is
+/// shown by the display rendition as well, from then on for the session, see
+/// [VAlbumClient.undecodableOriginals]: the name decides what is asked first,
+/// the bytes what is shown in the end.
+///
 /// [thumbnailUrl] is the address the preview rendition is asked by, the cut
 /// one of a cropped photograph (issue #212, `croppedImageUrl`); the plain
 /// image address where it is not given.
@@ -92,7 +97,9 @@ ImageProvider viewerPicture(
   required bool mayDownload,
   String? thumbnailUrl,
 }) {
-  if (mayDownload && needsDisplayRendition(imageUrl)) {
+  if (mayDownload &&
+      (needsDisplayRendition(imageUrl) ||
+          client.undecodableOriginals.contains(imageUrl))) {
     return NetworkImage(client.displayUrl(imageUrl),
         headers: client.authHeaders);
   }
@@ -104,6 +111,29 @@ ImageProvider viewerPicture(
         headers: client.authHeaders);
   }
   return ThumbnailImage(client, thumbnailUrl ?? imageUrl);
+}
+
+/// Whether [error], which a picture of the viewer failed with, says that the
+/// platform could not **decode** the bytes it was given (issue #313).
+///
+/// Told by what it is not, because a codec's failure has no type of its own
+/// (`Exception: Invalid image data` natively, an `ImageCodecException` on the
+/// web): not a picture the server has not made yet (`202`, issues #256,
+/// #258), not an answer other than `200` ([NetworkImageLoadException]), not
+/// the client's own refusal ([VAlbumException]), not the transport failing
+/// ([isTransportError], a timeout, the web's "Failed to load network image").
+/// What is left is bytes that arrived and could not be read: a HEIC named
+/// `.jpg`, a truncated file. Guessing wrong costs one request for the display
+/// rendition, which then fails and speaks as any failure does.
+bool isUndecodable(Object error) {
+  if (isImageNotReady(error) ||
+      error is NetworkImageLoadException ||
+      error is VAlbumException ||
+      error is TimeoutException ||
+      isTransportError(error)) {
+    return false;
+  }
+  return !"$error".contains("Failed to load network image");
 }
 
 /// How small a hand-drawn rectangle may be and still mean a face (issue #147).
@@ -1685,15 +1715,74 @@ class ImageViewState extends State<ImageView>
     for (var entry in wanted.entries) {
       _pinned.putIfAbsent(
         entry.key,
-        () => _PinnedPicture(
-          pictureOf(entry.value).resolve(configuration),
-          // A picture that never arrives is simply not held, see above. The
-          // pin lets go of itself, so a failure that is answered before the
-          // entry is even stored leaves nothing behind.
-          onFailed: () => _pinned.remove(entry.key),
-        ),
+        () {
+          var provider = pictureOf(entry.value);
+          return _PinnedPicture(
+            provider.resolve(configuration),
+            // A picture that never arrives is simply not held, see above. The
+            // pin lets go of itself, so a failure that is answered before the
+            // entry is even stored leaves nothing behind. An original the
+            // platform could not decode is held by its display rendition
+            // instead (issue #313).
+            onFailed: (error) {
+              _pinned.remove(entry.key);
+              _fallBackToDisplay(entry.value, provider, error);
+            },
+          );
+        },
       );
     }
+  }
+
+  /// The decode failure of the last original shown by its display rendition
+  /// instead, see [_fallBackToDisplay].
+  ///
+  /// `Image` keeps its last error over a change of its provider until a frame
+  /// of the new one arrives, and hands it to the error builder of the display
+  /// rendition's build: an error already answered so is no failure of it.
+  Object? _fallenBackFrom;
+
+  /// Shows [image] by its display rendition from now on, where its original
+  /// ([failed]) could not be decoded (issue #313); whether it does.
+  ///
+  /// Only where the viewer showed the original, which it does only for a
+  /// caller who may download it, and the display rendition asks the very same
+  /// right — a caller shown the preview (a share link without `download`) is
+  /// never asked anything new. The decision is remembered in the client
+  /// ([VAlbumClient.undecodableOriginals]), so [pictureOf] answers the display
+  /// rendition for it everywhere — the shown page, the prefetch, paging back
+  /// — and the original is fetched no second time. The page is built again
+  /// after the current frame, since this is called from a builder.
+  bool _fallBackToDisplay(ImagePart image, ImageProvider failed, Object error) {
+    var url = "${widget.baseUrl}/${image.name}";
+    if (!rights.mayDownload ||
+        failed is! NetworkImage ||
+        failed.url != widget.client.originalUrl(url) ||
+        !isUndecodable(error)) {
+      return false;
+    }
+    _fallenBackFrom = error;
+    if (widget.client.undecodableOriginals.add(url)) {
+      scheduleMicrotask(() {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          // The failed original is held no longer; the prefetch pins the
+          // display rendition in its place.
+          _pinned.remove(image.name)?.release();
+        });
+        // Only once the page has asked for the display rendition itself: a
+        // pin asked first would fetch it on its own, and a failure let go of
+        // by the pin would be fetched a second time by the page.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            prefetchNeighbours();
+          }
+        });
+      });
+    }
+    return true;
   }
 
   /// Lets go of every picture this viewer held, see [prefetchNeighbours].
@@ -1746,28 +1835,30 @@ class ImageViewState extends State<ImageView>
       return;
     }
     var image = part;
-    var original = picture is NetworkImage;
+    var shown = picture;
+    var original = shown is NetworkImage;
     // A HEIC, an AVIF, a JPEG XL picture or a raw is shown by its display
-    // rendition, never by the original (#186, #191, #193).
-    var display = original && needsDisplayRendition(dataUrl);
-    var url = display
-        ? client.displayUrl(dataUrl)
-        : original
-            ? client.originalUrl(dataUrl)
-            : client.thumbnailUrl(dataUrl);
+    // rendition, never by the original (#186, #191, #193), and so is an
+    // original the platform failed to decode (#313).
+    var display =
+        shown is NetworkImage && shown.url == client.displayUrl(dataUrl);
+    var url = shown is NetworkImage ? shown.url : client.thumbnailUrl(dataUrl);
     var answer = await client.probeSource(url);
     log.add(
       "Picture could not be shown: ${image.name} in "
       "${albumLabel(client.dataUrl, widget.baseUrl)}",
       [
-        display
+        display && !needsDisplayRendition(dataUrl)
             ? "Tried: the display rendition (?type=display), because the "
-                "original is a HEIC/HEIF, AVIF, JPEG XL or raw picture the "
-                "platform cannot be expected to decode"
-            : original
-                ? "Tried: the original, because this caller may download it"
-                : "Tried: the preview (?type=tn), because this caller may not "
-                    "download the original",
+                "platform could not decode the original"
+            : display
+                ? "Tried: the display rendition (?type=display), because the "
+                    "original is a HEIC/HEIF, AVIF, JPEG XL or raw picture the "
+                    "platform cannot be expected to decode"
+                : original
+                    ? "Tried: the original, because this caller may download it"
+                    : "Tried: the preview (?type=tn), because this caller may not "
+                        "download the original",
         "URL: ${maskUrl(url)}",
         ...answer.facts,
         originalFact(
@@ -2335,6 +2426,10 @@ class ImageViewState extends State<ImageView>
             // again (issue #258).
             NotReadyReAsk.remember(context, picture,
                 retryAfter: error is ImageNotReady ? error.retryAfter : null);
+          } else if (identical(error, _fallenBackFrom) ||
+              _fallBackToDisplay(part, picture, error)) {
+            // Bytes the platform cannot decode (issue #313): the display
+            // rendition is asked next, and only its failure speaks.
           } else {
             _reportFailure(error);
           }
@@ -3386,13 +3481,13 @@ class _PinnedPicture {
   /// called from both ends — a failure and the page change — exactly once.
   bool _released = false;
 
-  _PinnedPicture(this._stream, {required void Function() onFailed}) {
+  _PinnedPicture(this._stream, {required void Function(Object) onFailed}) {
     _listener = ImageStreamListener(
       // Nothing to do: holding the picture *is* the purpose.
       (image, synchronousCall) {},
       onError: (error, stackTrace) {
         release();
-        onFailed();
+        onFailed(error);
       },
     );
     _stream.addListener(_listener);
