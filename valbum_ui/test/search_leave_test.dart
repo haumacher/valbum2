@@ -21,6 +21,7 @@ import 'search_layout_test.dart' show many, phone, resultsScrollable;
 import 'search_scope_test.dart' show ScopeSpace;
 import 'search_view_test.dart' show chooseAnne, json, pathOf, pumpRoute, settle;
 import 'util/l10n.dart';
+import 'util/search_entry.dart';
 
 /// The number of photographs of [bigZoo].
 const int zooCount = 60;
@@ -88,7 +89,7 @@ Future<void> leave(WidgetTester tester) async {
 }
 
 Future<void> openSearch(WidgetTester tester) async {
-  await tester.tap(find.byKey(const Key("open-search")));
+  await tapOpenSearch(tester);
   await settle(tester);
 }
 
@@ -191,7 +192,7 @@ void main() {
       (tester) async {
     phone(tester);
     var delegate = await pumpRoute(tester, LongSpace(), zoo);
-    await tester.tap(find.byKey(const Key("open-search")));
+    await tapOpenSearch(tester);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
     delegate.goUp();

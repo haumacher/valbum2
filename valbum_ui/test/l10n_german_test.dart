@@ -445,7 +445,8 @@ void sliceThree() {
             "${load.appBase} nicht gefunden."),
         findsOneWidget,
       );
-      expect(find.text(de.goToStartPage), findsOneWidget);
+      // The way out is the way up, its tooltip German (issue #309).
+      expect(find.byTooltip(de.up), findsOneWidget);
       expect(find.text(de.loadFailureDetails), findsOneWidget);
       expect(
         find.text(l10nOf(const Locale("en"))

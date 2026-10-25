@@ -419,6 +419,8 @@ class TrashContentState extends State<TrashContent> {
               onLeave: leaveSelectMode,
               onDownload: null,
               offerDownload: false,
+              // The trash is a page of the system's theme, not on black.
+              black: false,
               extra: [
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
@@ -432,24 +434,16 @@ class TrashContentState extends State<TrashContent> {
               ],
             )
           : PageAppBar(
-              leading: IconButton(
+              leading: WayBackButton(
                 key: const Key("trash-up"),
-                icon: const Icon(Icons.arrow_back),
-                tooltip: _l10n.up,
                 onPressed: widget.albumState.navigator.up,
               ),
               automaticallyImplyLeading: false,
-              title: Column(
-                children: [
-                  Text(_l10n.trashPageTitle),
-                  Text(
-                    album.title,
-                    key: const Key("trash-subtitle"),
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
+              title: PageTitle(
+                _l10n.trashPageTitle,
+                subtitle: album.title,
+                subtitleKey: const Key("trash-subtitle"),
               ),
-              centerTitle: true,
               actions: [
                 // Several restored at once (issue #295).
                 if (mayRestore && shown.isNotEmpty)

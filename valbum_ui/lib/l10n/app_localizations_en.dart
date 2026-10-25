@@ -1208,9 +1208,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get up => 'Up';
 
   @override
-  String get home => 'Home';
-
-  @override
   String get upload => 'Upload';
 
   @override
@@ -2533,9 +2530,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String loadFailedStart(String server) {
     return 'The start page could not be opened on the server $server.';
   }
-
-  @override
-  String get goToStartPage => 'Go to the start page';
 
   @override
   String get loadFailureDetails => 'Details';

@@ -335,6 +335,8 @@ const Map<String, String> allowedLiterals = {
       "assertion, never shown to a user",
   "no OfflineScope in the widget tree": "assertion, never shown to a user",
   "no VAlbumNavigator in the widget tree": "assertion, never shown to a user",
+  "the way up is the leading control, never an action (issue #308)":
+      "assertion, never shown to a user",
   "No VAlbumScope found in the widget tree.":
       "assertion, never shown to a user",
   // The entries every failure of a camera-roll run writes, in any engine

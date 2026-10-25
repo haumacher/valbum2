@@ -438,11 +438,10 @@ class SearchViewState extends State<SearchView> {
       backgroundColor: Colors.black,
       appBar: selecting
           ? null
-          : PageAppBar(
-              leading: IconButton(
+          // Black like the results under it (issue #310).
+          : PageAppBar.black(
+              leading: WayBackButton(
                 key: const Key("search-up"),
-                icon: const Icon(Icons.arrow_back),
-                tooltip: l10n.up,
                 onPressed: leave,
               ),
               automaticallyImplyLeading: false,

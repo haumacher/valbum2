@@ -1835,6 +1835,7 @@ class VAlbumAppState extends State<VAlbumApp> {
         supportedLocales: AppLocalizations.supportedLocales,
         localeListResolutionCallback: resolveAppLocale,
         theme: appTheme(),
+        darkTheme: appTheme(brightness: Brightness.dark),
         builder: _withInvitationNotice,
         routerDelegate: _preRouter ??= SilentRouterDelegate(_startupScreen),
       );
@@ -1848,6 +1849,7 @@ class VAlbumAppState extends State<VAlbumApp> {
         supportedLocales: AppLocalizations.supportedLocales,
         localeListResolutionCallback: resolveAppLocale,
         theme: appTheme(),
+        darkTheme: appTheme(brightness: Brightness.dark),
         routerDelegate: _preRouter ??= SilentRouterDelegate(
           (context) => SharedOverviewPage(
             overview: overview,
@@ -2027,6 +2029,7 @@ class VAlbumAppState extends State<VAlbumApp> {
           supportedLocales: AppLocalizations.supportedLocales,
           localeListResolutionCallback: resolveAppLocale,
           theme: appTheme(),
+        darkTheme: appTheme(brightness: Brightness.dark),
           builder: _withSessionNotices,
           routerDelegate: router,
           routeInformationParser: const VAlbumRouteInformationParser(),
@@ -2414,9 +2417,9 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
 
   /// Ends the edit of the album at [path], asking about unsaved changes.
   ///
-  /// This is the one gate every way out of an album passes — the way up, the
-  /// home button, a listing tile above, the system's or the browser's back
-  /// button, a deep link (issue #99). An album that is not being edited lets
+  /// This is the one gate every way out of an album passes — the way up, a
+  /// listing tile above, the system's or the browser's back button, a deep
+  /// link (issue #99). An album that is not being edited lets
   /// the app pass at once. An edit without unsaved changes is simply dropped,
   /// so the album is not in the edit mode when it is next visited. An edit
   /// with unsaved changes is the album's own question: its view asks whether
@@ -3074,7 +3077,7 @@ class VAlbumState extends State<VAlbumView>
   /// failed load of the listing, an album, an inbox, the viewer, a group, the
   /// persons page or the trash page is shown: [LoadFailureView] names the
   /// album or folder of the route and the server as the reader opened it,
-  /// quotes the server's own reason, and offers the start page, the server
+  /// quotes the server's own reason, and offers the way up, the server
   /// settings and the retry; the technical address is behind "Details".
   ///
   /// A server refusing a device that is not signed in answers with the reason
@@ -3094,7 +3097,7 @@ class VAlbumState extends State<VAlbumView>
       route: route,
       error: error,
       server: appBaseOf(client.dataUrl),
-      onHome: navigator.home,
+      onUp: navigator.up,
       onRetry: reload,
       onSettings: () => openServerSettings(context),
     );
@@ -3229,11 +3232,7 @@ class VAlbumState extends State<VAlbumView>
     return Scaffold(
       appBar: PageAppBar(
         title: Text(l10n.appTitle),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          tooltip: l10n.up,
-          onPressed: navigator.up,
-        ),
+        leading: WayBackButton(onPressed: navigator.up),
       ),
       body: Center(child: Text(message)),
     );
@@ -3970,14 +3969,18 @@ PopupMenuItem<Action> menuItem(
       ),
     );
 
-/// The look of every screen of the app, one for its three `MaterialApp`s.
+/// The look of every screen of the app, one for its three `MaterialApp`s, in
+/// the system's light or dark [brightness] (issue #310): the settings and the
+/// other forms follow the system, the pages of photographs are black in both,
+/// see `page_app_bar.dart`.
 ///
 /// A dialog keeps [DialogSpacing.inset] from the screen's edges, 12 pixels to
 /// the sides, not Flutter's 40: on a phone those 40 on each side left a dialog
 /// 280 of 360 pixels wide, a narrow column of wrapped lines inside a wide
 /// frame. On a wider screen the dialog is as wide as its content asks, and the
 /// margin is never seen.
-ThemeData appTheme() => ThemeData(
+ThemeData appTheme({Brightness brightness = Brightness.light}) => ThemeData(
+      brightness: brightness,
       primarySwatch: Colors.blue,
       // The dialogs' own widgets set these too, see `dialog_style.dart`;
       // here they reach the dialogs Flutter builds itself (the about dialog).

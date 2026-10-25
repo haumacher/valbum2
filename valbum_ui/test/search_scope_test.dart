@@ -16,6 +16,7 @@ import 'search_address_test.dart'
 import 'search_view_test.dart'
     show chooseAnne, json, options, pathOf, pumpRoute, settle;
 import 'util/l10n.dart';
+import 'util/search_entry.dart';
 
 /// The space of the album `2024/Zoo`, with the folder `2024` titled.
 class ScopeSpace extends AlbumSpace {
@@ -56,7 +57,7 @@ void main() {
     var delegate = await pumpRoute(
         tester, space, const ListingOrAlbumRoute(["2024", "Zoo"]));
 
-    await tester.tap(find.byKey(const Key("open-search")));
+    await tapOpenSearch(tester);
     await settle(tester);
     await chooseAnne(tester);
 
@@ -138,7 +139,7 @@ void main() {
       (tester) async {
     var space = ScopeSpace();
     await pumpRoute(tester, space, const ListingOrAlbumRoute(["2024", "Zoo"]));
-    await tester.tap(find.byKey(const Key("open-search")));
+    await tapOpenSearch(tester);
     await settle(tester);
     await chooseAnne(tester);
 
@@ -157,7 +158,7 @@ void main() {
     var space = ScopeSpace();
     var delegate = await pumpRoute(
         tester, space, const ListingOrAlbumRoute(["2024", "Zoo"]));
-    await tester.tap(find.byKey(const Key("open-search")));
+    await tapOpenSearch(tester);
     await settle(tester);
     await chooseAnne(tester);
 

@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'l10n/app_localizations.dart';
+import 'page_app_bar.dart';
 import 'notices.dart';
 import 'photo_library.dart';
 import 'selectable.dart';
@@ -231,8 +232,7 @@ class PhotoPickerScreenState extends State<PhotoPickerScreen> {
       key: photoPickerKey,
       appBar: AppBar(
         title: Text(album?.name ?? l10n.photoLibraryTitle),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
+        leading: WayBackButton(
           tooltip: album == null ? l10n.back : l10n.allAlbums,
           onPressed:
               album == null ? () => Navigator.of(context).pop() : _leaveAlbum,

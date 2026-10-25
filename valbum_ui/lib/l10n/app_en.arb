@@ -1980,11 +1980,6 @@
     "description": "Tooltip of the control leading to the folder above",
     "x-translated": "d610cad2"
   },
-  "home": "Home",
-  "@home": {
-    "description": "Tooltip of the control leading to the top of the library",
-    "x-translated": "d1e4a3ee"
-  },
   "upload": "Upload",
   "@upload": {
     "description": "Tooltip of the button adding photos to the album shown",
@@ -4257,11 +4252,6 @@
       }
     },
     "x-translated": "c6d6be08"
-  },
-  "goToStartPage": "Go to the start page",
-  "@goToStartPage": {
-    "description": "Button on a page that could not be loaded, leading to the top listing of the server (issue #176).",
-    "x-translated": "a40b717d"
   },
   "loadFailureDetails": "Details",
   "@loadFailureDetails": {

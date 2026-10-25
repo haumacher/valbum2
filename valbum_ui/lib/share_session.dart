@@ -347,7 +347,8 @@ class ShareGoneScreen extends StatelessWidget {
                 ? FilledButton.icon(
                     key: const Key("invitation-continue"),
                     onPressed: onContinue,
-                    icon: const Icon(Icons.home),
+                    // On to the start page, not home (issue #309).
+                    icon: const Icon(Icons.arrow_forward),
                     label: Text(
                         AppLocalizations.of(context)!.shareContinueToStart),
                   )
@@ -387,7 +388,8 @@ class ShareConfinedScreen extends StatelessWidget {
         action: FilledButton.icon(
           key: const Key("share-home"),
           onPressed: onHome,
-          icon: const Icon(Icons.home),
+          // Back to the album of the link, not home (issue #309).
+          icon: const Icon(Icons.photo_album_outlined),
           label: Text(AppLocalizations.of(context)!.shareBackToAlbum),
         ),
       );

@@ -1571,26 +1571,18 @@ class PersonsContentState extends State<PersonsContent>
       }),
       child: Scaffold(
         appBar: PageAppBar(
-          leading: IconButton(
+          leading: WayBackButton(
             key: const Key("persons-up"),
-            icon: const Icon(Icons.arrow_back),
-            tooltip: _l10n.up,
             onPressed: widget.albumState.navigator.up,
           ),
           automaticallyImplyLeading: false,
-          title: Column(
-            children: [
-              Text(_l10n.personsTitle),
-              Text(
-                selection.isEmpty
-                    ? widget.album.title
-                    : _l10n.personsSelectedCount(selection.length),
-                key: const Key("persons-subtitle"),
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ],
+          title: PageTitle(
+            _l10n.personsTitle,
+            subtitle: selection.isEmpty
+                ? widget.album.title
+                : _l10n.personsSelectedCount(selection.length),
+            subtitleKey: const Key("persons-subtitle"),
           ),
-          centerTitle: true,
           actions: [
             // What can be done to the faces standing selected, without
             // dragging any of them anywhere (issue #139): who they are, that

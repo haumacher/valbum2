@@ -145,10 +145,8 @@ class SimilarViewState extends State<SimilarView> {
     var list = _list;
     return Scaffold(
       appBar: PageAppBar(
-        leading: IconButton(
+        leading: WayBackButton(
           key: const Key("similar-up"),
-          icon: const Icon(Icons.arrow_back),
-          tooltip: _l10n.up,
           onPressed: widget.albumState.navigator.up,
         ),
         automaticallyImplyLeading: false,

@@ -102,7 +102,6 @@ import 'selectable.dart';
 import 'settings.dart';
 import 'share_session.dart';
 import 'trash_view.dart' show hasTrashedImages, trashRating;
-import 'status.dart';
 import 'page_app_bar.dart';
 
 // ---------------------------------------------------------------------------
@@ -1336,31 +1335,20 @@ class InboxContentState extends State<InboxContent>
     var count = _selection.length;
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: PageAppBar(
+      // Black like the photographs it shows (issue #310).
+      appBar: PageAppBar.black(
         // The way back is the leading control at the left on every page of
         // the app (issue #100).
         leading: path.isEmpty
             ? null
-            : IconButton(
-                icon: const Icon(Icons.arrow_back),
-                tooltip: _l10n.up,
-                onPressed: widget.albumState.showParent,
-              ),
+            : WayBackButton(onPressed: widget.albumState.showParent),
         automaticallyImplyLeading: false,
-        title: Column(
-          children: [
-            Text(album.title),
-            if (count > 0)
-              Text(
-                inboxSelectionLine(_l10n, count),
-                key: const Key("inbox-selection"),
-                style: const TextStyle(fontSize: 12),
-              ),
-          ],
+        title: PageTitle(
+          album.title,
+          subtitle: count > 0 ? inboxSelectionLine(_l10n, count) : "",
+          subtitleKey: const Key("inbox-selection"),
         ),
-        centerTitle: true,
         actions: [
-          const StatusIndicator(),
           menu(context, inboxMenu(count)),
         ],
       ),

@@ -68,11 +68,14 @@ Future<void> pumpAt(
 String headline(WidgetTester tester) =>
     tester.widget<Text>(find.byKey(headlineKey)).data!;
 
-/// The start page button leads to the root listing, and the details line
-/// reveals the address that was asked.
+/// The way up — the page's way out since issue #309 took the home button
+/// away — leads to the root listing, [ups] levels above (each level between
+/// fails as well, and offers the way up again: no dead end), and the details
+/// line reveals the address that was asked.
 Future<void> expectWayOnAndDetails(
   WidgetTester tester, {
   required String technicalUrl,
+  int ups = 1,
 }) async {
   // Hidden until asked for.
   expect(find.textContaining("/data/"), findsNothing);
@@ -82,10 +85,13 @@ Future<void> expectWayOnAndDetails(
   });
   expect(find.text("HTTP 404 for $technicalUrl"), findsOneWidget);
 
-  await withFakeImageHttp(() async {
-    await tester.tap(find.byKey(goToStartKey));
-    await tester.pumpAndSettle();
-  });
+  for (var i = 0; i < ups; i++) {
+    expect(find.byKey(headlineKey), findsOneWidget);
+    await withFakeImageHttp(() async {
+      await tester.tap(find.byKey(loadFailureUpKey));
+      await tester.pumpAndSettle();
+    });
+  }
   expect(find.byKey(headlineKey), findsNothing);
   expect(find.text("Test-album"), findsOneWidget);
   expect(find.text("Schlosspark Karlsruhe"), findsOneWidget);
@@ -130,6 +136,7 @@ void main() {
     await expectWayOnAndDetails(
       tester,
       technicalUrl: "$dataUrl/2020/2020-05-01 Trip/?type=json",
+      ups: 2,
     );
   });
 
@@ -149,6 +156,8 @@ void main() {
     await expectWayOnAndDetails(
       tester,
       technicalUrl: "$dataUrl/Trip/?type=json",
+      // Up from the viewer is the album, which failed as well.
+      ups: 2,
     );
   });
 
@@ -166,7 +175,7 @@ void main() {
         findsWidgets,
         reason: "$route",
       );
-      expect(find.byKey(goToStartKey), findsWidgets, reason: "$route");
+      expect(find.byKey(loadFailureUpKey), findsWidgets, reason: "$route");
     }
   });
 
@@ -184,7 +193,7 @@ void main() {
     );
   });
 
-  testWidgets('the start page itself offers no way to the start page',
+  testWidgets('the start page itself offers no way up',
       (tester) async {
     await pumpAt(
       tester,
@@ -194,7 +203,7 @@ void main() {
 
     expect(headline(tester),
         "The start page was not found on the server $appBase.");
-    expect(find.byKey(goToStartKey), findsNothing);
+    expect(find.byKey(loadFailureUpKey), findsNothing);
     // No ErrorInfo: nothing but the headline quotes the server, and the
     // status lives in the details.
     expect(find.textContaining("HTTP 404"), findsNothing);

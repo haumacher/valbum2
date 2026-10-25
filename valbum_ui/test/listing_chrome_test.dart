@@ -10,6 +10,7 @@ import 'package:flutter/material.dart' hide Orientation;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:valbum_ui/main.dart';
+import 'package:valbum_ui/page_app_bar.dart';
 
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
@@ -48,12 +49,14 @@ void main() {
       await tester.pumpAndSettle();
 
       var bar = barOf(tester);
-      expect(bar.leading, isA<IconButton>());
-      expect((bar.leading! as IconButton).tooltip, "Up");
+      expect(bar.leading, isA<WayBackButton>());
+      expect((bar.leading! as WayBackButton).tooltip, isNull,
+          reason: "the arrow says \"Up\"");
 
-      // Home stays an action beside the search of the folder (issue #227),
-      // and the menu is the last control at the right.
-      expect(actionTooltips(bar), ["Search", "Home"]);
+      // The search of the folder stays a button of its bar (issue #227),
+      // there is no home any more (issue #309), and the menu is the last
+      // control at the right.
+      expect(actionTooltips(bar), ["Search"]);
       expect(bar.actions!.last, isA<PopupMenuButton>());
       expect(
         find.descendant(

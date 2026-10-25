@@ -436,10 +436,8 @@ class DuplicatesViewState extends State<DuplicatesView> {
     var list = _list;
     return Scaffold(
       appBar: PageAppBar(
-        leading: IconButton(
+        leading: WayBackButton(
           key: const Key("duplicates-up"),
-          icon: const Icon(Icons.arrow_back),
-          tooltip: _l10n.up,
           onPressed: widget.albumState.navigator.up,
         ),
         automaticallyImplyLeading: false,

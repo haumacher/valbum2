@@ -63,7 +63,6 @@ import 'thumbnails.dart';
 import 'tile_keys.dart';
 import 'trash_view.dart' show hasTrashedImages, trashRating;
 import 'video_view.dart';
-import 'status.dart';
 import 'page_app_bar.dart';
 
 /// The clearance an album is shown with in the edit mode, see issue #46.
@@ -2665,31 +2664,25 @@ class AlbumContentState extends State<AlbumContent>
             )
           : immersive
               ? null
-              : PageAppBar(
-                  leading: editing && up.isNotEmpty ? up.first : null,
+              // Black like the album under it (issue #310), in every mode.
+              : PageAppBar.black(
+                  // The way out is the leading control in every mode — the
+                  // edit mode, an empty or preparing album, the view of an
+                  // entry of the bell (issues #99, #308).
+                  leading: up.isNotEmpty ? up.first : null,
                   automaticallyImplyLeading: false,
-                  title: Column(
-                    children: [
-                      Text(self.title),
-                      if (self.subTitle.isNotEmpty) Text(self.subTitle),
-                    ],
-                  ),
-                  centerTitle: true,
-                  // The edit mode reads from the left: the way out, then what
-                  // the edit offers, and the album's menu last at the right,
-                  // where a menu belongs (issues #99, #100). Outside the edit
-                  // mode the navigation keeps the place it had. "View as" is not
-                  // a button of its own any more — it is an entry of the menu,
-                  // see [albumMenu] (issue #100); the move and the album
-                  // properties are entries of that menu too, and are therefore
-                  // offered in the view mode as well, see issue #121. Save and
-                  // Cancel stay here: they are the edit's own.
+                  title: PageTitle(self.title, subtitle: self.subTitle),
+                  // Then what the edit offers, and the album's menu last at
+                  // the right, where a menu belongs (issues #99, #100). "View
+                  // as" is not a button of its own any more — it is an entry
+                  // of the menu, see [albumMenu] (issue #100); the move and
+                  // the album properties are entries of that menu too, and are
+                  // therefore offered in the view mode as well, see issue
+                  // #121; so is the search (issue #309). Save and Cancel stay
+                  // here: they are the edit's own.
                   actions: [
-                    if (!editing && !isNewsView) ...navigationActions(context),
-                    if (!editing && isNewsView) ...[
-                      ...wayUp(),
-                      ...newsMenu(context),
-                    ],
+                    if (!editing && !isNewsView) ...albumMenu(context),
+                    if (!editing && isNewsView) ...newsMenu(context),
                     if (editMode)
                       IconButton(
                         onPressed: () => save(),
@@ -2765,22 +2758,8 @@ class AlbumContentState extends State<AlbumContent>
     );
   }
 
-  /// The controls of the album: the way up and the album's menu.
-  ///
-  /// The same controls wherever the album shows them: in the app bar of the
-  /// edit mode and of an empty album, and floating over the photos otherwise,
-  /// see [contentView]. An album without them is a dead end — the browser
-  /// back button aside, there was no way back to the index, see issue #35.
-  /// There is no home button: the index is one or more steps up, and a
-  /// listing below the root offers the home from there.
-  List<Widget> navigationActions(BuildContext context) => [
-        ...wayUp(),
-        ...searchAction(),
-        ...albumMenu(context),
-      ];
-
-  /// Whether the search of this album is offered (issue #243): under the
-  /// rule of a folder's app bar — to a member of the space or an editor,
+  /// Whether the search of this album is offered (issue #243), as an entry of
+  /// its menu (issue #309): under the rule of a folder's app bar — to a member of the space or an editor,
   /// never inside a link — and not on a saved search, which is a search of
   /// its own, nor on the results of the search view.
   bool get maySearch =>
@@ -2789,28 +2768,14 @@ class AlbumContentState extends State<AlbumContent>
       !isSearch(widget.album) &&
       (_permission.named || heldRights.mayEdit);
 
-  /// The search of this album, see [maySearch]: it finds the album's own
-  /// photographs alone (issue #249), and the search view offers to widen it
-  /// to the whole library.
-  List<Widget> searchAction() => [
-        if (maySearch)
-          IconButton(
-            key: const Key("open-search"),
-            icon: const Icon(Icons.search),
-            tooltip: _l10n.searchAction,
-            onPressed: () => widget.albumState.navigator
-                .go(SearchRoute(widget.albumState.path)),
-          ),
-      ];
-
-  /// The way out of the album, nothing at the root.
+  /// The way out of the album, nothing at the root: the leading control of
+  /// its bar, or floating at the top left over the photos, see [contentView].
+  /// An album without it is a dead end — the browser back button aside,
+  /// there was no way back to the index, see issue #35. There is no home
+  /// button (issue #309): the start page is one or more steps up.
   List<Widget> wayUp() => [
         if (widget.albumState.path.isNotEmpty && !isSearchView)
-          IconButton(
-            icon: const Icon(Icons.arrow_back),
-            tooltip: _l10n.up,
-            onPressed: widget.albumState.showParent,
-          ),
+          WayBackButton(onPressed: widget.albumState.showParent),
       ];
 
   /// The album's menu, with the rating filter in it.
@@ -2829,6 +2794,19 @@ class AlbumContentState extends State<AlbumContent>
             ),
             const PopupMenuDivider(),
           ],
+          // The search of this album, see [maySearch]: it finds the album's
+          // own photographs alone (issue #249), and the search view offers to
+          // widen it to the whole library. An entry of the menu, not a button
+          // of the bar (issue #309); not in the edit mode, which a search
+          // would leave with its edits unsaved.
+          if (maySearch && !session.editMode)
+            keyedMenuItem(
+              const Key("open-search"),
+              Icons.search,
+              _l10n.searchAction,
+              (_) => widget.albumState.navigator
+                  .go(SearchRoute(widget.albumState.path)),
+            ),
           // What the album is looked at as, in the edit session where the
           // button used to be (issue #100): a line saying which view is on
           // the screen, the three choices under it — the idiom the rating
@@ -3473,19 +3451,22 @@ class AlbumContentState extends State<AlbumContent>
               left: insets.left + floatingMargin,
               child: floating(wayUp()),
             ),
-          // The view of an entry of the bell offers the way back to its
-          // album (issue #268) and what its menu does with the photographs
-          // shown (#295), no search and no bell of its own.
+          // The floating bar stands in for the album's app bar, under its
+          // rules: the status indicator and the bell on the top-level page
+          // alone — an album at the root — and the search in the menu
+          // (issue #309). The view of an entry of the bell offers the way
+          // back to its album (issue #268) and what its menu does with the
+          // photographs shown (#295).
           if (!editMode && !selectMode)
             Positioned(
               top: insets.top + floatingMargin,
               right: insets.right + floatingMargin,
               child: floating([
-                if (!isNewsView) ...searchAction(),
-                if (!isSearchView && !isNewsView) const NewsBellButton(),
-                // What runs and what failed, on every page (issue #305): the
-                // floating bar of an album stands in for its app bar.
-                const StatusIndicator(),
+                ...topLevelStatus(
+                  topLevel: widget.albumState.path.isEmpty &&
+                      !isSearchView &&
+                      !isNewsView,
+                ),
                 ...(isNewsView ? newsMenu(context) : albumMenu(context)),
               ]),
             ),

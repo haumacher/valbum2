@@ -13,6 +13,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:valbum_ui/main.dart';
+import 'package:valbum_ui/page_app_bar.dart';
 
 import 'util/edit_drag.dart';
 import 'util/fake_image_http.dart';
@@ -175,8 +176,9 @@ void main() {
       await tester.pumpAndSettle();
 
       var bar = tester.widget<AppBar>(find.byType(AppBar));
-      expect(bar.leading, isA<IconButton>());
-      expect((bar.leading! as IconButton).tooltip, "Up");
+      expect(bar.leading, isA<WayBackButton>());
+      expect((bar.leading! as WayBackButton).tooltip, isNull,
+          reason: "the arrow says \"Up\"");
       // The three-dots menu is the last thing in the row.
       expect(bar.actions!.last, isA<PopupMenuButton>());
       // And the edit's own actions sit between them, Cancel behind Save.

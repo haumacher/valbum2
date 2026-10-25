@@ -122,12 +122,16 @@ Future<void> _openMenu(WidgetTester tester) =>
 Future<void> _back(WidgetTester tester) =>
     settle(tester, () => tester.binding.handlePopRoute());
 
+/// The start page, the one page with the bell (issue #309): an album at the
+/// root here, since the server answers every path with the same album.
+const VAlbumRoute _start = ListingOrAlbumRoute([]);
+
 void main() {
   testWidgets('a member sees the bell with the number of unread entries',
       (tester) async {
     screen(tester, const Size(800, 600));
     var server = _Server();
-    await _open(tester, server, const ListingOrAlbumRoute(["other"]));
+    await _open(tester, server, _start);
 
     expect(find.byKey(newsBellKey), findsOneWidget);
     expect(
@@ -145,10 +149,19 @@ void main() {
     );
   });
 
+  testWidgets('below the start page there is no bell (issue #309)',
+      (tester) async {
+    screen(tester, const Size(800, 600));
+    var server = _Server();
+    await _open(tester, server, const ListingOrAlbumRoute(["other"]));
+
+    expect(find.byKey(newsBellKey), findsNothing);
+  });
+
   testWidgets('without a member there is no bell', (tester) async {
     screen(tester, const Size(800, 600));
     var server = _Server();
-    await _open(tester, server, const ListingOrAlbumRoute(["other"]),
+    await _open(tester, server, _start,
         token: null);
 
     expect(find.byKey(newsBellKey), findsNothing);
@@ -162,7 +175,7 @@ void main() {
   testWidgets('opening the menu marks nothing', (tester) async {
     screen(tester, const Size(800, 600));
     var server = _Server();
-    await _open(tester, server, const ListingOrAlbumRoute(["other"]));
+    await _open(tester, server, _start);
 
     await _openMenu(tester);
 
@@ -177,7 +190,7 @@ void main() {
       testWidgets(known ? 'with an entry' : 'with nothing new', (tester) async {
         screen(tester, const Size(360, 640));
         var server = _Server()..known = known;
-        await _open(tester, server, const ListingOrAlbumRoute(["other"]));
+        await _open(tester, server, _start);
         await _openMenu(tester);
         expect(find.byKey(const Key("news-nothing")),
             known ? findsNothing : findsOneWidget);
@@ -195,7 +208,7 @@ void main() {
   testWidgets('"Mark all as read" marks every entry', (tester) async {
     screen(tester, const Size(800, 600));
     var server = _Server();
-    await _open(tester, server, const ListingOrAlbumRoute(["other"]));
+    await _open(tester, server, _start);
     await _openMenu(tester);
 
     await settle(tester, () => tester.tap(find.byKey(newsMarkAllKey)));
@@ -224,7 +237,7 @@ void main() {
       'them, and back lands at them in the album', (tester) async {
     screen(tester, const Size(800, 600));
     var server = _Server();
-    await _open(tester, server, const ListingOrAlbumRoute(["other"]));
+    await _open(tester, server, _start);
     await _openMenu(tester);
 
     await settle(tester, () => tester.tap(find.byKey(newsEntryKey(_key))));
@@ -297,9 +310,9 @@ void main() {
       (tester) async {
     screen(tester, const Size(390, 844));
     var server = _Server();
-    // The album was on the screen before the entry was opened on it.
-    await _open(tester, server, const ListingOrAlbumRoute(["trip"]));
-    expect(albumPosition(tester).pixels, 0);
+    // The bell stands on the start page alone (issue #309): the entry is
+    // opened from there, and back from it is its album.
+    await _open(tester, server, _start);
     await _openMenu(tester);
     await settle(tester, () => tester.tap(find.byKey(newsEntryKey(_key))));
 

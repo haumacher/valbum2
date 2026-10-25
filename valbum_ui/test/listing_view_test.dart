@@ -1,5 +1,5 @@
 /// Tests for [ListingView]: the index picture crop, the subtitle line and the
-/// home/up navigation.
+/// way up (there is no home button since issue #309).
 library;
 
 import 'package:flutter/material.dart';
@@ -204,7 +204,7 @@ void main() {
       expect(subTitle.style?.color, Colors.white70);
     });
 
-    testWidgets('offers home and up below the root', (tester) async {
+    testWidgets('offers up and no home below the root', (tester) async {
       var requests = <http.Request>[];
       var client = clientReturning(
         fixture("listing_sub.json"),
@@ -212,7 +212,8 @@ void main() {
       );
       await pumpListing(tester, client, path: const ["sub"]);
 
-      expect(find.byIcon(Icons.home), findsOneWidget);
+      // No home button anywhere (issue #309): the root is up.
+      expect(find.byIcon(Icons.home), findsNothing);
       expect(find.byIcon(Icons.arrow_back), findsOneWidget);
       expect(requests.single.url.toString(),
           "http://server/valbum/data/sub/?type=json");
@@ -260,7 +261,8 @@ void main() {
       expect(requests, hasLength(2));
     });
 
-    testWidgets('home loads the root listing', (tester) async {
+    testWidgets('going up and up again loads the root listing',
+        (tester) async {
       var requests = <http.Request>[];
       var client = clientReturning(
         fixture("listing_sub.json"),
@@ -268,10 +270,14 @@ void main() {
       );
       await pumpListing(tester, client, path: const ["a", "b"]);
 
-      await withFakeImageHttp(() async {
-        await tester.tap(find.byIcon(Icons.home));
-        await tester.pumpAndSettle();
-      });
+      // There is no home button any more (issue #309): the way to the
+      // start page is up.
+      for (var i = 0; i < 2; i++) {
+        await withFakeImageHttp(() async {
+          await tester.tap(find.byIcon(Icons.arrow_back));
+          await tester.pumpAndSettle();
+        });
+      }
 
       expect(
           requests.last.url.toString(), "http://server/valbum/data/?type=json");

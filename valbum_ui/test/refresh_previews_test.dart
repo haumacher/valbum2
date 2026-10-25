@@ -125,6 +125,14 @@ Future<void> openMenu(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+/// Taps the entry of the open menu, scrolled into view first: the album's
+/// menu is longer than the test's screen is high.
+Future<void> tapEntry(WidgetTester tester, Key key) async {
+  await tester.ensureVisible(find.byKey(key));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(key));
+}
+
 void main() {
   // Flutter's [ImageCache] is global and survives a test: without this the
   // album of the test before has already decoded these very thumbnails, and
@@ -168,7 +176,7 @@ void main() {
         server(role: "admin", thumbnails: [], requests: requests),
       );
       await openMenu(tester);
-      await tester.tap(find.byKey(const Key("refresh-previews")));
+      await tapEntry(tester, const Key("refresh-previews"));
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key("refresh-previews-dialog")), findsOneWidget);
@@ -202,7 +210,7 @@ void main() {
       expect(before, greaterThan(0), reason: "the tiles were fetched");
 
       await openMenu(tester);
-      await tester.tap(find.byKey(const Key("refresh-previews")));
+      await tapEntry(tester, const Key("refresh-previews"));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key("refresh-previews-confirm")));
       await tester.pumpAndSettle();
@@ -246,7 +254,7 @@ void main() {
         ),
       );
       await openMenu(tester);
-      await tester.tap(find.byKey(const Key("refresh-previews")));
+      await tapEntry(tester, const Key("refresh-previews"));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key("refresh-previews-confirm")));
       await tester.pumpAndSettle();
@@ -272,7 +280,7 @@ void main() {
       await tester.pumpAndSettle();
 
       await openMenu(tester);
-      await tester.tap(find.byKey(const Key("refresh-previews")));
+      await tapEntry(tester, const Key("refresh-previews"));
       await tester.pumpAndSettle();
 
       expect(find.text(testL10n.offlineRefusal), findsOneWidget);

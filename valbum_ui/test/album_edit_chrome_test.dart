@@ -12,6 +12,7 @@ import 'package:flutter/material.dart' hide Orientation;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:valbum_ui/main.dart';
+import 'package:valbum_ui/page_app_bar.dart';
 
 import 'util/edit_drag.dart';
 import 'util/fake_image_http.dart';
@@ -72,8 +73,9 @@ void main() {
       await pumpEditMode(tester, editableAlbum([]));
 
       var bar = tester.widget<AppBar>(find.byType(AppBar).last);
-      expect(bar.leading, isA<IconButton>());
-      expect((bar.leading! as IconButton).tooltip, "Up");
+      expect(bar.leading, isA<WayBackButton>());
+      expect((bar.leading! as WayBackButton).tooltip, isNull,
+          reason: "the arrow says \"Up\"");
       expect(bar.actions!.last, isA<PopupMenuButton>());
 
       // "View as" is no longer a control of its own.

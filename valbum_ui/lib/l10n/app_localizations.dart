@@ -2048,12 +2048,6 @@ abstract class AppLocalizations {
   /// **'Up'**
   String get up;
 
-  /// Tooltip of the control leading to the top of the library
-  ///
-  /// In en, this message translates to:
-  /// **'Home'**
-  String get home;
-
   /// Tooltip of the button adding photos to the album shown
   ///
   /// In en, this message translates to:
@@ -4088,12 +4082,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The start page could not be opened on the server {server}.'**
   String loadFailedStart(String server);
-
-  /// Button on a page that could not be loaded, leading to the top listing of the server (issue #176).
-  ///
-  /// In en, this message translates to:
-  /// **'Go to the start page'**
-  String get goToStartPage;
 
   /// Title of the expandable line on a page that could not be loaded, which reveals the technical address and status (issue #176).
   ///

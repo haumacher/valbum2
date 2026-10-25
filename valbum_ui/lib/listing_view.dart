@@ -22,7 +22,6 @@ import 'form_dialog.dart';
 import 'key_guard.dart';
 import 'keyboard_scroll.dart';
 import 'l10n/app_localizations.dart';
-import 'news.dart';
 import 'listing_layout.dart';
 import 'move_view.dart';
 import 'resource.dart';
@@ -39,7 +38,6 @@ import 'share_view.dart';
 import 'thumbnails.dart';
 import 'tile_keys.dart';
 import 'upload_target_view.dart';
-import 'status.dart';
 import 'page_app_bar.dart';
 
 /// The edge length (in CSS pixels) of the square folder preview the retired
@@ -236,25 +234,22 @@ class ListingView extends StatelessWidget {
       // Black like the album pages, so that the way down does not flash from
       // a light page to a dark one, see issue #40.
       backgroundColor: Colors.black,
-      appBar: PageAppBar(
+      // Its bar black as well, like the album pages' (issue #310).
+      appBar: PageAppBar.black(
         // The way back is the leading control at the left on every page of
         // the app — the album, the viewer and this listing (issue #100).
         // Nothing to go up to at the root, see issue #40.
         leading: albumState.path.isEmpty
             ? null
-            : IconButton(
-                icon: const Icon(Icons.arrow_back),
-                tooltip: l10n.up,
-                onPressed: albumState.showParent,
-              ),
+            : WayBackButton(onPressed: albumState.showParent),
         automaticallyImplyLeading: false,
         title: Text(self.title),
         actions: <Widget>[
-          // What runs and what failed, for a member and while this device
-          // uploads (issue #305).
-          const StatusIndicator(),
-          // What arrived from others, for a member (issue #268).
-          const NewsBellButton(),
+          // What runs and what failed, and what arrived from others: on the
+          // start page alone (issue #309).
+          ...topLevelStatus(topLevel: albumState.path.isEmpty),
+          // The search stays a button of a folder's bar (issue #309 moves
+          // only an album's into its menu).
           if (maySearch)
             IconButton(
               key: const Key("open-search"),
@@ -268,13 +263,8 @@ class ListingView extends StatelessWidget {
               count: inbox.inboxCount,
               onPressed: () => albumState.showPath(inbox.inboxPath),
             ),
-          // No home on the home screen, see issue #40.
-          if (albumState.path.isNotEmpty)
-            IconButton(
-              icon: const Icon(Icons.home),
-              tooltip: l10n.home,
-              onPressed: albumState.showRoot,
-            ),
+          // No home button (issue #309): the start page is reached by
+          // going up.
           // The three-dots menu is the last control at the right, here as on
           // every other page (issue #100).
           menu(context, [

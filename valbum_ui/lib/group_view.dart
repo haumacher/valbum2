@@ -65,11 +65,10 @@ class GroupView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: PageAppBar(
+      // Black like the photographs under it (issue #310).
+      appBar: PageAppBar.black(
         title: Text(title),
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
+        leading: WayBackButton(
           tooltip: upTooltip ?? AppLocalizations.of(context)!.backToAlbum,
           onPressed: onUp,
         ),

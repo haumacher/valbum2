@@ -381,7 +381,7 @@ void main() {
 
       // The buttons beside it take their taps as before.
       await withFakeImageHttp(() async {
-        await tester.tap(find.byKey(goToStartKey));
+        await tester.tap(find.byKey(loadFailureUpKey));
         await tester.pumpAndSettle();
       });
       expect(find.byKey(headlineKey), findsNothing);

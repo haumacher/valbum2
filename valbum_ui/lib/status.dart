@@ -1,5 +1,6 @@
 /// One place for everything that runs, waits or fails (issue #305): the
-/// indicator in the app bar and the status page it opens.
+/// indicator in the app bar of the start page (issue #309, see
+/// `page_app_bar.dart`) and the status page it opens.
 ///
 /// The author: "Wie schaffen wir es denn alles relevante an einer zentralen
 /// Stelle anzuzeigen. Das ist doch Mist, wenn man nie weiß wo man hinschauen
@@ -38,6 +39,7 @@ import 'catch_up.dart';
 import 'client.dart';
 import 'diagnostics.dart';
 import 'l10n/app_localizations.dart';
+import 'page_app_bar.dart';
 import 'manage_view.dart' show refusalMessage;
 import 'page_insets.dart';
 import 'platform.dart';
@@ -716,13 +718,11 @@ class StatusPageState extends State<StatusPage> {
       builder: (context, _) => _content(context, l10n, diagnostics),
     );
     return Scaffold(
-      appBar: AppBar(
+      appBar: PageAppBar(
         leading: widget.onUp == null
             ? null
-            : IconButton(
+            : WayBackButton(
                 key: const Key("status-up"),
-                icon: const Icon(Icons.arrow_back),
-                tooltip: l10n.up,
                 onPressed: widget.onUp,
               ),
         title: Text(l10n.statusTitle),

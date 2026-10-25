@@ -26,6 +26,7 @@ library;
 import 'package:flutter/material.dart';
 
 import 'l10n/app_localizations.dart';
+import 'page_app_bar.dart';
 import 'photo_actions.dart';
 import 'selectable.dart';
 
@@ -36,6 +37,9 @@ import 'selectable.dart';
 ///
 /// [extra] are the actions of a page that selects for something else: the
 /// trash restores its selection (issue #295).
+///
+/// [black] is the bar of a page of photographs on black (issue #310), see
+/// `page_app_bar.dart`.
 ///
 /// [onDownload] is `null` while nothing is selected, which disables the
 /// button rather than taking it away, so that the bar does not jump; the same
@@ -50,8 +54,9 @@ PreferredSizeWidget selectModeAppBar({
   bool offerCollect = false,
   VoidCallback? onCollect,
   List<Widget> extra = const [],
+  bool black = true,
 }) =>
-    AppBar(
+    (black ? PageAppBar.black : PageAppBar.new)(
       key: const Key("select-mode-bar"),
       automaticallyImplyLeading: false,
       leading: IconButton(

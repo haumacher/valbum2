@@ -89,19 +89,36 @@ void main() {
   var l10n = l10nOf();
 
   group('the search from an album', () {
-    testWidgets('searches the album alone', (tester) async {
+    /// The menu of the album, opened.
+    Future<void> openAlbumMenu(WidgetTester tester) async {
+      await tester.tap(find.byIcon(Icons.more_vert).last);
+      await settle(tester);
+    }
+
+    /// The search buttons standing anywhere on the page: none on an album
+    /// since issue #309, which made the search an entry of its menu.
+    Finder searchButtons() => find.ancestor(
+        of: find.byIcon(Icons.search), matching: find.byType(IconButton));
+
+    testWidgets('searches the album alone, from its menu', (tester) async {
       var space = AlbumSpace();
       var delegate = await pumpRoute(
           tester, space, const ListingOrAlbumRoute(["2024", "Zoo"]));
 
-      var button = find.byKey(const Key("open-search"));
-      expect(button, findsOneWidget);
       expect(find.byType(AppBar), findsNothing,
-          reason: "The album shows its floating controls, the search among "
-              "them.");
-      expect(tester.widget<IconButton>(button).tooltip, l10n.searchAction);
+          reason: "The album shows its floating controls.");
+      expect(searchButtons(), findsNothing,
+          reason: "The search is no button of the floating controls.");
+      expect(find.byKey(const Key("open-search")), findsNothing);
 
-      await tester.tap(button);
+      await openAlbumMenu(tester);
+      var entry = find.byKey(const Key("open-search"));
+      expect(entry, findsOneWidget);
+      expect(
+        find.descendant(of: entry, matching: find.text(l10n.searchAction)),
+        findsOneWidget,
+      );
+      await tester.tap(entry);
       await settle(tester);
 
       expect(delegate.route, const SearchRoute(["2024", "Zoo"]),
@@ -109,12 +126,14 @@ void main() {
       expect(find.byKey(const Key("search-hint")), findsOneWidget);
     });
 
-    testWidgets('is offered in the app bar of an empty album', (tester) async {
+    testWidgets('is offered in the menu of an empty album', (tester) async {
       var space = Space();
       var delegate = await pumpRoute(
           tester, space, const ListingOrAlbumRoute(["2020 Trip"]));
 
       expect(find.byType(AppBar), findsOneWidget);
+      expect(searchButtons(), findsNothing);
+      await openAlbumMenu(tester);
       await tester.tap(find.byKey(const Key("open-search")));
       await settle(tester);
 
@@ -122,7 +141,8 @@ void main() {
           reason: "An album at the top searches itself (issue #249).");
     });
 
-    testWidgets('fits beside the menu on a phone', (tester) async {
+    testWidgets('leaves the floating controls of a phone to the way up and '
+        'the menu', (tester) async {
       tester.view.physicalSize = const Size(360, 740);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
@@ -130,11 +150,10 @@ void main() {
       await pumpRoute(
           tester, space, const ListingOrAlbumRoute(["2024", "Zoo"]));
 
-      var search = tester.getRect(find.byKey(const Key("open-search")));
+      expect(searchButtons(), findsNothing);
       var menu = tester.getRect(find.byIcon(Icons.more_vert));
       var up = tester.getRect(find.byIcon(Icons.arrow_back));
-      expect(search.right, lessThanOrEqualTo(menu.left));
-      expect(up.right, lessThan(search.left));
+      expect(up.right, lessThan(menu.left));
       expect(menu.right, lessThanOrEqualTo(360));
     });
 
@@ -142,6 +161,10 @@ void main() {
       await chrome.pumpSession(tester, chrome.albumLink());
 
       expect(find.byType(AlbumContent), findsOneWidget);
+      expect(searchButtons(), findsNothing);
+      await openAlbumMenu(tester);
+      expect(find.byType(PopupMenuItem<void Function(BuildContext)>),
+          findsWidgets, reason: "the menu is open");
       expect(find.byKey(const Key("open-search")), findsNothing);
     });
   });

@@ -47,6 +47,9 @@ Future<void> expectAboutFromOpenMenu(WidgetTester tester) async {
   var keys = menuKeys(tester);
   expect(keys, contains("about"));
   expect(keys.last, "about", reason: "the last entry of the menu");
+  // A long menu scrolls on the test's small screen.
+  await tester.ensureVisible(find.byKey(const Key("about")));
+  await tester.pumpAndSettle();
   await tester.tap(find.byKey(const Key("about")));
   await tester.pumpAndSettle();
   expectAboutDialog();

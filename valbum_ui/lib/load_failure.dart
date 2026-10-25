@@ -22,10 +22,13 @@ import 'package:flutter/material.dart';
 
 import 'client.dart';
 import 'l10n/app_localizations.dart';
+import 'page_app_bar.dart';
 import 'routes.dart';
 
-/// The key of the "Go to the start page" button.
-const Key goToStartKey = Key("load-failure-home");
+/// The key of the way up, the leading arrow of the page's bar: the way out of
+/// the page where there is somewhere to go up to (issue #309 took the home
+/// button away).
+const Key loadFailureUpKey = Key("load-failure-up");
 
 /// The key of the expandable line carrying the technical address.
 const Key detailsKey = Key("load-failure-details");
@@ -78,8 +81,9 @@ class LoadFailureView extends StatelessWidget {
   /// The app base the reader knows the server by, see `appBaseOf`.
   final String server;
 
-  /// Shows the root listing; `null` where the root is what failed.
-  final VoidCallback? onHome;
+  /// Goes up from the view that failed, see [loadFailureUpKey]; not offered
+  /// where the root is what failed.
+  final VoidCallback onUp;
 
   /// Loads the view again.
   final VoidCallback onRetry;
@@ -92,7 +96,7 @@ class LoadFailureView extends StatelessWidget {
     required this.route,
     required this.error,
     required this.server,
-    required this.onHome,
+    required this.onUp,
     required this.onRetry,
     required this.onSettings,
   });
@@ -104,9 +108,15 @@ class LoadFailureView extends StatelessWidget {
     var answered = refusal?.status != null;
     var reason = answered ? refusal!.reason : null;
     var url = answered ? refusal!.url : null;
-    var home = route.albumPath.isEmpty ? null : onHome;
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.appTitle)),
+      appBar: PageAppBar(
+        // The way out: up, at the left like on every page (issue #309).
+        leading: route.albumPath.isEmpty
+            ? null
+            : WayBackButton(key: loadFailureUpKey, onPressed: onUp),
+        automaticallyImplyLeading: false,
+        title: Text(l10n.appTitle),
+      ),
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
@@ -132,13 +142,6 @@ class LoadFailureView extends StatelessWidget {
                   spacing: 12,
                   runSpacing: 8,
                   children: [
-                    if (home != null)
-                      FilledButton.icon(
-                        key: goToStartKey,
-                        onPressed: home,
-                        icon: const Icon(Icons.home),
-                        label: Text(l10n.goToStartPage),
-                      ),
                     OutlinedButton.icon(
                       onPressed: onSettings,
                       icon: const Icon(Icons.settings),
