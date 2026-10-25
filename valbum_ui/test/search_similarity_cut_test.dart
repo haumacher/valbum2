@@ -184,7 +184,8 @@ void main() {
       await settle(tester);
       expect(find.byKey(const Key("search-similarity-panel")), findsOneWidget);
       expect(slider(tester).min, 0.01);
-      expect(slider(tester).max, 0.5);
+      expect(slider(tester).max, 1.0,
+          reason: "A reasonable text match lies above 0.7.");
       var searches = space.posts("search").length;
 
       slider(tester).onChanged!(0.2);
@@ -211,6 +212,13 @@ void main() {
       await settle(tester);
       expect(space.posts("search").length, searches + 2);
       expect(space.lastCut, 0.12);
+
+      // A high cut, where reasonable text matches lie, reaches the server.
+      slider(tester).onChangeEnd!(0.75);
+      await settle(tester);
+      expect(space.posts("search").length, searches + 3);
+      expect(space.lastCut, 0.75);
+      expect(find.text(en.searchSimilarityAtLeast("0.75")), findsOneWidget);
 
       // Back to the space's cut.
       await tester.tap(find.byKey(const Key("search-similarity-reset")));

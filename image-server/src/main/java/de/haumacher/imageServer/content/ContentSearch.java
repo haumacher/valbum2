@@ -16,9 +16,10 @@ import java.util.Map;
  * ({@link de.haumacher.imageServer.shared.model.SearchSimilar}), which pages alike.
  *
  * <p>
- * <b>Not calibrated.</b> The weights and the cut below are first guesses, set before the search was
- * ever tried on a real library (the calibration of package 1 of #257 was never run); they are
- * constants here so that a calibration changes them in one place. The score of a photograph is
+ * <b>Calibrated only in part.</b> The weights below are first guesses, set before the search was
+ * ever tried on a real library (the calibration of package 1 of #257 was never run); the cut of a
+ * text search ({@link #THRESHOLD}) was set on a real library since (issue #302). They are constants
+ * here so that a calibration changes them in one place. The score of a photograph is
  * <code>IMAGE_WEIGHT · cos(q, v_img) + TEXT_WEIGHT · cos(q, v_txt)</code>; the weights add up to
  * one, so the score is a cosine, and an unrelated photograph scores about <code>0</code>.
  * </p>
@@ -42,19 +43,23 @@ public final class ContentSearch {
 	public static final float TEXT_WEIGHT = 0.3f;
 
 	/**
-	 * The score below which a photograph is not answered at all: low on purpose. The answer is
-	 * ordered by the score, so a cut too low shows the unrelated photographs last, while one too
-	 * high would say "nothing found" of a library full of matches.
+	 * The score below which a photograph is not answered by a text search. <b>Calibrated</b> (issue
+	 * #302) on the author's library: searching for "cows", only the photographs scoring above
+	 * <code>0.7</code> showed cows, everything below was unrelated. A space administrator who finds
+	 * it too strict for their library lowers it in the space settings (<code>contentThreshold</code>
+	 * of <code>space.json</code>), and a single search lowers it with its slider; a
+	 * <code>space.json</code> stating no cut of its own follows this one.
 	 */
-	public static final float THRESHOLD = 0.05f;
+	public static final float THRESHOLD = 0.7f;
 
 	/**
 	 * The cosine below which a photograph is not answered by "More like this" (a
 	 * {@link de.haumacher.imageServer.shared.model.SearchSimilar}): a cut of its own, for the cosines
 	 * of two pictures lie on another scale than those of a text and a picture &mdash; two unrelated
 	 * photographs are rarely orthogonal, while a text rarely comes near any picture. <b>Not
-	 * calibrated</b> either: a first guess, set before "More like this" was tried on a real library,
-	 * on the low side for the same reason as {@link #THRESHOLD}.
+	 * calibrated</b>: a first guess, set before "More like this" was tried on a real library, low on
+	 * purpose, for the answer is ordered by the cosine, so a cut too low shows the unrelated
+	 * photographs last, while one too high would say "nothing found" of a library full of matches.
 	 */
 	public static final float SIMILAR_THRESHOLD = 0.3f;
 

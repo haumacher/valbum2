@@ -12,6 +12,7 @@ import de.haumacher.imageServer.auth.Rights;
 import de.haumacher.imageServer.auth.ShareStore;
 import de.haumacher.imageServer.auth.SpaceStore;
 import de.haumacher.imageServer.auth.Spaces;
+import de.haumacher.imageServer.content.ContentSearch;
 import de.haumacher.imageServer.shared.model.AnonymousAccess;
 import de.haumacher.imageServer.shared.model.AuthInfo;
 import de.haumacher.imageServer.shared.model.ContentSwitch;
@@ -354,8 +355,10 @@ public class TestSpaceSettings extends TestCase {
 		assertNotNull("Always answered.", settings.getThresholds());
 		assertEquals(0.0, settings.getThresholds().getText());
 		assertEquals(0.0, settings.getThresholds().getSimilar());
-		assertEquals(0.05, settings.getThresholds().getDefaultText(), 1e-12);
-		assertEquals(0.3, settings.getThresholds().getDefaultSimilar(), 1e-12);
+		assertEquals("The built-in cut, as it is written.", Double.parseDouble(Float.toString(ContentSearch.THRESHOLD)),
+			settings.getThresholds().getDefaultText(), 1e-12);
+		assertEquals(Double.parseDouble(Float.toString(ContentSearch.SIMILAR_THRESHOLD)),
+			settings.getThresholds().getDefaultSimilar(), 1e-12);
 
 		FakeResponse saved = save(SharingFixture.ALICE, settings);
 		assertEquals(saved.body(), 200, saved.status());
