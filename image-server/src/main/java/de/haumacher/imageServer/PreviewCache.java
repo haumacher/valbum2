@@ -649,7 +649,8 @@ public class PreviewCache {
 	/**
 	 * Whether the given original has a display rendition: a format no browser and no app can be
 	 * expected to decode, which is a HEIC/HEIF photograph (issue #186), an AVIF or a JPEG XL picture
-	 * (issue #193), see {@link CodedPictures}, and a raw one (issue #191), and nothing else.
+	 * (issue #193), see {@link CodedPictures}, and a raw one (issue #191), and nothing else &mdash;
+	 * by what its bytes are, not by its name (issue #312).
 	 */
 	public static boolean needsDisplay(File file) {
 		return CodedPictures.handles(file) || RawFile.isRaw(file);
@@ -760,6 +761,20 @@ public class PreviewCache {
 			case ORF:
 			case RW2:
 			case RAF:
+			case HEIC:
+			case HEIF:
+			case AVIF:
+			case JXL:
+				// A picture is read by what its bytes are, whatever its name says (issue #312).
+				if (CodedPictures.handles(file)) {
+					try {
+						createHeifPreview(file, tmp, factor);
+					} catch (IOException ex) {
+						throw new PreviewException("Cannot create image preview for '" + fileName + "': "
+							+ ex.getMessage(), ex);
+					}
+					break;
+				}
 				// A raw photograph is read through the JPEG preview it carries, which PictureReader
 				// opens in its place, see issue #191.
 				try {
@@ -769,17 +784,6 @@ public class PreviewCache {
 					throw new PreviewException(ex.getMessage(), ex);
 				} catch (ImageProcessingException | MetadataException | IOException ex) {
 					throw new PreviewException("Cannot create image preview for '" + fileName + "'.", ex);
-				}
-				break;
-			case HEIC:
-			case HEIF:
-			case AVIF:
-			case JXL:
-				try {
-					createHeifPreview(file, tmp, factor);
-				} catch (IOException ex) {
-					throw new PreviewException("Cannot create image preview for '" + fileName + "': "
-						+ ex.getMessage(), ex);
 				}
 				break;
 			default:
