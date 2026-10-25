@@ -95,6 +95,50 @@ public class TestContentCache extends TestCase {
 		assertTrue("Compact: " + bytes.length, bytes.length < 3 * (vector + 8) + 3 * 96 + 200);
 	}
 
+	/**
+	 * Issue #311: units of one album that write its cache at once (the lane of an embedder of its own)
+	 * never lose each other's vectors: each update is a read, a change and a write under the album's
+	 * lock.
+	 */
+	public void testUpdatesAtOnceLoseNothing() throws Exception {
+		int count = 24;
+		java.util.concurrent.CountDownLatch go = new java.util.concurrent.CountDownLatch(1);
+		java.util.List<Thread> threads = new java.util.ArrayList<>();
+		java.util.List<Throwable> problems = new java.util.concurrent.CopyOnWriteArrayList<>();
+		for (int n = 0; n < count; n++) {
+			int seed = n;
+			Thread thread = new Thread(() -> {
+				try {
+					go.await();
+					String hash = String.format("%064x", Integer.valueOf(seed + 1));
+					ContentCache.update(folder(), IMAGE, TEXT, cache -> {
+						ContentCache.ImageKey key = new ContentCache.ImageKey(hash, 0);
+						cache.putImage(key, vector(seed));
+						cache.putText(hash, vector(seed + 100));
+						cache.putPhoto("p" + seed + ".jpg", new ContentCache.Photo(key, hash));
+					});
+				} catch (Throwable ex) {
+					problems.add(ex);
+				}
+			});
+			threads.add(thread);
+			thread.start();
+		}
+		go.countDown();
+		for (Thread thread : threads) {
+			thread.join(30_000);
+		}
+		assertEquals(problems.toString(), 0, problems.size());
+		ContentCache cache = ContentCache.read(folder());
+		assertEquals("Every photo written at once is there.", count, cache.photos().size());
+		for (int n = 0; n < count; n++) {
+			ContentCache.Photo photo = cache.photos().get("p" + n + ".jpg");
+			assertTrue(Arrays.equals(vector(n), cache.image(photo.image())));
+		}
+		cache.write(folder());
+		assertEquals(cache, ContentCache.read(folder()));
+	}
+
 	public void testAnotherStampIsNotRead() throws Exception {
 		fill();
 		ContentCache otherModel = ContentCache.read(folder(), "fake@0000002/256/fp32/1", TEXT);

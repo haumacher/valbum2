@@ -86,6 +86,23 @@ public class TestManagedEmbedder extends TestCase {
 		return new File("/bin/sh").canExecute();
 	}
 
+	/**
+	 * Issue #311: the child shares the server's machine, so its units of the content search stay
+	 * behind the photo work (no lane), and it is started with one inference at a time, said
+	 * explicitly rather than left to the service's default, which fills a machine of its own.
+	 */
+	public void testTheChildHasNoLaneAndRunsOneInferenceAtATime() throws Exception {
+		try (ManagedEmbedder embedder = new ManagedEmbedder(new ShellLauncher())) {
+			assertEquals(0, embedder.lane());
+		}
+		PythonService service = new PythonService(_dir, ContentModel.FP32, 0, java.time.Duration.ofMinutes(15), null);
+		List<String> command = service.command(_dir.resolve("python3"), _dir.resolve("code"));
+		int parallel = command.indexOf("--parallel");
+		assertTrue(command.toString(), parallel > 0);
+		assertEquals("1", command.get(parallel + 1));
+		assertFalse("The threads are the service's own choice, as before: " + command, command.contains("--threads"));
+	}
+
 	/** What the service says of a request it refused is a warning in the server's log, see issue #305. */
 	public void testTheServicesWarningsAreWarnings() {
 		assertEquals(java.util.logging.Level.WARNING,

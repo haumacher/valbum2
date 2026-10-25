@@ -461,7 +461,9 @@ the photos and asks it for each search.
    VALBUM_EMBEDDER_KEY=<the key from step 1>
    ```
 
-   The server's log says whether the service answers and accepts the key.
+   The server's log says whether the service answers and accepts the key. The service keeps every
+   core busy, embedding several photos at once (`VALBUM_EMBEDDER_PARALLEL` and `_THREADS` in
+   `/etc/default/valbum-embedder`); the album server sends that many beside its own work.
 
 **What travels:** the preview of every photo (a JPEG about 600 pixels high, never the original),
 the search texts, and the key. Without TLS anybody on the network between the two machines can read

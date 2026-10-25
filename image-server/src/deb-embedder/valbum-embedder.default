@@ -46,7 +46,14 @@ VALBUM_EMBEDDER_KEY=
 #
 #   VALBUM_EMBEDDER_PRECISION=fp32
 
-# Threads of one inference, 0 for all cores.
+# How many photos are embedded at once: the album servers keep that many
+# requests in flight. 0 (default) for one per four cores, at most 4: on 16
+# cores four keep every core busy. Each costs some 250 MB of memory (fp32).
+#
+#   VALBUM_EMBEDDER_PARALLEL=0
+
+# Threads of the inferences, shared by those running at once; 0 (default) for
+# every core the service may use. Lower it to leave cores to other work.
 #
 #   VALBUM_EMBEDDER_THREADS=0
 

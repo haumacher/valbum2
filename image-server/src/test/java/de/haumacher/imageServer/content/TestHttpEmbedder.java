@@ -8,7 +8,10 @@ import java.net.ServerSocket;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import junit.framework.TestCase;
 
 /**
@@ -187,6 +190,75 @@ public class TestHttpEmbedder extends TestCase {
 			fail("Not normalised.");
 		} catch (IOException ex) {
 			assertTrue(ex.getMessage(), ex.getMessage().contains("length"));
+		}
+	}
+
+	// --- Requests at once, issue #311. ---
+
+	public void testTheHealthNamesHowManyRequestsTheServiceEmbedsAtOnce() throws Exception {
+		_service._parallel = 3;
+		assertEquals(3, _embedder.health().parallel());
+		try (HttpEmbedder separate = new HttpEmbedder(_service.url()).separate()) {
+			assertEquals("Before it answered: one.", 1, separate.lane());
+			separate.health();
+			assertEquals(3, separate.lane());
+		}
+	}
+
+	public void testAnOlderServiceThatNamesNoneEmbedsOneAtATime() throws Exception {
+		_service._parallel = -1;
+		assertEquals(1, _embedder.health().parallel());
+		try (HttpEmbedder separate = new HttpEmbedder(_service.url()).separate()) {
+			separate.health();
+			assertEquals(1, separate.lane());
+		}
+	}
+
+	public void testAServiceOnTheServersMachineHasNoLane() throws Exception {
+		_service._parallel = 3;
+		_embedder.health();
+		assertEquals("The managed child shares the server's machine.", 0, _embedder.lane());
+	}
+
+	/**
+	 * The pictures of the background go to a service of its own as many at once as it embeds, never
+	 * more, whatever number of threads asks; a search's query is never held back by them.
+	 */
+	public void testAtMostTheServicesCapacityOfPicturesIsInFlight() throws Exception {
+		_service._parallel = 3;
+		_service._delayMillis = 300;
+		try (HttpEmbedder separate = new HttpEmbedder(_service.url(), Duration.ofSeconds(30), Duration.ofSeconds(30))
+			.separate()) {
+			separate.health();
+			List<Throwable> problems = new CopyOnWriteArrayList<>();
+			List<Thread> threads = new ArrayList<>();
+			for (int n = 0; n < 8; n++) {
+				byte[] jpeg = { (byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) n };
+				Thread thread = new Thread(() -> {
+					try {
+						separate.embedImage(jpeg);
+					} catch (Throwable ex) {
+						problems.add(ex);
+					}
+				});
+				threads.add(thread);
+				thread.start();
+			}
+			long end = System.currentTimeMillis() + 10_000;
+			while (_service.active("image") < 3) {
+				assertTrue("Three pictures at once: " + _service.active("image"), System.currentTimeMillis() < end);
+				Thread.sleep(10);
+			}
+			assertEquals(3, separate.inFlight());
+			// A query beside them: not counted against the pictures, answered at once.
+			separate.embedText("flowers", Embedder.TextKind.QUERY);
+			for (Thread thread : threads) {
+				thread.join(30_000);
+			}
+			assertEquals(problems.toString(), 0, problems.size());
+			assertEquals("Up to the capacity, never more.", 3, _service.most("image"));
+			assertEquals("The query ran beside them.", 4, _service._mostAll.get());
+			assertEquals(0, separate.inFlight());
 		}
 	}
 }

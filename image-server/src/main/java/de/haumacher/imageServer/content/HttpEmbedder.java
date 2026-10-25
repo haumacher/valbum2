@@ -69,6 +69,18 @@ import javax.net.ssl.X509ExtendedTrustManager;
  * fingerprint alone.
  * </p>
  *
+ * <h2>Requests at once</h2>
+ *
+ * <p>
+ * The service names in its health how many requests it embeds at once (<code>parallel</code>, issue
+ * #311; an older service names none and embeds one at a time). A service on a machine of its own
+ * ({@link #separate()}) takes the content search's units on a lane of their own, beside the photo
+ * work, as many at once as it embeds ({@link #lane()}); the pictures and documents of the background
+ * are bounded here, for all spaces of the server together, to that many requests in flight, so that
+ * none waits in the service's queue against its time limit. A search's query is never held back by
+ * them. The child of {@link ManagedEmbedder} shares the server's machine and has no lane.
+ * </p>
+ *
  * <h2>The model of every vector</h2>
  *
  * <p>
@@ -98,9 +110,12 @@ public class HttpEmbedder implements Embedder {
 	/** How long a picture may take: seconds on a PC, tens of seconds on a Raspberry Pi 5. */
 	static final Duration IMAGE_TIMEOUT = Duration.ofMinutes(10);
 
-	/** What {@link #health()} answers; <code>preprocessing</code> is -1 where the service names none. */
+	/**
+	 * What {@link #health()} answers; <code>preprocessing</code> is -1 where the service names none,
+	 * <code>parallel</code> is 1 where it names none (a service before issue #311).
+	 */
 	public record Health(String status, String model, String revision, String precision, int dimension, String error,
-			int preprocessing, String detail) {
+			int preprocessing, String detail, int parallel) {
 
 		/** Whether the service can embed. */
 		public boolean isReady() {
@@ -128,6 +143,12 @@ public class HttpEmbedder implements Embedder {
 	private volatile Health _lastHealth;
 
 	private boolean _report;
+
+	/** Whether the service runs on a machine of its own, see {@link #separate()}. */
+	private volatile boolean _separate;
+
+	/** How many requests of the background may be in flight, see {@link #lane()}. */
+	private final Gate _gate = new Gate();
 
 	private String _reported = "";
 
@@ -181,6 +202,26 @@ public class HttpEmbedder implements Embedder {
 		return this;
 	}
 
+	/**
+	 * Marks the service as one on a machine of its own (<code>VALBUM_EMBEDDER_URL</code>), see issue
+	 * #311: the content search then runs beside the server's own work, as many requests at once as
+	 * the service embeds, see {@link #lane()}.
+	 */
+	public HttpEmbedder separate() {
+		_separate = true;
+		return this;
+	}
+
+	/**
+	 * As many as the service embeds at once (the <code>parallel</code> of its last health, 1 before
+	 * it answered or where it names none) for a service on a machine of its own, see
+	 * {@link #separate()}; 0 for one that shares the server's machine.
+	 */
+	@Override
+	public int lane() {
+		return _separate ? _gate.max() : 0;
+	}
+
 	/** Whether requests carry a key. */
 	public boolean hasKey() {
 		return _key != null;
@@ -198,13 +239,75 @@ public class HttpEmbedder implements Embedder {
 
 	@Override
 	public float[] embedDocument(String title, String text) throws IOException {
-		return embed(Embedder.document(title, text), "text", _textTimeout);
+		return background(Embedder.document(title, text), "text", _textTimeout);
 	}
 
 	@Override
 	public float[] embedImage(byte[] image) throws IOException {
 		String uri = "data:" + mimeType(image) + ";base64," + Base64.getEncoder().encodeToString(image);
-		return embed(uri, "image", _imageTimeout);
+		return background(uri, "image", _imageTimeout);
+	}
+
+	/**
+	 * A request of the background (a photo's picture or text): to a service of its own, one of at
+	 * most {@link #lane()} in flight, waiting for its turn before its time limit starts.
+	 */
+	private float[] background(String input, String modality, Duration timeout) throws IOException {
+		if (!_separate) {
+			return embed(input, modality, timeout);
+		}
+		try {
+			_gate.acquire();
+		} catch (InterruptedException ex) {
+			Thread.currentThread().interrupt();
+			throw new EmbedderUnavailableException("interrupted while waiting for the embedder service", ex);
+		}
+		try {
+			return embed(input, modality, timeout);
+		} finally {
+			_gate.release();
+		}
+	}
+
+	/** How many background requests are in flight now; for the tests. */
+	int inFlight() {
+		return _gate.used();
+	}
+
+	/**
+	 * A counting semaphore whose number of permits follows the service, see
+	 * {@link HttpEmbedder#lane()}.
+	 */
+	private static final class Gate {
+
+		private int _max = 1;
+
+		private int _used;
+
+		synchronized int max() {
+			return _max;
+		}
+
+		synchronized int used() {
+			return _used;
+		}
+
+		synchronized void setMax(int max) {
+			_max = Math.max(1, max);
+			notifyAll();
+		}
+
+		synchronized void acquire() throws InterruptedException {
+			while (_used >= _max) {
+				wait();
+			}
+			_used++;
+		}
+
+		synchronized void release() {
+			_used--;
+			notifyAll();
+		}
 	}
 
 	/** The media type of an encoded picture by its first bytes; the service reads the bytes anyway. */
@@ -351,6 +454,7 @@ public class HttpEmbedder implements Embedder {
 		String detail = null;
 		int dimension = 0;
 		int preprocessing = -1;
+		int parallel = 1;
 		try (JsonReader json = new JsonReader(new ReaderAdapter(new StringReader(body)))) {
 			json.beginObject();
 			while (json.hasNext()) {
@@ -363,6 +467,7 @@ public class HttpEmbedder implements Embedder {
 					case "error" -> error = json.nextString();
 					case "detail" -> detail = json.nextString();
 					case "preprocessing" -> preprocessing = json.nextInt();
+					case "parallel" -> parallel = Math.max(1, json.nextInt());
 					default -> json.skipValue();
 				}
 			}
@@ -373,8 +478,10 @@ public class HttpEmbedder implements Embedder {
 		if (status == null) {
 			throw new IOException("The embedder service names no status.");
 		}
-		Health result = new Health(status, model, revision, precision, dimension, error, preprocessing, detail);
+		Health result = new Health(status, model, revision, precision, dimension, error, preprocessing, detail,
+			parallel);
 		_lastHealth = result;
+		_gate.setMax(parallel);
 		stampOf(result);
 		return result;
 	}

@@ -18,7 +18,7 @@
 # Runtime contract: VALBUM_EMBEDDER_KEY (the key every request must carry; without one the service
 # warns that it is open to the network), port 8091, the volume /data, and optionally
 # VALBUM_EMBEDDER_TLS_CERT / _TLS_KEY (files mounted into the container), VALBUM_EMBEDDER_PRECISION,
-# VALBUM_EMBEDDER_THREADS. See the README, "Content search on another machine".
+# VALBUM_EMBEDDER_THREADS, VALBUM_EMBEDDER_PARALLEL. See the README, "Content search on another machine".
 
 ARG BASE=python:3.13-slim-trixie
 

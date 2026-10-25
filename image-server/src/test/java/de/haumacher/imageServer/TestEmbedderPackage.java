@@ -117,7 +117,7 @@ public class TestEmbedderPackage extends TestCase {
 	public void testTheTemplateDocumentsEverySettingAndSetsOnlyTheKey() throws Exception {
 		String template = Files.readString(TEMPLATE, StandardCharsets.UTF_8);
 		for (String name : List.of("VALBUM_EMBEDDER_HOST", "VALBUM_EMBEDDER_PORT", "VALBUM_EMBEDDER_TLS_CERT",
-			"VALBUM_EMBEDDER_TLS_KEY", "VALBUM_EMBEDDER_PRECISION", "VALBUM_EMBEDDER_THREADS", "VALBUM_EMBEDDER_DIR",
+			"VALBUM_EMBEDDER_TLS_KEY", "VALBUM_EMBEDDER_PRECISION", "VALBUM_EMBEDDER_THREADS", "VALBUM_EMBEDDER_PARALLEL", "VALBUM_EMBEDDER_DIR",
 			"VALBUM_EMBEDDER_MODEL_URL", "PYTHON")) {
 			assertTrue("Not documented: " + name, template.contains("#   " + name + "="));
 			assertFalse("Set: " + name, template.contains("\n" + name + "="));

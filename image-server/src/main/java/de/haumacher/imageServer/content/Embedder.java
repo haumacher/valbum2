@@ -120,6 +120,17 @@ public interface Embedder extends Closeable {
 	}
 
 	/**
+	 * How many units of the content search may run at once on a lane of their own, beside the photo
+	 * work of the server, see issue #311: as many as a service on a machine of its own embeds at once.
+	 * 0 (the default) for an embedder that shares the server's machine: its units wait behind the
+	 * photo work and run one at a time, so that it never takes the cores a preview needs. Known
+	 * without asking anybody; may change while the server runs.
+	 */
+	default int lane() {
+		return 0;
+	}
+
+	/**
 	 * Waits until this embedder can answer, setting in motion what is needed.
 	 *
 	 * @return Whether it can, <code>false</code> when the time ran out or it never will (then

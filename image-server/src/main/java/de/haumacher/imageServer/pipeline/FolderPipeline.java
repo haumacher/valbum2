@@ -41,6 +41,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
@@ -146,6 +147,15 @@ import java.util.logging.Logger;
  * {@link Stage#VIDEOS} steps (a teaser or a playback rendition each) wait in a queue of their own
  * and run, one unit per task, only while no photo work is queued or due: a long video queue never
  * holds up the photographs of another album, and a new album is held up by one transcode at most.
+ * </p>
+ *
+ * <p>
+ * A {@link UnitStep} whose work waits for another machine ({@link UnitStep#lane()}, the content
+ * search with an embedder service of its own, issue #311) runs its units on a lane of their own
+ * instead: threads of the pipeline beside its thread, up to that many units at once, in the order
+ * they were queued (newest album first), whether photo work is queued or not, and never put aside.
+ * They are recorded, counted and failed as the units of the thread are; a unit runs on one thread at
+ * a time, and a shutdown stops the lane with the thread.
  * </p>
  *
  * <p>
@@ -391,6 +401,16 @@ public class FolderPipeline {
 		 */
 		default void putAside() {
 			// A unit that cannot be put aside runs to its end.
+		}
+
+		/**
+		 * How many units of this step may run at once on a lane of their own, beside the photo work
+		 * and the units of the pipeline's thread, see issue #311; 0 (the default) for none: they run on
+		 * the pipeline's thread, one at a time, behind the photo work. Asked whenever units are handed
+		 * out, cheaply and while the pipeline is locked; it may change while the server runs.
+		 */
+		default int lane() {
+			return 0;
 		}
 
 		@Override
@@ -723,6 +743,21 @@ public class FolderPipeline {
 	/** The unit step running a unit now, see {@link UnitStep#putAside()}. */
 	private volatile UnitStep _runningUnit;
 
+	/** The threads of the lanes of issue #311, see {@link UnitStep#lane()}; while started. */
+	private ExecutorService _lanes;
+
+	/** How many units of each step run on its lane now, by step name; guarded by this. */
+	private final Map<String, Integer> _laneRunning = new HashMap<>();
+
+	/** The units running now, on the thread or a lane, by {@link #unitKey(String, String)}; guarded by this. */
+	private final Set<String> _taken = new HashSet<>();
+
+	/** Before when no unit is handed to a lane, see {@link Outcome#AGAIN}; guarded by this. */
+	private long _lanesAfter;
+
+	/** Whether a hand-out to the lanes is queued for {@link #_lanesAfter}; guarded by this. */
+	private boolean _lanesScheduled;
+
 	/**
 	 * How many files somebody waits for are remembered at most, see {@link #demanded(File, File, Demand)}:
 	 * beyond, the oldest demand is forgotten; the catch-up makes it in its turn.
@@ -1034,6 +1069,7 @@ public class FolderPipeline {
 	public void shutdown() {
 		STARTED.remove(this);
 		ScheduledExecutorService executor;
+		ExecutorService lanes;
 		LibraryWatch watch;
 		synchronized (this) {
 			executor = _executor;
@@ -1051,9 +1087,17 @@ public class FolderPipeline {
 			_demands.clear();
 			_delayedWork = null;
 			_workScheduled = false;
+			lanes = _lanes;
+			_lanes = null;
+			_laneRunning.clear();
+			_taken.clear();
+			_lanesScheduled = false;
 		}
 		if (watch != null) {
 			watch.close();
+		}
+		if (lanes != null) {
+			lanes.shutdownNow();
 		}
 		if (executor != null) {
 			executor.shutdownNow();
@@ -1106,7 +1150,7 @@ public class FolderPipeline {
 	/** Whether nothing waits and nothing runs; called while synchronized. */
 	private boolean idle() {
 		return _running == 0 && _pending.isEmpty() && _photoQueue.isEmpty() && _unitQueue.isEmpty() && !hasUrgent()
-			&& !_workScheduled;
+			&& !_workScheduled && _taken.isEmpty();
 	}
 
 	/**
@@ -2120,8 +2164,8 @@ public class FolderPipeline {
 
 	/** Queues a task of {@link #work()} unless one is queued or there is nothing; while synchronized. */
 	private void scheduleWork() {
-		if (_workScheduled || _executor == null
-			|| (_photoQueue.isEmpty() && _unitQueue.isEmpty() && !hasUrgent())) {
+		dispatchLanes();
+		if (_workScheduled || _executor == null || (_photoQueue.isEmpty() && !hasThreadUnits() && !hasUrgent())) {
 			return;
 		}
 		try {
@@ -2163,7 +2207,7 @@ public class FolderPipeline {
 				_photoQueue.remove(first.getKey());
 				folder = first.getValue();
 			} else {
-				unit = !_unitQueue.isEmpty() && System.currentTimeMillis() >= _unitsAfter;
+				unit = hasThreadUnits() && System.currentTimeMillis() >= _unitsAfter;
 			}
 		}
 		if (urgent != null) {
@@ -2171,7 +2215,7 @@ public class FolderPipeline {
 		} else if (folder != null) {
 			process(folder);
 		} else if (unit) {
-			runUnit();
+			runUnit(false);
 		}
 		synchronized (this) {
 			persist(false);
@@ -2198,7 +2242,7 @@ public class FolderPipeline {
 					_photoQueue.remove(first.getKey());
 					folder = first.getValue();
 				}
-				unit = !_unitQueue.isEmpty();
+				unit = hasUnits(true);
 				wait = _unitsAfter - System.currentTimeMillis();
 			}
 			if (urgent != null) {
@@ -2214,7 +2258,15 @@ public class FolderPipeline {
 						break;
 					}
 				}
-				runUnit();
+				runUnit(true);
+			} else if (!_unitQueue.isEmpty()) {
+				// Units of a started pipeline's lane are running: they are waited for.
+				try {
+					Thread.sleep(20);
+				} catch (InterruptedException ex) {
+					Thread.currentThread().interrupt();
+					break;
+				}
 			} else {
 				break;
 			}
@@ -2222,24 +2274,186 @@ public class FolderPipeline {
 		flush();
 	}
 
-	/** Runs the next unit of the first {@link UnitStep} work queued. */
-	private void runUnit() {
-		Units work;
-		String unit;
-		String key;
-		synchronized (this) {
-			if (_unitQueue.isEmpty()) {
-				return;
+	/** The key of a unit in {@link #_taken}. */
+	private static String unitKey(String key, String unit) {
+		return key + "\n" + unit;
+	}
+
+	/**
+	 * How many units of the given step may run on its lane, 0 for none: a step taken out of the
+	 * pipeline has none, its units left are run out on the thread. Called while synchronized.
+	 */
+	private int laneOf(UnitStep step) {
+		return _steps.contains(step) ? Math.max(0, step.lane()) : 0;
+	}
+
+	/** Whether units of the pipeline's thread are queued (not those of a lane); called while synchronized. */
+	private boolean hasThreadUnits() {
+		return hasUnits(false);
+	}
+
+	/**
+	 * Whether a unit is queued that is not running, of the thread or, where <code>all</code>, of any
+	 * step; called while synchronized.
+	 */
+	private boolean hasUnits(boolean all) {
+		for (Map.Entry<String, Units> entry : _unitQueue.entrySet()) {
+			Units work = entry.getValue();
+			if (!all && laneOf(work._step) > 0) {
+				continue;
 			}
-			Map.Entry<String, Units> first = _unitQueue.entrySet().iterator().next();
-			key = first.getKey();
-			work = first.getValue();
-			unit = work._units.peekFirst();
-			if (unit == null) {
-				_unitQueue.remove(key);
-				return;
+			if (work._units.isEmpty() || untaken(entry.getKey(), work) != null) {
+				return true;
 			}
 		}
+		return false;
+	}
+
+	/** The first unit of the given work that is not running, <code>null</code> for none; while synchronized. */
+	private String untaken(String key, Units work) {
+		for (String unit : work._units) {
+			if (!_taken.contains(unitKey(key, unit))) {
+				return unit;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Hands queued units of the steps with a lane to its threads, up to {@link UnitStep#lane()} of
+	 * each at once, in the order they were queued; called while synchronized, wherever work is
+	 * queued or a unit of a lane ends.
+	 */
+	private void dispatchLanes() {
+		if (_executor == null || _unitQueue.isEmpty()) {
+			return;
+		}
+		long now = System.currentTimeMillis();
+		if (now < _lanesAfter) {
+			if (!_lanesScheduled) {
+				_lanesScheduled = true;
+				try {
+					_executor.schedule(() -> {
+						synchronized (this) {
+							_lanesScheduled = false;
+							dispatchLanes();
+						}
+					}, _lanesAfter - now, TimeUnit.MILLISECONDS);
+				} catch (RejectedExecutionException ex) {
+					// Stopping.
+				}
+			}
+			return;
+		}
+		Map<UnitStep, Integer> lanes = new HashMap<>();
+		for (Map.Entry<String, Units> entry : _unitQueue.entrySet()) {
+			Units work = entry.getValue();
+			int lane = lanes.computeIfAbsent(work._step, this::laneOf).intValue();
+			if (lane <= 0) {
+				continue;
+			}
+			String name = work._step.name();
+			for (String unit : work._units) {
+				int running = _laneRunning.getOrDefault(name, Integer.valueOf(0)).intValue();
+				if (running >= lane) {
+					break;
+				}
+				String taken = unitKey(entry.getKey(), unit);
+				if (_taken.contains(taken)) {
+					continue;
+				}
+				if (_lanes == null) {
+					_lanes = Executors.newCachedThreadPool(runnable -> {
+						Thread thread = new Thread(runnable, _name + " lane");
+						thread.setDaemon(true);
+						thread.setPriority(Thread.MIN_PRIORITY);
+						return thread;
+					});
+				}
+				String key = entry.getKey();
+				try {
+					_lanes.execute(() -> running(() -> runOnLane(key, work, unit)));
+				} catch (RejectedExecutionException ex) {
+					// Stopping.
+					return;
+				}
+				_taken.add(taken);
+				_laneRunning.put(name, Integer.valueOf(running + 1));
+			}
+		}
+	}
+
+	/** Runs the given unit, handed out by {@link #dispatchLanes()}, on a thread of the lane. */
+	private void runOnLane(String key, Units work, String unit) {
+		try {
+			runTaken(key, work, unit, true);
+		} finally {
+			synchronized (this) {
+				String name = work._step.name();
+				int running = _laneRunning.getOrDefault(name, Integer.valueOf(1)).intValue() - 1;
+				if (running <= 0) {
+					_laneRunning.remove(name);
+				} else {
+					_laneRunning.put(name, Integer.valueOf(running));
+				}
+				if (_executor != null) {
+					persist(false);
+					scheduleWork();
+				}
+			}
+		}
+	}
+
+	/**
+	 * Runs the next unit of the first {@link UnitStep} work queued for the pipeline's thread, or,
+	 * where <code>all</code>, of any step (a pipeline that was never started has no lane).
+	 */
+	private void runUnit(boolean all) {
+		Units work = null;
+		String unit = null;
+		String key = null;
+		synchronized (this) {
+			for (java.util.Iterator<Map.Entry<String, Units>> it = _unitQueue.entrySet().iterator(); it.hasNext();) {
+				Map.Entry<String, Units> entry = it.next();
+				Units candidate = entry.getValue();
+				if (!all && laneOf(candidate._step) > 0) {
+					continue;
+				}
+				if (candidate._units.isEmpty()) {
+					it.remove();
+					return;
+				}
+				String next = untaken(entry.getKey(), candidate);
+				if (next != null) {
+					key = entry.getKey();
+					work = candidate;
+					unit = next;
+					break;
+				}
+			}
+			if (work == null) {
+				return;
+			}
+			_taken.add(unitKey(key, unit));
+		}
+		runTaken(key, work, unit, false);
+	}
+
+	/**
+	 * Runs the given unit, taken for this thread in {@link #_taken}, and records what it did; on a
+	 * lane, nothing urgent holds it back, and it is not put aside.
+	 */
+	private void runTaken(String key, Units work, String unit, boolean lane) {
+		try {
+			runAndRecord(key, work, unit, lane);
+		} finally {
+			synchronized (this) {
+				_taken.remove(unitKey(key, unit));
+			}
+		}
+	}
+
+	private void runAndRecord(String key, Units work, String unit, boolean lane) {
 		if (!fingerprint(Arrays.asList(work._folder)).equals(work._fingerprint)) {
 			// Changed since it was queued: dropped, and worked on anew once it stands still.
 			synchronized (this) {
@@ -2251,15 +2465,19 @@ public class FolderPipeline {
 		String name = work._step.name();
 		Outcome outcome;
 		Exception problem = null;
-		_currentStep = name;
-		_currentFolder = work._path;
-		_runningUnit = work._step;
+		if (!lane) {
+			_currentStep = name;
+			_currentFolder = work._path;
+			_runningUnit = work._step;
+		}
 		try {
-			synchronized (this) {
-				if (hasUrgent()) {
-					// Handed over while this was taken: it goes first, see issue #258.
-					_unitsAfter = System.currentTimeMillis();
-					return;
+			if (!lane) {
+				synchronized (this) {
+					if (hasUrgent()) {
+						// Handed over while this was taken: it goes first, see issue #258.
+						_unitsAfter = System.currentTimeMillis();
+						return;
+					}
 				}
 			}
 			outcome = work._step.runUnit(work._folder, unit);
@@ -2267,9 +2485,11 @@ public class FolderPipeline {
 			outcome = Outcome.FAILED;
 			problem = ex;
 		} finally {
-			_runningUnit = null;
-			_currentStep = null;
-			_currentFolder = null;
+			if (!lane) {
+				_runningUnit = null;
+				_currentStep = null;
+				_currentFolder = null;
+			}
 		}
 		if (Thread.currentThread().isInterrupted()) {
 			// Stopping: the unit is not done, and the next start does it.
@@ -2278,7 +2498,11 @@ public class FolderPipeline {
 		synchronized (this) {
 			if (outcome == Outcome.AGAIN) {
 				// Put aside for something more urgent: first in the queue still, a moment later.
-				_unitsAfter = System.currentTimeMillis() + AGAIN_MILLIS;
+				if (lane) {
+					_lanesAfter = System.currentTimeMillis() + AGAIN_MILLIS;
+				} else {
+					_unitsAfter = System.currentTimeMillis() + AGAIN_MILLIS;
+				}
 				return;
 			}
 			work._units.remove(unit);
@@ -2367,7 +2591,21 @@ public class FolderPipeline {
 		for (Failure failure : _outstanding.values()) {
 			last = failure;
 		}
-		return new Status(done, _known.size(), _currentStep, _currentFolder, videos.size(),
+		String step = _currentStep;
+		String folder = _currentFolder;
+		if (step == null) {
+			// The thread rests; a unit of a lane may run beside it (issue #311).
+			for (String taken : _taken) {
+				int first = taken.indexOf('\n');
+				int end = taken.lastIndexOf('\n');
+				if (first > 0 && end > first && _laneRunning.containsKey(taken.substring(0, first))) {
+					step = taken.substring(0, first);
+					folder = taken.substring(first + 1, end);
+					break;
+				}
+			}
+		}
+		return new Status(done, _known.size(), step, folder, videos.size(),
 			last == null ? null : last._reason, last == null ? null : last._folder, remaining);
 	}
 

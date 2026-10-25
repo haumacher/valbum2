@@ -43,11 +43,43 @@ class FakeModel:
         v[1] = image.height
         return v / np.linalg.norm(v), 3
 
+    def prepare(self, modality, item):
+        return item
 
-def start(key=None, tls=None):
+    def run(self, modality, prepared):
+        return [self.embed_text(i) if modality == "text" else self.embed_image(i) for i in prepared]
+
+
+class CountingModel(FakeModel):
+    """A FakeModel whose runs take a while and are counted: how many ran at once at most, and the size
+    of every batch (issue #311)."""
+
+    def __init__(self, seconds=0.3):
+        self.seconds = seconds
+        self.active = 0
+        self.most = 0
+        self.batches = []
+        self.lock = threading.Lock()
+
+    def run(self, modality, prepared):
+        with self.lock:
+            self.active += 1
+            self.most = max(self.most, self.active)
+            self.batches.append(len(prepared))
+        try:
+            threading.Event().wait(self.seconds)
+            return super().run(modality, prepared)
+        finally:
+            with self.lock:
+                self.active -= 1
+
+
+def start(key=None, tls=None, parallel=None, model=None):
     args = types.SimpleNamespace(precision="fp32", model_dir="/nowhere", threads=0)
+    if parallel is not None:
+        args.parallel = parallel
     result = embedder.Service(args, embedder.read_manifest(), key)
-    result.model = FakeModel()
+    result.model = model or FakeModel()
     result.status = "ready"
     embedder.Handler.service = result
     httpd = embedder.Server(("127.0.0.1", 0), embedder.Handler)
@@ -100,6 +132,101 @@ def test_health_names_the_pinned_model(service):
     assert body["precision"] == "fp32"
     assert body["dimension"] == 768
     assert body["preprocessing"] == embedder.PREPROCESSING
+    # Without --parallel (a service as the tests start it), one at a time.
+    assert body["parallel"] == 1
+
+
+# --- Requests served at once, issue #311 ------------------------------------------------------------
+
+def concurrently(url, bodies):
+    """The answers to the given requests, all sent at once."""
+    answers = [None] * len(bodies)
+
+    def send(index):
+        answers[index] = call(url + "/v1/embeddings", bodies[index])
+
+    threads = [threading.Thread(target=send, args=(index,)) for index in range(len(bodies))]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(30)
+    return answers
+
+
+def test_health_reports_the_parallel_inferences():
+    service = start(parallel=3)
+    try:
+        assert call(service.url + "/health")[1]["parallel"] == 3
+    finally:
+        stop(service)
+
+
+def test_requests_are_served_at_once_up_to_parallel_and_never_more():
+    model = CountingModel()
+    service = start(parallel=3, model=model)
+    try:
+        answers = concurrently(service.url, [{"input": "x" * (n + 1)} for n in range(7)])
+    finally:
+        stop(service)
+    assert [status for status, _ in answers] == [200] * 7
+    assert model.most == 3, model.most
+
+
+def test_parallel_1_serves_one_request_at_a_time():
+    model = CountingModel(seconds=0.1)
+    service = start(parallel=1, model=model)
+    try:
+        answers = concurrently(service.url, [{"input": "x" * (n + 1)} for n in range(4)])
+    finally:
+        stop(service)
+    assert [status for status, _ in answers] == [200] * 4
+    assert model.most == 1
+
+
+def test_a_request_of_several_inputs_is_run_in_batches_with_the_vectors_of_single_requests():
+    model = CountingModel(seconds=0)
+    service = start(model=model)
+    try:
+        texts = ["a" * (n + 1) for n in range(6)]
+        pictures = [jpeg(20 + n, 30) for n in range(5)]
+        status, batched = call(service.url + "/v1/embeddings", {"input": texts, "dimensions": 256})
+        assert status == 200
+        status, batched_pictures = call(service.url + "/v1/embeddings",
+                                        {"input": pictures, "modality": "image", "dimensions": 64})
+        assert status == 200
+        assert model.batches == [embedder.MAX_BATCH, 2, embedder.MAX_BATCH, 1]
+        singles = [call(service.url + "/v1/embeddings", {"input": t, "dimensions": 256})[1] for t in texts]
+        single_pictures = [call(service.url + "/v1/embeddings",
+                                {"input": p, "modality": "image", "dimensions": 64})[1] for p in pictures]
+    finally:
+        stop(service)
+    assert [d["index"] for d in batched["data"]] == list(range(6))
+    assert [d["embedding"] for d in batched["data"]] == [s["data"][0]["embedding"] for s in singles]
+    assert [d["embedding"] for d in batched_pictures["data"]] == [s["data"][0]["embedding"] for s in single_pictures]
+    assert batched["usage"]["prompt_tokens"] == sum(s["usage"]["prompt_tokens"] for s in singles)
+
+
+@pytest.mark.parametrize("parallel, threads, cores, expected", [
+    # Automatic: one slot per four cores, at most four; several slots share a pool of every core.
+    (0, 0, 16, (4, 16)),
+    (0, 0, 64, (4, 64)),
+    (0, 0, 8, (2, 8)),
+    (0, 0, 4, (1, 0)),
+    (0, 0, 1, (1, 0)),
+    # One slot as the album server starts its child: onnxruntime's threads, as always.
+    (1, 0, 16, (1, 0)),
+    (1, 6, 16, (1, 6)),
+    (3, 0, 16, (3, 16)),
+    (2, 5, 16, (2, 5)),
+])
+def test_the_capacity_follows_the_options_and_the_cores(parallel, threads, cores, expected):
+    assert embedder.resolve_capacity(parallel, threads, cores) == expected
+
+
+def test_a_negative_capacity_is_refused():
+    with pytest.raises(ValueError):
+        embedder.resolve_capacity(-1, 0, 16)
+    assert embedder.usable_cores() >= 1
 
 
 def test_texts_are_embedded_as_given_truncated_and_normalised_again(service):

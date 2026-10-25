@@ -69,6 +69,9 @@ public final class PythonService implements ManagedEmbedder.Launcher {
 	/** The priority the service runs at, below the server's, so that viewing photos comes first. */
 	static final int NICE = 10;
 
+	/** How many inferences the child runs at once, see issue #311. */
+	static final int PARALLEL = 1;
+
 	private final Path _dir;
 
 	private final String _precision;
@@ -118,6 +121,11 @@ public final class PythonService implements ManagedEmbedder.Launcher {
 			}
 			progress.accept(problem);
 		}
+		return command(python, code);
+	}
+
+	/** The command that runs the service of the given code with the given Python. */
+	List<String> command(Path python, Path code) {
 		List<String> command = new ArrayList<>();
 		command.add(python.toString());
 		command.add("-I");
@@ -128,6 +136,11 @@ public final class PythonService implements ManagedEmbedder.Launcher {
 		command.add(_precision);
 		command.add("--port");
 		command.add(String.valueOf(_port));
+		// One inference at a time: the child shares the server's machine, and its units wait behind
+		// the photo work one by one (issue #311); said here, not left to the service's default, which
+		// fills a machine of its own.
+		command.add("--parallel");
+		command.add(String.valueOf(PARALLEL));
 		command.add("--nice");
 		command.add(String.valueOf(NICE));
 		command.add("--idle-exit");

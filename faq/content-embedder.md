@@ -22,10 +22,10 @@ never enforced. The service names its `PREPROCESSING` with every vector; the cli
 than `ContentModel.PREPROCESSING` and any vector whose model differs from the stamp it reported.
 
 **The vectors (2026-10-17, #257 package 2):** `space.json` `content` switches a space's
-`ContentIndex` on; its step is a *unit* step (one photo per unit, queued behind the photo work of
-every album like the videos), because an embedder taking 90 s per photo must never hold up a
-preview, and a unit put aside for an upload keeps its vector computing on its own thread and takes
-it up again. Each album's `.vacache/content.bin` (binary, ~2.2 KB per photo; JSON with base64 would
+`ContentIndex` on; its step is a *unit* step (one photo per unit), because an embedder taking 90 s
+per photo must never hold up a preview. With the managed child the units queue behind the photo work
+of every album like the videos, one at a time, and a unit put aside for an upload keeps its vector
+computing on its own thread and takes it up again; with a service of its own see below. Each album's `.vacache/content.bin` (binary, ~2.2 KB per photo; JSON with base64 would
 be ~2.9 KB) keys `v_img` by content hash and poster moment and `v_txt` by the SHA-256 of its text
 (`ContentText`, whose `VERSION` is in the text stamp), so a description edit re-embeds the text
 alone and a stamp change only one kind. The cache, not `pipeline.json`, is the truth: the step
@@ -55,3 +55,21 @@ A reference the caller may not see and one that leads nowhere are answered alike
 or anonymous visitor never gets the path at all); no vector yet is `PHOTO_NOT_DESCRIBED`. A saved
 search stores the path and the server fills in the content hash (`PhotoRef` semantics: follows a
 move); an empty reference written back by a member who was answered it empty keeps the stored one.
+
+**A service of its own fills its machine (2026-10-25, #311).** It used 5 of 16 cores: one global
+lock, one picture per run, and onnxruntime's default pool (the physical cores). Now `--parallel` slots
+(a semaphore; default one per four usable cores by `sched_getaffinity`, at most 4) share **one**
+session per model, whose intra-op pool is sized to every usable core: a session's pool is shared by
+concurrent `run`s, so "slots × threads = cores" with one session left it at 7 cores, and a pool of
+four sessions was no faster at 2.7× the memory (measured on a Ryzen 7 PRO 250, fp32, 600×800
+previews). The managed child is started with `--parallel 1` and keeps onnxruntime's threads.
+Batching is possible (dynamic batch axes; padded and masked, the vectors equal single runs, see
+`test_golden.py`) but no faster on a CPU, so a request's inputs go in runs of at most `MAX_BATCH` 4
+and the client sends one photo per request. `/health` names `parallel` (absent = 1). The server gives
+an `HttpEmbedder` marked `separate()` (`VALBUM_EMBEDDER_URL`) a lane: `UnitStep#lane()` > 0 makes
+`FolderPipeline` run those units on cached threads of the space's pipeline, beside the photo work,
+newest album first, up to that many per space; the bound of requests in flight is the client's
+(`HttpEmbedder` gate, for all spaces together, pictures and documents only — a search query never
+waits for it). Concurrent units of one album are safe because `ContentCache.update` is a
+read-change-write under the album's lock; units at once needing the same vector (two photos with one
+text) share one request; failures of units at once double the back-off once.

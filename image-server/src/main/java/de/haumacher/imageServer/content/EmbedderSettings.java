@@ -219,7 +219,7 @@ public final class EmbedderSettings {
 			return null;
 		}
 		if (_url != null) {
-			return new HttpEmbedder(_url, _key, _certSha256).reportChanges();
+			return new HttpEmbedder(_url, _key, _certSha256).separate().reportChanges();
 		}
 		return new ManagedEmbedder(
 			new PythonService(directory(basePath), _precision, _port, IDLE_EXIT, new ModelStore.Settings()));

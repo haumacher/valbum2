@@ -34,12 +34,22 @@ The protocol is the OpenAI embeddings call, with images as Infinity sends them:
 
     GET /health
     -> {"status": "ready", "model": ..., "revision": ..., "precision": "fp32", "dimension": 768,
-        "preprocessing": 1}
+        "preprocessing": 1, "parallel": 4}
 
 The status is "downloading" (with --fetch, a "detail" says how far), "loading", "ready" or
 "failed" (with an "error"). Every embeddings answer names the revision, precision and
 preprocessing it was computed with, so that a client never takes a vector of another model for
-one of the model it asked before.
+one of the model it asked before. "parallel" is how many requests the service embeds at once
+(--parallel, issue #311): a client may keep that many in flight; an older service that names none
+embeds one at a time.
+
+Requests are served at once up to "parallel", each holding one inference slot while the model
+runs; decoding and preprocessing happen before, outside the slot. The slots share one session of
+each model: onnxruntime runs a session from several threads at once, and the session's thread pool
+(--threads) is shared by them, so it is sized to every core, not divided among the slots (measured
+on 16 cores: four slots on a shared pool of 16 threads are as fast as four sessions of four threads
+each, at a third of the memory). A request's several inputs are embedded in batches of up to
+MAX_BATCH in one run of each model, with the vectors of single runs.
 
 With a key configured, every request without "Authorization: Bearer <key>", the health check
 included, is answered 401 with the reason.
@@ -102,6 +112,14 @@ MAX_BODY = 64 * 1024 * 1024
 MAX_ITEMS = 64
 MAX_TOKENS = 8192
 MAX_PIXELS = 64 * 1024 * 1024
+
+# How many inputs of one request are embedded in one run of the models: a batch of pictures holds
+# the activations of each (some 250 MB per picture in fp32), and is no faster on a CPU than single
+# runs (measured, issue #311); the bound keeps a request of many pictures from taking the memory.
+MAX_BATCH = 4
+
+# How many inference slots --parallel 0 gives at most, see automatic_parallel().
+MAX_AUTO_PARALLEL = 4
 
 PRECISIONS = ("fp32", "int8")
 
@@ -344,6 +362,40 @@ class Fetcher:
         log("downloaded and checked " + entry["name"])
 
 
+def usable_cores():
+    """The number of cores this process may run on: its CPU affinity where the system tells it (a
+    container's or systemd's CPU limit), else every core of the machine."""
+    try:
+        return max(1, len(os.sched_getaffinity(0)))
+    except (AttributeError, OSError):
+        return max(1, os.cpu_count() or 1)
+
+
+def automatic_parallel(cores):
+    """The inference slots of --parallel 0 on the given number of cores: one per four cores, at
+    least one and at most MAX_AUTO_PARALLEL. Measured on 16 cores (issue #311): with the shared thread
+    pool, four slots keep every core busy; more only cost memory (about 250 MB each in fp32)."""
+    return max(1, min(MAX_AUTO_PARALLEL, cores // 4))
+
+
+def resolve_capacity(parallel, threads, cores=None):
+    """The inference slots and the threads of the session's pool for the given options (0 for
+    automatic), as (parallel, threads); threads 0 leaves the pool to onnxruntime.
+
+    One slot keeps onnxruntime's own choice where no threads are given: the child the album server
+    starts shares the server's machine and is started with --parallel 1, as it always ran. Several
+    slots share the pool, which is then sized to every usable core.
+    """
+    if parallel < 0 or threads < 0:
+        raise ValueError("--parallel and --threads must not be negative")
+    cores = usable_cores() if cores is None else cores
+    if parallel == 0:
+        parallel = automatic_parallel(cores)
+    if threads == 0 and parallel > 1:
+        threads = cores
+    return parallel, threads
+
+
 def truncate(vector, dimension):
     """The first `dimension` entries of an L2-normalised vector, normalised again (Matryoshka)."""
     import numpy as np
@@ -460,40 +512,67 @@ class Model:
             raise ValueError("the tokenizer knows no " + text)
         return token
 
-    def _run(self, ids, image_features=None):
+    def _run(self, sequences, image_features=None):
+        """The sentence embeddings of the given token sequences, in one run: padded at the end to the
+        longest, the padding masked (the model's attention and pooling follow the mask; the vectors
+        are those of single runs, checked against the reference in tests/test_golden.py)."""
         np = self._np
-        ids = np.asarray([ids], dtype=np.int64)
+        length = max(len(ids) for ids in sequences)
+        ids = np.zeros((len(sequences), length), dtype=np.int64)
+        mask = np.zeros((len(sequences), length), dtype=np.int64)
+        for row, sequence in enumerate(sequences):
+            ids[row, :len(sequence)] = sequence
+            mask[row, :len(sequence)] = 1
         empty = np.zeros((0, TEXT_HIDDEN), dtype=np.float32)
         out = self.text.run(["sentence_embedding"], {
             "input_ids": ids,
-            "attention_mask": np.ones_like(ids),
+            "attention_mask": mask,
             "image_features": empty if image_features is None else image_features,
             "video_features": empty,
             "audio_features": empty,
         })
-        return out[0][0]
+        return list(out[0])
+
+    def prepare(self, modality, item):
+        """What an input is made into before it reaches the model: a text's tokens, a picture's
+        patches. Runs outside the inference slot; raises ValueError for an input that cannot be
+        embedded."""
+        if modality == "text":
+            ids = self.tokenizer.encode(item).ids
+            if len(ids) > MAX_TOKENS:
+                raise ValueError("the text has %d tokens, more than %d" % (len(ids), MAX_TOKENS))
+            if self._image_token in ids:
+                raise ValueError("a text must not name an image placeholder")
+            return ids
+        return patches(item)
+
+    def run(self, modality, prepared):
+        """The vectors of the given prepared inputs of one modality, and their numbers of tokens, as
+        a list of (vector, tokens): one run of each model for all of them."""
+        if modality == "text":
+            return [(vector, len(ids)) for vector, ids in zip(self._run(prepared), prepared)]
+        np = self._np
+        values = np.concatenate([p[0] for p in prepared])
+        positions = np.concatenate([p[1] for p in prepared])
+        features = self.vision.run(None, dict(zip(self._vision_inputs, (values, positions))))[0]
+        features = features.reshape(-1, TEXT_HIDDEN)
+        soft = [p[2] for p in prepared]
+        if features.shape[0] != sum(soft):
+            raise ValueError("the vision encoder gave %d soft tokens, expected %d" % (features.shape[0], sum(soft)))
+        # As the processor spells "<|image|>" alone: begin of text, begin of image, a placeholder per
+        # soft token, end of image, end of text. The features fill the placeholders in order, row by
+        # row of the batch.
+        bos = self.tokenizer.encode("").ids
+        sequences = [bos[:1] + [self._boi] + [self._image_token] * count + [self._eoi] + bos[1:] for count in soft]
+        return [(vector, len(ids)) for vector, ids in zip(self._run(sequences, features), sequences)]
 
     def embed_text(self, text):
         """The vector of a text, and its number of tokens (begin and end of text included)."""
-        ids = self.tokenizer.encode(text).ids
-        if len(ids) > MAX_TOKENS:
-            raise ValueError("the text has %d tokens, more than %d" % (len(ids), MAX_TOKENS))
-        if self._image_token in ids:
-            raise ValueError("a text must not name an image placeholder")
-        return self._run(ids), len(ids)
+        return self.run("text", [self.prepare("text", text)])[0]
 
     def embed_image(self, image):
         """The vector of an RGB image, and its number of tokens."""
-        values, positions, soft = patches(image)
-        features = self.vision.run(None, dict(zip(self._vision_inputs, (values, positions))))[0]
-        features = features.reshape(-1, TEXT_HIDDEN)
-        if features.shape[0] != soft:
-            raise ValueError("the vision encoder gave %d soft tokens, expected %d" % (features.shape[0], soft))
-        # As the processor spells "<|image|>" alone: begin of text, begin of image, a placeholder per
-        # soft token, end of image, end of text.
-        bos = self.tokenizer.encode("").ids
-        ids = bos[:1] + [self._boi] + [self._image_token] * soft + [self._eoi] + bos[1:]
-        return self._run(ids, features), len(ids)
+        return self.run("image", [self.prepare("image", image)])[0]
 
 
 class Service:
@@ -508,7 +587,9 @@ class Service:
         self.detail = None
         # The key every request must carry, None for none; kept as its hash, compared in constant time.
         self.key = hashlib.sha256(key.encode("utf-8")).digest() if key else None
-        self.lock = threading.Lock()
+        # The inference slots, see --parallel: a request holds one while the model runs.
+        self.parallel = max(1, getattr(args, "parallel", 1) or 1)
+        self.slots = threading.BoundedSemaphore(self.parallel)
         self.last_use = time.monotonic()
         self.fetcher = None
         self._refusals = {}
@@ -582,7 +663,10 @@ class Service:
             return
         self.model = model
         self.status = "ready"
-        log("model loaded in %.1f s (%s, %s)" % (time.monotonic() - start, self.args.precision, self.args.model_dir))
+        log("model loaded in %.1f s (%s, %s); %d inference%s at once, %s" % (
+            time.monotonic() - start, self.args.precision, self.args.model_dir, self.parallel,
+            "" if self.parallel == 1 else "s", "%d threads" % self.args.threads if self.args.threads else
+            "onnxruntime's threads"))
 
     def health(self):
         result = {
@@ -593,6 +677,7 @@ class Service:
             "precision": self.args.precision,
             "dimension": self.manifest["dimension"],
             "preprocessing": PREPROCESSING,
+            "parallel": self.parallel,
         }
         if self.error:
             result["error"] = self.error
@@ -639,20 +724,23 @@ class Service:
         tokens = 0
         try:
             images = [decode_image(data_uri(i)) for i in inputs] if modality == "image" else None
-            with self.lock:
-                for index, item in enumerate(inputs):
-                    if images is None:
-                        vector, count = self.model.embed_text(item)
-                    else:
-                        vector, count = self.model.embed_image(images[index])
-                    tokens += count
-                    vector = truncate(vector, dimension)
-                    if encoding == "base64":
-                        value = base64.b64encode(vector.astype("<f4").tobytes()).decode("ascii")
-                    else:
-                        value = [float(x) for x in vector]
-                    data.append({"object": "embedding", "index": index, "embedding": value})
+            # Outside the slot: what holds the GIL or one core only, so that the slots keep the
+            # model busy.
+            model = self.model
+            prepared = [model.prepare(modality, item) for item in (inputs if images is None else images)]
+            results = []
+            with self.slots:
+                for first in range(0, len(prepared), MAX_BATCH):
+                    results.extend(model.run(modality, prepared[first:first + MAX_BATCH]))
                 self.last_use = time.monotonic()
+            for index, (vector, count) in enumerate(results):
+                tokens += count
+                vector = truncate(vector, dimension)
+                if encoding == "base64":
+                    value = base64.b64encode(vector.astype("<f4").tobytes()).decode("ascii")
+                else:
+                    value = [float(x) for x in vector]
+                data.append({"object": "embedding", "index": index, "embedding": value})
         except ValueError as ex:
             return self.refuse(str(ex))
         log(served(modality, len(inputs), images, time.monotonic() - start))
@@ -851,6 +939,10 @@ def serve(args):
     # The key comes from the environment, never from the command line, which every user of the
     # machine can read.
     key = os.environ.get("VALBUM_EMBEDDER_KEY", "").strip() or None
+    try:
+        args.parallel, args.threads = resolve_capacity(args.parallel, args.threads)
+    except ValueError as ex:
+        raise SystemExit("valbum-embedder: %s" % ex)
     if args.nice:
         os.nice(args.nice)
     service = Service(args, manifest, key)
@@ -920,7 +1012,11 @@ def main(argv=None):
     model.add_argument("--model-root", help="the directory the model's own folder (<repository>@<revision>) is "
                        "made in, see --fetch")
     parser.add_argument("--precision", default="fp32", choices=PRECISIONS, help="fp32 (default) or int8")
-    parser.add_argument("--threads", type=int, default=0, help="threads of one inference, 0 for all cores")
+    parser.add_argument("--threads", type=int, default=0, help="threads of the inferences, shared by the slots of "
+                        "--parallel; 0 (default) for every usable core with several slots, onnxruntime's choice "
+                        "with one")
+    parser.add_argument("--parallel", type=int, default=0, help="inferences run at once (requests served at "
+                        "once); 0 (default) for one per four usable cores, at most %d" % MAX_AUTO_PARALLEL)
     parser.add_argument("--manifest", default=None, help="the model manifest, model.json beside this file by default")
     sub = parser.add_subparsers(dest="command")
     b = sub.add_parser("bench", help="time text queries and the given images, print the peak memory")

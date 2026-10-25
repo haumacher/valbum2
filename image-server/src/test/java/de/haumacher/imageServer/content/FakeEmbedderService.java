@@ -73,6 +73,31 @@ final class FakeEmbedderService implements AutoCloseable {
 	/** The precision the vectors are said to be of, <code>null</code> for {@link #_precision}. */
 	volatile String _answerPrecision;
 
+	/** The requests the service embeds at once that its health names, -1 for none (a service before issue #311). */
+	volatile int _parallel = -1;
+
+	/** The embeddings requests being answered now, and the most at once, by modality. */
+	final java.util.Map<String, java.util.concurrent.atomic.AtomicInteger> _active = new java.util.concurrent.ConcurrentHashMap<>();
+
+	final java.util.Map<String, java.util.concurrent.atomic.AtomicInteger> _most = new java.util.concurrent.ConcurrentHashMap<>();
+
+	/** The most embeddings requests answered at once, of whatever modality. */
+	final java.util.concurrent.atomic.AtomicInteger _mostAll = new java.util.concurrent.atomic.AtomicInteger();
+
+	private final java.util.concurrent.atomic.AtomicInteger _activeAll = new java.util.concurrent.atomic.AtomicInteger();
+
+	/** The most requests of the given modality answered at once. */
+	int most(String modality) {
+		java.util.concurrent.atomic.AtomicInteger result = _most.get(modality);
+		return result == null ? 0 : result.get();
+	}
+
+	/** The requests of the given modality being answered now. */
+	int active(String modality) {
+		java.util.concurrent.atomic.AtomicInteger result = _active.get(modality);
+		return result == null ? 0 : result.get();
+	}
+
 	/** The Authorization headers of the health checks. */
 	final List<String> _healthAuthorizations = Collections.synchronizedList(new ArrayList<>());
 
@@ -92,6 +117,12 @@ final class FakeEmbedderService implements AutoCloseable {
 		}
 		_server.createContext("/health", this::health);
 		_server.createContext("/v1/embeddings", this::embeddings);
+		// Requests answered at once, as the service answers them.
+		_server.setExecutor(java.util.concurrent.Executors.newCachedThreadPool(runnable -> {
+			Thread thread = new Thread(runnable, "fake-embedder");
+			thread.setDaemon(true);
+			return thread;
+		}));
 		_server.start();
 	}
 
@@ -132,7 +163,8 @@ final class FakeEmbedderService implements AutoCloseable {
 		}
 		String body = "{\"status\":\"" + _status + "\",\"model\":\"google/embeddinggemma-2\","
 			+ "\"repository\":\"onnx-community/embeddinggemma-2-ONNX\"," + model(_precision) + ",\"dimension\":768"
-			+ (_error == null ? "" : ",\"error\":\"" + _error + "\"") + "}";
+			+ (_error == null ? "" : ",\"error\":\"" + _error + "\"")
+			+ (_parallel < 0 ? "" : ",\"parallel\":" + _parallel) + "}";
 		answer(exchange, 200, body);
 	}
 
@@ -143,6 +175,20 @@ final class FakeEmbedderService implements AutoCloseable {
 		if (refused(exchange)) {
 			return;
 		}
+		java.util.concurrent.atomic.AtomicInteger active = _active.computeIfAbsent(request.modality(),
+			x -> new java.util.concurrent.atomic.AtomicInteger());
+		_most.computeIfAbsent(request.modality(), x -> new java.util.concurrent.atomic.AtomicInteger())
+			.accumulateAndGet(active.incrementAndGet(), Math::max);
+		_mostAll.accumulateAndGet(_activeAll.incrementAndGet(), Math::max);
+		try {
+			answerEmbeddings(exchange);
+		} finally {
+			active.decrementAndGet();
+			_activeAll.decrementAndGet();
+		}
+	}
+
+	private void answerEmbeddings(HttpExchange exchange) throws IOException {
 		if (_delayMillis > 0) {
 			try {
 				Thread.sleep(_delayMillis);

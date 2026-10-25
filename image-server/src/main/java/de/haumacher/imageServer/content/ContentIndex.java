@@ -33,6 +33,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -59,9 +61,14 @@ import java.util.logging.Logger;
  * <h2>The step</h2>
  *
  * <p>
- * {@link #step()} is a {@link FolderPipeline.UnitStep}, one unit per photo that needs a vector: its
- * units wait behind the photo work of every album (previews, cover, faces, places) like the videos,
- * newest album first, so that an embedder taking a minute per photo never holds up a preview. A unit
+ * {@link #step()} is a {@link FolderPipeline.UnitStep}, one unit per photo that needs a vector, newest
+ * album first. With an embedder that shares the server's machine (the managed child) its units wait
+ * behind the photo work of every album (previews, cover, faces, places) like the videos and run one
+ * at a time, so that an embedder taking a minute per photo never holds up a preview. With a service
+ * on a machine of its own ({@link Embedder#lane()}, issue #311) they run on a lane of their own,
+ * beside the photo work and as many at once as the service embeds: the server only reads a preview
+ * and waits. Units of one album may then run at once; each writes its album's cache under that
+ * album's lock ({@link ContentCache#update}), adding its own vectors only. A unit
  * embeds the <b>preview</b> of the photo (the poster of a video, at the moment its author chose, see
  * issue #285), never the original, as <code>v_img</code>, and its text ({@link ContentText}) as
  * <code>v_txt</code>; what the cache has already is not embedded again. A photo whose preview is not
@@ -79,7 +86,8 @@ import java.util.logging.Logger;
  * Down, refusing the key, still downloading its model: the unit is not done
  * ({@link Outcome#WAITING}, nothing recorded, nothing reported per photo), its album is remembered,
  * and the embedder is asked again after a back-off ({@link #FIRST_RETRY_MILLIS}, doubling up to
- * {@link #MAX_RETRY_MILLIS}); until then every unit waits without asking. Once it answers, the
+ * {@link #MAX_RETRY_MILLIS}); until then every unit waits without asking. Units in flight at once that
+ * all fail double the back-off once, not once each. Once it answers, the
  * albums that waited are noticed again. Why it cannot answer is {@link #unavailability()}, for the
  * settings of the space and the log (said once per reason).
  * </p>
@@ -671,12 +679,20 @@ public final class ContentIndex {
 		boolean changed;
 		synchronized (this) {
 			changed = !Objects.equals(problem, _problem) || !_asked;
-			_asked = true;
-			_problem = problem;
-			_backoff = _backoff <= 0 ? Math.max(1, _firstRetry) : Math.min(_backoff * 2, Math.max(1, _maxRetry));
-			delay = _backoff;
-			_retryAt = System.currentTimeMillis() + delay;
-			scheduleRetry(delay);
+			long now = System.currentTimeMillis();
+			if (_asked && _problem != null && now < _retryAt) {
+				// Backing off already: another unit in flight at the same time failed alike (issue
+				// #311). The back-off stands, and is not doubled again.
+				_problem = problem;
+				delay = _retryAt - now;
+			} else {
+				_asked = true;
+				_problem = problem;
+				_backoff = _backoff <= 0 ? Math.max(1, _firstRetry) : Math.min(_backoff * 2, Math.max(1, _maxRetry));
+				delay = _backoff;
+				_retryAt = now + delay;
+				scheduleRetry(delay);
+			}
 		}
 		LOG.log(changed ? Level.WARNING : Level.FINE, "Content search of '" + _label + "' waits: " + problem
 			+ " (asked again in " + (delay >= 60_000 ? delay / 60_000 + " min" : delay / 1000 + " s") + ").");
@@ -766,6 +782,12 @@ public final class ContentIndex {
 		public String itemOf(String unit) {
 			int separator = unit.indexOf(SEPARATOR);
 			return separator < 0 ? unit : unit.substring(0, separator);
+		}
+
+		@Override
+		public int lane() {
+			Embedder embedder = _embedder;
+			return _enabled && embedder != null ? Math.max(0, embedder.lane()) : 0;
 		}
 
 		@Override
@@ -1053,10 +1075,15 @@ public final class ContentIndex {
 		String textStamp = ContentText.stamp(stamp);
 		cache = ContentCache.read(folder, stamp, textStamp);
 		Embedder embedder = _embedder;
+		List<Shared> owned = new ArrayList<>(2);
 		try {
 			float[] image = cache.image(item.image());
 			if (image == null) {
-				image = embedImage(embedder, item);
+				if (embedder.lane() > 0) {
+					image = shared("image\n" + stamp + "\n" + item.image(), owned, () -> embedImage(embedder, item));
+				} else {
+					image = embedImage(embedder, item);
+				}
 				if (image == null) {
 					// Put aside for something more urgent; the vector is taken up where it was.
 					return Outcome.AGAIN;
@@ -1064,7 +1091,8 @@ public final class ContentIndex {
 			}
 			float[] text = cache.text(item.textHash());
 			if (text == null) {
-				text = embedder.embedDocument(item.text().title(), item.text().body());
+				text = shared("text\n" + stamp + "\n" + item.textHash(), owned,
+					() -> embedder.embedDocument(item.text().title(), item.text().body()));
 			}
 			if (!stamp.equals(embedder.stamp())) {
 				// The model changed while this ran; the new one describes it again, see answered().
@@ -1087,12 +1115,79 @@ public final class ContentIndex {
 			described(folder, name, System.nanoTime() - started);
 			return Outcome.DONE;
 		} catch (EmbedderUnavailableException ex) {
+			if (Thread.currentThread().isInterrupted()) {
+				// Stopping: the embedder did nothing wrong.
+				return Outcome.WAITING;
+			}
 			refused(ex.getMessage());
 			waitFor(folder);
 			return Outcome.WAITING;
 		} catch (InterruptedException ex) {
 			Thread.currentThread().interrupt();
 			return Outcome.WAITING;
+		} finally {
+			// Written (or failed): a unit that asks for the same vector from now on finds it in the
+			// cache, or asks again.
+			for (Shared each : owned) {
+				_shared.remove(each.key(), each.future());
+			}
+		}
+	}
+
+	/** A vector computed by one unit, which units in flight at once that need the same one wait for. */
+	private record Shared(String key, CompletableFuture<float[]> future) {
+		// A pair.
+	}
+
+	/** A computation of a vector, see {@link #shared(String, List, Computation)}. */
+	private interface Computation {
+		float[] compute() throws IOException, InterruptedException;
+	}
+
+	/**
+	 * The vectors being computed by units in flight, by stamp and key, see
+	 * {@link #shared(String, List, Computation)}.
+	 */
+	private final ConcurrentHashMap<String, CompletableFuture<float[]>> _shared = new ConcurrentHashMap<>();
+
+	/**
+	 * The vector of the given key, computed once for the units in flight at once (issue #311): two
+	 * photos of an album with the same text, or copies of one picture, on the lane of a service of
+	 * its own. The unit that computes it owns the entry (added to <code>owned</code>) and drops it
+	 * once its cache is written; the others wait for its result, or its failure.
+	 */
+	private float[] shared(String key, List<Shared> owned, Computation computation)
+			throws IOException, InterruptedException {
+		CompletableFuture<float[]> mine = new CompletableFuture<>();
+		CompletableFuture<float[]> running = _shared.putIfAbsent(key, mine);
+		if (running != null) {
+			try {
+				return running.get();
+			} catch (ExecutionException ex) {
+				Throwable cause = ex.getCause();
+				if (cause instanceof EmbedderUnavailableException unavailable) {
+					throw new EmbedderUnavailableException(unavailable.getMessage(), unavailable);
+				}
+				if (cause instanceof IOException) {
+					throw new IOException(cause.getMessage(), cause);
+				}
+				if (cause instanceof InterruptedException) {
+					throw new InterruptedException();
+				}
+				if (cause instanceof RuntimeException) {
+					throw new IllegalStateException(cause.getMessage(), cause);
+				}
+				throw new IOException(cause);
+			}
+		}
+		owned.add(new Shared(key, mine));
+		try {
+			float[] result = computation.compute();
+			mine.complete(result);
+			return result;
+		} catch (IOException | InterruptedException | RuntimeException ex) {
+			mine.completeExceptionally(ex);
+			throw ex;
 		}
 	}
 
@@ -1111,6 +1206,12 @@ public final class ContentIndex {
 	 * unit takes it up when it runs again.
 	 */
 	private float[] embedImage(Embedder embedder, Item item) throws IOException, InterruptedException {
+		if (embedder.lane() > 0) {
+			// On the lane of a service of its own (issue #311): nothing is put aside, the lane's thread
+			// waits for the answer itself, beside the other units in flight.
+			Background.awaitQuiet();
+			return embedder.embedImage(Files.readAllBytes(item.preview().toPath()));
+		}
 		String key = item.file().getAbsolutePath() + "\n" + item.image();
 		Future<float[]> future;
 		synchronized (this) {

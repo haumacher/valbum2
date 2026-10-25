@@ -47,6 +47,7 @@ import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 import javax.imageio.ImageIO;
 import junit.framework.TestCase;
@@ -58,16 +59,19 @@ import junit.framework.TestCase;
 @SuppressWarnings("javadoc")
 public class TestContentSearch extends TestCase {
 
-	private static final long TIMEOUT = 180_000;
+	static final long TIMEOUT = 180_000;
 
-	private static final String NEW = "2023-09-01 New";
+	static final String NEW = "2023-09-01 New";
 
-	private static final String OLD = "2019-03-01 Old";
+	static final String OLD = "2019-03-01 Old";
 
-	private static final String STAMP = "fake@0000001/256/fp32/1";
+	/** An album that arrives while the server runs. */
+	static final String LATE = "2024-05-01 Late";
+
+	static final String STAMP = "fake@0000001/256/fp32/1";
 
 	/** The media of the library, each embedded once. */
-	private static final String[] MEDIA = { OLD + "/a1.jpg", OLD + "/a2.jpg", NEW + "/n1.jpg", NEW + "/n2.jpg",
+	static final String[] MEDIA = { OLD + "/a1.jpg", OLD + "/a2.jpg", NEW + "/n1.jpg", NEW + "/n2.jpg",
 		NEW + "/clip.mp4" };
 
 	/** The moment the author chose for the poster of the video, see issue #285. */
@@ -81,6 +85,9 @@ public class TestContentSearch extends TestCase {
 
 		volatile String _stamp = STAMP;
 
+		/** Whether an image is answered by the model of the moment its request started. */
+		volatile boolean _stampAtStart;
+
 		volatile String _problem;
 
 		/** Where a picture's embedding waits until it is let go, <code>null</code> for no wait. */
@@ -91,6 +98,35 @@ public class TestContentSearch extends TestCase {
 		final List<byte[]> _images = new CopyOnWriteArrayList<>();
 
 		final List<String> _texts = new CopyOnWriteArrayList<>();
+
+		/** What {@link #lane()} answers: 0 for an embedder on the server's machine, see issue #311. */
+		volatile int _lane;
+
+		/** How many pictures were asked for, answered or not. */
+		final AtomicInteger _started = new AtomicInteger();
+
+		/** How many pictures are being embedded now, and the most at once. */
+		final AtomicInteger _active = new AtomicInteger();
+
+		final AtomicInteger _most = new AtomicInteger();
+
+		/** The pictures being embedded now, by their bytes' hash. */
+		final Set<Integer> _inFlight = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+		@Override
+		public int lane() {
+			return _lane;
+		}
+
+		/** Waits until at least the given number of pictures is being embedded at once. */
+		void awaitActive(int count) throws InterruptedException {
+			long end = System.currentTimeMillis() + TIMEOUT;
+			while (_active.get() < count) {
+				assertTrue("Pictures in flight: " + _active.get() + ", expected " + count,
+					System.currentTimeMillis() < end);
+				Thread.sleep(20);
+			}
+		}
 
 		@Override
 		public float[] embedText(String text, TextKind kind) throws IOException {
@@ -108,17 +144,32 @@ public class TestContentSearch extends TestCase {
 		@Override
 		public float[] embedImage(byte[] image) throws IOException {
 			refuse();
-			CountDownLatch hold = _hold;
-			if (hold != null) {
-				_holding.countDown();
-				try {
-					hold.await(TIMEOUT, TimeUnit.MILLISECONDS);
-				} catch (InterruptedException ex) {
-					throw new IOException(ex);
+			// The model this request is answered by: a service that changes its model meanwhile
+			// still answers a request it took with the old one (probe of issue #311).
+			String stamp = _stampAtStart ? _stamp : null;
+			_started.incrementAndGet();
+			_most.accumulateAndGet(_active.incrementAndGet(), Math::max);
+			Integer key = Integer.valueOf(Arrays.hashCode(image));
+			_inFlight.add(key);
+			try {
+				CountDownLatch hold = _hold;
+				if (hold != null) {
+					_holding.countDown();
+					try {
+						hold.await(TIMEOUT, TimeUnit.MILLISECONDS);
+					} catch (InterruptedException ex) {
+						Thread.currentThread().interrupt();
+						throw new IOException(ex);
+					}
+					// Gone down while it embedded.
+					refuse();
 				}
+				_images.add(image);
+				return vector((stamp != null ? stamp : _stamp) + Arrays.hashCode(image));
+			} finally {
+				_inFlight.remove(key);
+				_active.decrementAndGet();
 			}
-			_images.add(image);
-			return vector(_stamp + Arrays.hashCode(image));
 		}
 
 		private void refuse() throws EmbedderUnavailableException {
@@ -163,19 +214,28 @@ public class TestContentSearch extends TestCase {
 		}
 	}
 
-	private Path _base;
+	Path _base;
 
-	private ImageServlet _servlet;
+	ImageServlet _servlet;
 
-	private FakeEmbedder _embedder;
+	FakeEmbedder _embedder;
 
 	private String _adminToken;
+
+	/**
+	 * What the embedder of the test answers as its {@link Embedder#lane()}: 0, the managed child on
+	 * the server's machine; {@link TestContentSearchOnALane} runs every test with a service of its own.
+	 */
+	int lane() {
+		return 0;
+	}
 
 	@Override
 	protected void setUp() throws Exception {
 		super.setUp();
 		_base = Files.createTempDirectory("valbum-content");
 		_embedder = new FakeEmbedder();
+		_embedder._lane = lane();
 		Background.setQuietMillis(100);
 	}
 
@@ -199,7 +259,7 @@ public class TestContentSearch extends TestCase {
 	// --- The library. ---
 
 	/** Two albums, the newer with a video whose poster is chosen and a description. */
-	private void library(boolean content) throws Exception {
+	void library(boolean content) throws Exception {
 		Files.createDirectories(_base.resolve(UserStore.DIRECTORY_NAME));
 		SpaceStore.store(_base, new SpaceStore.Config("Content", SpaceStore.ANONYMOUS_PUBLIC, "", SpaceStore.FACES_OFF,
 			"", "", content ? SpaceStore.CONTENT_ON : SpaceStore.CONTENT_OFF));
@@ -223,7 +283,7 @@ public class TestContentSearch extends TestCase {
 			+ "\"poster\":{\"millis\":" + POSTER + "}}]]}]");
 	}
 
-	private void photo(String album, String name, Color color) throws IOException {
+	void photo(String album, String name, Color color) throws IOException {
 		Path folder = _base.resolve(album);
 		Files.createDirectories(folder);
 		BufferedImage image = new BufferedImage(1600, 1200, BufferedImage.TYPE_INT_RGB);
@@ -243,7 +303,7 @@ public class TestContentSearch extends TestCase {
 		Files.move(tmp, _base.resolve(folder).resolve("index.json"), StandardCopyOption.REPLACE_EXISTING);
 	}
 
-	private void start() throws Exception {
+	void start() throws Exception {
 		AuthService auth = new AuthService(AuthMode.WRITES, _base);
 		_servlet = new ImageServlet(_base.toFile(), auth, "", SpaceStore.load(_base, ""));
 		_servlet.init();
@@ -255,17 +315,17 @@ public class TestContentSearch extends TestCase {
 		_servlet.startIndexing();
 	}
 
-	private FolderPipeline pipeline() {
+	FolderPipeline pipeline() {
 		return _servlet.index().pipeline();
 	}
 
-	private void awaitCatchUp() throws Exception {
+	void awaitCatchUp() throws Exception {
 		assertTrue("The hash pass ends.", _servlet.index().awaitPass(TIMEOUT));
 		assertTrue("The catch-up ends.", pipeline().awaitIdle(TIMEOUT));
 	}
 
 	/** Waits until every medium of the library is described, then for the background to rest. */
-	private void awaitDescribed() throws Exception {
+	void awaitDescribed() throws Exception {
 		long end = System.currentTimeMillis() + TIMEOUT;
 		while (!allDescribed()) {
 			assertTrue("Every photo is described in time.", System.currentTimeMillis() < end);
@@ -284,15 +344,15 @@ public class TestContentSearch extends TestCase {
 		return true;
 	}
 
-	private File folder(String album) {
+	File folder(String album) {
 		return _base.resolve(album).toFile();
 	}
 
-	private void walk() {
+	void walk() {
 		pipeline().execute(() -> pipeline().catchUp(FolderPipeline.newestFirst(FolderPipeline.tree(_base.toFile()))));
 	}
 
-	private List<String> stepNames() {
+	List<String> stepNames() {
 		List<String> result = new ArrayList<>();
 		for (FolderPipeline.Step step : pipeline().steps()) {
 			result.add(step.name());
@@ -443,7 +503,9 @@ public class TestContentSearch extends TestCase {
 		}
 		assertNotNull("One line for the new album: " + info, album);
 		assertNotNull("And one for the old one: " + info, other);
-		assertTrue(album, album.matches(".* each\\); [0-5] of 5 described\\."));
+		// Of the albums looked at so far: on a lane (issue #311) the newer one may be described before
+		// the older one is looked at.
+		assertTrue(album, album.matches(".* each\\); [0-5] of [35] described\\."));
 		assertTrue("The last line counts everything: " + info, info.get(info.size() - 1).endsWith("; 5 of 5 described."));
 		assertEquals("One line per album: " + info, 2, info.size());
 		assertEquals("One fine line per photo: " + fine, MEDIA.length, fine.size());
@@ -837,20 +899,52 @@ public class TestContentSearch extends TestCase {
 		assertTrue(CacheRefresh.isGenerated(ContentCache.FILE_NAME + PreviewCache.TMP_SUFFIX));
 	}
 
+	/**
+	 * Issue #311, pinned: with the embedder on the server's machine (the managed child), the units of
+	 * the content search run on the pipeline's thread one at a time, and the photo work of an album
+	 * noticed meanwhile waits behind the photo being described (a noticed album is no upload, which
+	 * puts it aside). {@link TestContentSearchOnALane} shows the other way.
+	 */
+	public void testOnTheServersMachineTheUnitsRunOneAtATimeBehindThePhotoWork() throws Exception {
+		if (lane() > 0) {
+			// See TestContentSearchOnALane#testPreviewsOfANewAlbumAreMadeWhileEmbeddingsAreInFlight.
+			return;
+		}
+		library(true);
+		_embedder._hold = new CountDownLatch(1);
+		start();
+		assertTrue(_embedder._holding.await(TIMEOUT, TimeUnit.MILLISECONDS));
+		photo(LATE, "l1.jpg", Color.CYAN);
+		pipeline().notice(folder(LATE), false);
+		Thread.sleep(1500);
+		assertFalse("The photo work waits behind the description on the one thread.",
+			PreviewCache.previewFile(_base.resolve(LATE + "/l1.jpg").toFile()).isFile());
+		assertEquals("One at a time.", 1, _embedder._active.get());
+		_embedder._hold.countDown();
+		awaitDescribed();
+		long end = System.currentTimeMillis() + TIMEOUT;
+		while (!ContentCache.read(folder(LATE)).photos().containsKey("l1.jpg")) {
+			assertTrue("The late album is described too.", System.currentTimeMillis() < end);
+			Thread.sleep(50);
+		}
+		awaitCatchUp();
+		assertEquals("Never two at once.", 1, _embedder._most.get());
+	}
+
 	// --- The protocol. ---
 
-	private CatchUpStatus status() throws Exception {
+	CatchUpStatus status() throws Exception {
 		FakeResponse response = get(ImageServlet.CATCH_UP_TYPE);
 		assertEquals(response.body(), 200, response.status());
 		return CatchUpStatus.readCatchUpStatus(new JsonReader(new ReaderAdapter(new StringReader(response.body()))));
 	}
 
-	private static SpaceSettings settings(FakeResponse response) throws Exception {
+	static SpaceSettings settings(FakeResponse response) throws Exception {
 		assertEquals(response.body(), 200, response.status());
 		return SpaceSettings.readSpaceSettings(new JsonReader(new ReaderAdapter(new StringReader(response.body()))));
 	}
 
-	private FakeResponse saveSettings(SpaceSettings settings) throws Exception {
+	FakeResponse saveSettings(SpaceSettings settings) throws Exception {
 		StringWriter buffer = new StringWriter();
 		try (JsonWriter json = new JsonWriter(new WriterAdapter(buffer))) {
 			settings.writeTo(json);
@@ -866,7 +960,7 @@ public class TestContentSearch extends TestCase {
 		return response;
 	}
 
-	private FakeResponse get(String type) throws Exception {
+	FakeResponse get(String type) throws Exception {
 		Map<String, String> parameters = new HashMap<>();
 		parameters.put("type", type);
 		Map<String, String> headers = new HashMap<>();

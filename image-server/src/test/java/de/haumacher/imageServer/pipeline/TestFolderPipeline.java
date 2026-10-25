@@ -384,6 +384,93 @@ public class TestFolderPipeline extends TestCase {
 		assertTrue(pipeline.isDone(_album, "videos"));
 	}
 
+	/**
+	 * Issue #311: the units of a step with a lane run on threads of their own, as many at once as the
+	 * lane allows and never more, while the photo work of an album noticed meanwhile goes on; they are
+	 * recorded as the units of the thread are.
+	 */
+	public void testTheUnitsOfALaneRunBesideThePhotoWork() throws Exception {
+		List<String> log = new java.util.concurrent.CopyOnWriteArrayList<>();
+		AtomicInteger active = new AtomicInteger();
+		AtomicInteger most = new AtomicInteger();
+		java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+		FolderPipeline pipeline = new FolderPipeline(_root, "test");
+		pipeline.addStep(new FolderPipeline.Step() {
+			@Override
+			public String name() {
+				return "photos";
+			}
+
+			@Override
+			public FolderPipeline.Outcome run(File folder) {
+				log.add("photos:" + folder.getName());
+				return FolderPipeline.Outcome.DONE;
+			}
+		});
+		pipeline.addStep(new FolderPipeline.UnitStep() {
+			@Override
+			public String name() {
+				return "remote";
+			}
+
+			@Override
+			public int lane() {
+				return 2;
+			}
+
+			@Override
+			public List<String> units(File folder) {
+				return folder.equals(_album) ? List.of("u1", "u2", "u3", "u4", "u5") : List.of();
+			}
+
+			@Override
+			public FolderPipeline.Outcome runUnit(File folder, String unit) {
+				most.accumulateAndGet(active.incrementAndGet(), Math::max);
+				try {
+					release.await(30, java.util.concurrent.TimeUnit.SECONDS);
+				} catch (InterruptedException ex) {
+					Thread.currentThread().interrupt();
+					return FolderPipeline.Outcome.WAITING;
+				} finally {
+					active.decrementAndGet();
+				}
+				log.add("unit:" + unit);
+				return FolderPipeline.Outcome.DONE;
+			}
+		});
+		pipeline.start();
+		try {
+			pipeline.catchUp(List.of(_album));
+			long end = System.currentTimeMillis() + 30_000;
+			while (active.get() < 2) {
+				assertTrue("Two units at once.", System.currentTimeMillis() < end);
+				Thread.sleep(10);
+			}
+			assertEquals("A unit of the lane is shown as the step at work.", "remote", pipeline.status().getStep());
+			File late = new File(_root.toFile(), "2024-01-01 Late");
+			assertTrue(late.mkdirs());
+			Files.write(new File(late, "z.jpg").toPath(), new byte[] { 3 });
+			pipeline.catchUp(List.of(late));
+			while (!log.contains("photos:" + late.getName())) {
+				assertTrue("The photo work goes on beside the lane.", System.currentTimeMillis() < end);
+				Thread.sleep(10);
+			}
+			assertEquals("No unit finished meanwhile.", 2, log.size());
+			Thread.sleep(200);
+			assertEquals("Never more than the lane.", 2, active.get());
+			release.countDown();
+			assertTrue(pipeline.awaitIdle(30_000));
+		} finally {
+			pipeline.shutdown();
+		}
+		assertEquals(2, most.get());
+		for (String unit : List.of("u1", "u2", "u3", "u4", "u5")) {
+			assertEquals("Once: " + unit + " in " + log, 1, Collections.frequency(log, "unit:" + unit));
+		}
+		assertTrue(pipeline.isDone(_album, "remote"));
+		assertEquals(0, pipeline.status().getRemaining("remote"));
+	}
+
 	public void testAVideoStepMustWorkInUnits() {
 		FolderPipeline pipeline = new FolderPipeline(_root, "test");
 		try {
