@@ -354,7 +354,19 @@ const Map<String, String> allowedLiterals = {
   "Could not read the camera-roll settings afresh": "diagnostics log",
   "Could not read the camera-roll settings: the sync is switched off until it is switched on again":
       "diagnostics log",
-  "Could not register the next background trigger: a new photo starts no camera-roll run until the app or the periodic run registers it":
+  "background network": "diagnostics log",
+  "background retry": "diagnostics log",
+  "background upload": "diagnostics log",
+  r"${}: the device is connected (${}), and the name of the server could not be looked up":
+      "diagnostics log",
+  "Could not hand the background run to the upload work: it uploads itself":
+      "diagnostics log",
+  r"Host: ${}": "diagnostics log",
+  "Could not make sure a new photo starts a background run":
+      "diagnostics log",
+  "Could not register the next background trigger: a new photo starts no camera-roll run until the app or another background run registers it":
+      "diagnostics log",
+  "Could not register the retry of a background run: the photos wait for the next run":
       "diagnostics log",
   "Could not report the camera-roll run to the app": "diagnostics log",
   "Could not stop the camera-roll run elsewhere": "diagnostics log",

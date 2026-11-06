@@ -1163,6 +1163,8 @@
   "spaceSettingsTextThreshold": "Niedrigste Ähnlichkeit bei einer KI-Suche",
   "spaceSettingsSimilarThreshold": "Niedrigste Ähnlichkeit bei „Ähnliche Fotos“",
   "spaceSettingsThresholdHelp": "Eine Zahl zwischen 0 und 1: Je höher, desto weniger und desto ähnlichere Fotos werden gefunden. Leer für den eingebauten Wert {score}. Eine Suche kann mit dem Schieberegler ihren eigenen festlegen.",
+  "spaceSettingsBurstThreshold": "Niedrigster Ähnlichkeitswert einer Bildserie",
+  "spaceSettingsBurstThresholdHelp": "Eine Zahl zwischen 0,5 und 1: Fotos, die im Abstand von wenigen Minuten aufgenommen wurden, werden zu einer Bildserie zusammengefasst, sofern sie mindestens diesen Ähnlichkeitsgrad aufweisen. Je höher der Wert, desto weniger Fotos werden zusammengefasst. Leer lassen für den integrierten {score}.",
   "spaceSettingsThresholdInvalid": "Geben Sie eine Zahl zwischen 0 und 1 ein oder lassen Sie das Feld leer.",
   "spaceSettingsContentReady": "Der Einbettungsdienst ist bereit.",
   "spaceSettingsContentUnavailable": "Der Einbettungsdienst kann Fotos derzeit nicht beschreiben: {reason}",
@@ -1239,6 +1241,6 @@
   "keptReport": "{count, plural, =1{1 Foto wird noch in {albums} gezeigt und wurde dorthin verschoben statt in den Papierkorb.} other{{count} Fotos werden noch in {albums} gezeigt und wurden dorthin verschoben statt in den Papierkorb.}}",
   "keptPurgeQuestion": "{count, plural, =1{1 Foto wird noch in {albums} gezeigt – es wird dorthin verschoben, statt von der Festplatte gelöscht zu werden.} other{{count} Fotos werden noch in {albums} gezeigt – sie werden dorthin verschoben, statt von der Festplatte gelöscht zu werden.}}",
   "keptPurgeReport": "{count, plural, =1{1 Foto wird noch in {albums} gezeigt und wurde dorthin verschoben, statt gelöscht zu werden.} other{{count} Fotos werden noch in {albums} gezeigt und wurden dorthin verschoben, statt gelöscht zu werden.}}",
-  "spaceSettingsBurstThreshold": "Niedrigster Ähnlichkeitswert einer Bildserie",
-  "spaceSettingsBurstThresholdHelp": "Eine Zahl zwischen 0,5 und 1: Fotos, die im Abstand von wenigen Minuten aufgenommen wurden, werden zu einer Bildserie zusammengefasst, sofern sie mindestens diesen Ähnlichkeitsgrad aufweisen. Je höher der Wert, desto weniger Fotos werden zusammengefasst. Leer lassen für den integrierten {score}."
+  "backgroundSyncHandedOver": "Die neuen Fotos wurden an den Upload übergeben.",
+  "backgroundNetworkBlocked": "Android hat den Netzwerkzugriff für den Hintergrundlauf blockiert"
 }

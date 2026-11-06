@@ -4634,6 +4634,14 @@ class AppLocalizationsDe extends AppLocalizations {
       'Eine andere Synchronisierung lief bereits und hat die neuen Fotos mitgenommen.';
 
   @override
+  String get backgroundSyncHandedOver =>
+      'Die neuen Fotos wurden an den Upload übergeben.';
+
+  @override
+  String get backgroundNetworkBlocked =>
+      'Android hat den Netzwerkzugriff für den Hintergrundlauf blockiert';
+
+  @override
   String get spaceSettingsContent => 'Suche nach Inhalt';
 
   @override

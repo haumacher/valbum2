@@ -4573,6 +4573,14 @@ class AppLocalizationsEn extends AppLocalizations {
       'Another sync was running and took the new photos along.';
 
   @override
+  String get backgroundSyncHandedOver =>
+      'The new photos were handed to the upload.';
+
+  @override
+  String get backgroundNetworkBlocked =>
+      'Android blocked the network for the background run';
+
+  @override
   String get spaceSettingsContent => 'Search by content';
 
   @override

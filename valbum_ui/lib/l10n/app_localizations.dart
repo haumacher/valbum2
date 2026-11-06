@@ -7047,6 +7047,18 @@ abstract class AppLocalizations {
   /// **'Another sync was running and took the new photos along.'**
   String get backgroundSyncBusy;
 
+  /// Says why a background run of the camera-roll sync did not upload itself: it started the separate upload run that Android gives network access to (issue #300)
+  ///
+  /// In en, this message translates to:
+  /// **'The new photos were handed to the upload.'**
+  String get backgroundSyncHandedOver;
+
+  /// Why a background run of the camera-roll sync failed: the device was connected, but Android did not let the app use the network while it was not on the screen (issue #300). Shown after 'failed:' in the report of the last background run
+  ///
+  /// In en, this message translates to:
+  /// **'Android blocked the network for the background run'**
+  String get backgroundNetworkBlocked;
+
   /// Title of the switch letting the server describe every photo for the content search (issue #257)
   ///
   /// In en, this message translates to:

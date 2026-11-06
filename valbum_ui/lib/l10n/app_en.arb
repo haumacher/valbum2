@@ -7574,6 +7574,16 @@
     "description": "Says why a background run did nothing: another run of the camera-roll sync was going on (issue #300)",
     "x-translated": "b23a0b38"
   },
+  "backgroundSyncHandedOver": "The new photos were handed to the upload.",
+  "@backgroundSyncHandedOver": {
+    "description": "Says why a background run of the camera-roll sync did not upload itself: it started the separate upload run that Android gives network access to (issue #300)",
+    "x-translated": "a88ea40a"
+  },
+  "backgroundNetworkBlocked": "Android blocked the network for the background run",
+  "@backgroundNetworkBlocked": {
+    "description": "Why a background run of the camera-roll sync failed: the device was connected, but Android did not let the app use the network while it was not on the screen (issue #300). Shown after 'failed:' in the report of the last background run",
+    "x-translated": "ed658ad"
+  },
   "spaceSettingsContent": "Search by content",
   "@spaceSettingsContent": {
     "description": "Title of the switch letting the server describe every photo for the content search (issue #257)",

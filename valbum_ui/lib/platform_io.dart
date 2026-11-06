@@ -168,6 +168,21 @@ BackgroundScheduler defaultBackgroundScheduler() =>
 void executeBackgroundTask(Future<bool> Function(String task) task) =>
     runWorkmanagerTask(task);
 
+/// Looks [host] up, as a background run does before it uploads (issue #300):
+/// the error of the lookup, `null` where the name resolves.
+///
+/// What Android 15 answers a process it cut off the network is exactly this
+/// failing — `Failed host lookup`, errno 7 — while the device is connected.
+Future<Object?> lookUpHost(String host) async {
+  try {
+    // A name without an address throws: the `SocketException` itself.
+    await InternetAddress.lookup(host).timeout(const Duration(seconds: 10));
+    return null;
+  } catch (error) {
+    return error;
+  }
+}
+
 /// The meeting point of the camera-roll runs of the app process (issue #300),
 /// `null` where there is only ever one run.
 ///

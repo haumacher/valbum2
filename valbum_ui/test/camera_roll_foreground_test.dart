@@ -5,10 +5,12 @@
 library;
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:valbum_ui/background_workmanager.dart';
 import 'package:valbum_ui/locales.dart';
 import 'package:valbum_ui/main.dart';
@@ -16,7 +18,14 @@ import 'package:valbum_ui/notices.dart';
 import 'package:workmanager/workmanager.dart';
 
 import 'background_test.dart'
-    show FakeServer, deviceToken, enabledStore, now, photo, pumpSection;
+    show
+        FakeServer,
+        deviceToken,
+        enabledStore,
+        now,
+        photo,
+        pumpSection,
+        refusal;
 import 'util/fake_timers.dart';
 import 'util/l10n.dart';
 
@@ -27,16 +36,39 @@ class OneOff {
   final Constraints? constraints;
   final ExistingWorkPolicy? policy;
   final ForegroundServiceConfig? foreground;
+  final Duration? initialDelay;
+  final BackoffPolicy? backoffPolicy;
+  final Duration? backoffDelay;
+  final bool expedited;
+  final OutOfQuotaPolicy? outOfQuota;
 
   OneOff(this.uniqueName, this.taskName, this.constraints, this.policy,
-      this.foreground);
+      this.foreground,
+      {this.initialDelay,
+      this.backoffPolicy,
+      this.backoffDelay,
+      this.expedited = false,
+      this.outOfQuota});
+}
+
+/// One call of [FakeWorkmanager.registerPeriodicTask].
+class Periodic {
+  final String uniqueName;
+  final Duration? frequency;
+  final Duration? initialDelay;
+  final Constraints? constraints;
+  final ExistingPeriodicWorkPolicy? policy;
+
+  Periodic(this.uniqueName, this.frequency, this.initialDelay,
+      this.constraints, this.policy);
 }
 
 /// A `Workmanager` that records what it is asked, and answers the state of a
 /// work from [states].
 class FakeWorkmanager implements Workmanager {
   final List<OneOff> oneOffs = [];
-  final List<String> periodics = [];
+  final List<Periodic> periodicTasks = [];
+  List<String> get periodics => [for (var p in periodicTasks) p.uniqueName];
   final List<String> cancelled = [];
   final Map<String, WorkState> states = {};
   int initialized = 0;
@@ -63,7 +95,12 @@ class FakeWorkmanager implements Workmanager {
     bool expedited = false,
   }) async {
     oneOffs.add(OneOff(uniqueName, taskName, constraints, existingWorkPolicy,
-        foregroundServiceConfig));
+        foregroundServiceConfig,
+        initialDelay: initialDelay,
+        backoffPolicy: backoffPolicy,
+        backoffDelay: backoffPolicyDelay,
+        expedited: expedited,
+        outOfQuota: outOfQuotaPolicy));
   }
 
   @override
@@ -81,7 +118,8 @@ class FakeWorkmanager implements Workmanager {
     String? tag,
     ForegroundServiceConfig? foregroundServiceConfig,
   }) async {
-    periodics.add(uniqueName);
+    periodicTasks.add(Periodic(
+        uniqueName, frequency, initialDelay, constraints, existingWorkPolicy));
   }
 
   @override
@@ -226,7 +264,9 @@ void main() {
       expect(trigger.policy, ExistingWorkPolicy.keep);
       var constraints = trigger.constraints!;
       expect(constraints.networkType, NetworkType.unmetered);
-      expect(constraints.requiresBatteryNotLow, isTrue);
+      // A photo or two upload at once, on a low battery too.
+      expect(constraints.requiresBatteryNotLow, isNot(isTrue));
+      expect(constraints.requiresCharging, isNot(isTrue));
       expect(
         [
           for (var uri in constraints.contentUriTriggers!)
@@ -237,12 +277,70 @@ void main() {
           ("content://media/external/video/media", true),
         ],
       );
-      var foreground = trigger.foreground!;
-      expect(foreground.foregroundServiceType, ForegroundServiceType.dataSync);
-      expect(foreground.notificationId,
-          syncNotificationIdOf(backgroundTriggerTaskName));
-      expect(foreground.notificationChannelId, syncNotificationChannelId);
-      expect(foreground.notificationText, platformMessages.cameraRollLooking);
+      // Its run only hands the upload over: no foreground work, and it is
+      // no expedited work — a content trigger is a constraint an expedited
+      // work may not have.
+      expect(trigger.foreground, isNull);
+      expect(trigger.expedited, isFalse);
+    });
+
+    test('the upload is an expedited work with a network constraint',
+        () async {
+      for (var (network, type) in [
+        (BackgroundNetwork.unmetered, NetworkType.unmetered),
+        (BackgroundNetwork.connected, NetworkType.connected),
+      ]) {
+        var workmanager = FakeWorkmanager();
+        var scheduler =
+            WorkmanagerScheduler(workmanager: workmanager, android: true);
+
+        expect(await scheduler.requestUpload(network), isTrue);
+
+        var upload = workmanager.oneOffs.single;
+        expect(upload.uniqueName, backgroundUploadTaskName);
+        expect(upload.taskName, backgroundUploadTaskName);
+        // Expedited: the background run Android grants the network to, for
+        // the network it asks for.
+        expect(upload.expedited, isTrue);
+        expect(upload.outOfQuota, OutOfQuotaPolicy.runAsNonExpeditedWorkRequest);
+        expect(upload.constraints!.networkType, type);
+        // An expedited work may not have any other constraint, nor a delay.
+        expect(upload.constraints!.requiresBatteryNotLow, isNot(isTrue));
+        expect(upload.constraints!.requiresCharging, isNot(isTrue));
+        expect(upload.constraints!.contentUriTriggers, isNull);
+        expect(upload.initialDelay, isNull);
+        expect(upload.policy, ExistingWorkPolicy.keep);
+        var foreground = upload.foreground!;
+        expect(
+            foreground.foregroundServiceType, ForegroundServiceType.dataSync);
+        expect(foreground.notificationId,
+            syncNotificationIdOf(backgroundUploadTaskName));
+        expect(foreground.notificationChannelId, syncNotificationChannelId);
+        expect(foreground.notificationText, platformMessages.cameraRollLooking);
+      }
+    });
+
+    test('the periodic work is the daily catch-up of a charging device',
+        () async {
+      for (var (network, type) in [
+        (BackgroundNetwork.unmetered, NetworkType.unmetered),
+        (BackgroundNetwork.connected, NetworkType.connected),
+      ]) {
+        var workmanager = FakeWorkmanager();
+        var scheduler =
+            WorkmanagerScheduler(workmanager: workmanager, android: true);
+
+        await scheduler.schedule(network);
+
+        var periodic = workmanager.periodicTasks.single;
+        expect(periodic.uniqueName, backgroundSyncTaskName);
+        expect(periodic.frequency, const Duration(days: 1));
+        expect(periodic.constraints!.requiresCharging, isTrue);
+        expect(periodic.constraints!.networkType, type);
+        // `update` takes period and constraints over into the work an older
+        // version registered every quarter of an hour.
+        expect(periodic.policy, ExistingPeriodicWorkPolicy.update);
+      }
     });
 
     test('the trigger asks for any network while Wi-Fi-only is off', () async {
@@ -291,7 +389,57 @@ void main() {
         backgroundSyncTaskName,
         backgroundTriggerTaskName,
         backgroundUploadTaskName,
+        backgroundRetryTaskName,
       ]);
+    });
+
+    test('another run registers a trigger where none waits, keeping one that '
+        'does', () async {
+      var workmanager = FakeWorkmanager();
+      var scheduler =
+          WorkmanagerScheduler(workmanager: workmanager, android: true);
+
+      await scheduler.ensureTrigger(BackgroundNetwork.unmetered);
+
+      var trigger = workmanager.oneOffs.single;
+      expect(trigger.uniqueName, backgroundTriggerTaskName);
+      // Decided by the platform over the whole chain, never by asking for
+      // the state of its first work.
+      expect(trigger.policy, ExistingWorkPolicy.keep);
+      expect(trigger.constraints!.networkType, NetworkType.unmetered);
+      expect(trigger.constraints!.contentUriTriggers, hasLength(2));
+      expect(trigger.constraints!.requiresBatteryNotLow, isNot(isTrue));
+    });
+
+    test('a run that could not reach the server is handed over again later, '
+        'by an ordinary delayed work', () async {
+      var workmanager = FakeWorkmanager();
+      var scheduler =
+          WorkmanagerScheduler(workmanager: workmanager, android: true);
+
+      await scheduler.scheduleRetry(BackgroundNetwork.connected,
+          delay: const Duration(minutes: 2));
+
+      var retry = workmanager.oneOffs.single;
+      expect(retry.uniqueName, backgroundRetryTaskName);
+      expect(retry.taskName, backgroundRetryTaskName);
+      expect(retry.policy, ExistingWorkPolicy.keep);
+      expect(retry.constraints!.networkType, NetworkType.connected);
+      expect(retry.constraints!.contentUriTriggers, isNull);
+      expect(retry.initialDelay, const Duration(minutes: 2));
+      // Its run only hands the upload over afresh, which is expedited again.
+      expect(retry.expedited, isFalse);
+      expect(retry.backoffPolicy, isNull);
+      expect(retry.foreground, isNull);
+    });
+
+    test('the wait of the retry doubles, up to five hours', () {
+      expect(backgroundRetryDelay(1), const Duration(seconds: 30));
+      expect(backgroundRetryDelay(2), const Duration(minutes: 1));
+      expect(backgroundRetryDelay(3), const Duration(minutes: 2));
+      expect(backgroundRetryDelay(10), const Duration(hours: 4, minutes: 16));
+      expect(backgroundRetryDelay(11), const Duration(hours: 5));
+      expect(backgroundRetryDelay(1000), const Duration(hours: 5));
     });
 
     test('iOS keeps its one periodic task', () async {
@@ -301,9 +449,23 @@ void main() {
 
       await scheduler.schedule(BackgroundNetwork.unmetered);
       await scheduler.rearmTrigger(BackgroundNetwork.unmetered);
+      await scheduler.ensureTrigger(BackgroundNetwork.unmetered);
+      await scheduler.scheduleRetry(BackgroundNetwork.unmetered,
+          delay: const Duration(minutes: 1));
+      // No upload work: the periodic task uploads itself.
+      expect(await scheduler.requestUpload(BackgroundNetwork.unmetered),
+          isFalse);
       await scheduler.cancel();
 
       expect(workmanager.periodics, [backgroundSyncTaskName]);
+      // As before: every quarter of an hour, as far as iOS listens, with the
+      // battery not low and any network.
+      var periodic = workmanager.periodicTasks.single;
+      expect(periodic.frequency, const Duration(minutes: 15));
+      expect(periodic.initialDelay, const Duration(minutes: 15));
+      expect(periodic.constraints!.requiresBatteryNotLow, isTrue);
+      expect(periodic.constraints!.requiresCharging, isNot(isTrue));
+      expect(periodic.constraints!.networkType, NetworkType.connected);
       expect(workmanager.oneOffs, isEmpty);
       expect(workmanager.cancelled, [backgroundSyncTaskName]);
     });
@@ -319,9 +481,10 @@ void main() {
       var upload = workmanager.oneOffs.single;
       expect(upload.uniqueName, backgroundUploadTaskName);
       expect(upload.policy, ExistingWorkPolicy.keep);
-      // The app answered what the device answers on its own; the run says why
-      // it refuses the rest rather than waiting silently for a network.
-      expect(upload.constraints!.networkType, NetworkType.notRequired);
+      // Any network: the app answered what the device answers on its own,
+      // and a network constraint is what the platform grants it for.
+      expect(upload.constraints!.networkType, NetworkType.connected);
+      expect(upload.expedited, isTrue);
       expect(upload.constraints!.contentUriTriggers, isNull);
       expect(upload.foreground!.foregroundServiceType,
           ForegroundServiceType.dataSync);
@@ -350,8 +513,9 @@ void main() {
       expect(ids, hasLength(3));
       expect(ids, isNot(contains(0)));
       expect(foregroundSyncTask(backgroundUploadTaskName), isTrue);
-      expect(foregroundSyncTask(backgroundTriggerTaskName), isTrue);
-      // A notification every quarter of an hour for nothing new: no.
+      // The others hand the upload over in a moment: no notification.
+      expect(foregroundSyncTask(backgroundTriggerTaskName), isFalse);
+      expect(foregroundSyncTask(backgroundRetryTaskName), isFalse);
       expect(foregroundSyncTask(backgroundSyncTaskName), isFalse);
     });
   });
@@ -438,7 +602,8 @@ void main() {
       expect(scheduler.rearms, isEmpty);
     });
 
-    test('the periodic run arms no trigger', () async {
+    test('the periodic run appends no trigger, it registers one where none '
+        'waits', () async {
       var scheduler = FakeBackgroundScheduler();
       await backgroundRun(
         enabledStore(),
@@ -450,6 +615,45 @@ void main() {
       );
 
       expect(scheduler.rearms, isEmpty);
+      expect(scheduler.ensures, [BackgroundNetwork.unmetered]);
+    });
+
+    test('every other run registers one where none waits, the trigger run '
+        'does not', () async {
+      for (var task in [
+        backgroundUploadTaskName,
+        backgroundRetryTaskName,
+        backgroundTriggerTaskName,
+      ]) {
+        var scheduler = FakeBackgroundScheduler();
+        await backgroundRun(
+          anyNetworkStore(),
+          FakePhotoLibrary(),
+          FakeServer(),
+          MemorySyncRelay(),
+          task: task,
+          scheduler: scheduler,
+        );
+
+        expect(scheduler.ensures,
+            task == backgroundTriggerTaskName ? isEmpty : [BackgroundNetwork.connected],
+            reason: task);
+      }
+    });
+
+    test('a switched-off sync registers nothing at all', () async {
+      var scheduler = FakeBackgroundScheduler();
+      await backgroundRun(
+        enabledStore(config: const CameraRollConfig()),
+        FakePhotoLibrary(),
+        FakeServer(),
+        MemorySyncRelay(),
+        task: backgroundSyncTaskName,
+        scheduler: scheduler,
+      );
+
+      expect(scheduler.ensures, isEmpty);
+      expect(scheduler.retries, isEmpty);
     });
 
     test('picks up a photo taken while it uploads', () async {
@@ -472,6 +676,325 @@ void main() {
         ["b.jpg"],
       ]);
       expect(result.record?.stored, 2);
+    });
+  });
+
+  group('a run on Android hands the upload over', () {
+    for (var task in [
+      backgroundTriggerTaskName,
+      backgroundSyncTaskName,
+      backgroundRetryTaskName,
+    ]) {
+      test('$task uploads nothing itself', () async {
+        var scheduler = FakeBackgroundScheduler(acceptsUploads: true);
+        var server = FakeServer();
+        var result = await backgroundRun(
+          enabledStore(),
+          FakePhotoLibrary(items: [photo("a.jpg", 1)]),
+          server,
+          MemorySyncRelay(),
+          task: task,
+          scheduler: scheduler,
+        );
+
+        expect(result.handedOver, isTrue);
+        expect(result.ran, isFalse);
+        // With the Wi-Fi-only setting: the upload waits for a Wi-Fi.
+        expect(scheduler.uploads, [BackgroundNetwork.unmetered]);
+        expect(server.requests, isEmpty);
+        // The trigger still arms its successor first; the others make sure
+        // a trigger waits.
+        if (task == backgroundTriggerTaskName) {
+          expect(scheduler.rearms, [BackgroundNetwork.unmetered]);
+          expect(scheduler.ensures, isEmpty);
+        } else {
+          expect(scheduler.ensures, [BackgroundNetwork.unmetered]);
+        }
+      });
+    }
+
+    test('the upload uploads, and hands nothing over', () async {
+      var scheduler = FakeBackgroundScheduler(acceptsUploads: true);
+      var server = FakeServer();
+      var result = await backgroundRun(
+        anyNetworkStore(),
+        FakePhotoLibrary(items: [photo("a.jpg", 1)]),
+        server,
+        MemorySyncRelay(),
+        task: backgroundUploadTaskName,
+        scheduler: scheduler,
+      );
+
+      expect(result.ok, isTrue);
+      expect(scheduler.uploads, isEmpty);
+      expect(server.uploadedNames, [
+        ["a.jpg"]
+      ]);
+    });
+
+    test('a switched-off sync hands nothing over', () async {
+      var scheduler = FakeBackgroundScheduler(acceptsUploads: true);
+      await backgroundRun(
+        enabledStore(config: const CameraRollConfig()),
+        FakePhotoLibrary(),
+        FakeServer(),
+        MemorySyncRelay(),
+        task: backgroundTriggerTaskName,
+        scheduler: scheduler,
+      );
+
+      expect(scheduler.uploads, isEmpty);
+    });
+  });
+
+  group('a run that could not reach the server', () {
+    /// The upload run against [transport], with one new photo.
+    Future<BackgroundRunResult> runAgainst(
+      http.Client transport, {
+      String task = backgroundUploadTaskName,
+      FakeBackgroundScheduler? scheduler,
+      InMemorySettingsStore? store,
+      ConnectivitySource? connectivity,
+      HostLookup? lookup,
+    }) =>
+        runBackgroundSync(
+          store: store ?? anyNetworkStore(),
+          library: FakePhotoLibrary(items: [photo("a.jpg", 1)]),
+          transport: transport,
+          clock: () => now,
+          connectivity: connectivity ?? FakeConnectivity(),
+          hashCache: MemoryHashCache(),
+          task: task,
+          relay: MemorySyncRelay(),
+          scheduler: scheduler,
+          lookup: lookup,
+        );
+
+    /// A server that is not there: every request fails in the transport.
+    http.Client unreachable() => MockClient(
+        (_) async => throw http.ClientException("Connection refused"));
+
+    /// A server that answers every request with "not signed in".
+    http.Client signedOut() => MockClient((_) async =>
+        http.Response(refusal("This device is not signed in."), 401));
+
+    test('is handed over again after half a minute, then a minute', () async {
+      var store = anyNetworkStore();
+      var scheduler = FakeBackgroundScheduler();
+      var first =
+          await runAgainst(unreachable(), scheduler: scheduler, store: store);
+      var second =
+          await runAgainst(unreachable(), scheduler: scheduler, store: store);
+
+      expect(first.ok, isFalse);
+      expect(first.transient, isTrue);
+      expect(first.record?.retries, 1);
+      expect(second.record?.retries, 2);
+      expect(scheduler.retries,
+          [BackgroundNetwork.connected, BackgroundNetwork.connected]);
+      expect(scheduler.retryDelays,
+          [const Duration(seconds: 30), const Duration(minutes: 1)]);
+      // Read back by the next engine, which counts on from it.
+      expect((await store.loadBackgroundRunRecord())?.retries, 2);
+    });
+
+    test('a run that reaches the server again starts the count afresh',
+        () async {
+      var store = anyNetworkStore();
+      var scheduler = FakeBackgroundScheduler();
+      await runAgainst(unreachable(), scheduler: scheduler, store: store);
+      var back = await runAgainst(FakeServer().transport,
+          scheduler: scheduler, store: store);
+      await runAgainst(unreachable(), scheduler: scheduler, store: store);
+
+      expect(back.ok, isTrue);
+      expect(back.record?.retries, 0);
+      expect(scheduler.retryDelays,
+          [const Duration(seconds: 30), const Duration(seconds: 30)]);
+    });
+
+    test('the run a trigger started itself, where there was no upload work, '
+        'still arms the next trigger', () async {
+      var scheduler = FakeBackgroundScheduler();
+      var result = await runAgainst(unreachable(),
+          task: backgroundTriggerTaskName, scheduler: scheduler);
+
+      expect(result.transient, isTrue);
+      expect(scheduler.retries, [BackgroundNetwork.connected]);
+      expect(scheduler.rearms, [BackgroundNetwork.connected]);
+    });
+
+    test('a host that does not resolve is a server not reached', () async {
+      var scheduler = FakeBackgroundScheduler();
+      var result = await runAgainst(
+          MockClient((_) async => throw const SocketException(
+              "Failed host lookup: 'home.example'",
+              osError: OSError("No address associated with hostname", 7))),
+          scheduler: scheduler);
+
+      expect(result.transient, isTrue);
+      expect(scheduler.retries, [BackgroundNetwork.connected]);
+    });
+
+    test('a refusal no retry cures is not retried, and the next trigger is '
+        'armed', () async {
+      for (var (what, store, transport) in [
+        ("not signed in", anyNetworkStore(), signedOut()),
+        (
+          "no server",
+          enabledStore(
+              url: null,
+              token: null,
+              config: const CameraRollConfig(enabled: true, wifiOnly: false)),
+          unreachable(),
+        ),
+      ]) {
+        for (var task in [backgroundTriggerTaskName, backgroundUploadTaskName]) {
+          var scheduler = FakeBackgroundScheduler();
+          var result = await runAgainst(transport,
+              task: task, scheduler: scheduler, store: store);
+
+          expect(result.ran, isTrue, reason: "$what, $task");
+          expect(result.ok, isFalse, reason: "$what, $task");
+          expect(result.transient, isFalse, reason: "$what, $task");
+          expect(result.record?.retries, 0, reason: "$what, $task");
+          expect(scheduler.retries, isEmpty, reason: "$what, $task");
+          if (task == backgroundTriggerTaskName) {
+            expect(scheduler.rearms, [BackgroundNetwork.connected],
+                reason: what);
+          }
+        }
+      }
+    });
+
+    test('a switched-off sync is not retried, with nothing registered',
+        () async {
+      for (var task in [backgroundTriggerTaskName, backgroundUploadTaskName]) {
+        var scheduler = FakeBackgroundScheduler();
+        var result = await runAgainst(unreachable(),
+            task: task,
+            scheduler: scheduler,
+            store: enabledStore(config: const CameraRollConfig()));
+
+        expect(result.ran, isFalse);
+        expect(scheduler.retries, isEmpty);
+        expect(scheduler.rearms, isEmpty);
+        expect(scheduler.ensures, isEmpty);
+      }
+    });
+
+    test('Wi-Fi-only on a mobile connection is not retried: the constraint of '
+        'the work waits for the Wi-Fi', () async {
+      var scheduler = FakeBackgroundScheduler();
+      var result = await runAgainst(unreachable(),
+          store: enabledStore(),
+          connectivity: FakeConnectivity(NetworkKind.mobile),
+          scheduler: scheduler);
+
+      expect(result.ok, isFalse);
+      expect(result.transient, isFalse);
+      expect(scheduler.retries, isEmpty);
+    });
+
+    test('only the reasons of a server not reached pass on their own', () {
+      expect(transientNotice(const ServerOffline()), isTrue);
+      expect(transientNotice(const ServerUnreachable("timeout")), isTrue);
+      expect(transientNotice(const NoNetworkForSync()), isTrue);
+      expect(transientNotice(const NoServerConfigured()), isFalse);
+      expect(transientNotice(const NoWifiMobile()), isFalse);
+      expect(transientNotice(const PhotoAccessDenied()), isFalse);
+      expect(transientNotice(null), isFalse);
+    });
+  });
+
+  group('a network Android blocked', () {
+    /// A lookup that fails the way Android 15 fails one of a process it cut
+    /// off the network.
+    Future<Object?> blocked(String host) async => SocketException(
+        "Failed host lookup: '$host'",
+        osError: const OSError("No address associated with hostname", 7));
+
+    test('is said as such before the server is asked, and not retried',
+        () async {
+      var store = anyNetworkStore();
+      var scheduler = FakeBackgroundScheduler();
+      var server = FakeServer();
+      var log = DiagnosticsLog(now: () => now);
+      var hosts = <String>[];
+      var result = await runBackgroundSync(
+        store: store,
+        library: FakePhotoLibrary(items: [photo("a.jpg", 1)]),
+        transport: server.transport,
+        clock: () => now,
+        connectivity: FakeConnectivity(),
+        hashCache: MemoryHashCache(),
+        task: backgroundUploadTaskName,
+        relay: MemorySyncRelay(),
+        scheduler: scheduler,
+        log: log,
+        lookup: (host) {
+          hosts.add(host);
+          return blocked(host);
+        },
+      );
+
+      expect(hosts, ["server"]);
+      expect(result.blocked, isTrue);
+      expect(result.transient, isFalse);
+      expect(result.record?.message,
+          "Android blocked the network for the background run");
+      expect(await store.loadBackgroundRunRecord(), result.record);
+      expect(server.requests, isEmpty);
+      // Retried, it would be blocked alike.
+      expect(scheduler.retries, isEmpty);
+      var entry = log.entries.single;
+      expect(entry.headline,
+          startsWith("Android blocked the network for the background run"));
+      expect(entry.facts, contains(contains("errno = 7")));
+      expect(entry.facts, contains("Host: server"));
+      expect(entry.facts, contains("Run: $backgroundUploadTaskName"));
+    });
+
+    test('is not claimed where the device has no network at all', () async {
+      var asked = 0;
+      var result = await runBackgroundSync(
+        store: anyNetworkStore(),
+        library: FakePhotoLibrary(items: [photo("a.jpg", 1)]),
+        transport: FakeServer().transport,
+        clock: () => now,
+        connectivity: FakeConnectivity(NetworkKind.none),
+        hashCache: MemoryHashCache(),
+        task: backgroundUploadTaskName,
+        relay: MemorySyncRelay(),
+        lookup: (host) {
+          asked++;
+          return blocked(host);
+        },
+      );
+
+      expect(asked, 0);
+      expect(result.blocked, isFalse);
+    });
+
+    test('is not claimed where the name resolves', () async {
+      var server = FakeServer();
+      var result = await runBackgroundSync(
+        store: anyNetworkStore(),
+        library: FakePhotoLibrary(items: [photo("a.jpg", 1)]),
+        transport: server.transport,
+        clock: () => now,
+        connectivity: FakeConnectivity(),
+        hashCache: MemoryHashCache(),
+        task: backgroundUploadTaskName,
+        relay: MemorySyncRelay(),
+        lookup: (_) async => null,
+      );
+
+      expect(result.blocked, isFalse);
+      expect(result.ok, isTrue);
+      expect(server.uploadedNames, [
+        ["a.jpg"]
+      ]);
     });
   });
 

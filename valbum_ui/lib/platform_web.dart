@@ -106,6 +106,10 @@ BackgroundScheduler defaultBackgroundScheduler() =>
 /// Runs [task] as the platform's background task: never, in a browser.
 void executeBackgroundTask(Future<bool> Function(String task) task) {}
 
+/// Looks a host up before a background run uploads: a browser has no
+/// background run, and nothing to look up.
+Future<Object?> lookUpHost(String host) async => null;
+
 /// The meeting point of the camera-roll runs (issue #300): a browser has one
 /// run, the tab's.
 SyncRelay? defaultSyncRelay() => null;

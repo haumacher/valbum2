@@ -443,7 +443,7 @@ class DiagnosticsLog extends ChangeNotifier {
   /// [add], with a merge [window] of its own.
   ///
   /// A failure that comes back only every few minutes — a camera-roll run
-  /// retried with its back-off, a background run every quarter of an hour —
+  /// retried with its back-off, a background run retried with its own —
   /// is still one problem: its entry merges every repetition that comes at
   /// most [window] after the last one, see [failureCause].
   void record(
