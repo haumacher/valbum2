@@ -444,6 +444,7 @@ class ServerSettings extends ChangeNotifier {
   String? _token;
   String? _deviceName;
   String? _userName;
+  bool _albumStacking = true;
   bool _loaded = false;
 
   ServerSettings({
@@ -509,12 +510,32 @@ class ServerSettings extends ChangeNotifier {
   /// Whether this device is signed in at the server it talks to.
   bool get signedIn => (_token ?? "").isNotEmpty;
 
+  /// Whether the albums of this device show their bursts as one tile each,
+  /// and the viewer walks each as one step ([SettingsStore.loadAlbumStacking],
+  /// issues #257, #314): read by [load] with the other values, so that it is
+  /// known before any album is loaded and linked (issue #316) — a viewer
+  /// opened by its address pages as the grid would show. On until chosen.
+  bool get albumStacking => _albumStacking;
+
+  /// Switches the stacking of the bursts of every album of this device, and
+  /// remembers it. Notifies nobody: the album view that switched it builds
+  /// itself anew, and every other album follows when it is shown next.
+  void setAlbumStacking(bool stacking) {
+    _albumStacking = stacking;
+    store.saveAlbumStacking(stacking).ignore();
+  }
+
   /// Reads the stored values; called once before the first client is built.
   Future<void> load() async {
     _serverUrl = await store.load();
     _token = await store.loadToken();
     _deviceName = await store.loadDeviceName();
     _userName = await store.loadUserName();
+    try {
+      _albumStacking = await store.loadAlbumStacking() ?? true;
+    } catch (_) {
+      // A view of this device, not worth a start that fails: stacked.
+    }
     _loaded = true;
     notifyListeners();
   }

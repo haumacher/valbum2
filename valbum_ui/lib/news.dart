@@ -22,6 +22,7 @@ import 'package:flutter/material.dart';
 import 'package:jsontool/jsontool.dart';
 
 import 'album_model.dart';
+import 'album_stacks.dart' show setAlbumStacking;
 import 'app.dart';
 import 'client.dart';
 import 'dialog_style.dart';
@@ -606,7 +607,9 @@ AlbumInfo newsAlbumOf(
   ];
   copy.subTitle = subTitle;
   // Its photographs chained among themselves alone: the viewer pages through
-  // the entry, not through the album.
+  // the entry, not through the album — and every photograph of it singly,
+  // as its view shows them (issue #316).
+  setAlbumStacking(copy, false);
   AlbumInitializer().init(copy);
   return copy;
 }

@@ -425,7 +425,7 @@ class AlbumContentState extends State<AlbumContent>
     watchReturn();
     // The photo "Show in album" opened this album for, issue #289.
     _revealMarked();
-    _loadStacking();
+    _settings = ServerSettingsScope.maybeOf(context)?.settings;
   }
 
   @override
@@ -1887,39 +1887,18 @@ class AlbumContentState extends State<AlbumContent>
 
   // --- The bursts, see issue #257 and `album_stacks.dart`. ---
 
-  /// Whether the albums of this device stack their bursts, by the store it
-  /// is remembered in: read once per store, not once per album, so that the
-  /// next album opens stacked or not from its first frame.
-  static final Expando<bool> _stackingOf = Expando();
+  /// The settings of the app around the album, which say whether this
+  /// device stacks the bursts ([ServerSettings.albumStacking], read with the
+  /// other settings at start-up); `null` where the album is shown without the
+  /// app around it.
+  ServerSettings? _settings;
 
-  /// Whether this album stacks its bursts, see [stacksShown]; on until the
-  /// device's choice is read.
-  bool _stacking = true;
+  /// Whether the album stacks its bursts where no app is around it.
+  bool _localStacking = true;
 
-  /// The store the choice whether to stack is remembered in, `null` where
-  /// the album is shown without the app around it.
-  SettingsStore? get _settingsStore =>
-      ServerSettingsScope.maybeOf(context)?.settings.store;
-
-  /// Reads the choice of this device whether to stack, see [_stackingOf].
-  void _loadStacking() {
-    var store = _settingsStore;
-    if (store == null) {
-      return;
-    }
-    var known = _stackingOf[store];
-    if (known != null) {
-      _stacking = known;
-      return;
-    }
-    store.loadAlbumStacking().then((stacking) {
-      var value = stacking ?? true;
-      _stackingOf[store] ??= value;
-      if (mounted && _stacking != _stackingOf[store]) {
-        setState(() => _stacking = _stackingOf[store]!);
-      }
-    });
-  }
+  /// Whether this album stacks its bursts, see [stacksShown]: the choice of
+  /// this device.
+  bool get _stacking => _settings?.albumStacking ?? _localStacking;
 
   /// Whether the tiles stack the bursts of the album: where the server
   /// answered some and the device has not switched it off — in the edit mode
@@ -1939,14 +1918,17 @@ class AlbumContentState extends State<AlbumContent>
 
   /// Switches the stacking of the bursts on or off, for every album of this
   /// device, and remembers it.
-  void setStacking(bool value) {
-    setState(() => _stacking = value);
-    var store = _settingsStore;
-    if (store != null) {
-      _stackingOf[store] = value;
-      store.saveAlbumStacking(value);
-    }
-  }
+  ///
+  /// Every other album already loaded follows the next time it is shown or
+  /// its viewer opened, see [syncStacks].
+  void setStacking(bool value) => setState(() {
+        var settings = _settings;
+        if (settings != null) {
+          settings.setAlbumStacking(value);
+        } else {
+          _localStacking = value;
+        }
+      });
 
   /// What the grid shows of the album's parts, see [stackView]; laid out
   /// anew with the grid.
@@ -1961,13 +1943,9 @@ class AlbumContentState extends State<AlbumContent>
   bool get _pagesStacked => _stacking && !isSearchView && !isNewsView;
 
   /// Tells the album whether its bursts are groups to the viewer, and links
-  /// it anew where that changed (see [AlbumInitializer]).
-  void _syncAlbumStacking() {
-    var album = widget.album;
-    if (setAlbumStacking(album, _pagesStacked)) {
-      AlbumInitializer().init(album);
-    }
-  }
+  /// it anew where that, or a filter, changed its bursts (see [syncStacks]).
+  void _syncAlbumStacking(AlbumInfo album) =>
+      syncStacks(album, stacking: _pagesStacked);
 
   /// The parts the tile of [part] stands for: every shot of the burst where
   /// it is the tile of one, [part] alone otherwise.
@@ -3725,9 +3703,10 @@ class AlbumContentState extends State<AlbumContent>
 
     // The bursts of the album, each one tile where it is stacked (#257).
     var shown = shownParts(self);
-    _syncAlbumStacking();
+    _syncAlbumStacking(self);
+    // The very bursts the viewer walks, see [albumStackView] (issue #316).
     _stackView = stacksShown
-        ? stackView(shown, self.stacks)
+        ? albumStackView(shown, self)
         : StackView.unstacked(shown);
     for (var part in _stackView.parts) {
       if (part is AbstractImage) {

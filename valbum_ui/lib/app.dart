@@ -13,7 +13,8 @@ import 'package:http/http.dart' as http;
 import 'action_guard.dart';
 import 'add_email.dart';
 import 'album_model.dart';
-import 'album_stacks.dart' show isStackGroup, storeStack;
+import 'album_stacks.dart'
+    show isStackGroup, setAlbumStacking, storeStack, syncStacks;
 import 'album_view.dart';
 import 'background.dart';
 import 'caller.dart';
@@ -598,6 +599,7 @@ class VAlbumAppState extends State<VAlbumApp> {
         client: client!,
         initialRoute: widget.initialRoute ?? ListingOrAlbumRoute.root,
         observers: widget.navigatorObservers,
+        albumStacking: () => settings.albumStacking,
       );
 
   /// The settings used when the app is not told otherwise.
@@ -2156,11 +2158,24 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
     required VAlbumClient client,
     required VAlbumRoute initialRoute,
     List<NavigatorObserver> observers = const [],
+    bool Function()? albumStacking,
   })  : _client = client,
         _route = initialRoute,
-        _observers = observers {
+        _observers = observers,
+        _albumStacking = albumStacking ?? _stacksAlways {
     _route = _arrive(initialRoute);
   }
+
+  /// Whether this device stacks the bursts of its albums, see
+  /// [ServerSettings.albumStacking]: an album is linked for the viewer by it
+  /// as it is loaded (issue #316).
+  final bool Function() _albumStacking;
+
+  static bool _stacksAlways() => true;
+
+  /// Whether this device stacks the bursts of its albums, see
+  /// [ServerSettings.albumStacking].
+  bool get albumStacking => _albumStacking();
 
   /// Watchers of the [Navigator] beside [_imperative], see
   /// [VAlbumApp.navigatorObservers].
@@ -2485,6 +2500,9 @@ class VAlbumRouterDelegate extends RouterDelegate<VAlbumRoute>
   Future<Resource?> _load(List<String> path) async {
     var resource = await client.loadResource(path);
     if (resource is AlbumInfo) {
+      // Linked as this device shows it: a viewer opened by its address walks
+      // the bursts only where the grid would stack them (issue #316).
+      setAlbumStacking(resource, albumStacking);
       AlbumInitializer().init(resource);
     }
     return resource;
@@ -3283,6 +3301,16 @@ class VAlbumState extends State<VAlbumView>
       );
     }
 
+    // The viewer and the alternatives walk the bursts the grid would show,
+    // as this device stacks them and as the album is filtered at this moment
+    // (issue #316); the results of a search or of an entry of the bell are
+    // no album of their own.
+    syncStacks(
+      self,
+      stacking: navigator.delegate.albumStacking &&
+          !current.fromSearch &&
+          current.newsKey == null,
+    );
     var name = _imageName(current);
     var image = _imageByName(self)[name];
     if (image == null) {
