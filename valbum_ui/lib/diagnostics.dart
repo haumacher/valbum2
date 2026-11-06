@@ -652,14 +652,46 @@ class DiagnosticsLog extends ChangeNotifier {
       ..writeln("Copied: ${stamp.toIso8601String()}")
       ..writeln("Problems: ${_entries.length} (the last $capacity are kept)")
       ..writeln();
-    if (_entries.isEmpty) {
-      buffer.writeln(noProblemsRecorded);
-    }
-    for (var entry in _entries) {
-      buffer.writeln(entry.toString());
-    }
+    buffer.writeln(
+        _entries.isEmpty ? noProblemsRecorded : diagnosticsText(_entries));
     return buffer.toString();
   }
+}
+
+/// The day of a [DiagnosticsEntry] as the copied log names it: `2026-11-06`,
+/// the same in every language, see the library comment.
+String diagnosticsIsoDay(DateTime day) =>
+    "${day.year.toString().padLeft(4, "0")}-"
+    "${day.month.toString().padLeft(2, "0")}-"
+    "${day.day.toString().padLeft(2, "0")}";
+
+/// The line naming the day of the entries under it, see [diagnosticsText].
+String diagnosticsDayLine(String day) => "--- $day ---";
+
+/// [entries] as they are shown and copied, one after the other (issue #318):
+/// every entry stamped with its time of day only, and a line naming the day
+/// — written by [day] — before the first entry and wherever the day changes.
+///
+/// The day is the one of [DiagnosticsEntry.at], in the time zone the entry
+/// keeps, exactly as its time of day.
+String diagnosticsText(
+  Iterable<DiagnosticsEntry> entries, {
+  String Function(DateTime day) day = diagnosticsIsoDay,
+}) {
+  var lines = <String>[];
+  DateTime? shown;
+  for (var entry in entries) {
+    var at = entry.at;
+    if (shown == null ||
+        shown.year != at.year ||
+        shown.month != at.month ||
+        shown.day != at.day) {
+      shown = at;
+      lines.add(diagnosticsDayLine(day(at)));
+    }
+    lines.add(entry.toString());
+  }
+  return lines.join("\n");
 }
 
 /// The line naming a request: `Request: GET <url> (with bearer)`.
