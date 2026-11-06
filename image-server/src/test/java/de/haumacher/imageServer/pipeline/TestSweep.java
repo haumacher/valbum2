@@ -96,6 +96,9 @@ public class TestSweep extends TestCase {
 		for (int n = 0; n < 5; n++) {
 			disk.reset();
 			long start = System.nanoTime();
+			// A sweep skips its round while a request was served a moment ago, by any test of
+			// this JVM: wait that out, or the round is not made at all.
+			Background.awaitQuiet();
 			pipeline.sweep(false);
 			best = Math.min(best, System.nanoTime() - start);
 			assertEquals("One stat per directory.", directories, disk._stats.get());
@@ -128,6 +131,9 @@ public class TestSweep extends TestCase {
 
 		Files.delete(new File(album, "a.jpg").toPath());
 		Files.delete(album.toPath());
+		// A sweep skips its round while a request was served a moment ago, by any test of
+		// this JVM: wait that out, or the round is not made at all.
+		Background.awaitQuiet();
 		pipeline.sweep(false);
 		pipeline.flush();
 		assertFalse("Gone from the file: " + read(pipeline), read(pipeline).contains("2020/Trip"));
@@ -219,12 +225,18 @@ public class TestSweep extends TestCase {
 			assertTrue(new File(_root.toFile(), ".upload").mkdir());
 			moved(album);
 			moved(_root.toFile());
+			// A sweep skips its round while a request was served a moment ago, by any test of
+			// this JVM: wait that out, or the round is not made at all.
+			Background.awaitQuiet();
 			pipeline.execute(() -> pipeline.sweep(false));
 			assertTrue(pipeline.awaitIdle(10_000));
 			assertEquals("Nothing of the library changed.", 3, runs.get());
 
 			Files.write(new File(album, "b.jpg").toPath(), new byte[] { 2 });
 			moved(album);
+			// A sweep skips its round while a request was served a moment ago, by any test of
+			// this JVM: wait that out, or the round is not made at all.
+			Background.awaitQuiet();
 			pipeline.execute(() -> pipeline.sweep(false));
 			assertTrue(pipeline.awaitIdle(10_000));
 			assertEquals("A photograph added.", 4, runs.get());
