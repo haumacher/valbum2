@@ -14,6 +14,7 @@ import 'package:valbum_ui/main.dart';
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
 import 'util/l10n.dart';
+import 'util/lifecycle.dart';
 
 /// The server the tests talk to.
 const String dataUrl = "http://server/valbum/data";
@@ -433,6 +434,49 @@ void main() {
         await tester.pumpAndSettle();
       });
       expect(find.byType(PersonsContent), findsNothing);
+    });
+
+    testWidgets(
+        "the album is not asked again in the background, and at once on "
+        "resume (issue #317)", (tester) async {
+      resume(tester);
+      var requests = <http.Request>[];
+      await pumpEditor(
+        tester,
+        editorClient(
+          requests,
+          auth: authOf(),
+          album: albumOf(pending: true),
+        ),
+      );
+
+      Future<void> wait(Duration time) => withFakeImageHttp(() async {
+            await tester.pump(time);
+            await tester.pumpAndSettle();
+          });
+
+      toBackground(tester);
+      var before = albumFetches(requests);
+      await wait(personsPendingInterval * 5);
+      expect(albumFetches(requests), before,
+          reason: "nothing while in the background");
+
+      await withFakeImageHttp(() async {
+        toForeground(tester);
+        await tester.pumpAndSettle();
+      });
+      expect(albumFetches(requests), before + 1, reason: "once at once");
+
+      await wait(personsPendingInterval - const Duration(seconds: 1));
+      expect(albumFetches(requests), before + 1,
+          reason: "the interval starts afresh");
+      await wait(const Duration(seconds: 1));
+      expect(albumFetches(requests), before + 2, reason: "and goes on");
+
+      await withFakeImageHttp(() async {
+        await tester.tap(find.byKey(const Key("persons-up")));
+        await tester.pumpAndSettle();
+      });
     });
   });
 

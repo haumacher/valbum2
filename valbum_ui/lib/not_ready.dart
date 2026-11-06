@@ -22,6 +22,7 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 
+import 'foreground_timer.dart';
 import 'offline.dart';
 
 /// What fetching a picture throws where the server answered `202 Accepted`:
@@ -165,7 +166,9 @@ ReAskTimer reAskTimer = Timer.new;
 /// A re-ask that falls while it would get in the way waits for the next one:
 /// while [paused] says so (the edit and the select mode, whose selection a
 /// re-read album takes away; a "view as" preview), offline, and while a page
-/// above — the viewer — covers this one.
+/// above — the viewer — covers this one. While the app is in the background
+/// nothing is scheduled at all (issue #317); a resume schedules the next
+/// re-ask.
 class NotReadyReAsk extends StatefulWidget {
   /// Whether a re-ask would get in the way now, beyond what every page has.
   final bool Function() paused;
@@ -208,6 +211,9 @@ class NotReadyReAsk extends StatefulWidget {
 class NotReadyReAskState extends State<NotReadyReAsk> {
   Timer? _timer;
 
+  /// Schedules again what the background left unscheduled, see [_schedule].
+  late final AppLifecycleListener _lifecycle;
+
   /// The re-asks since something last came, see [reAskAttempts].
   int _attempts = 0;
 
@@ -237,6 +243,7 @@ class NotReadyReAskState extends State<NotReadyReAsk> {
     super.initState();
     notReadyForgotten.addListener(_forgottenElsewhere);
     uploadsDone.addListener(_uploaded);
+    _lifecycle = AppLifecycleListener(onResume: _schedule);
     WidgetsBinding.instance.addPostFrameCallback((_) => _schedule());
   }
 
@@ -271,6 +278,7 @@ class NotReadyReAskState extends State<NotReadyReAsk> {
     notReadyForgotten.removeListener(_forgottenElsewhere);
     uploadsDone.removeListener(_uploaded);
     _timer?.cancel();
+    _lifecycle.dispose();
     super.dispose();
   }
 
@@ -303,7 +311,8 @@ class NotReadyReAskState extends State<NotReadyReAsk> {
   }
 
   void _schedule() {
-    if (!mounted || _timer != null || _gaveUp || !_pending) {
+    if (!mounted || _timer != null || _gaveUp || !_pending || !appVisible) {
+      // In the background, the next resume schedules it.
       return;
     }
     _timer = reAskTimer(_delay, _fire);
@@ -322,6 +331,10 @@ class NotReadyReAskState extends State<NotReadyReAsk> {
     }
     if (!_pending) {
       _afterUpload = false;
+      return;
+    }
+    if (!appVisible) {
+      // Nothing is asked in the background; the next resume schedules it.
       return;
     }
     if (_inTheWay) {

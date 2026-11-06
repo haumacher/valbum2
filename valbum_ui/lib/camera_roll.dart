@@ -37,12 +37,14 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart' show AppLifecycleListener;
 
 import 'background.dart';
 import 'caller.dart';
 import 'client.dart';
 import 'connectivity.dart';
 import 'diagnostics.dart';
+import 'foreground_timer.dart' show appVisible;
 import 'hash_cache.dart';
 import 'locales.dart';
 import 'platform.dart' show sha256OfFile;
@@ -989,6 +991,25 @@ class CameraRollSync extends ChangeNotifier {
 
   Timer? _retryTimer;
   Timer? _scanTimer;
+
+  /// Follows the app into the background and back while [start]ed (issue
+  /// #317), see [_hidden].
+  AppLifecycleListener? _lifecycle;
+
+  /// Whether a run was asked for while [_hidden]; resuming asks for it then.
+  bool _missedWhileHidden = false;
+
+  /// Whether the app on Android is not on the screen: Android cuts its
+  /// network there (issue #300), so a run would fail on the name of the
+  /// server, and, holding the one claim of the process, keep the expedited
+  /// upload work — which gets the network — from the photos. The background
+  /// works upload what changes meanwhile; the run asked for is made when the
+  /// app is back.
+  bool get _hidden =>
+      _lifecycle != null &&
+      !kIsWeb &&
+      defaultTargetPlatform == TargetPlatform.android &&
+      !appVisible;
   StreamSubscription<void>? _watch;
   StreamSubscription<NetworkKind>? _network;
   bool _disposed = false;
@@ -1100,11 +1121,28 @@ class CameraRollSync extends ChangeNotifier {
         trigger();
       }
     });
+    _lifecycle ??= _followLifecycle();
     _armScan();
     // Idempotent, so every start may ask: an app that was updated registers
     // the periodic task again this way (issue #32).
     unawaited(_arrangeBackground(true));
     trigger();
+  }
+
+  /// The listener of [_lifecycle], `null` in a process without the widgets
+  /// binding — a background isolate, a unit test —, which has no screen to
+  /// be hidden from.
+  AppLifecycleListener? _followLifecycle() {
+    try {
+      return AppLifecycleListener(onResume: () {
+        if (_missedWhileHidden) {
+          _missedWhileHidden = false;
+          trigger();
+        }
+      });
+    } catch (_) {
+      return null;
+    }
   }
 
   void _armScan() {
@@ -1129,6 +1167,9 @@ class CameraRollSync extends ChangeNotifier {
     _scanTimer = null;
     _retryTimer?.cancel();
     _retryTimer = null;
+    _lifecycle?.dispose();
+    _lifecycle = null;
+    _missedWhileHidden = false;
   }
 
   /// Asks for a run, unless one is already going on.
@@ -1137,6 +1178,10 @@ class CameraRollSync extends ChangeNotifier {
   /// is picked up by one more run when the current one is through, and never
   /// by a second run alongside it.
   void trigger() {
+    if (_hidden) {
+      _missedWhileHidden = true;
+      return;
+    }
     if (_running) {
       _pending = true;
       return;

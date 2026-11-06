@@ -26,6 +26,7 @@ import 'album_stacks.dart' show setAlbumStacking;
 import 'app.dart';
 import 'client.dart';
 import 'dialog_style.dart';
+import 'foreground_timer.dart';
 import 'l10n/app_localizations.dart';
 import 'manage_view.dart' show refusalMessage;
 import 'resource.dart';
@@ -66,7 +67,9 @@ const Key newsFreshMarkerKey = Key("news-fresh-marker");
 ///
 /// Attached to the client of a member ([attach]); `null` for everybody else —
 /// a share link, a contact, an anonymous caller has no bell. Asks for the
-/// count at once, every [interval] and whenever the app is resumed.
+/// count at once, every [interval] while the app can be seen and whenever the
+/// app is resumed — never while it is in the background (issue #317), see
+/// [ForegroundTimer].
 class NewsBell extends ChangeNotifier {
   /// How often the count is asked for.
   final Duration interval;
@@ -75,9 +78,7 @@ class NewsBell extends ChangeNotifier {
 
   VAlbumClient? _client;
 
-  Timer? _timer;
-
-  AppLifecycleListener? _lifecycle;
+  late final ForegroundTimer _timer = ForegroundTimer(poll);
 
   /// How many entries are unread, as last answered.
   int count = 0;
@@ -106,11 +107,10 @@ class NewsBell extends ChangeNotifier {
     count = 0;
     news = null;
     problem = null;
-    _timer?.cancel();
-    _timer = null;
-    if (client != null) {
-      _timer = Timer.periodic(interval, (_) => poll());
-      _lifecycle ??= AppLifecycleListener(onResume: poll);
+    if (client == null) {
+      _timer.stop();
+    } else {
+      _timer.start(interval);
       poll();
     }
     notifyListeners();
@@ -184,8 +184,7 @@ class NewsBell extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
-    _timer?.cancel();
-    _lifecycle?.dispose();
+    _timer.dispose();
     super.dispose();
   }
 }

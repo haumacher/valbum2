@@ -30,6 +30,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 
 import 'action_guard.dart';
 import 'app.dart';
@@ -38,6 +39,7 @@ import 'camera_roll_view.dart';
 import 'catch_up.dart';
 import 'client.dart';
 import 'diagnostics.dart';
+import 'foreground_timer.dart';
 import 'l10n/app_localizations.dart';
 import 'page_app_bar.dart';
 import 'manage_view.dart' show refusalMessage;
@@ -179,9 +181,7 @@ class StatusMonitor extends ChangeNotifier {
 
   VAlbumClient? _client;
 
-  Timer? _timer;
-
-  AppLifecycleListener? _lifecycle;
+  late final ForegroundTimer _timer = ForegroundTimer(poll);
 
   bool _disposed = false;
 
@@ -223,28 +223,18 @@ class StatusMonitor extends ChangeNotifier {
     problem = null;
     _schedule();
     if (client != null) {
-      _lifecycle ??= AppLifecycleListener(
-        onResume: () {
-          _schedule();
-          poll();
-        },
-        onPause: () {
-          // Nothing is asked while the app is not in the foreground.
-          _timer?.cancel();
-          _timer = null;
-        },
-      );
       poll();
     }
     notifyListeners();
   }
 
+  /// Nothing is asked while the app is in the background (issue #317): the
+  /// timer stops there, and a resume asks at once, see [ForegroundTimer].
   void _schedule() {
-    _timer?.cancel();
-    _timer = null;
-    if (_client != null) {
-      _timer = Timer.periodic(
-          _watchers > 0 ? pageInterval : interval, (_) => poll());
+    if (_client == null) {
+      _timer.stop();
+    } else {
+      _timer.start(_watchers > 0 ? pageInterval : interval);
     }
   }
 
@@ -316,8 +306,7 @@ class StatusMonitor extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
-    _timer?.cancel();
-    _lifecycle?.dispose();
+    _timer.dispose();
     super.dispose();
   }
 }
@@ -1265,7 +1254,10 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
               child: SelectableText(
                 log.entries.isEmpty
                     ? l10n.diagnosticsEmpty
-                    : log.entries.join("\n"),
+                    // A line names the day where it changes (issue #318),
+                    // in the device's language; the copy stays English.
+                    : diagnosticsText(log.entries,
+                        day: DateFormat.yMMMEd(l10n.localeName).format),
                 style: const TextStyle(fontFamily: "monospace", fontSize: 11),
               ),
             ),

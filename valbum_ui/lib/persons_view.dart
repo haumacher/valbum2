@@ -59,6 +59,7 @@ import 'client.dart';
 import 'dialog_style.dart';
 import 'drag_scroll.dart';
 import 'filter_list.dart';
+import 'foreground_timer.dart';
 import 'form_dialog.dart';
 import 'key_guard.dart';
 import 'l10n/app_localizations.dart';
@@ -487,8 +488,9 @@ class PersonsContentState extends State<PersonsContent>
   /// The link session this screen stands in, `null` outside one.
   ShareSession? share;
 
-  /// Asks the server again while it is still detecting, see [pending].
-  Timer? _poll;
+  /// Asks the server again while it is still detecting, see [pending]; never
+  /// while the app is in the background (issue #317).
+  late final ForegroundTimer _poll = ForegroundTimer(_pollTick);
 
   /// This screen's answer to the router's question whether it may be left.
   late final Future<bool> Function() _leaveGuard = confirmLeave;
@@ -531,7 +533,7 @@ class PersonsContentState extends State<PersonsContent>
   @override
   void dispose() {
     _browserMenu.release();
-    _poll?.cancel();
+    _poll.dispose();
     widget.albumState.navigator.delegate
         .unregisterPersonsGuard(path, _leaveGuard);
     _dragScroller.dispose();
@@ -650,17 +652,19 @@ class PersonsContentState extends State<PersonsContent>
   /// doing that under somebody's hands while they are sorting faces is worse
   /// than waiting for them to finish.
   void _schedulePoll() {
-    _poll?.cancel();
-    if (!pending) {
+    if (pending) {
+      _poll.start(widget.pendingInterval);
+    } else {
+      _poll.stop();
+    }
+  }
+
+  void _pollTick() {
+    if (!mounted || dirty || _saving) {
       return;
     }
-    _poll = Timer.periodic(widget.pendingInterval, (_) {
-      if (!mounted || dirty || _saving) {
-        return;
-      }
-      widget.albumState.navigator.delegate.forget(path);
-      widget.albumState.reload();
-    });
+    widget.albumState.navigator.delegate.forget(path);
+    widget.albumState.reload();
   }
 
   /// What this caller may do with the album, as the server answered it.

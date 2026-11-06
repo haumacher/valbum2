@@ -20,6 +20,7 @@ import 'package:valbum_ui/not_ready.dart';
 import 'util/fake_image_http.dart';
 import 'util/fixtures.dart';
 import 'util/l10n.dart';
+import 'util/lifecycle.dart';
 import 'util/viewer_harness.dart' show withEmptyImageCache;
 
 const String dataUrl = "http://server/valbum/data";
@@ -222,6 +223,27 @@ void main() {
         tester.state<AlbumContentState>(find.byType(AlbumContent)).selectMode,
         isTrue,
         reason: "still in the select mode");
+  });
+
+  testWidgets(
+      "nothing is asked again in the background, and the re-asks go on after "
+      "a resume (issue #317)", (tester) async {
+    resume(tester);
+    var server = Server();
+    await start(tester, server);
+    expect(server.thumbnails(), 1);
+
+    toBackground(tester);
+    await wait(tester, const Duration(minutes: 5));
+    expect(server.thumbnails(), 1, reason: "nothing while in the background");
+    expect(reAskOf(tester).reAsked, 0);
+
+    server.ready.add("a.jpg");
+    toForeground(tester);
+    await wait(tester, const Duration(seconds: 10));
+    expect(reAskOf(tester).reAsked, 1, reason: "scheduled again on resume");
+    expect(server.thumbnails(), 2);
+    expect(placeholder, findsNothing);
   });
 
   testWidgets("the album is not asked again while the viewer covers it",
